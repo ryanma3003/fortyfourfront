@@ -220,7 +220,7 @@ onMounted(() => {
             </div>
             <div class="card custom-card">
                 <div class="card-body p-0">
-                    <div class="p-3">
+                    <div class="p-3"> 
                         <div class="d-flex align-items-center justify-content-between">
                             <h6 class="fw-medium mb-0">
                                 Upcoming Events

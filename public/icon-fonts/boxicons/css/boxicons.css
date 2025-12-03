@@ -1597,9 +1597,7 @@
   .bx-bus:before {
     content: "\ea10";
   }
-  .bx-bus-school:before {
-    content: "\ea11";
-  }
+
   .bx-cabinet:before {
     content: "\ea12";
   }
@@ -3838,9 +3836,6 @@
   .bxs-business:before {
     content: "\ecfb";
   }
-  .bxs-bus-school:before {
-    content: "\ecfc";
-  }
   .bxs-cabinet:before {
     content: "\ecfd";
   }
@@ -5076,9 +5071,6 @@
   }
   .bxs-save:before {
     content: "\ee98";
-  }
-  .bxs-school:before {
-    content: "\ee99";
   }
   .bxs-search:before {
     content: "\ee9a";
