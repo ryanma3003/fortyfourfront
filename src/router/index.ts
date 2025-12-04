@@ -294,7 +294,16 @@ const routes: RouteRecordRaw[] = [
             //   name: "POS System",
             //   component: () => import("../components/dashboards/pos-system.vue"),
             // },
-
+              {
+              path: 'stakeholders',
+              name: "Stakeholders",
+              component: () => import("../components/dashboards/stakeholders.vue"),
+            },
+            {
+              path: 'profile-stakeholders',
+              name: "Profile Stakeholders",
+              component: () => import("../components/dashboards/profile-stakeholders.vue"),
+            },
           ],
         },
 
