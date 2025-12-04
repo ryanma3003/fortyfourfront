@@ -29,7 +29,7 @@
                         <span class="">{{ mainmenuItem.menutitle }}</span>
                     </template>
                     <template v-if="mainmenuItem?.type === 'link'">
-                        <router-link :to="mainmenuItem.path" class="side-menu__item" :class="`${mainmenuItem.selected ? 'active' : ''}`">
+                        <router-link :to="mainmenuItem.path" class="side-menu__item" :class="`${mainmenuItem.selected ? 'active' : ''}`" @click="mainContentFn">
                             <span v-if='mainmenuItem.icon' v-html="mainmenuItem.icon">
                             </span>
                             <span class="side-menu__label">{{ mainmenuItem.title }}
@@ -325,13 +325,19 @@
         setMenu = true;
         for (const item of menuList) {
           if (item === targetObject) {
+            // Mark the target item as active and selected
             item.active = true;
             item.selected = true;
+            // For single link items (type='link'), also set ancestors active
+            // For parent items (type='sub'), setMenuAncestorsActive will handle opening children
             setMenuAncestorsActive(item);
           } else if (!item.active && !item.selected) {
-            item.active = false; // Set active to false for items not matching the target
-            item.selected = false; // Set active to false for items not matching the target
+            // Don't deactivate items that are not targets
+            item.active = false;
+            item.selected = false;
           } else {
+            // For items that ARE active or selected but not target,
+            // recursively remove their active state to prevent conflicts
             removeActiveOtherMenus(item);
           }
           if (item.children && item.children.length > 0) {
@@ -373,8 +379,13 @@
       setMenuAncestorsActive(parent);
     }
     else if (!hasParent) {
-      if (html.getAttribute('data-vertical-style') == 'doublemenu') {
-        html.setAttribute('data-toggled', 'double-menu-close');
+      // For single link items (no parent), just ensure they stay marked
+      // For items with children (sub), close other top-level menus appropriately
+      if (targetObject.children && targetObject.children.length > 0) {
+        // This is a parent menu with children
+        if (html.getAttribute('data-vertical-style') == 'doublemenu') {
+          html.setAttribute('data-toggled', 'double-menu-close');
+        }
       }
     }
   }
@@ -577,21 +588,44 @@
   }
 
 
-  function setMenuUsingUrl(currentPath) {
-    hasParent = false;
-    hasParentLevel = 1;
-    // Check current url and trigger the setSidemenu method to active the menu.
-    const setSubmenuRecursively = (items) => {
-      items?.forEach((item) => {
-        if (item.path == '') { return; }
-        else if (item.path === currentPath) {
-          setSubmenu(null, item);
+function setMenuUsingUrl(currentPath) {
+  hasParent = false;
+  hasParentLevel = 1;
+
+  const setSubmenuRecursively = (items) => {
+    items?.forEach((item) => {
+      // Skip items without path (like empty or sub types without path)
+      if (!item.path) {
+        // Still recursively process children for parent menus
+        if (item.children) {
+          setSubmenuRecursively(item.children);
         }
+        return;
+      }
+
+      // Match single link items (type='link') or parent items (type='sub')
+      // For single link: exact match or exact with trailing slash
+      // For parent: match if currentPath starts with item.path
+      const isExactMatch = currentPath === item.path || 
+                          currentPath === item.path + '/' ||
+                          item.path === currentPath + '/';
+      
+      const isChildMatch = item.children && 
+                          currentPath.startsWith(item.path + '/');
+
+      if (isExactMatch || (item.children && isChildMatch)) {
+        setSubmenu(null, item); // ✅ aktifkan menu
+      }
+
+      if (item.children) {
         setSubmenuRecursively(item.children);
-      });
-    };
-    setSubmenuRecursively(menuData);
-  }
+      }
+    });
+  };
+
+  setSubmenuRecursively(menuData);
+}
+
 
   const preventpagejump= ref('')
   let menuOverflowed = false
@@ -625,18 +659,29 @@
     if (navLayout === 'horizontal' || navStyle === 'menu-hover' || navStyle === 'icon-hover') {
       closeMenuFn()
     }
+
+
   })
 
   // Watch route changes reactively
-  watchEffect(() => {
-    let currentPath = router.currentRoute.value.path.endsWith('/') ? router.currentRoute.value.path.slice(0, -1) : router.currentRoute.value.path
-    currentPath = currentPath || '/dashboard/ecommerce'
+ watchEffect(() => {
+  let currentPath = router.currentRoute.value.path || '/';
 
-    if (currentPath !== previousUrl.value) {
-      setMenuUsingUrl(currentPath)
-      previousUrl.value = currentPath
+  if (currentPath.length > 1 && currentPath.endsWith('/')) {
+    currentPath = currentPath.slice(0, -1);
+  }
+
+  if (currentPath !== previousUrl.value) {
+    // Reset menu states before setting new active menu
+    closeMenuFn();
+    setMenuUsingUrl(currentPath);
+    previousUrl.value = currentPath;
+    // Close sidebar when navigating to widgets or dashboards (including sub-paths) to prevent overlap
+    if (currentPath.startsWith('/widgets') || currentPath.startsWith('/dashboards')) {
+      document.documentElement.setAttribute('data-toggled', 'close');
     }
-  })
+  }
+});
 
 
   onMounted(() => {
