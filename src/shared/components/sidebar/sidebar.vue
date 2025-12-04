@@ -5,7 +5,7 @@
 
     <!-- Start::main-sidebar-header -->
     <div class="main-sidebar-header">
-        <router-link to="/dashboards/sales" class="header-logo">
+        <router-link to="/dashboards" class="header-logo">
             <img src="/images/media/studio1.png" alt="logo" class="desktop-logo">
             <img src="/images/media/studio1.png" alt="logo" class="toggle-dark">
             <img src="/images/media/studio1.png" alt="logo" class="desktop-dark">

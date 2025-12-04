@@ -32,6 +32,7 @@ const routes: RouteRecordRaw[] = [
         {
           path: `dashboards`,
           name: 'Dashboards',
+          component: () => import("../components/dashboards/main-dashboards.vue"),
           children: [
             {
               path: 'sales',
