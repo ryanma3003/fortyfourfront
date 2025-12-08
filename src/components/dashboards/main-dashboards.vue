@@ -34,7 +34,7 @@ const ApexRadarChart = [{
 },
 {
     id: 2,
-    title: "Perdomain",
+    title: "Perdomainn",
     type: "radar",
     height: "500",
     width: "500",

@@ -227,7 +227,7 @@ export const Multioptions2 = {
 // Radar Chart Polygon Fill
 export const Ploygonseries = [{
 	name: "Series 1",
-	data: [20, 100, 40, 30, 50, 80, 33],
+	data: [20, 10, 40, 30, 50, 80, 33],
 }]
 export const Polygonoptions = {
 	chart: {

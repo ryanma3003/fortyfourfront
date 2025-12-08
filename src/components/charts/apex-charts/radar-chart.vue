@@ -25,7 +25,7 @@ const ApexRadarChart = [{
 },
 {
     id: 2,
-    title: "Radar Chart-Multiple Series",
+    title: "Radar Chart-Multiple Series1",
     type: "radar",
     height: "500",
     width: "500",
