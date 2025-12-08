@@ -41280,3 +41280,46 @@ a.link-underline-dark {
 /* End:: Focus Ring */
 
 /*# sourceMappingURL=styles.css.map */
+
+
+/* ========== LOGO DASHBOARD FIX ========== */
+
+/* Light mode – sidebar normal */
+[data-theme-mode="light"]:not([data-toggled$="closed"]) #logo-desktop {
+  display: block !important;
+}
+[data-theme-mode="light"]:not([data-toggled$="closed"]) #logo-desktop-dark,
+[data-theme-mode="light"]:not([data-toggled$="closed"]) #logo-toggle,
+[data-theme-mode="light"]:not([data-toggled$="closed"]) #logo-toggle-dark {
+  display: none !important;
+}
+
+/* Dark mode – sidebar normal */
+[data-theme-mode="dark"]:not([data-toggled$="closed"]) #logo-desktop-dark {
+  display: block !important;
+}
+[data-theme-mode="dark"]:not([data-toggled$="closed"]) #logo-desktop,
+[data-theme-mode="dark"]:not([data-toggled$="closed"]) #logo-toggle,
+[data-theme-mode="dark"]:not([data-toggled$="closed"]) #logo-toggle-dark {
+  display: none !important;
+}
+
+/* Light mode – sidebar collapsed */
+[data-theme-mode="light"][data-toggled$="closed"] #logo-toggle {
+  display: block !important;
+}
+[data-theme-mode="light"][data-toggled$="closed"] #logo-desktop,
+[data-theme-mode="light"][data-toggled$="closed"] #logo-desktop-dark,
+[data-theme-mode="light"][data-toggled$="closed"] #logo-toggle-dark {
+  display: none !important;
+}
+
+/* Dark mode – sidebar collapsed */
+[data-theme-mode="dark"][data-toggled$="closed"] #logo-toggle-dark {
+  display: block !important;
+}
+[data-theme-mode="dark"][data-toggled$="closed"] #logo-desktop,
+[data-theme-mode="dark"][data-toggled$="closed"] #logo-desktop-dark,
+[data-theme-mode="dark"][data-toggled$="closed"] #logo-toggle {
+  display: none !important;
+}

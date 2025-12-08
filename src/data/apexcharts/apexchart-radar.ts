@@ -38,13 +38,10 @@ export const Radaroptions = {
 // Radar Chart-Multiple Series
 export const Multiseries = [{
 	name: "Series 1",
-	data: [80, 50, 30, 40, 100, 20],
-}, {
-	name: "Series 2",
-	data: [20, 30, 40, 80, 20, 80],
+	data: [80, 50, 30, 40],
 }, {
 	name: "Series 3",
-	data: [44, 76, 78, 13, 43, 10],
+	data: [44, 76, 78, 13],
 }]
 export const Multioptions = {
 	chart: {
@@ -83,8 +80,8 @@ export const Multioptions = {
 		size: 0
 	},
 	xaxis: {
-		categories: ["2011", "2012", "2013", "2014", "2015", "2016"]
-	}
+		categories: ["IDENTIFIKASI", "PROTEKSI", "DETEKSI", "PENANGGULANGAN"]
+	}	
 }
 
 // Radar Chart Polygon Fill
