@@ -30,6 +30,11 @@ const routes: RouteRecordRaw[] = [
         // },
         //Dashboard
         {
+          path: `profile-stakeholders/:slug`,
+          name: 'Profile Stakeholders',
+          component: () => import("../components/dashboards/profile-stakeholders.vue"),
+        },
+        {
           path: `dashboards`,
           name: 'Dashboards',
           component: () => import("../components/dashboards/main-dashboards.vue"),

@@ -26,8 +26,8 @@ export default {
                 sortable: true
             },
             {
-                text: "Jenis Usaha",
-                value: "jenis_usaha",
+                text: "Sektor Usaha",
+                value: "sektor",
                 sortable: true
             },
             {
@@ -36,7 +36,7 @@ export default {
             },
             {
                 text: "Detail",
-                value: "detail"
+                value: "id"
             }
         ];
 
@@ -90,9 +90,9 @@ export default {
                 </label>
                 <EasyDataTable class="table text-nowrap" :headers="headers" :items="items" border-cell show-index :search-value="searchValue2" :rowsPerPage="10" :rowsItems="[5, 10, 25, 50, 100]">
                     <!-- Custom slot untuk kolom Detail dengan hyperlink -->
-                    <template #item-detail="{ detail }">
+                    <template #item-id="{ slug }">
                         <div class="d-flex justify-content-center">
-                            <router-link :to="detail" class="btn btn-info-light btn-wave rounded-pill px-3 py-2 my-1">
+                            <router-link :to="`/profile-stakeholders/${slug}`" class="btn btn-info-light btn-wave rounded-pill px-3 py-2 my-1">
                                 <i class="bi bi-eye"></i> Lihat Profil
                             </router-link>
                         </div>
