@@ -90,7 +90,7 @@
                 <!-- End::header-element -->
 
                 <!-- Start::header-element -->
-                <li class="header-element notifications-dropdown d-xl-block d-none dropdown">
+                <li class="header-element notifications-dropdown d-block dropdown">
                     <!-- Start::header-link|dropdown-toggle -->
                     <a href="javascript:void(0);" class="header-link dropdown-toggle" data-bs-toggle="dropdown"
                         data-bs-auto-close="outside" id="messageDropdown" aria-expanded="false">

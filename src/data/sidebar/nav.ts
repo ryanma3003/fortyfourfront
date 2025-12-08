@@ -119,7 +119,7 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
       // { path: "/dashboards/pos-system", type: "link", icon: Svgicons.Posicon, active: false, selected: false, dirchange: false, title: "POS System" },
   },
   {
-    path: "/stakeholders", icon: Svgicons.Dashboardicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false
+    path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false
   },
   {
     path: "/ikas", icon: Svgicons.Dashboardicon, title: "Ikas", type: "link", active: true, dirchange: false, selected: false

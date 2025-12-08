@@ -2,6 +2,7 @@
 import * as radarData from '../../../data/apexcharts/apexchart-radar.ts';
 import { defineAsyncComponent } from 'vue'
 import Pageheader from '../../../shared/components/pageheader/pageheader.vue';
+import { width } from '../../../data/prismCode/advancedUi/placeholder.ts';
 
 const ChartCards = defineAsyncComponent(() => import('../../../shared/components/@spk/chart-cards.vue'));
 
@@ -26,7 +27,8 @@ const ApexRadarChart = [{
     id: 2,
     title: "Radar Chart-Multiple Series",
     type: "radar",
-    height: "320",
+    height: "500",
+    width: "500",
     chart: {
         options: radarData.Multioptions,
         series: radarData.Multiseries

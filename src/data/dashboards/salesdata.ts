@@ -128,9 +128,9 @@ interface RecentTransactionType {
   count?: string;
 }
 
-export const SalesCard: SalesCardItemType[] = [
+export const SalesCard1: SalesCardItemType[] = [
   {
-    title: 'Total Revenue',
+    title: 'Ilmate',
     avatarClass: 'avatar-md flex-shrink-0',
     ValueClass: 'fw-semibold lh-sm',
     smallText: 'fs-12 lh-base',
@@ -144,7 +144,38 @@ export const SalesCard: SalesCardItemType[] = [
     svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" fill="#5f6368"><path d="M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 10c0 .55-.45 1-1 1s-1-.45-1-1V8h2v2zm2-6c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm4 6c0 .55-.45 1-1 1s-1-.45-1-1V8h2v2z" /></svg>`
   },
   {
-    title: 'Refund Requests',
+    title: 'Industri Argo',
+    avatarClass: 'avatar-md flex-shrink-0',
+    ValueClass: 'fw-semibold lh-sm',
+    ValueClass1: 'mb-0',
+    smallText: 'fs-12 lh-base',
+    count: '4,654',
+    percent: '4.43%',
+    icon: 'ti ti-trending-up me-1 d-inline-block fw-semibold align-middle',
+    iconColor: 'success fw-medium',
+    cardClass: 'dashboard-main-card overflow-hidden secondary',
+    priceColor: 'secondary',
+    svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm4 12h-4v3l-5-5 5-5v3h4v4z" /></svg>`
+  },
+]
+
+export const SalesCard: SalesCardItemType[] = [
+  {
+    title: 'Ilmate',
+    avatarClass: 'avatar-md flex-shrink-0',
+    ValueClass: 'fw-semibold lh-sm',
+    smallText: 'fs-12 lh-base',
+    ValueClass1: 'fs-12 lh-base',
+    count: '$46,658',
+    percent: '0.45%',
+    icon: 'ti ti-trending-up me-1 d-inline-block fw-semibold align-middle',
+    iconColor: 'success fw-medium',
+    cardClass: 'dashboard-main-card overflow-hidden primary',
+    priceColor: 'primary',
+    svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" fill="#5f6368"><path d="M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 10c0 .55-.45 1-1 1s-1-.45-1-1V8h2v2zm2-6c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm4 6c0 .55-.45 1-1 1s-1-.45-1-1V8h2v2z" /></svg>`
+  },
+  {
+    title: 'Industri Argo',
     avatarClass: 'avatar-md flex-shrink-0',
     ValueClass: 'fw-semibold lh-sm',
     ValueClass1: 'mb-0',
@@ -158,7 +189,7 @@ export const SalesCard: SalesCardItemType[] = [
     svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm4 12h-4v3l-5-5 5-5v3h4v4z" /></svg>`
   },
   {
-    title: 'Total Orders',
+    title: 'IKFT',
     avatarClass: 'avatar-md flex-shrink-0',
     ValueClass: 'fw-semibold lh-sm',
     ValueClass1: 'mb-0',
@@ -171,20 +202,20 @@ export const SalesCard: SalesCardItemType[] = [
     priceColor: 'warning',
     svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" fill="#5f6368"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59L5.25 14c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42l.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03L21 6.16c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21L4.27 2H1zm16 16c-1.1 0-1.99.9-1.99 2S15.9 22 17 22s2-.9 2-2-.9-2-2-2z" /></svg>`
   },
-  {
-    title: 'Total Visitors',
-    avatarClass: 'avatar-md flex-shrink-0',
-    ValueClass: 'fw-semibold lh-sm',
-    ValueClass1: 'mb-0',
-    smallText: 'fs-12 lh-base',
-    count: '63,744',
-    percent: '2.97%',
-    icon: 'ti ti-trending-down me-1 d-inline-block fw-semibold align-middle',
-    iconColor: 'danger fw-medium',
-    cardClass: 'dashboard-main-card overflow-hidden success',
-    priceColor: 'success',
-    svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><g><rect fill="none" height="24" width="24"></rect></g><g><g></g><g><g><path d="M16.67,13.13C18.04,14.06,19,15.32,19,17v3h4v-3 C23,14.82,19.43,13.53,16.67,13.13z" fill-rule="evenodd"></path></g><g><circle cx="9" cy="8" fill-rule="evenodd" r="4"></circle></g><g><path d="M15,12c2.21,0,4-1.79,4-4c0-2.21-1.79-4-4-4c-0.47,0-0.91,0.1-1.33,0.24 C14.5,5.27,15,6.58,15,8s-0.5,2.73-1.33,3.76C14.09,11.9,14.53,12,15,12z" fill-rule="evenodd"></path></g><g><path d="M9,13c-2.67,0-8,1.34-8,4v3h16v-3C17,14.34,11.67,13,9,13z" fill-rule="evenodd"></path></g></g></g></svg>`
-  }
+  // {
+  //   title: 'Total Visitors',
+  //   avatarClass: 'avatar-md flex-shrink-0',
+  //   ValueClass: 'fw-semibold lh-sm',
+  //   ValueClass1: 'mb-0',
+  //   smallText: 'fs-12 lh-base',
+  //   count: '63,744',
+  //   percent: '2.97%',
+  //   icon: 'ti ti-trending-down me-1 d-inline-block fw-semibold align-middle',
+  //   iconColor: 'danger fw-medium',
+  //   cardClass: 'dashboard-main-card overflow-hidden success',
+  //   priceColor: 'success',
+  //   svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><g><rect fill="none" height="24" width="24"></rect></g><g><g></g><g><g><path d="M16.67,13.13C18.04,14.06,19,15.32,19,17v3h4v-3 C23,14.82,19.43,13.53,16.67,13.13z" fill-rule="evenodd"></path></g><g><circle cx="9" cy="8" fill-rule="evenodd" r="4"></circle></g><g><path d="M15,12c2.21,0,4-1.79,4-4c0-2.21-1.79-4-4-4c-0.47,0-0.91,0.1-1.33,0.24 C14.5,5.27,15,6.58,15,8s-0.5,2.73-1.33,3.76C14.09,11.9,14.53,12,15,12z" fill-rule="evenodd"></path></g><g><path d="M9,13c-2.67,0-8,1.34-8,4v3h16v-3C17,14.34,11.67,13,9,13z" fill-rule="evenodd"></path></g></g></g></svg>`
+  // }
 ],
   topSellingProducts: TopSellingProductType[] = [
     {

@@ -3,12 +3,47 @@ import { ref } from "vue";
 import * as salesData from "../../data/dashboards/salesdata";
 import SpkReusebleJobs from "../../shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
 import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
+import * as radarData from '../../data/apexcharts/apexchart-radar.ts';
+import { defineAsyncComponent } from 'vue';
 const picked = ref(new Date());
 const picked2 = ref(new Date());
 const lowerpicked = new Date(picked2.value);
 const date = ref();
 // Get the day of the month
 const currentDay = picked.value.getDate();
+const ChartCards = defineAsyncComponent(() => import('../../shared/components/@spk/chart-cards.vue'));
+
+const dataToPass = {
+    title: "Charts",
+    subtitle: "Apex Charts",
+    currentpage: "Apex Radar Charts",
+    activepage: "Apex Radar Charts"
+}
+
+const ApexRadarChart = [{
+    id: 1,
+    title: "Perkategori",
+    type: "radar",
+    height: "500",
+    width: "500",
+    chart: {
+        options: radarData.Multioptions2,
+        series: radarData.Multiseries2
+
+    },
+},
+{
+    id: 2,
+    title: "Perdomain",
+    type: "radar",
+    height: "500",
+    width: "500",
+    chart: {
+        options: radarData.Multioptions,
+        series: radarData.Multiseries
+    },
+}
+]
 
 // Calculate the date of the next 5th day
 const picked1 = new Date(picked.value);
@@ -22,6 +57,7 @@ date.value = [startDate, endDate];
 
 <template>
     <!-- Start::app-content -->
+
 
     <!-- Start::page-header -->
     <div class="d-flex align-items-center justify-content-between mb-3 page-header-breadcrumb flex-wrap gap-2">
@@ -48,20 +84,26 @@ date.value = [startDate, endDate];
     <!-- Start:: row-1 -->
     <div class="row">
             <div class="row">
-                <div class="col-xl-3">
+                <!-- <div class="col-xl-3"> -->
                     <div class="row">
-                        <div class='col-xl-12 col-md-6' v-for='(idx, index) in salesData.SalesCard' :key='index'>
+                        <div class='col-md-4' v-for='(idx, index) in salesData.SalesCard' :key='index'>
                             <SpkReusebleJobs titleClass="fs-13 fw-medium mb-0" :listCard="true"
                                 :cardClass="`card ${idx.cardClass}`" :list="idx" :NoCountUp="true" />
                         </div>
-                        <!-- <SalesCard :dashboardCards="salesData.dashboardCards" /> -->
+                        
                     </div>
-                </div>
-                <div class="col-xl-9">
-                    <div class="card custom-card">
-                        <div class="card-header justify-content-between">
+                                        <div class="row">
+                        <div class='col-md-6' v-for='(idx, index) in salesData.SalesCard1' :key='index'>
+                            <SpkReusebleJobs titleClass="fs-13 fw-medium mb-0" :listCard="true"
+                                :cardClass="`card ${idx.cardClass}`" :list="idx" :NoCountUp="true" />
+                        </div>
+                    </div>
+                <!-- </div> -->
+                <!-- <div class="col-xl-9"> -->
+                    <!-- <div class="card custom-card"> -->
+                        <!-- <div class="card-header justify-content-between">
                             <div class="card-title">
-                                <!-- Sales Overview -->
+
                             </div>
                             <div class="btn-group btn-group-sm" role="group" aria-label="Basic example">
                                 <button type="button"
@@ -73,14 +115,14 @@ date.value = [startDate, endDate];
                                 <button type="button"
                                     class="btn btn-primary-light btn-wave waves-effect waves-light">Year</button>
                             </div>
-                        </div>
-                        <div class="card-body pb-0 pt-5">
+                        </div> -->
+                        <!-- <div class="card-body pb-0 pt-5">
                             <div id="sales-overview">
                                 <apexchart height="348px" type="line" :options="salesData.overviewoptions"
                                     :series="salesData.overviewseries" />
                             </div>
-                        </div>
-                        <div class="card-footer bg-light p-0">
+                        </div> -->
+                        <!-- <div class="card-footer bg-light p-0">
                             <div class="row g-0 w-100">
                                 <div class="col-sm-4 border-sm-end">
                                     <div class="p-3 text-center">
@@ -101,15 +143,15 @@ date.value = [startDate, endDate];
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
+                        </div> -->
+                    <!-- </div> -->
+                <!-- </div> -->
             </div>
     </div>
     <!-- End:: row-1 -->
 
     <!-- Start:: row-2 -->
-    <div class="row">
+    <!-- <div class="row">
         <div class="col-xxl-6 col-md-6">
             <div class="card custom-card">
                 <div class="card-header justify-content-between">
@@ -157,7 +199,7 @@ date.value = [startDate, endDate];
                                     </span>
                                 </div>
                                 <div class="flex-fill">
-                                    <span class="d-block fw-semibold">{{ user.name }}</span>
+                                    <   span class="d-block fw-semibold">{{ user.name }}</span>
                                     <span class="fs-11 text-muted">{{ user.email }}</span>
                                 </div>
                                 <div class="text-end">
@@ -170,10 +212,15 @@ date.value = [startDate, endDate];
                 </div>
             </div>
         </div>
-    </div>
+    </div> -->
     <!-- End:: row-2 -->
+    <div class="row">
+        <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
+            <ChartCards :card="card" :title="card.title" />
+        </div>
+    </div>
 </template>
 
 <style scoped>
 /* Add your styles here */
-</style>
+</style>    

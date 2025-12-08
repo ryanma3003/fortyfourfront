@@ -14,7 +14,7 @@ import PasswordInput from '../../../../shared/UI/passwordInput.vue';
                     <div class="card custom-card border-0 my-4">
                         <div class="card-body p-5">
                             <div class="mb-4">
-                                <router-link to="/dashboards/sales">
+                                <router-link to="/dashboards">
                                     <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="desktop-dark">
                                 </router-link>
                             </div>
@@ -38,7 +38,7 @@ import PasswordInput from '../../../../shared/UI/passwordInput.vue';
                                 </div>
                             </div>
                             <div class="d-grid mt-3">
-                                <router-link to="/dashboards/sales" class="btn btn-primary">Sign In</router-link>
+                                <router-link to="/dashboards" class="btn btn-primary">Sign In</router-link>
                             </div>
                             <div class="text-center my-3 authentication-barrier">
                                 <span class="op-4 fs-13">OR</span>

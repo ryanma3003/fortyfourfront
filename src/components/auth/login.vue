@@ -35,7 +35,7 @@ export default defineComponent({
                     position: 'top-right',
                 });
                 // setTimeout(() => {
-                    router.push('/dashboards/sales');
+                    router.push('/dashboards');
                 // }, 300);
             } else {
                 toast.error("Invalid credentials", {
@@ -100,7 +100,7 @@ export default defineComponent({
                 <div class="card custom-card border-0 my-4">
                     <div class="card-body p-5">
                         <div class="mb-4">
-                            <router-link to="/dashboards/sales">
+                            <router-link to="/dashboards">
                                 <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="desktop-dark">
                             </router-link>
                         </div>
@@ -135,7 +135,7 @@ export default defineComponent({
                             </div>
                         </div>
                         <div class="d-grid mt-2">
-                            <router-link to="/dashboards/sales" class="btn btn-primary" @click.prevent="login">Sign
+                            <router-link to="/dashboards" class="btn btn-primary" @click.prevent="login">Sign
                                 In</router-link>
                         </div>
                         <div class="text-center my-3 authentication-barrier">
