@@ -1014,116 +1014,116 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   // Authentication
-  // {
-  //   path: `/pages/authentication`,
-  //   component: Errorpagesinfo,
-  //   children: [
-  //     {
-  //       path: "coming-soon",
-  //       component: () => import("../components/pages/authentication/coming-soon.vue"),
-  //     },
-  //     {
-  //       path: "create-password",
-  //       name: "Create Password",
-  //       children: [
-  //         {
-  //           path: "basic",
-  //           component: () =>
-  //             import("../components/pages/authentication/create-password/basic.vue"),
-  //         },
-  //         {
-  //           path: "cover",
-  //           component: () =>
-  //             import("../components/pages/authentication/create-password/cover.vue"),
-  //         },
-  //       ]
-  //     },
-  //     {
-  //       path: "lock-screen",
-  //       name: "Lock Screen",
-  //       children: [
-  //         {
-  //           path: "basic",
-  //           component: () =>
-  //             import("../components/pages/authentication/lock-screen/basic.vue"),
-  //         },
-  //         {
-  //           path: "cover",
-  //           component: () =>
-  //             import("../components/pages/authentication/lock-screen/cover.vue"),
-  //         },
-  //       ]
-  //     },
-  //     {
-  //       path: "reset-password",
-  //       name: "Reset Password",
-  //       children: [
-  //         {
-  //           path: "basic",
-  //           component: () =>
-  //             import("../components/pages/authentication/reset-password/basic.vue"),
-  //         },
-  //         {
-  //           path: "cover",
-  //           component: () =>
-  //             import("../components/pages/authentication/reset-password/cover.vue"),
-  //         },
-  //       ]
-  //     },
-  //     {
-  //       path: "sign-up",
-  //       name: "Sign Up",
-  //       children: [
-  //         {
-  //           path: "basic",
-  //           component: () =>
-  //             import("../components/pages/authentication/sign-up/basic.vue"),
-  //         },
-  //         {
-  //           path: "cover",
-  //           component: () =>
-  //             import("../components/pages/authentication/sign-up/cover.vue"),
-  //         },
-  //       ]
-  //     },
-  //     {
-  //       path: "sign-in",
-  //       name: "Sign in",
-  //       children: [
-  //         {
-  //           path: "basic",
-  //           component: () =>
-  //             import("../components/pages/authentication/sign-in/basic.vue"),
-  //         },
-  //         {
-  //           path: "cover",
-  //           component: () =>
-  //             import("../components/pages/authentication/sign-in/cover.vue"),
-  //         },
-  //       ]
-  //     },
-  //     {
-  //       path: "two-step-verification",
-  //       name: "Two Step Verification",
-  //       children: [
-  //         {
-  //           path: "basic",
-  //           component: () =>
-  //             import("../components/pages/authentication/two-step-verification/basic.vue"),
-  //         },
-  //         {
-  //           path: "cover",
-  //           component: () =>
-  //             import("../components/pages/authentication/two-step-verification/cover.vue"),
-  //         },
-  //       ]
-  //     },
-  //     {
-  //       path: "under-maintenance",
-  //       component: () => import("../components/pages/authentication/under-maintainance.vue"),
-  //     },
-  //   ],
-  // },
+  {
+    path: `/pages/authentication`,
+    component: Errorpagesinfo,
+    children: [
+      {
+        path: "coming-soon",
+        component: () => import("../components/pages/authentication/coming-soon.vue"),
+      },
+      {
+        path: "create-password",
+        name: "Create Password",
+        children: [
+          {
+            path: "basic",
+            component: () =>
+              import("../components/pages/authentication/create-password/basic.vue"),
+          },
+          {
+            path: "cover",
+            component: () =>
+              import("../components/pages/authentication/create-password/cover.vue"),
+          },
+        ]
+      },
+      {
+        path: "lock-screen",
+        name: "Lock Screen",
+        children: [
+          {
+            path: "basic",
+            component: () =>
+              import("../components/pages/authentication/lock-screen/basic.vue"),
+          },
+          {
+            path: "cover",
+            component: () =>
+              import("../components/pages/authentication/lock-screen/cover.vue"),
+          },
+        ]
+      },
+      {
+        path: "reset-password",
+        name: "Reset Password",
+        children: [
+          {
+            path: "basic",
+            component: () =>
+              import("../components/pages/authentication/reset-password/basic.vue"),
+          },
+          {
+            path: "cover",
+            component: () =>
+              import("../components/pages/authentication/reset-password/cover.vue"),
+          },
+        ]
+      },
+      {
+        path: "sign-up",
+        name: "Sign Up",
+        children: [
+          {
+            path: "basic",
+            component: () =>
+              import("../components/pages/authentication/sign-up/basic.vue"),
+          },
+          {
+            path: "cover",
+            component: () =>
+              import("../components/pages/authentication/sign-up/cover.vue"),
+          },
+        ]
+      },
+      {
+        path: "sign-in",
+        name: "Sign in",
+        children: [
+          {
+            path: "basic",
+            component: () =>
+              import("../components/pages/authentication/sign-in/basic.vue"),
+          },
+          {
+            path: "cover",
+            component: () =>
+              import("../components/pages/authentication/sign-in/cover.vue"),
+          },
+        ]
+      },
+      {
+        path: "two-step-verification",
+        name: "Two Step Verification",
+        children: [
+          {
+            path: "basic",
+            component: () =>
+              import("../components/pages/authentication/two-step-verification/basic.vue"),
+          },
+          {
+            path: "cover",
+            component: () =>
+              import("../components/pages/authentication/two-step-verification/cover.vue"),
+          },
+        ]
+      },
+      {
+        path: "under-maintenance",
+        component: () => import("../components/pages/authentication/under-maintainance.vue"),
+      },
+    ],
+  },
 
   // earrorpage
   {

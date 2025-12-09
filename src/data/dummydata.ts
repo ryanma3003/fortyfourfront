@@ -27,6 +27,7 @@ export const stakeholdersData: Stakeholder[] = [
     {
         id: 2,  
         slug: "cv-berkah-sejahtera",
+        photo: "/images/media/Gemini_Generated_Image_opvwxxopvwxxopvw.png",
         nama_perusahaan: "CV Berkah Sejahtera",
         sektor: "Perdagangan Umum",
         email: "contact@berkahsejahtera.com",
@@ -37,6 +38,7 @@ export const stakeholdersData: Stakeholder[] = [
     {
         id: 3,
         slug: "pt-indo-digital-solutions",
+        photo: "/images/media/Gemini_Generated_Image_xibjxrxibjxrxibj.png",
         nama_perusahaan: "PT Indo Digital Solutions",
         sektor: "Software Development",
         email: "hello@indodigital.id",
@@ -47,6 +49,7 @@ export const stakeholdersData: Stakeholder[] = [
     {   
         id: 4,
         slug: "pt-karya-mandiri",
+        photo: "/images/media/Gemini_Generated_Image_l1penkl1penkl1pe.png",
         nama_perusahaan: "PT Karya Mandiri",
         sektor: "Konstruksi",
         email: "info@karyamandiri.co.id",

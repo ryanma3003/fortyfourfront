@@ -102,7 +102,7 @@ const dataToPass = computed(() => ({
                 <div class="col-xl-12">
                     <div class="card custom-card profile-card">
                         <div class="profile-banner-image">
-                            <img src="/images/media/Gemini_Generated_Image_k641ivk641ivk641.png" class="card-img-top" alt="...">
+                            <img :src="currentStakeholder.photo" class="card-img-top" alt="foto-perusahaan">
                         </div>
                         <div class="card-body p-4 pb-0 position-relative">
                             <div class="d-flex align-items-end justify-content-between flex-wrap">
@@ -119,6 +119,8 @@ const dataToPass = computed(() => ({
                                         </div>
                                     </div>
                                 </div>
+                                <router-link to="/pages/profile-settings" class="btn btn-warning d-flex align-items-start mb-5 gap-2"><i class="ri-edit-line"></i><span>Edit Profil</span></router-link>
+                                <!-- <router-link :to="`/pages/profile-settings`" class="btn btn-primary mb-3">Edit Profile</router-link> -->
                             </div>
                         </div>
                     </div>

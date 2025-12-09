@@ -6,10 +6,10 @@
     <!-- Start::main-sidebar-header -->
     <div class="main-sidebar-header">
         <router-link to="/dashboards" class="header-logo">
-            <img src="/images/brand-logos/desktop-logo.png" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
-            <img src="/images/brand-logos/desktop-logo-dark.png" alt="logo" id="logo-desktop-dark" style="height:50px; width:auto;">
-            <img src="/images/brand-logos/logo-bssn-perekonomian.png" alt="logo" id="logo-toggle" style="height:50px; width:auto;">
-            <img src="/images/brand-logos/logo-bssn-perekonomian.png" alt="logo" id="logo-toggle-dark" style="height:50px; width:auto;">
+            <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
+            <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop-dark" style="height:50px; width:auto;">
+            <img src="/images/brand-logos/logoD4.svg" alt="logo" id="logo-toggle" style="height:50px; width:auto;">
+            <img src="/images/brand-logos/logoD4.svg" alt="logo" id="logo-toggle-dark" style="height:50px; width:auto;">
         </router-link>
     </div>
     <!-- End::main-sidebar-header -->
