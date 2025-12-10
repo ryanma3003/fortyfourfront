@@ -36262,7 +36262,7 @@ html[data-toggled="icon-click-closed"] .sub-slide-menu {
   [data-toggled=icon-text-close]:not([data-nav-layout=horizontal]) .app-content,
   [data-toggled=menu-click-closed]:not([data-nav-layout=horizontal]) .app-content,
   [data-toggled=menu-hover-closed]:not([data-nav-layout=horizontal]) .app-content {
-    min-height: calc(100vh);
+    min-height: calc(100%x);
   }
 }
 .side-menu-doublemenu__icon {

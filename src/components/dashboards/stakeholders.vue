@@ -3,9 +3,11 @@ import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
 import { ref, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { stakeholdersData, type Stakeholder } from "../../data/dummydata"; // Sesuaikan path
+// import type { Stakeholder } from "@/data/stakeholder";
+// import axios from "axios";
 
 export default {
-    data() {
+    data() {    
         return {
             dataToPass: {
                 title: "Dashboards",
@@ -46,8 +48,14 @@ export default {
         // Simulasi async data loading
         const loadStakeholders = async () => {
             loading.value = true;
-
-            // Simulasi delay seperti API call
+            // try {
+            //     const rest = await axios.get('/api/stakeholders');
+            //     items.value = rest.data;
+            // } catch (error) {
+            //     console.error("Error loading stakeholders:", error);
+            // } finally {
+            //     loading.value = false;
+            //
             await new Promise(resolve => setTimeout(resolve, 500));
 
             // Load data dari dummydata.ts

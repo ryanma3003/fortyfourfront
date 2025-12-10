@@ -1,15 +1,20 @@
 <script setup>
-import { ref } from "vue";
+import { ref, computed } from "vue";
+
+// HAPUS INI JIKA TIDAK DIPAKAI LAGI
 import * as salesData from "../../data/dashboards/salesdata";
+
+import * as dummytotal from "../../data/dummytotal";  // ⬅️ PENTING
 import SpkReusebleJobs from "../../shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
 import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
 import * as radarData from '../../data/apexcharts/apexchart-radar.ts';
 import { defineAsyncComponent } from 'vue';
+
 const picked = ref(new Date());
 const picked2 = ref(new Date());
 const lowerpicked = new Date(picked2.value);
 const date = ref();
-// Get the day of the month
+
 const currentDay = picked.value.getDate();
 const ChartCards = defineAsyncComponent(() => import('../../shared/components/@spk/chart-cards.vue'));
 
@@ -20,35 +25,55 @@ const dataToPass = {
     activepage: "Apex Radar Charts"
 }
 
-const ApexRadarChart = [{
-    id: 1,
-    title: "Perkategori",
-    type: "radar",
-    height: "500",
-    width: "500",
-    chart: {
-        options: radarData.Multioptions2,
-        series: radarData.Multiseries2
+// ✅ COMPUTED: Hitung date range dari input Datepicker
+const dateRange = computed(() => {
+    if (!date.value || !Array.isArray(date.value) || date.value.length < 2) {
+        return null;
+    }
+    return {
+        start: date.value[0],
+        end: date.value[1]
+    };
+});
 
-    },
-},
-{
-    id: 2,
-    title: "Perdomainn",
-    type: "radar",
-    height: "500",
-    width: "500",
-    chart: {
-        options: radarData.Multioptions,
-        series: radarData.Multiseries
-    },
-}
-]
+// ✅ COMPUTED: Generate cards berdasarkan date range
+const PerusahaanCard1Filtered = computed(() => {
+    return dummytotal.generatePerusahaanCard(dateRange.value);
+});
 
-// Calculate the date of the next 5th day
+const PerusahaanCard2Filtered = computed(() => {
+    return dummytotal.generatePerusahaanCard2(dateRange.value);
+});
+
+const ApexRadarChart = [
+    {
+        id: 1,
+        title: "Perkategori",
+        type: "radar",
+        height: "500",
+        width: "500",
+        chart: {
+            options: radarData.Multioptions2,
+            series: radarData.Multiseries2
+        },
+    },
+    {
+        id: 2,
+        title: "Perdomain",
+        type: "radar",
+        height: "500",
+        width: "500",
+        chart: {
+            options: radarData.Multioptions,
+            series: radarData.Multiseries
+        },
+    }
+];
+
 const picked1 = new Date(picked.value);
 picked1.setDate(currentDay + 5);
 lowerpicked.setDate(currentDay - 5);
+
 const startDate = new Date();
 const endDate = new Date(new Date().setDate(startDate.getDate() + 7));
 date.value = [startDate, endDate];
@@ -56,20 +81,19 @@ date.value = [startDate, endDate];
 </script>
 
 <template>
-    <!-- Start::app-content -->
-
-
-    <!-- Start::page-header -->
+    <!-- HEADER -->
     <div class="d-flex align-items-center justify-content-between mb-3 page-header-breadcrumb flex-wrap gap-2">
         <div>
             <h1 class="page-title fw-medium fs-20 mb-0">Dashboard</h1>
         </div>
+
         <div class="d-flex align-items-center flex-wrap">
             <div class="form-group">
                 <Datepicker placeholder="Search By Date Range"
-                    class="form-control breadcrumb-input border-0 bg-white custom-date-input " autoApply v-model="date"
-                    range />
+                    class="form-control breadcrumb-input border-0 bg-white custom-date-input"
+                    autoApply v-model="date" range />
             </div>
+
             <div class="btn-list custom-button-list">
                 <button class="btn btn-icon btn-primary btn-wave">
                     <i class="ri-refresh-line"></i>
@@ -80,147 +104,35 @@ date.value = [startDate, endDate];
             </div>
         </div>
     </div>
-    <!-- End::page-header -->
-    <!-- Start:: row-1 -->
+
+    <!-- ROW 1 -->
     <div class="row">
+        <div class="row">
+            <div class='col-md-4' 
+                 v-for='(idx, index) in PerusahaanCard1Filtered' 
+                 :key='index'>
+
+                <SpkReusebleJobs
+                    titleClass="fs-13 fw-medium mb-0"
+                    :listCard="true"
+                    :cardClass="`card ${idx.cardClass}`"
+                    :list="idx"
+                    :NoCountUp="true"
+                />
+            </div>
             <div class="row">
-                <!-- <div class="col-xl-3"> -->
-                    <div class="row">
-                        <div class='col-md-4' v-for='(idx, index) in salesData.SalesCard' :key='index'>
-                            <SpkReusebleJobs titleClass="fs-13 fw-medium mb-0" :listCard="true"
-                                :cardClass="`card ${idx.cardClass}`" :list="idx" :NoCountUp="true" />
-                        </div>
-                        
-                    </div>
-                                        <div class="row">
-                        <div class='col-md-6' v-for='(idx, index) in salesData.SalesCard1' :key='index'>
-                            <SpkReusebleJobs titleClass="fs-13 fw-medium mb-0" :listCard="true"
-                                :cardClass="`card ${idx.cardClass}`" :list="idx" :NoCountUp="true" />
-                        </div>
-                    </div>
-                <!-- </div> -->
-                <!-- <div class="col-xl-9"> -->
-                    <!-- <div class="card custom-card"> -->
-                        <!-- <div class="card-header justify-content-between">
-                            <div class="card-title">
-
-                            </div>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Basic example">
-                                <button type="button"
-                                    class="btn btn-primary btn-wave waves-effect waves-light">Day</button>
-                                <button type="button"
-                                    class="btn btn-primary-light btn-wave waves-effect waves-light">Week</button>
-                                <button type="button"
-                                    class="btn btn-primary-light btn-wave waves-effect waves-light">Month</button>
-                                <button type="button"
-                                    class="btn btn-primary-light btn-wave waves-effect waves-light">Year</button>
-                            </div>
-                        </div> -->
-                        <!-- <div class="card-body pb-0 pt-5">
-                            <div id="sales-overview">
-                                <apexchart height="348px" type="line" :options="salesData.overviewoptions"
-                                    :series="salesData.overviewseries" />
-                            </div>
-                        </div> -->
-                        <!-- <div class="card-footer bg-light p-0">
-                            <div class="row g-0 w-100">
-                                <div class="col-sm-4 border-sm-end">
-                                    <div class="p-3 text-center">
-                                        <span class="d-block text-muted mb-1">Total Orders</span>
-                                        <h6 class="fw-semibold mb-0">15,535</h6>    
-                                    </div>
-                                </div>
-                                <div class="col-sm-4 border-sm-end">
-                                    <div class="p-3 text-center">
-                                        <span class="d-block text-muted mb-1">Total Sales</span>
-                                        <h6 class="fw-semibold mb-0">21,754</h6>
-                                    </div>
-                                </div>
-                                <div class="col-sm-4">
-                                    <div class="p-3 text-center">
-                                        <span class="d-block text-muted mb-1">Revenue Earned</span>
-                                        <h6 class="fw-semibold mb-0">$1.8M</h6>
-                                    </div>
-                                </div>
-                            </div>
-                        </div> -->
-                    <!-- </div> -->
-                <!-- </div> -->
+                <div class='col-md-6' v-for='(idx, index) in PerusahaanCard2Filtered' :key='index'>
+                    <SpkReusebleJobs titleClass="fs-13 fw-medium mb-0" :listCard="true"
+                    :cardClass="`card ${idx.cardClass}`" :list="idx" :NoCountUp="true" />
+                </div>
             </div>
+        </div>
     </div>
-    <!-- End:: row-1 -->
 
-    <!-- Start:: row-2 -->
-    <!-- <div class="row">
-        <div class="col-xxl-6 col-md-6">
-            <div class="card custom-card">
-                <div class="card-header justify-content-between">
-                    <div class="card-title">
-                        Recent Activity
-                    </div>
-                    <a href="javascript:void(0);" class="text-muted fs-12 text-decoration-underline">View All<i
-                            class="ti ti-arrow-narrow-right"></i></a>
-                </div>
-                <div class="card-body px-5">
-                    <ul class="list-unstyled recent-activity-list">
-                        <li v-for="(activity, i) in salesData.recentActivities" :class="activity.liclass" :key="i">
-                            <div class="recent-activity-time text-end">
-                                <span class="fw-semibold d-block">{{ activity.date }}</span>
-                                <span class="d-block text-muted fs-12">{{ activity.time }}</span>
-                            </div>
-                            <div>
-                                <span class="d-block fs-13 mt-0">
-                                    <template v-for="(part, idx) in activity.descriptionParts" :key="idx">
-                                        <span :class="part.class">{{ part.text }}</span>
-                                    </template>
-                                </span>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-        <div class="col-xxl-6 col-xl-6">
-            <div class="card custom-card">
-                <div class="card-header justify-content-between">
-                    <div class="card-title">
-                        Stakeholders 
-                    </div>
-                    <a href="javascript:void(0);" class="text-muted fs-12 text-decoration-underline">View All<i
-                            class="ti ti-arrow-narrow-right"></i></a>
-                </div>
-                <div class="card-body">
-                    <ul class="list-unstyled top-customers-list">
-                        <li v-for="(user, index) in salesData.topCustomers" :key="index">
-                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                <div class="lh-1">
-                                    <span :class="user.avatarClass">
-                                        {{ user.initials }}
-                                    </span>
-                                </div>
-                                <div class="flex-fill">
-                                    <   span class="d-block fw-semibold">{{ user.name }}</span>
-                                    <span class="fs-11 text-muted">{{ user.email }}</span>
-                                </div>
-                                <div class="text-end">
-                                    <div :class="user.spentClass">{{ user.spentAmount }}</div>
-                                    <span class="fs-12 text-muted">{{ user.spentLabel }}</span>
-                                </div>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div> -->
-    <!-- End:: row-2 -->
+    <!-- RADAR CHARTS -->
     <div class="row">
         <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
             <ChartCards :card="card" :title="card.title" />
         </div>
     </div>
 </template>
-
-<style scoped>
-/* Add your styles here */
-</style>    

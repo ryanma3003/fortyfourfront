@@ -4,7 +4,9 @@ import vueFilePond from 'vue-filepond'
 import { useRoute } from 'vue-router'
 import { stakeholdersData } from '../../data/dummydata.ts'
 import type { Stakeholder } from '../../data/dummydata.ts'
-import { computed, ref } from 'vue'
+import type { Penilaian } from "../../data/dashboards/dummyDataPercentage";
+import { stakeholderPenilaian } from "../../data/dashboards/dummyDataPercentage";
+import { computed, ref, onMounted } from 'vue'
 
 // Import FilePond styles
 import 'filepond/dist/filepond.min.css'
@@ -38,11 +40,19 @@ const currentStakeholder = computed<Stakeholder | undefined>(() => {
     return stakeholdersData.find(sh => sh.slug === stakeholderSlug.value)
 })
 
+// Cari penilaian berdasarkan slug
+const penilaian = computed<Penilaian[]>(() => {
+    const found = stakeholderPenilaian.find(sp => sp.slug === stakeholderSlug.value)
+    return found ? found.penilaian : []
+})
+
 const dataToPass = computed(() => ({
     title: "Pages",
     currentpage: `Profile ${currentStakeholder.value?.nama_perusahaan || 'Stakeholder'}`,
     activepage: "Profile Stakeholders",
 }))
+
+
 </script>
 
 
@@ -129,7 +139,7 @@ const dataToPass = computed(() => ({
                     <div class="tab-content" id="profile-tabs">
                         <div class="tab-pane show active p-0 border-0" id="profile-about-tab-pane" role="tabpanel" aria-labelledby="profile-about-tab" tabindex="0">
                             <div class="row">                          
-                                        <SpkReusableAnlyticsCard :analyticData=indexPenilaian.indexPenilaian />
+                                        <SpkReusableAnlyticsCard :analyticData="penilaian" />
                                         <div class="col-xl-12">
                                             <!--  -->
                                         </div>
