@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, defineProps } from 'vue'
+import { ref } from 'vue'
 
 // Extend the Document interface for fullscreen vendor prefixes
 interface ExtendedDocument extends Document {

@@ -34,101 +34,98 @@ type MenuItem = LinkMenuItem | SubMenuItem;
 export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
 
   {
-    menutitle: 'MAIN'
+  path: "/dashboards", icon: Svgicons.Dashboardicon, title: "Dashboards", type: "link", active: true, dirchange: false, selected: false
+      // { path: "/dashboards/sales", icon: Svgicons.Salesicon, type: "link", active: false, selected: false, dirchange: false, title: "Sales" },
+      // { path: "/dashboards/analytics", icon: Svgicons.Analyticsicon, type: "link", active: false, selected: false, dirchange: false, title: "Analytics" },
+
+      // {
+      //   title: "Ecommerce", type: "sub", badgetxt: `<span class="badge bg-primary-transparent ms-2">9</span>`, icon: Svgicons.Ecommerceicon, active: false, dirchange: false, children: [
+
+      //     { path: "/dashboards/ecommerce/ecommerce-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
+      //     { path: "/dashboards/ecommerce/products", type: "link", active: false, selected: false, dirchange: false, title: "Products" },
+      //     { path: "/dashboards/ecommerce/product-details", type: "link", active: false, selected: false, dirchange: false, title: "Product Details" },
+      //     { path: "/dashboards/ecommerce/cart", type: "link", active: false, selected: false, dirchange: false, title: "Cart" },
+      //     { path: "/dashboards/ecommerce/checkout", type: "link", active: false, selected: false, dirchange: false, title: "Checkout" },
+      //     { path: "/dashboards/ecommerce/customers", type: "link", active: false, selected: false, dirchange: false, title: "Customers" },
+      //     { path: "/dashboards/ecommerce/orders", type: "link", active: false, selected: false, dirchange: false, title: "Orders" },
+      //     { path: "/dashboards/ecommerce/order-details", type: "link", active: false, selected: false, dirchange: false, title: "Order Details" },
+      //     { path: "/dashboards/ecommerce/add-product", type: "link", active: false, selected: false, dirchange: false, title: "Add Product" },
+
+      //   ]
+      // },
+      // {
+      //   title: "Crypto", type: "sub", badgetxt: badgeSucccess, icon: Svgicons.Cryptoicon, active: false, selected: false, dirchange: false, children: [
+
+      //     { path: "/dashboards/crypto/crypto-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
+      //     { path: "/dashboards/crypto/transactions", type: "link", active: false, selected: false, dirchange: false, title: "Transactions" },
+      //     { path: "/dashboards/crypto/currency-exchange", type: "link", active: false, selected: false, dirchange: false, title: "Exchange" },
+      //     { path: "/dashboards/crypto/buy-sell", type: "link", active: false, selected: false, dirchange: false, title: "Buy & Sell" },
+      //     { path: "/dashboards/crypto/market-cap", type: "link", active: false, selected: false, dirchange: false, title: "Marketcap" },
+      //     { path: "/dashboards/crypto/wallet", type: "link", active: false, selected: false, dirchange: false, title: "Wallet" },
+
+      //   ],
+      // },
+      // {
+      //   title: "CRM", type: "sub", badgetxt: badgeWarning, icon: Svgicons.Crmicon, active: false, selected: false, dirchange: false, children: [
+
+      //     { path: "/dashboards/crm/crm-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
+      //     { path: "/dashboards/crm/contacts", type: "link", active: false, selected: false, dirchange: false, title: "Contacts" },
+      //     { path: "/dashboards/crm/companies", type: "link", active: false, selected: false, dirchange: false, title: "Companies" },
+      //     { path: "/dashboards/crm/deals", type: "link", active: false, selected: false, dirchange: false, title: "Deals" },
+      //     { path: "/dashboards/crm/leads", type: "link", active: false, selected: false, dirchange: false, title: " Leads" },
+
+      //   ],
+      // },
+      // {
+      //   title: "Projects", type: "sub", badgetxt: badgeInfo, icon: Svgicons.Projectsicon, active: false, selected: false, dirchange: false, children: [
+
+      //     { path: "/dashboards/projects/project-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
+      //     { path: "/dashboards/projects/projects-list", type: "link", active: false, selected: false, dirchange: false, title: "Projects List" },
+      //     { path: "/dashboards/projects/project-overview", type: "link", active: false, selected: false, dirchange: false, title: "Project Overview" },
+      //     { path: "/dashboards/projects/create-project", type: "link", active: false, selected: false, dirchange: false, title: "Create Project" },
+
+      //   ],
+      // },
+      // { path: "/dashboards/hrm", type: "link", icon: Svgicons.Hrmicon, active: false, selected: false, dirchange: false, title: "HRM" },
+      // { path: "/dashboards/courses", type: "link", active: false, icon: Svgicons.Courseicon, selected: false, dirchange: false, title: "Courses" },
+      // { path: "/dashboards/stocks", type: "link", active: false, icon: Svgicons.Stockicon, selected: false, dirchange: false, title: "Stocks" },
+      // {
+      //   title: "NFT", type: "sub", badgetxt: badgedanger, active: false, icon: Svgicons.Nfticon, selected: false, dirchange: false, children: [
+
+      //     { path: "/dashboards/nft/nft-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
+      //     { path: "/dashboards/nft/market-place", type: "link", active: false, selected: false, dirchange: false, title: "Market Place" },
+      //     { path: "/dashboards/nft/nft-details", type: "link", active: false, selected: false, dirchange: false, title: "NFT Details" },
+      //     { path: "/dashboards/nft/create-nft", type: "link", active: false, selected: false, dirchange: false, title: "Create NFT" },
+      //     { path: "/dashboards/nft/wallet-integration", type: "link", active: false, selected: false, dirchange: false, title: " Wallet Integration" },
+      //     { path: "/dashboards/nft/live-auction", type: "link", active: false, selected: false, dirchange: false, title: "Live Auction" },
+
+      //   ],
+      // },
+      // {
+      //   title: "Jobs", type: "sub", badgetxt: badgeSuccess, active: false, icon: Svgicons.Jobsicon, selected: false, children: [
+
+      //     { path: "/dashboards/jobs/jobs-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
+      //     { path: "/dashboards/jobs/job-details", type: "link", active: false, selected: false, dirchange: false, title: "Job Details" },
+      //     { path: "/dashboards/jobs/search-company", type: "link", active: false, selected: false, dirchange: false, title: "Search Company" },
+      //     { path: "/dashboards/jobs/search-jobs", type: "link", active: false, selected: false, dirchange: false, title: "Search Jobs" },
+      //     { path: "/dashboards/jobs/job-post", type: "link", active: false, selected: false, dirchange: false, title: " Job Post" },
+      //     { path: "/dashboards/jobs/jobs-list", type: "link", active: false, selected: false, dirchange: false, title: " Jobs List" },
+      //     { path: "/dashboards/jobs/search-candidate", type: "link", active: false, selected: false, dirchange: false, title: " Search Candidate" },
+      //     { path: "/dashboards/jobs/candidate-details", type: "link", active: false, selected: false, dirchange: false, title: "Candidate Details" },
+
+      //   ],
+      // },
+      // { path: "/dashboards/social-media", type: "link", icon: Svgicons.Socialicon, active: false, selected: false, dirchange: false, title: "Social Media" },
+      // { path: "/dashboards/pos-system", type: "link", icon: Svgicons.Posicon, active: false, selected: false, dirchange: false, title: "POS System" },
   },
   {
-    title: "Dashboards", icon: Svgicons.Dashboardicon, type: "sub", active: false, dirchange: false, children: [
-
-      { path: "/dashboards/sales", icon: Svgicons.Salesicon, type: "link", active: false, selected: false, dirchange: false, title: "Sales" },
-      { path: "/dashboards/analytics", icon: Svgicons.Analyticsicon, type: "link", active: false, selected: false, dirchange: false, title: "Analytics" },
-
-      {
-        title: "Ecommerce", type: "sub", badgetxt: `<span class="badge bg-primary-transparent ms-2">9</span>`, icon: Svgicons.Ecommerceicon, active: false, dirchange: false, children: [
-
-          { path: "/dashboards/ecommerce/ecommerce-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
-          { path: "/dashboards/ecommerce/products", type: "link", active: false, selected: false, dirchange: false, title: "Products" },
-          { path: "/dashboards/ecommerce/product-details", type: "link", active: false, selected: false, dirchange: false, title: "Product Details" },
-          { path: "/dashboards/ecommerce/cart", type: "link", active: false, selected: false, dirchange: false, title: "Cart" },
-          { path: "/dashboards/ecommerce/checkout", type: "link", active: false, selected: false, dirchange: false, title: "Checkout" },
-          { path: "/dashboards/ecommerce/customers", type: "link", active: false, selected: false, dirchange: false, title: "Customers" },
-          { path: "/dashboards/ecommerce/orders", type: "link", active: false, selected: false, dirchange: false, title: "Orders" },
-          { path: "/dashboards/ecommerce/order-details", type: "link", active: false, selected: false, dirchange: false, title: "Order Details" },
-          { path: "/dashboards/ecommerce/add-product", type: "link", active: false, selected: false, dirchange: false, title: "Add Product" },
-
-        ]
-      },
-      {
-        title: "Crypto", type: "sub", badgetxt: badgeSucccess, icon: Svgicons.Cryptoicon, active: false, selected: false, dirchange: false, children: [
-
-          { path: "/dashboards/crypto/crypto-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
-          { path: "/dashboards/crypto/transactions", type: "link", active: false, selected: false, dirchange: false, title: "Transactions" },
-          { path: "/dashboards/crypto/currency-exchange", type: "link", active: false, selected: false, dirchange: false, title: "Exchange" },
-          { path: "/dashboards/crypto/buy-sell", type: "link", active: false, selected: false, dirchange: false, title: "Buy & Sell" },
-          { path: "/dashboards/crypto/market-cap", type: "link", active: false, selected: false, dirchange: false, title: "Marketcap" },
-          { path: "/dashboards/crypto/wallet", type: "link", active: false, selected: false, dirchange: false, title: "Wallet" },
-
-        ],
-      },
-      {
-        title: "CRM", type: "sub", badgetxt: badgeWarning, icon: Svgicons.Crmicon, active: false, selected: false, dirchange: false, children: [
-
-          { path: "/dashboards/crm/crm-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
-          { path: "/dashboards/crm/contacts", type: "link", active: false, selected: false, dirchange: false, title: "Contacts" },
-          { path: "/dashboards/crm/companies", type: "link", active: false, selected: false, dirchange: false, title: "Companies" },
-          { path: "/dashboards/crm/deals", type: "link", active: false, selected: false, dirchange: false, title: "Deals" },
-          { path: "/dashboards/crm/leads", type: "link", active: false, selected: false, dirchange: false, title: " Leads" },
-
-        ],
-      },
-      {
-        title: "Projects", type: "sub", badgetxt: badgeInfo, icon: Svgicons.Projectsicon, active: false, selected: false, dirchange: false, children: [
-
-          { path: "/dashboards/projects/project-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
-          { path: "/dashboards/projects/projects-list", type: "link", active: false, selected: false, dirchange: false, title: "Projects List" },
-          { path: "/dashboards/projects/project-overview", type: "link", active: false, selected: false, dirchange: false, title: "Project Overview" },
-          { path: "/dashboards/projects/create-project", type: "link", active: false, selected: false, dirchange: false, title: "Create Project" },
-
-        ],
-      },
-      { path: "/dashboards/hrm", type: "link", icon: Svgicons.Hrmicon, active: false, selected: false, dirchange: false, title: "HRM" },
-      { path: "/dashboards/courses", type: "link", active: false, icon: Svgicons.Courseicon, selected: false, dirchange: false, title: "Courses" },
-      { path: "/dashboards/stocks", type: "link", active: false, icon: Svgicons.Stockicon, selected: false, dirchange: false, title: "Stocks" },
-      {
-        title: "NFT", type: "sub", badgetxt: badgedanger, active: false, icon: Svgicons.Nfticon, selected: false, dirchange: false, children: [
-
-          { path: "/dashboards/nft/nft-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
-          { path: "/dashboards/nft/market-place", type: "link", active: false, selected: false, dirchange: false, title: "Market Place" },
-          { path: "/dashboards/nft/nft-details", type: "link", active: false, selected: false, dirchange: false, title: "NFT Details" },
-          { path: "/dashboards/nft/create-nft", type: "link", active: false, selected: false, dirchange: false, title: "Create NFT" },
-          { path: "/dashboards/nft/wallet-integration", type: "link", active: false, selected: false, dirchange: false, title: " Wallet Integration" },
-          { path: "/dashboards/nft/live-auction", type: "link", active: false, selected: false, dirchange: false, title: "Live Auction" },
-
-        ],
-      },
-      {
-        title: "Jobs", type: "sub", badgetxt: badgeSuccess, active: false, icon: Svgicons.Jobsicon, selected: false, children: [
-
-          { path: "/dashboards/jobs/jobs-dashboard", type: "link", active: false, selected: false, dirchange: false, title: "Dashboard" },
-          { path: "/dashboards/jobs/job-details", type: "link", active: false, selected: false, dirchange: false, title: "Job Details" },
-          { path: "/dashboards/jobs/search-company", type: "link", active: false, selected: false, dirchange: false, title: "Search Company" },
-          { path: "/dashboards/jobs/search-jobs", type: "link", active: false, selected: false, dirchange: false, title: "Search Jobs" },
-          { path: "/dashboards/jobs/job-post", type: "link", active: false, selected: false, dirchange: false, title: " Job Post" },
-          { path: "/dashboards/jobs/jobs-list", type: "link", active: false, selected: false, dirchange: false, title: " Jobs List" },
-          { path: "/dashboards/jobs/search-candidate", type: "link", active: false, selected: false, dirchange: false, title: " Search Candidate" },
-          { path: "/dashboards/jobs/candidate-details", type: "link", active: false, selected: false, dirchange: false, title: "Candidate Details" },
-
-        ],
-      },
-      { path: "/dashboards/podcast", type: "link", icon: Svgicons.Podcasticon, active: false, selected: false, dirchange: false, title: "Podcast" },
-      { path: "/dashboards/social-media", type: "link", icon: Svgicons.Socialicon, active: false, selected: false, dirchange: false, title: "Social Media" },
-      { path: "/dashboards/school", type: "link", icon: Svgicons.Schoolicon, active: false, selected: false, dirchange: false, title: "School" },
-      { path: "/dashboards/medical", type: "link", icon: Svgicons.Medicalicon, active: false, selected: false, dirchange: false, title: "Medical" },
-      { path: "/dashboards/pos-system", type: "link", icon: Svgicons.Posicon, active: false, selected: false, dirchange: false, title: "POS System" },
-    ]
+    path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false
   },
-
   {
-    menutitle: 'WEB APPS'
+    path: "/ikas", icon: Svgicons.Dashboardicon, title: "Ikas", type: "link", active: true, dirchange: false, selected: false
+  },
+  {
+    path: "/kse", icon: Svgicons.Dashboardicon, title: "Kse", type: "link", active: true, dirchange: false, selected: false
   },
 
   {
@@ -160,71 +157,50 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
   },
 
   {
-    title: "Nested Menu", icon: Svgicons.Nestedmenuicon, selected: false, active: false, dirchange: false, type: "sub", children: [
-
-      { path: "", title: "Nested-1", icon: Svgicons.Nested1icon, type: "link", active: false, selected: false, dirchange: false },
-      {
-        title: "Nested-2", icon: Svgicons.Nested2icon, type: "sub", active: false, selected: false, dirchange: false, children: [
-
-          { path: "", type: "empty", active: false, selected: false, dirchange: false, title: "Nested-2-1" },
-          { path: "", type: "empty", ctive: false, selected: false, dirchange: false, title: "Nested-2-2" },
-          { path: "", type: "empty", active: false, selected: false, dirchange: false, title: "Nested-2-3" },
-
-        ],
-      },
-
-    ],
-  },
-
-  {
-    menutitle: 'PAGES'
-  },
-
-  {
     icon: Svgicons.Pagesicon, title: "Pages", type: "sub", active: false, dirchange: false, children: [
-      {
-        icon: Svgicons.Authenticationicon, title: " Authentication", type: "sub", active: false, selected: false, dirchange: false, children: [
-          { path: "/pages/authentication/coming-soon", type: "link", active: false, selected: false, title: "Coming Soon" },
+      // {
+      //   icon: Svgicons.Authenticationicon, title: " Authentication", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //     { path: "/pages/authentication/coming-soon", type: "link", active: false, selected: false, title: "Coming Soon" },
 
-          {
-            title: "Create Password", type: "sub", active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/authentication/create-password/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
-              { path: "/pages/authentication/create-password/cover", type: "link", active: false, selected: false, title: "Cover" },
-            ],
-          },
-          {
-            title: "Lock Screen", type: "sub", active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/authentication/lock-screen/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
-              { path: "/pages/authentication/lock-screen/cover", type: "link", active: false, selected: false, title: "Cover" },
-            ],
-          },
-          {
-            title: "Reset Password", type: "sub", active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/authentication/reset-password/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
-              { path: "/pages/authentication/reset-password/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
-            ],
-          },
-          {
-            title: "Sign Up", type: "sub", active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/authentication/sign-up/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
-              { path: "/pages/authentication/sign-up/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
-            ],
-          },
-          {
-            title: "Sign In", type: "sub", active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/authentication/sign-in/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
-              { path: "/pages/authentication/sign-in/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
-            ],
-          },
-          {
-            title: "Two Step Verification", type: "sub", active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/authentication/two-step-verification/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
-              { path: "/pages/authentication/two-step-verification/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
-            ],
-          },
-          { path: "/pages/authentication/under-maintenance", type: "link", active: false, selected: false, dirchange: false, title: "Under Maintenance" },
-        ]
-      },
+      //     {
+      //       title: "Create Password", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //         { path: "/pages/authentication/create-password/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
+      //         { path: "/pages/authentication/create-password/cover", type: "link", active: false, selected: false, title: "Cover" },
+      //       ],
+      //     },
+      //     {
+      //       title: "Lock Screen", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //         { path: "/pages/authentication/lock-screen/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
+      //         { path: "/pages/authentication/lock-screen/cover", type: "link", active: false, selected: false, title: "Cover" },
+      //       ],
+      //     },
+      //     {
+      //       title: "Reset Password", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //         { path: "/pages/authentication/reset-password/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
+      //         { path: "/pages/authentication/reset-password/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
+      //       ],
+      //     },
+      //     {
+      //       title: "Sign Up", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //         { path: "/pages/authentication/sign-up/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
+      //         { path: "/pages/authentication/sign-up/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
+      //       ],
+      //     },
+      //     {
+      //       title: "Sign In", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //         { path: "/pages/authentication/sign-in/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
+      //         { path: "/pages/authentication/sign-in/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
+      //       ],
+      //     },
+      //     {
+      //       title: "Two Step Verification", type: "sub", active: false, selected: false, dirchange: false, children: [
+      //         { path: "/pages/authentication/two-step-verification/basic", type: "link", active: false, selected: false, dirchange: false, title: "Basic" },
+      //         { path: "/pages/authentication/two-step-verification/cover", type: "link", active: false, selected: false, dirchange: false, title: "Cover" },
+      //       ],
+      //     },
+      //     { path: "/pages/authentication/under-maintenance", type: "link", active: false, selected: false, dirchange: false, title: "Under Maintenance" },
+      //   ]
+      // },
       {
         icon: Svgicons.Erroricon, title: "Error", type: "sub", active: false, selected: false, dirchange: false, children: [
 
@@ -286,10 +262,6 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
       { path: "/pages/terms-conditions", type: "link", icon: Svgicons.Termsicon, active: false, selected: false, dirchange: false, title: "Terms & Conditions" },
       { path: "/pages/timeline", type: "link", icon: Svgicons.Timelineicon, active: false, selected: false, dirchange: false, title: "Timeline" },
     ]
-  },
-
-  {
-    menutitle: 'GENERAL'
   },
 
   {
@@ -355,25 +327,17 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
 
   { path: "/widgets", icon: Svgicons.widgetsicon, title: "Widgets", type: "link", active: false, dirchange: false, selected: false },
 
-  {
-    menutitle: 'MAPS & ICONS'
-  },
+  // {
+  //   title: "Maps", icon: Svgicons.Mapsicon, type: "sub", background: "hor-rightangle", active: false, selected: false, dirchange: false, children: [
 
-  {
-    title: "Maps", icon: Svgicons.Mapsicon, type: "sub", background: "hor-rightangle", active: false, selected: false, dirchange: false, children: [
+  //     { path: "/maps/jsvector", icon: Svgicons.Vectoricon, type: "link", active: false, selected: false, dirchange: false, title: "Vector Maps" },
+  //     { path: "/maps/leaflet", icon: Svgicons.Leafleticon, type: "link", active: false, selected: false, dirchange: false, title: "Leaflet Maps" },
+  //     { path: "/maps/google", icon: Svgicons.Googleicon, type: "link", active: false, selected: false, dirchange: false, title: "Google Maps" },
 
-      { path: "/maps/jsvector", icon: Svgicons.Vectoricon, type: "link", active: false, selected: false, dirchange: false, title: "Vector Maps" },
-      { path: "/maps/leaflet", icon: Svgicons.Leafleticon, type: "link", active: false, selected: false, dirchange: false, title: "Leaflet Maps" },
-      { path: "/maps/google", icon: Svgicons.Googleicon, type: "link", active: false, selected: false, dirchange: false, title: "Google Maps" },
+  //   ],
+  // },
 
-    ],
-  },
-
-  { path: "/icons", icon: Svgicons.Iconsicon, type: "link", active: false, selected: false, dirchange: false, title: "Icons" },
-
-  {
-    menutitle: 'TABLES & CHARTS'
-  },
+  // { path: "/icons", icon: Svgicons.Iconsicon, type: "link", active: false, selected: false, dirchange: false, title: "Icons" },
 
   {
     title: "Charts", icon: Svgicons.Chartsicon, type: "sub", dirchange: false, children: [
@@ -413,3 +377,4 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     ],
   },
 ]
+

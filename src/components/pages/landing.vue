@@ -1145,7 +1145,7 @@ const breakpoints1 = reactive({
                 </div>
             </div>
         </div>
-        <div class="landing-main-footer py-3">
+        <!-- <div class="landing-main-footer py-3">
             <div class="container">
                 <div class="row">
                     <div></div>
@@ -1178,7 +1178,7 @@ const breakpoints1 = reactive({
                     </div>
                 </div>
             </div>
-        </div>
+        </div> -->
         <!-- End:: Footer -->
         <!-- End::app-content -->
 

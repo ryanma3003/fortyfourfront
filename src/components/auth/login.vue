@@ -35,7 +35,7 @@ export default defineComponent({
                     position: 'top-right',
                 });
                 // setTimeout(() => {
-                    router.push('/dashboards/sales');
+                    router.push('/dashboards');
                 // }, 300);
             } else {
                 toast.error("Invalid credentials", {
@@ -99,9 +99,9 @@ export default defineComponent({
             <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-6 col-sm-8 col-12">
                 <div class="card custom-card border-0 my-4">
                     <div class="card-body p-5">
-                        <div class="mb-4">
-                            <router-link to="/dashboards/sales">
-                                <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="desktop-dark">
+                        <div class="mb-4 align-items-center d-flex justify-content-center">
+                            <router-link to="/dashboards">
+                                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
                             </router-link>
                         </div>
                         <div>
@@ -135,13 +135,13 @@ export default defineComponent({
                             </div>
                         </div>
                         <div class="d-grid mt-2">
-                            <router-link to="/dashboards/sales" class="btn btn-primary" @click.prevent="login">Sign
+                            <router-link to="/dashboards" class="btn btn-primary" @click.prevent="login">Sign
                                 In</router-link>
                         </div>
-                        <div class="text-center my-3 authentication-barrier">
+                        <!-- <div class="text-center my-3 authentication-barrier">
                             <span class="op-4 fs-13">OR</span>
-                        </div>
-                        <div class="d-grid mb-3">
+                        </div> -->
+                        <!-- <div class="d-grid mb-3">
                             <button
                                 class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill mb-3">
                                 <span class="avatar avatar-xs">
@@ -156,7 +156,7 @@ export default defineComponent({
                                 </span>
                                 <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Facebook</span>
                             </button>
-                        </div>
+                        </div> -->
                         <div class="text-center mt-3 fw-medium">
                             Dont have an account? <router-link to="/pages/authentication/sign-up/basic"
                                 class="text-primary">Register Here</router-link>
