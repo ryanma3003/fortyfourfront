@@ -47,7 +47,10 @@ const penilaian = computed<Penilaian[]>(() => {
 })
 
 const dataToPass = computed(() => ({
-    title: "Pages",
+    // title: {
+    //     text: "Stakeholders",
+    //     link: "/stakeholders"
+    // },
     currentpage: `Profile ${currentStakeholder.value?.nama_perusahaan || 'Stakeholder'}`,
     activepage: "Profile Stakeholders",
 }))
@@ -141,7 +144,53 @@ const dataToPass = computed(() => ({
                             <div class="row">                          
                                         <SpkReusableAnlyticsCard :analyticData="penilaian" />
                                         <div class="col-xl-12">
-                                            <!--  -->
+                                            <div class="card custom-card">
+                                                <div class="card-header d-flex align-items-center justify-content-between">
+                                                    <div class="card-title">
+                                                        PIC Perusahaan
+                                                    </div>
+                                                    <router-link to="/pages/profile-settings" class="btn btn-warning d-flex align-items-start gap-2"><i class="ri-add-line"></i><span>Add PIC</span></router-link>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="row g-5">
+                                                        <div class="col-xxl-3 col-xl-4 col-lg-6 col-md-6 col-sm-12" v-for="(idx, index) in ProfileData.FriendsList" :key="index">
+                                                            <div class="card custom-card h-100 d-flex align-items-center">
+                                                                <div class="card-body p-4 text-center">
+                                                                    <div class="dropdown profile-friends-actions">
+                                                                        <a aria-label="anchor" href="javascript:void(0);" class="btn btn-icon rounded-circle border btn-light" data-bs-toggle="dropdown" aria-expanded="false">
+                                                                            <i class="ri-more-2-fill"></i>
+                                                                        </a>
+                                                                        <ul class="dropdown-menu">
+                                                                            <li><a class="dropdown-item" href="javascript:void(0);"><i class="ri-edit-line me-2"></i>Edit</a></li>
+                                                                            <li><a class="dropdown-item" href="javascript:void(0);"><i class="ri-delete-bin-line me-2"></i>Delete</a></li>
+                                                                        </ul>
+                                                                    </div>
+                                                                    <div class="lh-1 mb-2">
+                                                                        <span class="avatar avatar-xxl avatar-rounded">
+                                                                            <img :src="idx.imgSrc" alt="">
+                                                                        </span>
+                                                                    </div>
+                                                                    <div class="mb-2">
+                                                                        <span class="d-block fw-semibold">{{ idx.name }}</span>
+                                                                        <span class="text-muted fs-13"><i class="ri-phone-line align-middle fs-15"></i>{{ idx.telepon }}</span>
+                                                                    </div>
+                                                                    <!-- <div class="btn-list">
+                                                                        <button class="btn btn-icon btn-facebook btn-wave rounded-circle waves-effect waves-light">
+                                                                            <i class="ri-facebook-line"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-icon btn-twitter btn-wave rounded-circle waves-effect waves-light">
+                                                                            <i class="ri-twitter-x-line"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-icon btn-instagram btn-wave rounded-circle waves-effect waves-light">
+                                                                            <i class="ri-instagram-line"></i>
+                                                                        </button>
+                                                                    </div> -->
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div class="col-xl-12">
                                             <div class="card custom-card">

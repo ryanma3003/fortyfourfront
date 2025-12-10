@@ -10,8 +10,8 @@ export default {
     data() {    
         return {
             dataToPass: {
-                title: "Dashboards",
-                currentpage: "Stakeholders",
+                // title: "Dashboards",
+                // currentpage: "Stakeholders",
                 activepage: "Stakeholders",
             },
             searchValue2: ref(""),

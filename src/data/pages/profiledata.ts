@@ -1,12 +1,12 @@
-import face1 from '/images/faces/1.jpg';
-import face2 from '/images/faces/2.jpg';
+import face1 from '/images/faces/face1.png';
+import face2 from '/images/faces/face2.png';
 import face3 from '/images/faces/3.jpg';
 import face4 from '/images/faces/4.jpg';
 import face5 from '/images/faces/5.jpg';
 import face6 from '/images/faces/6.jpg';
 import face7 from '/images/faces/7.jpg';
 import face8 from '/images/faces/8.jpg';
-import face9 from '/images/faces/9.jpg';
+import face9 from '/images/faces/face9.png';
 import face10 from '/images/faces/10.jpg';
 import face11 from '/images/faces/11.jpg';
 import face13 from '/images/faces/13.jpg';
@@ -26,6 +26,7 @@ interface ProfileType {
 interface FriendType {
     name: string;
     mail: string;
+    telepon: string;
     imgSrc: string;
 }
 
@@ -154,62 +155,20 @@ export const Profiles: ProfileType[] = [
     FriendsList: FriendType[] = [
         {
             name: "JohnDoe",
-            mail: "john.doe@example.com",
+            mail: "john.do",
+            telepon: "+62 21 1234 5678",
             imgSrc: face9,
         },
         {
             name: "SarahSmith",
             mail: "sarah.smith@example.com",
+            telepon: "+62 21 4561 5678",
             imgSrc: face1,
-        },
-        {
-            name: "MichaelBrown",
-            mail: "michael.brown@example.com",
-            imgSrc: face10,
         },
         {
             name: "EmmaWilson",
             mail: "emma.wilson@example.com",
+            telepon: "+62 21 4311 5678",
             imgSrc: face2,
-        },
-        {
-            name: "JamesTaylor",
-            mail: "james.taylor@example.com",
-            imgSrc: face11,
-        },
-        {
-            name: "OliviaJohnson",
-            mail: "olivia.johnson@example.com",
-            imgSrc: face3,
-        },
-        {
-            name: "DavidMartinez",
-            mail: "david.martinez@example.com",
-            imgSrc: face13
-        },
-        {
-            name: "SophiaGarcia",
-            mail: "sophia.garcia@example.com",
-            imgSrc: face4
-        },
-        {
-            name: "DanielLee",
-            mail: "daniel.lee@example.com",
-            imgSrc: face14
-        },
-        {
-            name: "IsabellaHarris",
-            mail: "isabella.harris@example.com",
-            imgSrc: face6
-        },
-        {
-            name: "WilliamClark",
-            mail: "william.clark@example.com",
-            imgSrc: face15
-        },
-        {
-            name: "JohnDoe",
-            mail: "john.doe@example.com",
-            imgSrc: face9
         },
     ];
