@@ -153,7 +153,7 @@ const dataToPass = computed(() => ({
                                                 </div>
                                                 <div class="card-body">
                                                     <div class="row g-5">
-                                                        <div class="col-xxl-3 col-xl-4 col-lg-6 col-md-6 col-sm-12" v-for="(idx, index) in ProfileData.FriendsList" :key="index">
+                                                        <div class="col-xl-4 col-lg-6 col-md-6 col-sm-12" v-for="(idx, index) in ProfileData.FriendsList" :key="index">
                                                             <div class="card custom-card h-100 d-flex align-items-center">
                                                                 <div class="card-body p-4 text-center">
                                                                     <div class="dropdown profile-friends-actions">
