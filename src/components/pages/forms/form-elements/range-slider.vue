@@ -6,7 +6,7 @@ import {
 const VueSlider = defineAsyncComponent(() => import('vue-3-slider-component'))
 import * as prism from '../../../../data/prismCode/forms/formelements/range-slider';
 import Pageheader from "../../../../shared/components/pageheader/pageheader.vue";
-import ShowcodeCard from '../../../../shared/UI/ShowcodeCard.vue';
+import ShowcodeCard from '../../../../shared/UI/showcodeCard.vue';
 const dataToPass = {
     title: "Forms",
     subtitle: "Form Elements",

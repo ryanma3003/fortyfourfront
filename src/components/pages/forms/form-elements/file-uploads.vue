@@ -10,7 +10,7 @@ import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css
 import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type'
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview'
 import Pageheader from '../../../../shared/components/pageheader/pageheader.vue';
-import ShowcodeCard from '../../../../shared/UI/ShowcodeCard.vue';
+import ShowcodeCard from '../../../../shared/UI/showcodeCard.vue';
 
 
 
