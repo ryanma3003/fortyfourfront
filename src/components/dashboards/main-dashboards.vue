@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed } from "vue";
 
-// HAPUS INI JIKA TIDAK DIPAKAI LAGI
 import * as salesData from "../../data/dashboards/salesdata";
 
 import * as dummytotal from "../../data/dummytotal";  // ⬅️ PENTING
@@ -25,7 +24,6 @@ const dataToPass = {
     activepage: "Apex Radar Charts"
 }
 
-// ✅ COMPUTED: Hitung date range dari input Datepicker
 const dateRange = computed(() => {
     if (!date.value || !Array.isArray(date.value) || date.value.length < 2) {
         return null;
@@ -36,7 +34,6 @@ const dateRange = computed(() => {
     };
 });
 
-// ✅ COMPUTED: Generate cards berdasarkan date range
 const PerusahaanCard1Filtered = computed(() => {
     return dummytotal.generatePerusahaanCard(dateRange.value);
 });
