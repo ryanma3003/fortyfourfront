@@ -7,7 +7,7 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import ToggleSwitch from "../../shared/UI/toggleSwitch.vue";
 // Reactive state
 const dataToPass = {
-    title: 'Pages',
+    //title: 'Profile',
     currentpage: 'Profile Settings',
     activepage: 'Profile Settings'
 }
@@ -75,23 +75,28 @@ const selectedTimezone = ref([
                         </div>
                         <div class="col-xl-6">
                             <label for="profile-phn-no" class="form-label">Phone No :</label>
-                            <input type="text" class="form-control" id="profile-phn-no" value=""
+                            <input type="number" class="form-control" id="profile-phn-no" value=""
                                 placeholder="Enter Number">
                         </div>
-                        <div class="col-xl-3">
-                            <label for="profile-age" class="form-label">Age :</label>
-                            <input type="number" class="form-control" id="profile-age" value="" placeholder="Enter Age">
+                        <div class="col-xl-6">
+                            <label for="profile-web" class="form-label">Website :</label>
+                            <input type="text" class="form-control" id="profile-web" value=""
+                                placeholder="Enter Website">                      
                         </div>
-                        <div class="col-xl-3">
+                        <!-- <div class="col-xl-3">
                             <label for="profile-designation" class="form-label">Designation :</label>
                             <input type="text" class="form-control" id="profile-designation" value=""
                                 placeholder="Enter Designation">
-                        </div>
+                        </div> -->
                         <div class="col-xl-12">
                             <label for="profile-address" class="form-label">Address :</label>
                             <textarea class="form-control" id="profile-address" rows="3"></textarea>
                         </div>
-                        <div class="col-xl-6">
+                        <div class="col-xl-12">
+                            <label for="profile-About" class="form-label">About :</label>
+                            <textarea class="form-control" id="profile-About" rows="3"></textarea>
+                        </div>
+                        <!-- <div class="col-xl-6">
                             <label for="profile-language" class="form-label">Language :</label>
                             <VueMultiselect :show-labels="false" v-model="tagValue"
                                 tag-placeholder="Add this as new tag" placeholder="Search or add a tag" label="name"
@@ -103,76 +108,97 @@ const selectedTimezone = ref([
                                 tag-placeholder="Add this as new tag" placeholder="Search or add a tag" label="name"
                                 track-by="code" :options="timezones" :taggable="true" @tag="addTag"></VueMultiselect>
 
-                        </div>
+                        </div> -->
+                        <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary">Save Changes</button>
+                    </div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="col-xl-12">
             <div class="card custom-card">
-                <div class="card-header">
-                    <div class="card-title">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#changePassword"
+                    style="cursor:pointer;">
+                    <div class="card-title mb-0">
                         Change Password
                     </div>
+                    <i class="bi bi-chevron-down transition-icon"></i>
                 </div>
-                <div class="card-body">
-                    <div class="row gy-3">
-                        <div class="col-xl-6">
-                            <label for="Password" class="form-label">New Password</label>
-                            <input type="text" class="form-control" id="Password" value="" placeholder="Enter Password">
+                <div id="changePassword" class="collapse">
+                    <div class="card-body">
+                        <div class="row gy-3">
+                            <div class="col-xl-6">
+                                <label class="form-label">New Password</label>
+                                <input type="password" class="form-control" placeholder="Enter Password">
+                            </div>
+                            <div class="col-xl-6">
+                                <label class="form-label">Confirm Password</label>
+                                <input type="password" class="form-control" placeholder="Confirm Password">
+                            </div>
                         </div>
-                        <div class="col-xl-6">
-                            <label for="confirm-password" class="form-label">Confirm Password</label>
-                            <input type="text" class="form-control" id="confirm-password" value=""
-                                placeholder="Confirm Password">
-                        </div>
+                    </div>  
+                    <div class="mb-3 ps-4 pe-4 d-flex justify-content-end">
+                        <button class="btn btn-primary">Save Changes</button>
                     </div>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-primary float-end">Save Changes</button>
                 </div>
             </div>
         </div>
+
         <div class="col-xl-12">
             <div class="card custom-card">
-                <div class="card-header">
-                    <div class="card-title">
+                <div class="card-header d-flex justify-content-between align-items-center"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#securitySettings"
+                    aria-expanded="false"
+                    style="cursor:pointer;">
+                    <div class="card-title mb-0">
                         Security Settings
                     </div>
+                    <i class="bi bi-chevron-down transition-icon"></i>
                 </div>
-                <div class="card-body">
-                    <div class="d-sm-flex d-block align-items-top justify-content-between">
-                        <div class="w-50">
-                            <p class="fs-14 mb-1 fw-medium">Login Verification</p>
-                            <p class="fs-12 mb-0 text-muted">This helps protect accounts from unauthorized access, even
-                                if a password is compromised.</p>
+                <div id="securitySettings" class="collapse">
+                    <div class="card-body">
+                        <div class="d-sm-flex d-block align-items-top justify-content-between">
+                            <div class="w-50">
+                                <p class="fs-14 mb-1 fw-medium">Login Verification</p>
+                                <p class="fs-12 mb-0 text-muted">
+                                    This helps protect accounts from unauthorized access, even
+                                    if a password is compromised.
+                                </p>
+                            </div>
+                            <a href="javascript:void(0);" class="link-primary text-decoration-underline">
+                                Set Up Verification
+                            </a>
                         </div>
-                        <a href="javascript:void(0);" class="link-primary text-decoration-underline">Set Up
-                            Verification</a>
+                        <div class="d-sm-flex d-block align-items-top justify-content-between mt-3">
+                            <div class="w-50">
+                                <p class="fs-14 mb-1 fw-medium">Password Verification</p>
+                                <p class="fs-12 mb-0 text-muted">
+                                    This additional step helps ensure that the person
+                                    attempting to modify account details is the legitimate account owner.
+                                </p>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="personal-details">
+                                <label class="form-check-label" for="personal-details">
+                                    Require Personal Details
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div class="d-sm-flex d-block align-items-top justify-content-between mt-3">
-                        <div class="w-50">
-                            <p class="fs-14 mb-1 fw-medium">Password Verification</p>
-                            <p class="fs-12 mb-0 text-muted">This additional step helps ensure that the person
-                                attempting to modify account details is the legitimate account owner.</p>
+                    <div class="mb-3 ps-4 pe-4 d-flex justify-content-end">
+                        <div class="btn-list">
+                            <button class="btn btn-danger btn-wave">Deactivate Account</button>
+                            <button class="btn btn-light btn-wave">Restore Defaults</button>
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="" id="personal-details">
-                            <label class="form-check-label" for="personal-details">
-                                Require Personal Details
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <div class="btn-list float-end">
-                        <button class="btn btn-danger btn-wave">Deactivate Account</button>
-                        <button class="btn btn-light btn-wave">Restore Defaults</button>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-12">
+        <!-- <div class="col-xl-12">
             <div class="card custom-card">
                 <div class="card-header">
                     <div class="card-title">
@@ -222,7 +248,7 @@ const selectedTimezone = ref([
                     </div>
                 </div>
             </div>
-        </div>
+        </div> -->
     </div>
     <!--End::row-1 -->
 </template>

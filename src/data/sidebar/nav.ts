@@ -122,9 +122,6 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false
   },
   {
-    path: "/ikas", icon: Svgicons.Dashboardicon, title: "Ikas", type: "link", active: true, dirchange: false, selected: false
-  },
-  {
     path: "/kse", icon: Svgicons.Dashboardicon, title: "Kse", type: "link", active: true, dirchange: false, selected: false
   },
 
@@ -156,8 +153,8 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     ],
   },
 
-  {
-    icon: Svgicons.Pagesicon, title: "Pages", type: "sub", active: false, dirchange: false, children: [
+ // {
+    //icon: Svgicons.Pagesicon, title: "Pages", type: "sub", active: false, dirchange: false, children: [
       // {
       //   icon: Svgicons.Authenticationicon, title: " Authentication", type: "sub", active: false, selected: false, dirchange: false, children: [
       //     { path: "/pages/authentication/coming-soon", type: "link", active: false, selected: false, title: "Coming Soon" },
@@ -201,68 +198,68 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
       //     { path: "/pages/authentication/under-maintenance", type: "link", active: false, selected: false, dirchange: false, title: "Under Maintenance" },
       //   ]
       // },
-      {
-        icon: Svgicons.Erroricon, title: "Error", type: "sub", active: false, selected: false, dirchange: false, children: [
+    //   {
+    //     icon: Svgicons.Erroricon, title: "Error", type: "sub", active: false, selected: false, dirchange: false, children: [
 
-          { path: "/pages/error/401-error", type: "link", active: false, selected: false, dirchange: false, title: "401-Error" },
-          { path: "/pages/error/404-error", type: "link", active: false, selected: false, dirchange: false, title: "404-Error" },
-          { path: "/pages/error/500-error", type: "link", active: false, selected: false, dirchange: false, title: "500-Error" },
-        ]
-      },
-      {
-        title: "Blog", icon: Svgicons.Blogicon, type: "sub", active: false, dirchange: false, children: [
-          { path: "/pages/blog/blog", type: "link", active: false, selected: false, dirchange: false, title: "Blog" },
-          { path: "/pages/blog/blog-details", type: "link", active: false, selected: false, dirchange: false, title: "Blog-Details" },
-          { path: "/pages/blog/create-blog", type: "link", active: false, selected: false, dirchange: false, title: "Create-Blog" },
-        ]
-      },
-      { path: "/pages/empty", icon: Svgicons.Emptyicon, type: "link", active: false, selected: false, dirchange: false, title: "Empty", },
-      {
-        title: "Forms", icon: Svgicons.Formsicon, type: "sub", active: false, selected: false, dirchange: false, children: [
+    //       { path: "/pages/error/401-error", type: "link", active: false, selected: false, dirchange: false, title: "401-Error" },
+    //       { path: "/pages/error/404-error", type: "link", active: false, selected: false, dirchange: false, title: "404-Error" },
+    //       { path: "/pages/error/500-error", type: "link", active: false, selected: false, dirchange: false, title: "500-Error" },
+    //     ]
+    //   },
+    //   {
+    //     title: "Blog", icon: Svgicons.Blogicon, type: "sub", active: false, dirchange: false, children: [
+    //       { path: "/pages/blog/blog", type: "link", active: false, selected: false, dirchange: false, title: "Blog" },
+    //       { path: "/pages/blog/blog-details", type: "link", active: false, selected: false, dirchange: false, title: "Blog-Details" },
+    //       { path: "/pages/blog/create-blog", type: "link", active: false, selected: false, dirchange: false, title: "Create-Blog" },
+    //     ]
+    //   },
+    //   { path: "/pages/empty", icon: Svgicons.Emptyicon, type: "link", active: false, selected: false, dirchange: false, title: "Empty", },
+    //   {
+    //     title: "Forms", icon: Svgicons.Formsicon, type: "sub", active: false, selected: false, dirchange: false, children: [
 
-          { path: "/pages/forms/form-advanced", type: "link", active: false, selected: false, dirchange: false, title: "Form Advanced" },
+    //       { path: "/pages/forms/form-advanced", type: "link", active: false, selected: false, dirchange: false, title: "Form Advanced" },
 
-          {
-            title: "Form Elements", type: "sub", menusub: true, active: false, selected: false, dirchange: false, children: [
-              { path: "/pages/forms/form-elements/inputs", type: "link", active: false, selected: false, dirchange: false, title: "Inputs" },
-              { path: "/pages/forms/form-elements/checks-radios", type: "link", active: false, selected: false, dirchange: false, title: "Checks & Radios " },
-              { path: "/pages/forms/form-elements/input-group", type: "link", active: false, selected: false, dirchange: false, title: "Input Group" },
-              { path: "/pages/forms/form-elements/form-select", type: "link", active: false, selected: false, dirchange: false, title: "Form Select" },
-              { path: "/pages/forms/form-elements/range-slider", type: "link", active: false, selected: false, dirchange: false, title: "Range Slider" },
-              { path: "/pages/forms/form-elements/input-masks", type: "link", active: false, selected: false, dirchange: false, title: "Input Masks" },
-              { path: "/pages/forms/form-elements/file-uploads", type: "link", active: false, selected: false, dirchange: false, title: "File Uploads" },
-              { path: "/pages/forms/form-elements/date-time-picker", type: "link", active: false, selected: false, dirchange: false, title: "Date,Time Picker" },
-              { path: "/pages/forms/form-elements/color-picker", type: "link", active: false, selected: false, dirchange: false, title: "Color Pickers" },
+    //       {
+    //         title: "Form Elements", type: "sub", menusub: true, active: false, selected: false, dirchange: false, children: [
+    //           { path: "/pages/forms/form-elements/inputs", type: "link", active: false, selected: false, dirchange: false, title: "Inputs" },
+    //           { path: "/pages/forms/form-elements/checks-radios", type: "link", active: false, selected: false, dirchange: false, title: "Checks & Radios " },
+    //           { path: "/pages/forms/form-elements/input-group", type: "link", active: false, selected: false, dirchange: false, title: "Input Group" },
+    //           { path: "/pages/forms/form-elements/form-select", type: "link", active: false, selected: false, dirchange: false, title: "Form Select" },
+    //           { path: "/pages/forms/form-elements/range-slider", type: "link", active: false, selected: false, dirchange: false, title: "Range Slider" },
+    //           { path: "/pages/forms/form-elements/input-masks", type: "link", active: false, selected: false, dirchange: false, title: "Input Masks" },
+    //           { path: "/pages/forms/form-elements/file-uploads", type: "link", active: false, selected: false, dirchange: false, title: "File Uploads" },
+    //           { path: "/pages/forms/form-elements/date-time-picker", type: "link", active: false, selected: false, dirchange: false, title: "Date,Time Picker" },
+    //           { path: "/pages/forms/form-elements/color-picker", type: "link", active: false, selected: false, dirchange: false, title: "Color Pickers" },
 
-            ],
-          },
-          { path: "/pages/forms/floating-labels", type: "link", active: false, selected: false, dirchange: false, title: "Floating Labels" },
-          { path: "/pages/forms/form-layouts", type: "link", active: false, selected: false, dirchange: false, title: "Form Layouts" },
-          { path: "/pages/forms/form-wizards", type: "link", active: false, selected: false, dirchange: false, title: "Form Wizards" },
-          { path: "/pages/forms/vue-editor", type: "link", active: false, selected: false, dirchange: false, title: "Vue Editor" },
-          { path: "/pages/forms/validation", type: "link", active: false, selected: false, dirchange: false, title: "Validation" },
-          { path: "/pages/forms/select2", type: "link", active: false, selected: false, dirchange: false, title: "Select2" },
-        ],
-      },
-      { path: "/pages/faqs", icon: Svgicons.Faqsicon, type: "link", active: false, selected: false, dirchange: false, title: "FAQ's" },
-      {
-        title: "Invoice", type: "sub", icon: Svgicons.Invoiceicon, menusub: true, active: false, selected: false, dirchange: false, children: [
-          { path: "/pages/invoice/create-invoice", type: "link", active: false, selected: false, dirchange: false, title: "Create Invoice" },
-          { path: "/pages/invoice/invoice-details", type: "link", active: false, selected: false, dirchange: false, title: "Invoice Details" },
-          { path: "/pages/invoice/invoice-list", type: "link", active: false, selected: false, dirchange: false, title: "Invoice List" },
-        ],
-      },
-      { path: "/pages/landing", icon: Svgicons.Landingicon, type: "link", active: false, selected: false, dirchange: false, title: "Landing" },
-      { path: "/pages/pricing", icon: Svgicons.Pricingicon, type: "link", active: false, selected: false, dirchange: false, title: "Pricing" },
-      { path: "/pages/profile", type: "link", icon: Svgicons.Profileicon, active: false, selected: false, dirchange: false, title: "Profile" },
-      { path: "/pages/profile-settings", type: "link", icon: Svgicons.Profilesettingicon, active: false, selected: false, dirchange: false, title: "Profile Settings" },
-      { path: "/pages/testimonials", type: "link", icon: Svgicons.Testimonialicon, active: false, selected: false, dirchange: false, title: "Testimonials" },
-      { path: "/pages/search", type: "link", icon: Svgicons.Searchicon, active: false, selected: false, dirchange: false, title: "Search" },
-      { path: "/pages/team", type: "link", icon: Svgicons.Teamicon, active: false, selected: false, dirchange: false, title: "Team", },
-      { path: "/pages/terms-conditions", type: "link", icon: Svgicons.Termsicon, active: false, selected: false, dirchange: false, title: "Terms & Conditions" },
-      { path: "/pages/timeline", type: "link", icon: Svgicons.Timelineicon, active: false, selected: false, dirchange: false, title: "Timeline" },
-    ]
-  },
+    //         ],
+    //       },
+    //       { path: "/pages/forms/floating-labels", type: "link", active: false, selected: false, dirchange: false, title: "Floating Labels" },
+    //       { path: "/pages/forms/form-layouts", type: "link", active: false, selected: false, dirchange: false, title: "Form Layouts" },
+    //       { path: "/pages/forms/form-wizards", type: "link", active: false, selected: false, dirchange: false, title: "Form Wizards" },
+    //       { path: "/pages/forms/vue-editor", type: "link", active: false, selected: false, dirchange: false, title: "Vue Editor" },
+    //       { path: "/pages/forms/validation", type: "link", active: false, selected: false, dirchange: false, title: "Validation" },
+    //       { path: "/pages/forms/select2", type: "link", active: false, selected: false, dirchange: false, title: "Select2" },
+    //     ],
+    //   },
+    //   { path: "/pages/faqs", icon: Svgicons.Faqsicon, type: "link", active: false, selected: false, dirchange: false, title: "FAQ's" },
+    //   {
+    //     title: "Invoice", type: "sub", icon: Svgicons.Invoiceicon, menusub: true, active: false, selected: false, dirchange: false, children: [
+    //       { path: "/pages/invoice/create-invoice", type: "link", active: false, selected: false, dirchange: false, title: "Create Invoice" },
+    //       { path: "/pages/invoice/invoice-details", type: "link", active: false, selected: false, dirchange: false, title: "Invoice Details" },
+    //       { path: "/pages/invoice/invoice-list", type: "link", active: false, selected: false, dirchange: false, title: "Invoice List" },
+    //     ],
+    //   },
+    //   { path: "/pages/landing", icon: Svgicons.Landingicon, type: "link", active: false, selected: false, dirchange: false, title: "Landing" },
+    //   { path: "/pages/pricing", icon: Svgicons.Pricingicon, type: "link", active: false, selected: false, dirchange: false, title: "Pricing" },
+    //   { path: "/pages/profile", type: "link", icon: Svgicons.Profileicon, active: false, selected: false, dirchange: false, title: "Profile" },
+    //   { path: "/pages/profile-settings", type: "link", icon: Svgicons.Profilesettingicon, active: false, selected: false, dirchange: false, title: "Profile Settings" },
+    //   { path: "/pages/testimonials", type: "link", icon: Svgicons.Testimonialicon, active: false, selected: false, dirchange: false, title: "Testimonials" },
+    //   { path: "/pages/search", type: "link", icon: Svgicons.Searchicon, active: false, selected: false, dirchange: false, title: "Search" },
+    //   { path: "/pages/team", type: "link", icon: Svgicons.Teamicon, active: false, selected: false, dirchange: false, title: "Team", },
+    //   { path: "/pages/terms-conditions", type: "link", icon: Svgicons.Termsicon, active: false, selected: false, dirchange: false, title: "Terms & Conditions" },
+    //   { path: "/pages/timeline", type: "link", icon: Svgicons.Timelineicon, active: false, selected: false, dirchange: false, title: "Timeline" },
+   //  ]
+ // },
 
   {
     title: "General", icon: Svgicons.Generalicon, type: "sub", active: false, selected: false, dirchange: false, children: [

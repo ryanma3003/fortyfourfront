@@ -191,12 +191,12 @@
                     <li>
                         <ul class="list-unstyled mb-0 sub-list">
                             <li>
-                                <router-link class="dropdown-item d-flex align-items-center" to="/pages/profile"><i
+                                <router-link class="dropdown-item d-flex align-items-center" to="/profile"><i
                                         class="ti ti-user-circle me-2 fs-18"></i>View Profile</router-link>
                                 </li>
                             <li>
                                 <router-link class="dropdown-item d-flex align-items-center"
-                                    to="/pages/profile-settings">
+                                    to="/profile-settings">
                                     <i class="ti ti-settings-cog me-2 fs-18"></i>Account Settings
                                 </router-link>
                             </li>

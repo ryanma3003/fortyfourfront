@@ -7,6 +7,7 @@ import type { Stakeholder } from '../../data/dummydata.ts'
 import type { Penilaian } from "../../data/dashboards/dummyDataPercentage";
 import { stakeholderPenilaian } from "../../data/dashboards/dummyDataPercentage";
 import { computed, ref, onMounted } from 'vue'
+import { useRouter } from "vue-router";
 
 // Import FilePond styles
 import 'filepond/dist/filepond.min.css'
@@ -23,12 +24,28 @@ import ProfileGallery from "../../shared/UI/profileGallery.vue";
 import Pageheader from '../../shared/components/pageheader/pageheader.vue'
 import SpkReusableAnlyticsCard from "../../shared/components/@spk/dashboards/spk-reusable-anlyticsStakeholder.vue";
 
-
+const router = useRouter();
 // Create component
 const FilePond = vueFilePond(
     FilePondPluginFileValidateType,
     FilePondPluginImagePreview
 )
+
+const friends = ref([...ProfileData.FriendsList]); // clone biar aman
+
+const editPIC = (index: number) => {
+  router.push({
+    path: "/pic-add",
+    query: { index },
+  });
+};
+
+const deletePIC = (index: number) => {
+  if (!confirm("Yakin ingin menghapus PIC ini?")) return;
+
+  // 🔥 HAPUS DATA
+  friends.value.splice(index, 1);
+};
 
 const route = useRoute()
 let myFiles = []
@@ -54,8 +71,6 @@ const dataToPass = computed(() => ({
     currentpage: `Profile ${currentStakeholder.value?.nama_perusahaan || 'Stakeholder'}`,
     activepage: "Profile Stakeholders",
 }))
-
-
 </script>
 
 
@@ -132,7 +147,7 @@ const dataToPass = computed(() => ({
                                         </div>
                                     </div>
                                 </div>
-                                <router-link to="/pages/profile-settings" class="btn btn-warning d-flex align-items-start mb-5 gap-2"><i class="ri-edit-line"></i><span>Edit Profil</span></router-link>
+                                <router-link to="/stakeholders-profile-settings" class="btn btn-warning d-flex align-items-start mb-5 gap-2"><i class="ri-edit-line"></i><span>Edit Profil</span></router-link>
                                 <!-- <router-link :to="`/pages/profile-settings`" class="btn btn-primary mb-3">Edit Profile</router-link> -->
                             </div>
                         </div>
@@ -149,11 +164,11 @@ const dataToPass = computed(() => ({
                                                     <div class="card-title">
                                                         PIC Perusahaan
                                                     </div>
-                                                    <router-link to="/pages/profile-settings" class="btn btn-warning d-flex align-items-start gap-2"><i class="ri-add-line"></i><span>Add PIC</span></router-link>
+                                                    <router-link to="/pic-add" class="btn btn-warning d-flex align-items-start gap-2"><i class="ri-add-line"></i><span>Add PIC</span></router-link>
                                                 </div>
                                                 <div class="card-body">
                                                     <div class="row g-5">
-                                                        <div class="col-xl-4 col-lg-6 col-md-6 col-sm-12" v-for="(idx, index) in ProfileData.FriendsList" :key="index">
+                                                        <div class="col-xl-4 col-lg-6 col-md-6 col-sm-12" v-for="(idx, index) in friends" :key="index">
                                                             <div class="card custom-card h-100 d-flex align-items-center">
                                                                 <div class="card-body p-4 text-center">
                                                                     <div class="dropdown profile-friends-actions">
@@ -161,8 +176,16 @@ const dataToPass = computed(() => ({
                                                                             <i class="ri-more-2-fill"></i>
                                                                         </a>
                                                                         <ul class="dropdown-menu">
-                                                                            <li><a class="dropdown-item" href="javascript:void(0);"><i class="ri-edit-line me-2"></i>Edit</a></li>
-                                                                            <li><a class="dropdown-item" href="javascript:void(0);"><i class="ri-delete-bin-line me-2"></i>Delete</a></li>
+                                                                            <li>
+                                                                                <a class="dropdown-item" @click="editPIC(index)">
+                                                                                <i class="ri-edit-line me-2"></i>Edit
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a class="dropdown-item text-danger" @click="deletePIC(index)">
+                                                                                <i class="ri-delete-bin-line me-2"></i>Delete
+                                                                                </a>
+                                                                            </li>
                                                                         </ul>
                                                                     </div>
                                                                     <div class="lh-1 mb-2">
@@ -234,73 +257,6 @@ const dataToPass = computed(() => ({
                                                 </div>
                                             </div>
                                         </div>    
-                            </div>
-                        </div>
-                        <div class="tab-pane p-0 border-0" id="gallery-tab-pane" role="tabpanel" aria-labelledby="gallery-tab" tabindex="0">
-                            <!-- <ProfileGallery /> -->
-                        </div>
-                        <div class="tab-pane p-0 border-0" id="followers-tab-pane" role="tabpanel" aria-labelledby="followers-tab" tabindex="0">
-                            <div class="row">
-                                <div class="col-xl-4" v-for="(idx, index) in ProfileData.Profiles" :key="index">
-                                    <div class="card custom-card">
-                                        <div class="card-body">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <div class="lh-1">
-                                                    <span class="avatar avatar-lg avatar-rounded">
-                                                        <img :src="idx.imgSrc" alt="">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    <span class="fw-semibold d-block">{{ idx.name }}</span>
-                                                    <span class="text-muted fs-13">{{ idx.mail }}</span>
-                                                </div>
-                                                <div>
-                                                    <button :class="`btn btn-${idx.color}-ghost`"><i :class="`ri-user-${idx.icon}-line me-1`"></i>{{
-                                                            idx.followers }}</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="tab-pane p-0 border-0" id="friends-tab-pane" role="tabpanel" aria-labelledby="friends-tab" tabindex="0">
-                            <div class="row">
-                                <div class="col-xxl-3 col-xl-4 col-lg-6" v-for="(idx, index) in ProfileData.FriendsList" :key="index">
-                                    <div class="card custom-card">
-                                        <div class="card-body p-4 text-center">
-                                            <div class="dropdown profile-friends-actions">
-                                                <a aria-label="anchor" href="javascript:void(0);" class="btn btn-icon rounded-circle border btn-light" data-bs-toggle="dropdown" aria-expanded="false">
-                                                    <i class="ri-more-2-fill"></i>
-                                                </a>
-                                                <ul class="dropdown-menu">
-                                                    <li><a class="dropdown-item" href="javascript:void(0);"><i class="ri-edit-line me-2"></i>Edit</a></li>
-                                                    <li><a class="dropdown-item" href="javascript:void(0);"><i class="ri-delete-bin-line me-2"></i>Delete</a></li>
-                                                </ul>
-                                            </div>
-                                            <div class="lh-1 mb-2">
-                                                <span class="avatar avatar-xxl avatar-rounded">
-                                                    <img :src="idx.imgSrc" alt="">
-                                                </span>
-                                            </div>
-                                            <div class="mb-3">
-                                                <span class="d-block fw-semibold">{{ idx.name }}</span>
-                                                <span class="text-muted fs-13">{{ idx.mail }}</span>
-                                            </div>
-                                            <div class="btn-list">
-                                                <button class="btn btn-icon btn-facebook btn-wave rounded-circle waves-effect waves-light">
-                                                    <i class="ri-facebook-line"></i>
-                                                </button>
-                                                <button class="btn btn-icon btn-twitter btn-wave rounded-circle waves-effect waves-light">
-                                                    <i class="ri-twitter-x-line"></i>
-                                                </button>
-                                                <button class="btn btn-icon btn-instagram btn-wave rounded-circle waves-effect waves-light">
-                                                    <i class="ri-instagram-line"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>

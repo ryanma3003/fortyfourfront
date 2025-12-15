@@ -235,6 +235,14 @@ typography
     line-height: 1.75rem;
   }
 }
+.transition-icon {
+    transition: transform 0.3s ease;
+}
+
+.card-header[aria-expanded="true"] .transition-icon {
+    transform: rotate(180deg);
+}
+
 /* Respoonsive Logo Styles */
 /* Dark Mode */
 [data-theme-mode=dark] .app-sidebar .main-sidebar-header .header-logo .desktop-dark {
