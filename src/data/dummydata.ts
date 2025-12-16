@@ -12,7 +12,9 @@ export interface Stakeholder {
     website: string;
 }
 
-export const stakeholdersData: Stakeholder[] = [
+import { reactive } from 'vue';
+
+export const stakeholdersData: Stakeholder[] = reactive([
     {
         id: 1,
         slug: "pt-maju-jaya-teknologi",
@@ -57,4 +59,4 @@ export const stakeholdersData: Stakeholder[] = [
         telepon: "+62 61 4444 3333",
         website: "https://karyamandiri.co.id",
     }
-];
+]);
