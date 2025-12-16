@@ -100,9 +100,7 @@ export default defineComponent({
                 <div class="card custom-card border-0 my-4">
                     <div class="card-body p-5">
                         <div class="mb-4 align-items-center d-flex justify-content-center">
-                            <router-link to="/dashboards">
-                                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
-                            </router-link>
+                            <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
                         </div>
                         <div>
                             <h4 class="mb-1 fw-semibold">Hi,Welcome back!</h4>

@@ -54,7 +54,7 @@
   border-radius: 5px;
   box-shadow: 2px 2px 6px -4px #999;
   cursor: default;
-  font-size: 14px;
+  font-size: 12px;
   left: 62px;
   opacity: 0;
   pointer-events: none;
@@ -62,10 +62,13 @@
   top: 20px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
   z-index: 12;
   transition: 0.15s ease all;
+  max-width: 250px;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 .apexcharts-tooltip.apexcharts-active {

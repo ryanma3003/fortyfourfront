@@ -10,8 +10,8 @@ export default {
     data() {    
         return {
             dataToPass: {
-                title: "Dashboards",
-                currentpage: "Stakeholders",
+                // title: "Dashboards",
+                // currentpage: "Stakeholders",
                 activepage: "Stakeholders",
             },
             searchValue2: ref(""),
@@ -102,6 +102,9 @@ export default {
                         <div class="d-flex justify-content-center">
                             <router-link :to="`/profile-stakeholders/${slug}`" class="btn btn-info-light btn-wave rounded-pill px-3 py-2 my-1">
                                 <i class="bi bi-eye"></i> Lihat Profil
+                            </router-link>
+                            <router-link :to="`/ikas`" class="btn btn-warning-light btn-wave rounded-pill px-3 py-2 my-1">
+                                <i class="bi bi-eye"></i> Ikas
                             </router-link>
                         </div>
                     </template>

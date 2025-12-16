@@ -1,27 +1,48 @@
 <script setup>
+import { useRouter } from "vue-router"
+
 defineProps({
-    analyticData: Object,
+  analyticData: Object,
 })
 
+const router = useRouter()
 
+const handleIkas = () => {
+  router.push("/ikas")
+}
 </script>
 
 <template>
-    <div v-for="(item, index) in analyticData" :key="index" class="col-xxl-3 col-lg-6">
+  <div
+    v-for="(item, index) in analyticData"
+    :key="index"
+    class="col-xxl-3 col-lg-6"
+  >
     <div class="card custom-card">
-        <div class="card-body">
-            <div class="d-flex align-items-start gap-3">
-                <div>
-                    <span :class="`avatar avatar-lg bg-${item.svgColor} svg-white`" v-html="item.svgIcon">
-                        
-                    </span>
-                </div>
-                <div>
-                    <span class="d-block text-muted">{{ item.title }}</span>
-                    <h5 class="fw-semibold mb-1">{{ item.value }}</h5>
-                </div>
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+          <div>
+            <span
+              :class="`avatar avatar-lg bg-${item.svgColor} svg-white`"
+              v-html="item.svgIcon"
+            ></span>
+          </div>
+
+        <div class="flex-grow-1 d-flex justify-content-between align-items-center">
+            <div>
+                <span class="d-block text-muted">{{ item.title }}</span>
+                <h5 class="fw-semibold mb-2">{{ item.value }}</h5>
             </div>
+            <button
+                v-if="item.title === 'IKAS'"
+                class="btn btn-sm btn-outline-primary ms-2"
+                @click="handleIkas"
+            >
+                Lihat Detail
+            </button>
         </div>
+        </div>
+      </div>
     </div>
-</div>
+  </div>
 </template>

@@ -1,6 +1,8 @@
 <script setup>
 // Import Vue FilePond
 import vueFilePond from 'vue-filepond'
+import { useRoute } from 'vue-router'
+import { computed, ref, onMounted } from 'vue'
 
 // Import FilePond styles
 import 'filepond/dist/filepond.min.css'
@@ -21,8 +23,9 @@ const FilePond = vueFilePond(
     FilePondPluginImagePreview
 )
 
+
 const dataToPass = {
-    title: "Pages",
+    //title: "Pages",
     currentpage: "Profile",
     activepage: "Profile"
 }
@@ -34,6 +37,7 @@ let myFiles = []
     <!-- Start:: row-1 -->
     <div class="row justify-content-center">
         <div class="col-xl-10">
+
             <div class="row">
                 <div class="col-xl-12">
                     <div class="card custom-card profile-card">
@@ -55,8 +59,9 @@ let myFiles = []
                                             <p class="fs-12 mb-0 fw-medium text-muted"> <span class="me-3"><i
                                                         class="ri-building-line me-1 align-middle"></i>New York,
                                                     USA</span>
-                                                <span><i class="ri-phone-line me-2 align-middle"></i>+1 (123)
+                                                <span class="me-3"><i class="ri-phone-line me-2 align-middle"></i>+1 (123)
                                                     456-7890</span>
+                                                    <span><i class="ri-mail-line me-1 align-middle"></i>tom@phillip"</span>
                                             </p>
                                         </div>
                                     </div>
@@ -69,22 +74,6 @@ let myFiles = []
                                                 aria-controls="profile-about-tab-pane"
                                                 aria-selected="true">About</button>
                                         </li>
-                                        <li class="nav-item" role="presentation">
-                                            <button class="nav-link" id="gallery-tab" data-bs-toggle="tab"
-                                                data-bs-target="#gallery-tab-pane" type="button" role="tab"
-                                                aria-controls="gallery-tab-pane" aria-selected="false">Gallery</button>
-                                        </li>
-                                        <li class="nav-item" role="presentation">
-                                            <button class="nav-link" id="followers-tab" data-bs-toggle="tab"
-                                                data-bs-target="#followers-tab-pane" type="button" role="tab"
-                                                aria-controls="followers-tab-pane"
-                                                aria-selected="false">Followers</button>
-                                        </li>
-                                        <li class="nav-item" role="presentation">
-                                            <button class="nav-link" id="friends-tab" data-bs-toggle="tab"
-                                                data-bs-target="#friends-tab-pane" type="button" role="tab"
-                                                aria-controls="friends-tab-pane" aria-selected="false">Friends</button>
-                                        </li>
                                     </ul>
                                 </div>
                             </div>
@@ -96,9 +85,9 @@ let myFiles = []
                         <div class="tab-pane show active p-0 border-0" id="profile-about-tab-pane" role="tabpanel"
                             aria-labelledby="profile-about-tab" tabindex="0">
                             <div class="row">
-                                <div class="col-xxl-4">
+                                <div class="col-xl-12">
                                     <div class="row">
-                                        <div class="col-xl-12">
+                                        <!-- <div class="col-xl-12">
                                             <div class="card custom-card">
                                                 <div class="card-body">
                                                     <div class="d-flex align-items-center justify-content-center gap-4">
@@ -118,7 +107,7 @@ let myFiles = []
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </div> -->
                                         <div class="col-xl-12">
                                             <div class="card custom-card">
                                                 <div class="card-header">
@@ -167,7 +156,7 @@ let myFiles = []
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="col-xl-12">
+                                        <!--<div class="col-xl-12">
                                             <div class="card custom-card overflow-hidden">
                                                 <div class="card-header">
                                                     <div class="card-title">
@@ -235,419 +224,12 @@ let myFiles = []
                                                     </ul>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </div> -->
                                     </div>
                                 </div>
                                 <div class="col-xxl-8">
-                                    <div class="card custom-card">
-                                        <div class="card-header p-0">
-                                            <ul class="nav nav-tabs tab-style-8 scaleX justify-content-end" id="myTab4"
-                                                role="tablist">
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link active" id="status-tab" data-bs-toggle="tab"
-                                                        data-bs-target="#status-tab-pane" type="button" role="tab"
-                                                        aria-controls="status-tab-pane" aria-selected="true"><i
-                                                            class="ri-radio-button-line lh-1 me-1"></i>Status</button>
-                                                </li>
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link" id="media-tab" data-bs-toggle="tab"
-                                                        data-bs-target="#media-tab-pane" type="button" role="tab"
-                                                        aria-controls="media-tab-pane" aria-selected="false"
-                                                        tabindex="-1"><i
-                                                            class="ri-video-line lh-1 me-1"></i>Image/Video</button>
-                                                </li>
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link" id="live-stream-tab" data-bs-toggle="tab"
-                                                        data-bs-target="#live-stream-tab-pane" type="button" role="tab"
-                                                        aria-controls="live-stream-tab-pane" aria-selected="false"
-                                                        tabindex="-1"><i class="ri-tv-line lh-1 me-1"></i>Live
-                                                        Stream</button>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="tab-content" id="myTabContent3">
-                                                <div class="tab-pane show active overflow-hidden p-0 border-0"
-                                                    id="status-tab-pane" role="tabpanel" aria-labelledby="status-tab"
-                                                    tabindex="0">
-                                                    <textarea class="form-control" id="text-area" rows="4"
-                                                        placeholder="What's on your mind?"></textarea>
-                                                    <div class="mt-2">
-                                                        <button class="btn btn-primary float-end">Post <i
-                                                                class="ri-send-plane-2-line ms-1"></i></button>
-                                                    </div>
-                                                </div>
-                                                <div class="tab-pane overflow-hidden border-0 p-0" id="media-tab-pane"
-                                                    role="tabpanel" aria-labelledby="media-tab" tabindex="0">
-                                                    <textarea class="form-control mb-3" id="text-area" rows="2"
-                                                        placeholder="What's on your mind?"></textarea>
-                                                    <file-pond name="test" ref="pond"
-                                                        label-idle="Drag & Drop files here or <span class='filepond--label-action'>Browse</span>"
-                                                        allow-multiple="false" max-files="1"
-                                                        accepted-file-types="image/jpeg, image/png"
-                                                        v-bind:files="myFiles" />
-                                                    <div class="mt-2">
-                                                        <button class="btn btn-success float-end">Upload <i
-                                                                class="ri-upload-2-line ms-1"></i></button>
-                                                    </div>
-                                                </div>
-                                                <div class="tab-pane overflow-hidden border-0 p-0"
-                                                    id="live-stream-tab-pane" role="tabpanel"
-                                                    aria-labelledby="live-stream-tab" tabindex="0">
-                                                    <textarea class="form-control" id="text-area" rows="4"
-                                                        placeholder="What's on your mind?"></textarea>
-                                                    <div class="mt-2">
-                                                        <button class="btn btn-warning float-end">Start Streaming <i
-                                                                class="ri-tv-2-line ms-1"></i></button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="card custom-card">
-                                        <div class="card-body">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                                                <div class="lh-1">
-                                                    <span class="avatar avatar-rounded avatar-md">
-                                                        <img src="/images/faces/12.jpg" alt="">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    <span class="d-block fw-semibold">Tom Phillip</span>
-                                                    <span class="text-muted fs-13">14 hrs ago</span>
-                                                </div>
-                                                <div class="dropdown">
-                                                    <a aria-label="anchor" href="javascript:void(0);"
-                                                        class="btn btn-icon rounded-circle border btn-light"
-                                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                                        <i class="ri-more-2-fill"></i>
-                                                    </a>
-                                                    <ul class="dropdown-menu">
-                                                        <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                    class="ri-edit-line me-2"></i>Edit</a></li>
-                                                        <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                    class="ri-delete-bin-line me-2"></i>Delete</a></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                            <div class="my-3">Captured the serene beauty of the blue sky as the sun
-                                                sets.
-                                            </div>
-                                            <div>
-                                                <img src="/images/media/media-23.jpg" class="card-img" alt="...">
-                                            </div>
-                                        </div>
-                                        <div class="card-footer">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <div class="avatar-list-stacked">
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/2.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/8.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/2.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/10.jpg" alt="img">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    and 8 others <i class="ri-heart-3-fill text-danger"></i> this post
-                                                </div>
-                                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                    <a href="javascript:void(0);"
-                                                        class="p-1 px-2 bg-primary-transparent rounded"><i
-                                                            class="ri-message-3-line me-1"></i>Comment</a>
-                                                    <a href="javascript:void(0);"
-                                                        class="p-1 px-2 bg-info-transparent rounded"><i
-                                                            class="ri-share-forward-line me-1"></i>Share</a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="card-footer">
-                                            <ul class="list-unstyled post-comments-list">
-                                                <li>
-                                                    <div class="d-flex align-items-start gap-3">
-                                                        <div class="lh-1">
-                                                            <span class="avatar avatar-md avatar-rounded">
-                                                                <img src="/images/faces/4.jpg" alt="">
-                                                            </span>
-                                                        </div>
-                                                        <div class="flex-fill p-3 rounded bg-light">
-                                                            <div
-                                                                class="d-flex align-items-center justify-content-between flex-wrap">
-                                                                <div class="fw-semibold">Emily_Smith</div>
-                                                                <div class="text-muted fs-13">2 hours ago</div>
-                                                            </div>
-                                                            <div class="text-muted">
-                                                                Wow, what a peaceful view! Nature at its best &#x1F60D;.
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </li>
-                                                <li>
-                                                    <div class="d-flex align-items-start gap-3">
-                                                        <div class="lh-1">
-                                                            <span class="avatar avatar-md avatar-rounded">
-                                                                <img src="/images/faces/14.jpg" alt="">
-                                                            </span>
-                                                        </div>
-                                                        <div class="flex-fill p-3 rounded bg-light">
-                                                            <div
-                                                                class="d-flex align-items-center justify-content-between flex-wrap">
-                                                                <div class="fw-semibold">JohnDoe</div>
-                                                                <div class="text-muted fs-13">1 hours ago</div>
-                                                            </div>
-                                                            <div class="text-muted">
-                                                                Absolutely stunning! The colors are just perfect
-                                                                &#x1F305;&#x1F499;.
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </li>
-                                                <li>
-                                                    <div class="d-flex align-items-center lh-1 flex-wrap">
-                                                        <div class="me-3">
-                                                            <span class="avatar avatar-md avatar-rounded">
-                                                                <img src="/images/faces/12.jpg" alt="">
-                                                            </span>
-                                                        </div>
-                                                        <div class="flex-fill">
-                                                            <div class="input-group">
-                                                                <input type="text" class="form-control"
-                                                                    placeholder="Write a comment" aria-label="comment">
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i
-                                                                        class="bi bi-emoji-smile"></i></button>
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i
-                                                                        class="bi bi-paperclip"></i></button>
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i class="bi bi-camera"></i></button>
-                                                                <button class="btn btn-primary"
-                                                                    type="button">Post</button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                    <div class="card custom-card">
-                                        <div class="card-body">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                                                <div class="lh-1">
-                                                    <span class="avatar avatar-rounded avatar-md">
-                                                        <img src="/images/faces/12.jpg" alt="">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    <span class="d-block fw-semibold">Tom Phillip</span>
-                                                    <span class="text-muted fs-13">2 days ago</span>
-                                                </div>
-                                                <div class="dropdown">
-                                                    <a aria-label="anchor" href="javascript:void(0);"
-                                                        class="btn btn-icon rounded-circle border btn-light"
-                                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                                        <i class="ri-more-2-fill"></i>
-                                                    </a>
-                                                    <ul class="dropdown-menu">
-                                                        <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                    class="ri-edit-line me-2"></i>Edit</a></li>
-                                                        <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                    class="ri-delete-bin-line me-2"></i>Delete</a></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                            <div class="my-3">Success is not final, failure is not fatal: It is the
-                                                courage
-                                                to continue that counts. Keep pushing forward! <a
-                                                    href="javascript:void(0);">&#128170; #MotivationMonday</a></div>
-                                        </div>
-                                        <div class="card-footer">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <div class="avatar-list-stacked">
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/12.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/3.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/15.jpg" alt="img">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    and 2 others <i class="ri-heart-3-fill text-danger"></i> this post
-                                                </div>
-                                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                    <a href="javascript:void(0);"
-                                                        class="p-1 px-2 bg-primary-transparent rounded"><i
-                                                            class="ri-message-3-line me-1"></i>Comment</a>
-                                                    <a href="javascript:void(0);"
-                                                        class="p-1 px-2 bg-info-transparent rounded"><i
-                                                            class="ri-share-forward-line me-1"></i>Share</a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="card-footer">
-                                            <ul class="list-unstyled post-comments-list">
-                                                <li>
-                                                    <div class="d-flex align-items-center lh-1 flex-wrap">
-                                                        <div class="me-3">
-                                                            <span class="avatar avatar-md avatar-rounded">
-                                                                <img src="/images/faces/12.jpg" alt="">
-                                                            </span>
-                                                        </div>
-                                                        <div class="flex-fill">
-                                                            <div class="input-group">
-                                                                <input type="text" class="form-control"
-                                                                    placeholder="Write a comment" aria-label="comment">
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i
-                                                                        class="bi bi-emoji-smile"></i></button>
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i
-                                                                        class="bi bi-paperclip"></i></button>
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i class="bi bi-camera"></i></button>
-                                                                <button class="btn btn-primary"
-                                                                    type="button">Post</button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                    <div class="card custom-card">
-                                        <div class="card-body">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                                                <div class="lh-1">
-                                                    <span class="avatar avatar-rounded avatar-md">
-                                                        <img src="/images/faces/12.jpg" alt="">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    <span class="d-block fw-semibold">Tom Phillip</span>
-                                                    <span class="text-muted fs-13">14 hrs ago</span>
-                                                </div>
-                                                <div class="dropdown">
-                                                    <a aria-label="anchor" href="javascript:void(0);"
-                                                        class="btn btn-icon rounded-circle border btn-light"
-                                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                                        <i class="ri-more-2-fill"></i>
-                                                    </a>
-                                                    <ul class="dropdown-menu">
-                                                        <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                    class="ri-edit-line me-2"></i>Edit</a></li>
-                                                        <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                    class="ri-delete-bin-line me-2"></i>Delete</a></li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                            <div class="my-3">The serene beauty of the evening beach with the soft waves
-                                                and
-                                                the sky painted in shades of orange and pink is a perfect way to unwind
-                                                after a long day. &#x1F305; &#127754; <a
-                                                    href="javascript:void(0);">#BeachVibes</a> <a
-                                                    href="javascript:void(0);">#EveningSunset</a> <a
-                                                    href="javascript:void(0);">#Relaxing</a></div>
-                                            <div>
-                                                <img src="/images/media/media-10.jpg" class="card-img" alt="...">
-                                            </div>
-                                        </div>
-                                        <div class="card-footer">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <div class="avatar-list-stacked">
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/13.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/3.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/4.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/14.jpg" alt="img">
-                                                    </span>
-                                                    <span class="avatar avatar-rounded">
-                                                        <img src="/images/faces/5.jpg" alt="img">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    and 25 others <i class="ri-heart-3-fill text-danger"></i> this post
-                                                </div>
-                                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                    <a href="javascript:void(0);"
-                                                        class="p-1 px-2 bg-primary-transparent rounded"><i
-                                                            class="ri-message-3-line me-1"></i>Comment</a>
-                                                    <a href="javascript:void(0);"
-                                                        class="p-1 px-2 bg-info-transparent rounded"><i
-                                                            class="ri-share-forward-line me-1"></i>Share</a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="card-footer">
-                                            <ul class="list-unstyled post-comments-list">
-                                                <li>
-                                                    <div class="d-flex align-items-start gap-3">
-                                                        <div class="lh-1">
-                                                            <span class="avatar avatar-md avatar-rounded">
-                                                                <img src="/images/faces/6.jpg" alt="">
-                                                            </span>
-                                                        </div>
-                                                        <div class="flex-fill p-3 rounded bg-light">
-                                                            <div
-                                                                class="d-flex align-items-center justify-content-between flex-wrap">
-                                                                <div class="fw-semibold">Emma Watson</div>
-                                                                <div class="text-muted fs-13">2 hours ago</div>
-                                                            </div>
-                                                            <div class="text-muted">
-                                                                Such a peaceful moment at the beach! Perfect way to end
-                                                                the
-                                                                day.
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </li>
-                                                <li>
-                                                    <div class="d-flex align-items-center lh-1 flex-wrap">
-                                                        <div class="me-3">
-                                                            <span class="avatar avatar-md avatar-rounded">
-                                                                <img src="/images/faces/12.jpg" alt="">
-                                                            </span>
-                                                        </div>
-                                                        <div class="flex-fill">
-                                                            <div class="input-group">
-                                                                <input type="text" class="form-control"
-                                                                    placeholder="Write a comment" aria-label="comment">
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i
-                                                                        class="bi bi-emoji-smile"></i></button>
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i
-                                                                        class="bi bi-paperclip"></i></button>
-                                                                <button class="btn btn-light border px-2 px-sm-3"
-                                                                    type="button"><i class="bi bi-camera"></i></button>
-                                                                <button class="btn btn-primary"
-                                                                    type="button">Post</button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="tab-pane p-0 border-0" id="gallery-tab-pane" role="tabpanel"
-                            aria-labelledby="gallery-tab" tabindex="0">
-                            <ProfileGallery />
                         </div>
                         <div class="tab-pane p-0 border-0" id="followers-tab-pane" role="tabpanel"
                             aria-labelledby="followers-tab" tabindex="0">
@@ -676,7 +258,7 @@ let myFiles = []
                                 </div>
                             </div>
                         </div>
-                        <div class="tab-pane p-0 border-0" id="friends-tab-pane" role="tabpanel"
+                        <!-- <div class="tab-pane p-0 border-0" id="friends-tab-pane" role="tabpanel"
                             aria-labelledby="friends-tab" tabindex="0">
                             <div class="row">
                                 <div class="col-xxl-3 col-xl-4 col-lg-6" v-for="(idx, index) in ProfileData.FriendsList"
@@ -723,7 +305,7 @@ let myFiles = []
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </div>-->
                     </div>
                 </div>
             </div>

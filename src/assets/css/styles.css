@@ -235,6 +235,14 @@ typography
     line-height: 1.75rem;
   }
 }
+.transition-icon {
+    transition: transform 0.3s ease;
+}
+
+.card-header[aria-expanded="true"] .transition-icon {
+    transform: rotate(180deg);
+}
+
 /* Respoonsive Logo Styles */
 /* Dark Mode */
 [data-theme-mode=dark] .app-sidebar .main-sidebar-header .header-logo .desktop-dark {
@@ -22950,7 +22958,7 @@ button {
 
 @media (min-width: 992px) {
   .app-content {
-    min-height: calc(100vh - 5.25rem);
+    min-height: calc(100vh - 8rem);
     margin-block-end: 0;
     margin-block-start: 5.25rem;
     margin-inline-start: 16rem;
@@ -26417,7 +26425,7 @@ ul.search-results-list .dropdown li {
 }
 
 @media (min-width: 1400px) and (max-width: 1650px) {
-  .card.custom-card {
+  .card.custom-card.podcast-banner-card .podcast-banner-img {
     position: absolute;
     inset-inline-end: -2rem !important;
     inset-block-end: 0;

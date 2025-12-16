@@ -35,6 +35,26 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/dashboards/profile-stakeholders.vue"),
         },
         {
+          path: 'profile',
+          name: "Profile",
+          component: () => import("../components/pages/profile.vue"),
+        },
+        {
+          path: 'profile-settings',
+          name: "Profile Settings",
+          component: () => import("../components/pages/profile-settings.vue"),
+        },
+        {
+          path: 'stakeholders-profile-settings',
+          name: "Stakeholders Profile Settings",
+          component: () => import("../components/pages/stakeholders-profile-settings.vue"),
+        },
+        {
+          path: 'pic-add',
+          name: "Pic Add",
+          component: () => import("../components/pages/pic-add.vue"),
+        },
+        {
           path: `dashboards`,
           name: 'Dashboards',
           component: () => import("../components/dashboards/main-dashboards.vue"),
@@ -548,16 +568,7 @@ const routes: RouteRecordRaw[] = [
               name: "Pricing",
               component: () => import("../components/pages/pricing.vue"),
             },
-            {
-              path: 'profile',
-              name: "Profile",
-              component: () => import("../components/pages/profile.vue"),
-            },
-            {
-              path: 'profile-settings',
-              name: "Profile Settings",
-              component: () => import("../components/pages/profile-settings.vue"),
-            },
+
             {
               path: 'testimonials',
               name: "Testimonials",
