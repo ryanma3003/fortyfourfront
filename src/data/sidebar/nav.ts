@@ -124,6 +124,9 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
   {
     path: "/kse", icon: Svgicons.Dashboardicon, title: "Kse", type: "link", active: true, dirchange: false, selected: false
   },
+  {
+    path: "/role-list", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false
+  },
 
   {
     title: "Applications", icon: Svgicons.Applicationicon, type: "sub", active: false, selected: false, dirchange: false, children: [

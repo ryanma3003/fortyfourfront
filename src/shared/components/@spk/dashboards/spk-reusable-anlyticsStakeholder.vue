@@ -1,15 +1,15 @@
 <script setup>
-import { useRouter } from "vue-router"
+import { useRouter } from "vue-router";
 
 defineProps({
   analyticData: Object,
-})
+});
 
-const router = useRouter()
+const router = useRouter();
 
 const handleIkas = () => {
-  router.push("/ikas")
-}
+  router.push("/ikas");
+};
 </script>
 
 <template>
@@ -28,19 +28,28 @@ const handleIkas = () => {
             ></span>
           </div>
 
-        <div class="flex-grow-1 d-flex justify-content-between align-items-center">
+          <div
+            class="flex-grow-1 d-flex justify-content-between align-items-center"
+          >
             <div>
-                <span class="d-block text-muted">{{ item.title }}</span>
-                <h5 class="fw-semibold mb-2">{{ item.value }}</h5>
+              <span class="d-block text-muted">{{ item.title }}</span>
+              <h5 class="fw-semibold mb-2">{{ item.value }}</h5>
             </div>
             <button
-                v-if="item.title === 'IKAS'"
-                class="btn btn-sm btn-outline-primary ms-2"
-                @click="handleIkas"
+              v-if="item.title === 'IKAS'"
+              class="btn btn-sm btn-outline-primary ms-2"
+              @click="handleIkas"
             >
-                Lihat Detail
+              Lihat Detail
             </button>
-        </div>
+            <button
+              v-if="item.title === 'CSIRT'"
+              class="btn btn-sm btn-outline-primary ms-2"
+              @click="handleCsirt"
+            >
+              Lihat Detail
+            </button>
+          </div>
         </div>
       </div>
     </div>
