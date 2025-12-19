@@ -58,5 +58,5 @@ export const stakeholdersData: Stakeholder[] = reactive([
         alamat: "Medan, Indonesia",
         telepon: "+62 61 4444 3333",
         website: "https://karyamandiri.co.id",
-    }
+    },
 ]);

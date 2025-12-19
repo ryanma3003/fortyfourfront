@@ -16,6 +16,7 @@ interface MenuItemBase {
   selected?: boolean;
   dirchange?: boolean;
   badgetxt?: string;
+  requiredRole?: string;
 }
 
 interface LinkMenuItem extends MenuItemBase {
@@ -123,6 +124,9 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
   },
   {
     path: "/kse", icon: Svgicons.Dashboardicon, title: "Kse", type: "link", active: true, dirchange: false, selected: false
+  },
+  {
+    path: "/role-list", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "Admin"
   },
 
   {

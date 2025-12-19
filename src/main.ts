@@ -95,5 +95,10 @@ app.use(Particles, {
   }
 });
 
+// Initialize auth state from localStorage
+import { useAuthStore } from './stores/auth';
+const authStore = useAuthStore();
+authStore.checkAuthOnStartup();
+
 // Mount app
 app.mount('#app');
