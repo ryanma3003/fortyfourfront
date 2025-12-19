@@ -97,7 +97,7 @@ const addThreeRandomUsers = () => {
 };
 
 const dataToPass = {
-  title: "Role Management",
+  title: { label: "Dashboards", path: "/dashboards" },
   currentpage: "Role List",
   activepage: "Role List",
 };

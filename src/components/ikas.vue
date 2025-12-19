@@ -1,13 +1,44 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
+import { useRoute } from 'vue-router';
+import { stakeholdersData } from '../data/dummydata';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 
-const dataToPass = {
-    // title: "IKAS",
-    // currentpage: "IKAS",
-    activepage: "IKAS",
-}
+const dataToPass = computed(() => {
+    try {
+        const slug = route.query.slug;
+        console.log("IKAS Debug: Slug is/is not present:", slug);
+        
+        if (!stakeholdersData || !Array.isArray(stakeholdersData)) {
+            console.error("IKAS Error: stakeholdersData is missing or not an array", stakeholdersData);
+            return {
+                title: { label: "Dashboards", path: "/dashboards" },
+                currentpage: "IKAS",
+                activepage: "IKAS",
+            };
+        }
+
+        const stakeholder = slug ? stakeholdersData.find(s => s.slug === String(slug)) : null;
+        console.log("IKAS Debug: Found stakeholder:", stakeholder);
+
+        if (stakeholder) {
+            return {
+                title: { label: `Profile ${stakeholder.nama_perusahaan}`, path: `/profile-stakeholders/${stakeholder.slug}` },
+                currentpage: "IKAS",
+                activepage: "IKAS",
+            };
+        }
+    } catch (error) {
+        console.error("IKAS Error doing computed:", error);
+    }
+
+    return {
+        title: { label: "Dashboards", path: "/dashboards" },
+        currentpage: "IKAS",
+        activepage: "IKAS",
+    }
+});
 
 const domains = [
   {

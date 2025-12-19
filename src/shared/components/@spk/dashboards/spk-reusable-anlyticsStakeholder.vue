@@ -1,14 +1,33 @@
 <script setup>
 import { useRouter } from "vue-router";
 
-defineProps({
+const props = defineProps({
   analyticData: Object,
+  csirtId: {
+    type: [Number, String],
+    default: null
+  },
+  stakeholderSlug: {
+    type: String,
+    default: null
+  }
 });
 
 const router = useRouter();
 
 const handleIkas = () => {
-  router.push("/ikas");
+  if (props.stakeholderSlug) {
+    router.push({ path: "/ikas", query: { slug: props.stakeholderSlug } });
+  } else {
+    router.push("/ikas");
+  }
+};
+const handleCsirt = () => {
+  if (props.csirtId) {
+    router.push(`/csirt/${props.csirtId}`);
+  } else {
+    router.push("/csirt");
+  }
 };
 </script>
 

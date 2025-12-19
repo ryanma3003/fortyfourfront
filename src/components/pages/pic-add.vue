@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, reactive } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { FriendsList } from "../../data/pages/profiledata";
+import { stakeholdersData } from "../../data/dummydata";
 
 const route = useRoute();
 const router = useRouter();
@@ -15,10 +16,16 @@ const isEdit = computed(
   () => index.value !== null && !!FriendsList[index.value]
 );
 
+const currentSlug = ref("");
+const stakeholderName = ref("");
+
 const dataToPass = computed(() => ({
-  title: "stakeholders",
+  title: {
+    label: `Profile ${stakeholderName.value || "Stakeholder"}`,
+    path: `/profile-stakeholders/${currentSlug.value}`,
+  },
   currentpage: isEdit.value ? "Edit PIC" : "Add PIC",
-  activepage: "Stakeholders Profile Settings",
+  activepage: "Account Settings",
 }));
 
 const form = ref({
@@ -45,6 +52,15 @@ const fileInput = ref<HTMLInputElement | null>(null);
 onMounted(() => {
   if (isEdit.value && index.value !== null) {
     Object.assign(form.value, FriendsList[index.value]);
+  }
+
+  const slug = route.query.slug as string;
+  if (slug) {
+    currentSlug.value = slug;
+    const found = stakeholdersData.find((s) => s.slug === slug);
+    if (found) {
+      stakeholderName.value = found.nama_perusahaan;
+    }
   }
 });
 

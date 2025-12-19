@@ -9,6 +9,7 @@ import { stakeholderPenilaian } from "../../data/dashboards/dummyDataPercentage"
 import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { FriendsList } from "../../data/pages/profiledata";
+import { csirtMembersData } from "../../data/pages/csirt";
 
 // Import FilePond styles
 import "filepond/dist/filepond.min.css";
@@ -63,11 +64,20 @@ const penilaian = computed<Penilaian[]>(() => {
   return found ? found.penilaian : [];
 });
 
+const relatedCsirtId = computed(() => {
+  if (!currentStakeholder.value) return null;
+  const csirt = csirtMembersData.find(
+    (c) => c.id_perusahaan === currentStakeholder.value?.id
+  );
+  return csirt ? csirt.id : null;
+});
+
 const dataToPass = computed(() => ({
   currentpage: `Profile ${
     currentStakeholder.value?.nama_perusahaan || "Stakeholder"
   }`,
-  activepage: "Profile Stakeholders",
+  title: { label: "Stakeholders", path: "/stakeholders" },
+  activepage: currentStakeholder.value?.nama_perusahaan || "Profile Stakeholder",
 }));
 </script>
 
@@ -198,7 +208,7 @@ const dataToPass = computed(() => ({
                 tabindex="0"
               >
                 <div class="row">
-                  <SpkReusableAnlyticsCard :analyticData="penilaian" />
+                  <SpkReusableAnlyticsCard :analyticData="penilaian" :csirtId="relatedCsirtId" />
                   <div class="col-xl-12">
                     <div class="card custom-card">
                       <div
