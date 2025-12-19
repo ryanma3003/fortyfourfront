@@ -15,8 +15,8 @@ export default {
   data() {
     return {
       dataToPass: {
-        //title: "Role Management",
-        // currentpage: "Role List",
+        title: { label: "Dashboards", path: "/dashboards" },
+        currentpage: "Role List",
         activepage: "Role List",
       },
     };
@@ -62,11 +62,6 @@ export default {
       });
     });
 
-    const dataToPass = {
-      title: { label: "Dashboards", path: "/dashboards" },
-      currentpage: "Role List",
-      activepage: "Role List",
-    };
     const totalPages = computed(() =>
       Math.ceil(filteredData.value.length / itemsPerPage.value)
     );

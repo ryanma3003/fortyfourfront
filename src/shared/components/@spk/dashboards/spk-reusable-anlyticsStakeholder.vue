@@ -5,12 +5,12 @@ const props = defineProps({
   analyticData: Object,
   csirtId: {
     type: [Number, String],
-    default: null
+    default: null,
   },
   stakeholderSlug: {
     type: String,
-    default: null
-  }
+    default: null,
+  },
 });
 
 const router = useRouter();
@@ -28,10 +28,6 @@ const handleCsirt = () => {
   } else {
     router.push("/csirt");
   }
-};
-
-const handleCsirt = () => {
-  router.push("/csirt");
 };
 </script>
 
