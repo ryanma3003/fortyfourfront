@@ -9,6 +9,11 @@ import { stakeholderPenilaian } from "../../data/dashboards/dummyDataPercentage"
 import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { FriendsList } from "../../data/pages/profiledata";
+import { csirtMembersData } from "../../data/pages/csirt";
+import { useAuthStore } from "../../stores/auth";
+
+const authStore = useAuthStore();
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Import FilePond styles
 import "filepond/dist/filepond.min.css";
@@ -63,11 +68,21 @@ const penilaian = computed<Penilaian[]>(() => {
   return found ? found.penilaian : [];
 });
 
+const relatedCsirtId = computed(() => {
+  if (!currentStakeholder.value) return null;
+  const csirt = csirtMembersData.find(
+    (c) => c.id_perusahaan === currentStakeholder.value?.id
+  );
+  return csirt ? csirt.id : null;
+});
+
 const dataToPass = computed(() => ({
   currentpage: `Profile ${
     currentStakeholder.value?.nama_perusahaan || "Stakeholder"
   }`,
-  activepage: "Profile Stakeholders",
+  title: { label: "Stakeholders", path: "/stakeholders" },
+  activepage:
+    currentStakeholder.value?.nama_perusahaan || "Profile Stakeholder",
 }));
 </script>
 
@@ -178,6 +193,7 @@ const dataToPass = computed(() => ({
                     </div>
                   </div>
                   <router-link
+                    v-if="isAdmin"
                     :to="`/stakeholders-profile-settings?slug=${currentStakeholder.slug}`"
                     class="btn btn-warning d-flex align-items-start mb-5 gap-2"
                     ><i class="ri-edit-line"></i
@@ -198,7 +214,10 @@ const dataToPass = computed(() => ({
                 tabindex="0"
               >
                 <div class="row">
-                  <SpkReusableAnlyticsCard :analyticData="penilaian" />
+                  <SpkReusableAnlyticsCard
+                    :analyticData="penilaian"
+                    :csirtId="relatedCsirtId"
+                  />
                   <div class="col-xl-12">
                     <div class="card custom-card">
                       <div
@@ -206,6 +225,7 @@ const dataToPass = computed(() => ({
                       >
                         <div class="card-title">PIC Perusahaan</div>
                         <router-link
+                          v-if="isAdmin"
                           to="/pic-add"
                           class="btn btn-warning d-flex align-items-start gap-2"
                           ><i class="ri-add-line"></i
@@ -223,7 +243,10 @@ const dataToPass = computed(() => ({
                               class="card custom-card h-100 d-flex align-items-center"
                             >
                               <div class="card-body p-4 text-center">
-                                <div class="dropdown profile-friends-actions">
+                                <div
+                                  v-if="isAdmin"
+                                  class="dropdown profile-friends-actions"
+                                >
                                   <a
                                     aria-label="anchor"
                                     href="javascript:void(0);"

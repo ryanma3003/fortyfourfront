@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, reactive } from "vue";
-import pageheader from "../../shared/components/pageheader/pageheader.vue";
+import { ref, onMounted, reactive, computed } from "vue";
+import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useRouter, useRoute } from "vue-router";
 import { stakeholdersData } from "../../data/dummydata";
 import type { Stakeholder } from "../../data/dummydata";
@@ -76,22 +76,23 @@ const saveChanges = () => {
 
 //Reactive State
 
-const dataToPass = {
-  title: "stakeholders",
-  currentpage: "Stakeholders Profile Settings",
-  activepage: "Stakeholders Profile Settings",
-};
+const dataToPass = computed(() => ({
+  title: {
+    label: `Profile ${form.nama_perusahaan || "Stakeholder"}`,
+    path: `/profile-stakeholders/${currentSlug.value}`,
+  },
+  currentpage: "Account Settings",
+  activepage: "Account Settings",
+}));
 </script>
 
 <template>
   <Pageheader :propData="dataToPass" />
+  
   <!-- Start::row-1 -->
   <div class="row">
     <div class="col-xl-12">
       <div class="card custom-card">
-        <div class="card-header">
-          <div class="card-title">Account</div>
-        </div>
         <div class="card-body p-4">
           <div class="row gy-3">
             <div class="col-xl-12">

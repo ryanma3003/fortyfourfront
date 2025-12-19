@@ -1,319 +1,349 @@
 <script setup>
-// Import Vue FilePond
-import vueFilePond from 'vue-filepond'
-import { useRoute } from 'vue-router'
-import { computed, ref, onMounted } from 'vue'
+import { computed, onMounted } from "vue";
+import { storeToRefs } from "pinia";
+import { useProfileStore } from "../../stores/profile";
+import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
-// Import FilePond styles
-import 'filepond/dist/filepond.min.css'
+// Profile store
+const profileStore = useProfileStore();
 
-// Import image preview plugin styles
-import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css'
-
-// Import image preview and file type validation plugins
-import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type'
-import FilePondPluginImagePreview from 'filepond-plugin-image-preview'
-import * as ProfileData from "../../data/pages/profiledata";
-import ProfileGallery from "../../shared/UI/profileGallery.vue";
-import Pageheader from '../../shared/components/pageheader/pageheader.vue'
-
-// Create component
-const FilePond = vueFilePond(
-    FilePondPluginFileValidateType,
-    FilePondPluginImagePreview
-)
-
+// Use storeToRefs for reactive state
+const {
+  location,
+  phone,
+  joined,
+  bio,
+  stats,
+  avatarUrl,
+  name,
+  title,
+  email,
+  website,
+  address,
+} = storeToRefs(profileStore);
 
 const dataToPass = {
-    //title: "Pages",
-    currentpage: "Profile",
-    activepage: "Profile"
-}
-let myFiles = []
+  currentpage: "Profile",
+  activepage: "Profile",
+};
+
+// Initialize profile data on mount
+onMounted(() => {
+  profileStore.loadFromStorage();
+  profileStore.initFromAuth();
+});
+
+// Computed display values from store (these use getters so need computed)
+const displayName = computed(() => profileStore.displayName);
+const displayEmail = computed(() => profileStore.displayEmail);
+const displayRole = computed(() => profileStore.displayRole);
 </script>
 
 <template>
-    <Pageheader :propData="dataToPass" />
-    <!-- Start:: row-1 -->
-    <div class="row justify-content-center">
-        <div class="col-xl-10">
+  <Pageheader :propData="dataToPass" />
 
-            <div class="row">
-                <div class="col-xl-12">
-                    <div class="card custom-card profile-card">
-                        <div class="profile-banner-image">
-                            <img src="/images/media/media-3.jpg" class="card-img-top" alt="...">
-                        </div>
-                        <div class="card-body p-4 pb-0 position-relative">
-                            <div class="d-flex align-items-end justify-content-between flex-wrap">
-                                <div>
-                                    <span class="avatar avatar-xxl avatar-rounded bg-info online">
-                                        <img src="/images/faces/12.jpg" alt="">
-                                    </span>
-                                    <div
-                                        class="mt-4 mb-3 d-flex align-items-center flex-wrap gap-3 justify-content-between">
-                                        <div>
-                                            <h5 class="fw-semibold mb-1">Tom Phillip</h5>
-                                            <span class="d-block fw-medium text-muted mb-1">Senior Product
-                                                Manager</span>
-                                            <p class="fs-12 mb-0 fw-medium text-muted"> <span class="me-3"><i
-                                                        class="ri-building-line me-1 align-middle"></i>New York,
-                                                    USA</span>
-                                                <span class="me-3"><i class="ri-phone-line me-2 align-middle"></i>+1 (123)
-                                                    456-7890</span>
-                                                    <span><i class="ri-mail-line me-1 align-middle"></i>tom@phillip"</span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <ul class="nav nav-tabs mb-0 tab-style-8 scaleX" id="myTab" role="tablist">
-                                        <li class="nav-item" role="presentation">
-                                            <button class="nav-link active" id="profile-about-tab" data-bs-toggle="tab"
-                                                data-bs-target="#profile-about-tab-pane" type="button" role="tab"
-                                                aria-controls="profile-about-tab-pane"
-                                                aria-selected="true">About</button>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-xl-12">
-                    <div class="tab-content" id="profile-tabs">
-                        <div class="tab-pane show active p-0 border-0" id="profile-about-tab-pane" role="tabpanel"
-                            aria-labelledby="profile-about-tab" tabindex="0">
-                            <div class="row">
-                                <div class="col-xl-12">
-                                    <div class="row">
-                                        <!-- <div class="col-xl-12">
-                                            <div class="card custom-card">
-                                                <div class="card-body">
-                                                    <div class="d-flex align-items-center justify-content-center gap-4">
-                                                        <div class="text-center">
-                                                            <h3 class="fw-semibold mb-1">
-                                                                13,264
-                                                            </h3>
-                                                            <span class="d-block text-muted">Followers</span>
-                                                        </div>
-                                                        <div class="vr"></div>
-                                                        <div class="text-center">
-                                                            <h3 class="fw-semibold mb-1">
-                                                                7,238
-                                                            </h3>
-                                                            <span class="d-block text-muted">Following</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div> -->
-                                        <div class="col-xl-12">
-                                            <div class="card custom-card">
-                                                <div class="card-header">
-                                                    <div class="card-title">
-                                                        About
-                                                    </div>
-                                                </div>
-                                                <div class="card-body">
-                                                    <p class="text-muted">Experienced pereson passionate about
-                                                        delivering
-                                                        user-centered solutions, leading cross-functional teams, and
-                                                        driving
-                                                        product success.</p>
-                                                    <div class="text-muted">
-                                                        <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
-                                                            <span class="avatar avatar-sm avatar-rounded text-default">
-                                                                <i class="ri-mail-line align-middle fs-15"></i>
-                                                            </span>
-                                                            <span class="fw-medium text-default">Email : </span>
-                                                            your.email@example.com
-                                                        </div>
-                                                        <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
-                                                            <span class="avatar avatar-sm avatar-rounded text-default">
-                                                                <i class="ri-phone-line align-middle fs-15"></i>
-                                                            </span>
-                                                            <span class="fw-medium text-default">Phone : </span> +1
-                                                            (555)
-                                                            123-4567
-                                                        </div>
-                                                        <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
-                                                            <span class="avatar avatar-sm avatar-rounded text-default">
-                                                                <i class="ri-map-pin-line align-middle fs-15"></i>
-                                                            </span>
-                                                            <span class="fw-medium text-default">Website : </span>
-                                                            www.yourwebsite.com
-                                                        </div>
-                                                        <div class="mb-0 d-flex align-items-center gap-1">
-                                                            <span class="avatar avatar-sm avatar-rounded text-default">
-                                                                <i class="ri-building-line align-middle fs-15"></i>
-                                                            </span>
-                                                            <span class="fw-medium text-default">Location : </span>
-                                                            City,
-                                                            Country
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <!--<div class="col-xl-12">
-                                            <div class="card custom-card overflow-hidden">
-                                                <div class="card-header">
-                                                    <div class="card-title">
-                                                        Social Media
-                                                    </div>
-                                                </div>
-                                                <div class="card-body p-0">
-                                                    <ul class="list-group list-group-flush social-media-list">
-                                                        <li class="list-group-item">
-                                                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                                                <div>
-                                                                    <span
-                                                                        class="avatar avatar-md bg-primary-transparent"><i
-                                                                            class="ri-facebook-circle-fill fs-4"></i></span>
-                                                                </div>
-                                                                <div>
-                                                                    <span class="d-block fw-medium">Facebook</span>
-                                                                    <a href="javascript:void(0);"
-                                                                        class="text-muted">https://www.facebook.com/johndoe</a>
-                                                                </div>
-                                                            </div>
-                                                        </li>
-                                                        <li class="list-group-item">
-                                                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                                                <div>
-                                                                    <span
-                                                                        class="avatar avatar-md bg-secondary-transparent"><i
-                                                                            class="ri-twitter-x-fill fs-4"></i></span>
-                                                                </div>
-                                                                <div>
-                                                                    <span class="d-block fw-medium">Twitter</span>
-                                                                    <a href="javascript:void(0);"
-                                                                        class="text-muted">https://twitter.com/johndoe</a>
-                                                                </div>
-                                                            </div>
-                                                        </li>
-                                                        <li class="list-group-item">
-                                                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                                                <div>
-                                                                    <span
-                                                                        class="avatar avatar-md bg-success-transparent"><i
-                                                                            class="ri-linkedin-box-fill fs-4"></i></span>
-                                                                </div>
-                                                                <div>
-                                                                    <span class="d-block fw-medium">Linkedin</span>
-                                                                    <a href="javascript:void(0);"
-                                                                        class="text-muted">https://www.linkedin.com/in/johndoe</a>
-                                                                </div>
-                                                            </div>
-                                                        </li>
-                                                        <li class="list-group-item">
-                                                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                                                <div>
-                                                                    <span
-                                                                        class="avatar avatar-md bg-orange-transparent"><i
-                                                                            class="ri-instagram-fill fs-4"></i></span>
-                                                                </div>
-                                                                <div>
-                                                                    <span class="d-block fw-medium">Instagram</span>
-                                                                    <a href="javascript:void(0);"
-                                                                        class="text-muted">https://www.instagram.com/johndoe</a>
-                                                                </div>
-                                                            </div>
-                                                        </li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </div> -->
-                                    </div>
-                                </div>
-                                <div class="col-xxl-8">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="tab-pane p-0 border-0" id="followers-tab-pane" role="tabpanel"
-                            aria-labelledby="followers-tab" tabindex="0">
-                            <div class="row">
-                                <div class="col-xl-4" v-for="(idx, index) in ProfileData.Profiles" :key="index">
-                                    <div class="card custom-card">
-                                        <div class="card-body">
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <div class="lh-1">
-                                                    <span class="avatar avatar-lg avatar-rounded">
-                                                        <img :src="idx.imgSrc" alt="">
-                                                    </span>
-                                                </div>
-                                                <div class="flex-fill">
-                                                    <span class="fw-semibold d-block">{{ idx.name }}</span>
-                                                    <span class="text-muted fs-13">{{ idx.mail }}</span>
-                                                </div>
-                                                <div>
-                                                    <button :class="`btn btn-${idx.color}-ghost`"><i
-                                                            :class="`ri-user-${idx.icon}-line me-1`"></i>{{
-                                                        idx.followers }}</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- <div class="tab-pane p-0 border-0" id="friends-tab-pane" role="tabpanel"
-                            aria-labelledby="friends-tab" tabindex="0">
-                            <div class="row">
-                                <div class="col-xxl-3 col-xl-4 col-lg-6" v-for="(idx, index) in ProfileData.FriendsList"
-                                    :key="index">
-                                    <div class="card custom-card">
-                                        <div class="card-body p-4 text-center">
-                                            <div class="dropdown profile-friends-actions">
-                                                <a aria-label="anchor" href="javascript:void(0);"
-                                                    class="btn btn-icon rounded-circle border btn-light"
-                                                    data-bs-toggle="dropdown" aria-expanded="false">
-                                                    <i class="ri-more-2-fill"></i>
-                                                </a>
-                                                <ul class="dropdown-menu">
-                                                    <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                class="ri-edit-line me-2"></i>Edit</a></li>
-                                                    <li><a class="dropdown-item" href="javascript:void(0);"><i
-                                                                class="ri-delete-bin-line me-2"></i>Delete</a></li>
-                                                </ul>
-                                            </div>
-                                            <div class="lh-1 mb-2">
-                                                <span class="avatar avatar-xxl avatar-rounded">
-                                                    <img :src="idx.imgSrc" alt="">
-                                                </span>
-                                            </div>
-                                            <div class="mb-3">
-                                                <span class="d-block fw-semibold">{{ idx.name }}</span>
-                                                <span class="text-muted fs-13">{{ idx.mail }}</span>
-                                            </div>
-                                            <div class="btn-list">
-                                                <button
-                                                    class="btn btn-icon btn-facebook btn-wave rounded-circle waves-effect waves-light">
-                                                    <i class="ri-facebook-line"></i>
-                                                </button>
-                                                <button
-                                                    class="btn btn-icon btn-twitter btn-wave rounded-circle waves-effect waves-light">
-                                                    <i class="ri-twitter-x-line"></i>
-                                                </button>
-                                                <button
-                                                    class="btn btn-icon btn-instagram btn-wave rounded-circle waves-effect waves-light">
-                                                    <i class="ri-instagram-line"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>-->
-                    </div>
-                </div>
-            </div>
+  <!-- Main Profile Container -->
+  <div class="row justify-content-center">
+    <div class="col-xl-11 col-xxl-10">
+      <!-- Main Profile Card -->
+      <div class="card custom-card overflow-hidden profile-main-card">
+        <!-- Header Background with Dark Blue Gradient -->
+        <div
+          class="profile-header-banner position-relative"
+          style="
+            background: linear-gradient(
+              135deg,
+              #1e3a5f 0%,
+              #2c5282 50%,
+              #1a365d 100%
+            );
+            min-height: 180px;
+          "
+        >
+          <div
+            class="position-absolute w-100 h-100"
+            style="
+              background: url('/images/media/media-3.jpg') center/cover;
+              opacity: 0.1;
+            "
+          ></div>
+          <div class="position-absolute top-0 end-0 p-3 p-md-4">
+            <router-link
+              to="/profile-settings"
+              class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2"
+            >
+              <i class="ri-edit-2-line"></i>
+              <span class="d-none d-sm-inline">Edit Profile</span>
+            </router-link>
+          </div>
         </div>
+
+        <!-- Profile Content -->
+        <div class="card-body p-3 p-md-4 pb-4 position-relative">
+          <!-- Avatar Section -->
+          <div
+            class="d-flex align-items-end justify-content-between flex-wrap gap-3"
+            style="margin-top: -70px"
+          >
+            <div class="d-flex align-items-end gap-3 flex-wrap">
+              <!-- Avatar with Online Status -->
+              <div class="position-relative">
+                <div class="avatar-container">
+                  <span
+                    class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden"
+                  >
+                    <img :src="avatarUrl" alt="Profile Avatar" />
+                  </span>
+                </div>
+              </div>
+
+              <!-- Name & Title -->
+              <div class="pb-2">
+                <h4 class="fw-bold mb-1 text-dark profile-name">
+                  {{ displayName }}
+                </h4>
+                <p
+                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
+                >
+                  <i class="ri-briefcase-line"></i>{{ displayRole }}
+                </p>
+                <p
+                  class="text-muted fs-13 mb-0 d-flex align-items-center gap-1"
+                >
+                  <i class="ri-mail-line"></i>{{ displayEmail }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Stats -->
+            <!-- <div class="d-none d-md-flex gap-4 stats-section">
+              <div class="text-center stat-item">
+                <h4 class="fw-bold mb-0 text-dark">
+                  {{ profile.stats.projects }}
+                </h4>
+                <span class="text-muted fs-12">Projects</span>
+              </div>
+              <div class="text-center border-start border-end px-4 stat-item">
+                <h4 class="fw-bold mb-0 text-dark">
+                  {{ profile.stats.followers }}
+                </h4>
+                <span class="text-muted fs-12">Followers</span>
+              </div>
+              <div class="text-center stat-item">
+                <h4 class="fw-bold mb-0 text-dark">
+                  {{ profile.stats.following }}
+                </h4>
+                <span class="text-muted fs-12">Following</span>
+              </div>
+            </div> -->
+          </div>
+
+          <!-- Mobile Stats -->
+          <!-- <div
+            class="d-flex d-md-none justify-content-around py-3 mt-3 border-top border-bottom mobile-stats"
+          >
+            <div class="text-center">
+              <h5 class="fw-bold mb-0 text-dark">
+                {{ profile.stats.projects }}
+              </h5>
+              <span class="text-muted fs-12">Projects</span>
+            </div>
+            <div class="text-center">
+              <h5 class="fw-bold mb-0 text-dark">
+                {{ profile.stats.followers }}
+              </h5>
+              <span class="text-muted fs-12">Followers</span>
+            </div>
+            <div class="text-center">
+              <h5 class="fw-bold mb-0 text-dark">
+                {{ profile.stats.following }}
+              </h5>
+              <span class="text-muted fs-12">Following</span>
+            </div>
+          </div> -->
+        </div>
+      </div>
+
+      <!-- Bio & About Section -->
+      <div class="card custom-card bio-card">
+        <div
+          class="card-header d-flex align-items-center"
+          style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
+        >
+          <i class="ri-user-line text-white me-2"></i>
+          <div class="card-title text-white mb-0">About</div>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-0 lh-lg">{{ bio }}</p>
+        </div>
+      </div>
+
+      <!-- Contact Information Cards -->
+      <div class="row">
+        <div class="col-lg-6 col-md-6 col-12 mb-3 mb-lg-0">
+          <div class="card custom-card contact-card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-3">
+                <span
+                  class="avatar avatar-md rounded-3"
+                  style="background: linear-gradient(135deg, #1e3a5f, #2c5282)"
+                >
+                  <i class="ri-mail-line text-white fs-18"></i>
+                </span>
+                <div>
+                  <span class="text-muted fs-12 d-block">Email</span>
+                  <span class="fw-medium">{{ displayEmail }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6 col-md-6 col-12 mb-3 mb-lg-0">
+          <div class="card custom-card contact-card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-3">
+                <span
+                  class="avatar avatar-md rounded-3"
+                  style="background: linear-gradient(135deg, #2c5282, #3182ce)"
+                >
+                  <i class="ri-phone-line text-white fs-18"></i>
+                </span>
+                <div>
+                  <span class="text-muted fs-12 d-block">Phone</span>
+                  <span class="fw-medium">{{ phone }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6 col-md-6 col-12 mb-3 mb-md-0">
+          <div class="card custom-card contact-card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-3">
+                <span
+                  class="avatar avatar-md rounded-3"
+                  style="background: linear-gradient(135deg, #1a365d, #2a4365)"
+                >
+                  <i class="ri-map-pin-line text-white fs-18"></i>
+                </span>
+                <div>
+                  <span class="text-muted fs-12 d-block">Location</span>
+                  <span class="fw-medium">{{ location }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6 col-md-6 col-12">
+          <div class="card custom-card contact-card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-3">
+                <span
+                  class="avatar avatar-md rounded-3"
+                  style="background: linear-gradient(135deg, #2b6cb0, #4299e1)"
+                >
+                  <i class="ri-calendar-line text-white fs-18"></i>
+                </span>
+                <div>
+                  <span class="text-muted fs-12 d-block">Member Since</span>
+                  <span class="fw-medium">{{ joined }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- <div class="card custom-card action-buttons-card">
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-4 col-12">
+              <button class="btn btn-follow w-100 text-white fw-semibold py-2">
+                <i class="ri-user-add-line me-1"></i>
+                Follow
+              </button>
+            </div>
+            <div class="col-sm-4 col-12">
+              <button
+                class="btn btn-outline-primary w-100 py-2 fw-semibold btn-message"
+              >
+                <i class="ri-message-3-line me-1"></i>
+                Message
+              </button>
+            </div>
+            <div class="col-sm-4 col-12">
+              <button class="btn btn-outline-danger w-100 py-2 btn-like">
+                <i class="ri-heart-line me-1"></i>
+                Like
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-lg-4 col-md-6 col-12 mb-3 mb-lg-0">
+          <div class="card custom-card quick-info-card h-100">
+            <div class="card-body">
+              <div
+                class="d-flex align-items-center justify-content-between mb-3"
+              >
+                <span class="avatar avatar-md rounded-3 bg-warning-transparent">
+                  <i class="ri-award-line fs-20 text-warning"></i>
+                </span>
+                <span class="badge bg-light text-muted fs-10 fw-semibold"
+                  >ACHIEVEMENT</span
+                >
+              </div>
+              <h5 class="fw-bold mb-1 text-dark">Top Contributor</h5>
+              <span class="text-muted fs-13">2024 Q1</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6 col-12 mb-3 mb-lg-0">
+          <div class="card custom-card quick-info-card h-100">
+            <div class="card-body">
+              <div
+                class="d-flex align-items-center justify-content-between mb-3"
+              >
+                <span class="avatar avatar-md rounded-3 bg-info-transparent">
+                  <i class="ri-briefcase-line fs-20 text-info"></i>
+                </span>
+                <span class="badge bg-light text-muted fs-10 fw-semibold"
+                  >EXPERIENCE</span
+                >
+              </div>
+              <h5 class="fw-bold mb-1 text-dark">5+ Years</h5>
+              <span class="text-muted fs-13">Product Design</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4 col-md-12 col-12">
+          <div class="card custom-card quick-info-card h-100">
+            <div class="card-body">
+              <div
+                class="d-flex align-items-center justify-content-between mb-3"
+              >
+                <span class="avatar avatar-md rounded-3 bg-danger-transparent">
+                  <i class="ri-heart-line fs-20 text-danger"></i>
+                </span>
+                <span class="badge bg-light text-muted fs-10 fw-semibold"
+                  >LIKES</span
+                >
+              </div>
+              <h5 class="fw-bold mb-1 text-dark">8.5K</h5>
+              <span class="text-muted fs-13">Total Reactions</span>
+            </div>
+          </div>
+        </div>
+      </div> -->
     </div>
-    <!-- End:: row-1 -->
+  </div>
 </template>
 
-<style scoped>
-/* Add your styles here */
-</style>
+<style scoped></style>

@@ -1,14 +1,18 @@
 [
-    {
-      "id": 1,
-      "username": "spruko@gmail.com",
-      "password": "spruko1234",
-      "token": ""
-    },
-    {
-      "id": 2,
-      "username": "test",
-      "password": "test",
-      "token": ""
-    }
-  ]
+  {
+    "id": 1,
+    "username": "spruko@gmail.com",
+    "password": "spruko1234",
+    "name": "Spruko",
+    "role": "Admin",
+    "token": ""
+  },
+  {
+    "id": 2,
+    "username": "user@gmail.com",
+    "password": "user1234",
+    "name": "User",
+    "role": "User",
+    "token": ""
+  }
+]
