@@ -2,25 +2,22 @@
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { stakeholdersData, type Stakeholder } from "../../data/dummydata";
-import EasyDataTable from "vue3-easy-data-table";
-import "vue3-easy-data-table/dist/style.css";
 
 export default {
   data() {
     return {
       dataToPass: {
         title: { label: "Dashboards", path: "/dashboards" },
-        currentpage: "Stakeholders",
-        activepage: "Stakeholders",
+        currentpage: "Stakeholders CRUD",
+        activepage: "Stakeholders CRUD",
       },
     };
   },
-  components: { Pageheader, EasyDataTable },
+  components: { Pageheader },
   setup() {
     const items = ref<Stakeholder[]>([]);
     const loading = ref(false);
     const searchQuery = ref("");
-    const searchValue2 = ref("");
     const sortField = ref<"nama_perusahaan" | "sektor">("nama_perusahaan");
     const sortOrder = ref<"asc" | "desc">("asc");
     const currentPage = ref(1);
@@ -256,7 +253,6 @@ export default {
       items,
       loading,
       searchQuery,
-      searchValue2,
       headers,
       sortField,
       sortOrder,
@@ -335,7 +331,7 @@ export default {
         <div
           class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3"
         >
-          <div class="card-title">Tabel Daftar Stakeholders</div>
+          <div class="card-title">Tabel Daftar Stakeholders (CRUD)</div>
           <div class="d-flex gap-2 align-items-center flex-wrap flex-grow-1">
             <div
               class="search-container position-relative"
@@ -493,38 +489,20 @@ export default {
                     </td>
                     <td>{{ item.email }}</td>
                     <td class="text-center">
-                      <div class="btn-group-vertical btn-group-sm d-inline-flex gap-1">
-                        <div class="d-flex gap-1">
-                          <router-link
-                            :to="`/profile-stakeholders/${item.slug}`"
-                            class="btn btn-sm btn-info-light"
-                            title="Lihat Profil"
-                          >
-                            <i class="ri-eye-line"></i>
-                          </router-link>
-                          <router-link
-                            :to="`/ikas?slug=${item.slug}`"
-                            class="btn btn-sm btn-warning-light"
-                            title="IKAS"
-                          >
-                            <i class="ri-file-chart-line"></i>
-                          </router-link>
-                          <button
-                            @click="openEditModal(item)"
-                            class="btn btn-sm btn-success-light"
-                            title="Edit"
-                          >
-                            <i class="ri-edit-line"></i>
-                          </button>
-                          <button
-                            @click="openDeleteModal(item)"
-                            class="btn btn-sm btn-danger-light"
-                            title="Delete"
-                          >
-                            <i class="ri-delete-bin-line"></i>
-                          </button>
-                        </div>
-                      </div>
+                      <button
+                        @click="openEditModal(item)"
+                        class="btn btn-sm btn-success-light me-1"
+                        title="Edit"
+                      >
+                        <i class="ri-edit-line"></i>
+                      </button>
+                      <button
+                        @click="openDeleteModal(item)"
+                        class="btn btn-sm btn-danger-light"
+                        title="Delete"
+                      >
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
                     </td>
                   </tr>
                 </tbody>
