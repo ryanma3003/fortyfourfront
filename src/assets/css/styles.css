@@ -20633,7 +20633,7 @@ html[dir=rtl] .carousel-item-prev:not(.carousel-item-end) {
 }
 
 .btn-hover.btn-hover-animate:before {
-  content: "\f417";
+  content: "\F64D";
   font-family: bootstrap-icons !important;
   font-size: 0.8125rem;
   position: absolute;

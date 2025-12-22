@@ -338,7 +338,7 @@ export default {
           <div class="card-title">Tabel Daftar Stakeholders</div>
           <div class="d-flex gap-2 align-items-center flex-wrap flex-grow-1">
             <div
-              class="search-container position-relative"
+              class="search-container position-relative ms-auto"
               style="max-width: 350px; flex: 1"
             >
               <input
@@ -352,12 +352,6 @@ export default {
                 <i class="ri-close-line"></i>
               </button>
             </div>
-            <button
-              @click="openCreateModal"
-              class="btn btn-sm btn-primary"
-            >
-              <i class="ri-add-line me-1"></i>Tambah Stakeholder
-            </button>
           </div>
         </div>
 
@@ -373,7 +367,7 @@ export default {
             <div
               class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"
             >
-              <div class="d-flex align-items-center gap-2">
+              <div class="d-flex align-items-center flex-wrap flex-grow-1 gap-2">
                 <span class="text-muted fs-13">Tampilkan</span>
                 <select
                   v-model="itemsPerPage"
@@ -389,6 +383,12 @@ export default {
                   </option>
                 </select>
                 <span class="text-muted fs-13">per halaman</span>
+                <button
+              @click="openCreateModal"
+              class="btn btn-sm btn-secondary btn-glare ms-auto"
+            >
+              <i class="ri-add-line me-1"></i>Tambah Stakeholder
+            </button>
               </div>
             </div>
 
