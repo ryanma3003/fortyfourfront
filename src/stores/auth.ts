@@ -21,6 +21,8 @@ interface CurrentUser {
   username: string;
   name: string;
   role: string;
+  phone: string;
+  location: string;
 }
 
 export const useAuthStore = defineStore('auth', {

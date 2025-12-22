@@ -142,7 +142,8 @@ export default {
         formErrors.value.website = "Website wajib diisi";
         isValid = false;
       } else if (!/^https?:\/\/.+/.test(formData.value.website)) {
-        formErrors.value.website = "Format website tidak valid (harus dimulai dengan http:// atau https://)";
+        formErrors.value.website =
+          "Format website tidak valid (harus dimulai dengan http:// atau https://)";
         isValid = false;
       }
 
@@ -150,7 +151,10 @@ export default {
     };
 
     // Show toast notification
-    const showNotification = (message: string, type: "success" | "error" = "success") => {
+    const showNotification = (
+      message: string,
+      type: "success" | "error" = "success"
+    ) => {
       toastMessage.value = message;
       toastType.value = type;
       showToast.value = true;
@@ -367,7 +371,9 @@ export default {
             <div
               class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"
             >
-              <div class="d-flex align-items-center flex-wrap flex-grow-1 gap-2">
+              <div
+                class="d-flex align-items-center flex-wrap flex-grow-1 gap-2"
+              >
                 <span class="text-muted fs-13">Tampilkan</span>
                 <select
                   v-model="itemsPerPage"
@@ -384,11 +390,11 @@ export default {
                 </select>
                 <span class="text-muted fs-13">per halaman</span>
                 <button
-              @click="openCreateModal"
-              class="btn btn-sm btn-secondary btn-glare ms-auto"
-            >
-              <i class="ri-add-line me-1"></i>Tambah Stakeholder
-            </button>
+                  @click="openCreateModal"
+                  class="btn btn-sm btn-secondary btn-glare ms-auto"
+                >
+                  <i class="ri-add-line me-1"></i>Tambah Stakeholder
+                </button>
               </div>
             </div>
 
@@ -493,7 +499,9 @@ export default {
                     </td>
                     <td>{{ item.email }}</td>
                     <td class="text-center">
-                      <div class="btn-group-vertical btn-group-sm d-inline-flex gap-1">
+                      <div
+                        class="btn-group-vertical btn-group-sm d-inline-flex gap-1"
+                      >
                         <div class="d-flex gap-1">
                           <router-link
                             :to="`/profile-stakeholders/${item.slug}`"
@@ -742,7 +750,11 @@ export default {
           >
             Batal
           </button>
-          <button type="button" class="btn btn-primary" @click="createStakeholder">
+          <button
+            type="button"
+            class="btn btn-primary"
+            @click="createStakeholder"
+          >
             <i class="ri-save-line me-1"></i>Simpan
           </button>
         </div>
@@ -880,7 +892,11 @@ export default {
           >
             Batal
           </button>
-          <button type="button" class="btn btn-success" @click="updateStakeholder">
+          <button
+            type="button"
+            class="btn btn-success"
+            @click="updateStakeholder"
+          >
             <i class="ri-save-line me-1"></i>Update
           </button>
         </div>
@@ -907,7 +923,10 @@ export default {
         </div>
         <div class="modal-body">
           <div class="text-center">
-            <i class="ri-error-warning-line text-danger" style="font-size: 3rem"></i>
+            <i
+              class="ri-error-warning-line text-danger"
+              style="font-size: 3rem"
+            ></i>
             <h5 class="mt-3">Apakah Anda yakin?</h5>
             <p class="text-muted">
               Anda akan menghapus stakeholder
@@ -924,7 +943,11 @@ export default {
           >
             Batal
           </button>
-          <button type="button" class="btn btn-danger" @click="deleteStakeholder">
+          <button
+            type="button"
+            class="btn btn-danger"
+            @click="deleteStakeholder"
+          >
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
         </div>
@@ -1000,7 +1023,24 @@ export default {
   display: block;
 }
 
+/* Position modal in center of content area (accounting for sidebar) */
+.modal.show .modal-dialog {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 800px;
+}
+
 .toast {
   min-width: 250px;
+}
+</style>
+
+<style>
+/* Global style untuk modal - tidak scoped agar bisa override */
+@media (min-width: 992px) {
+  .modal.fade.show.d-block .modal-dialog {
+    margin-left: calc(250px + ((100% - 250px - 800px) / 2)) !important;
+    margin-right: auto !important;
+  }
 }
 </style>

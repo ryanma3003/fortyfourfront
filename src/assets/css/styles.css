@@ -48839,3 +48839,121 @@ a.link-underline-dark {
     height: 90px !important;
   }
 }
+
+.card {
+  border-radius: 1rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.card-header {
+  border-radius: 1rem 1rem 0 0 !important;
+}
+
+.form-control:focus {
+  border-color: #2c5282;
+  box-shadow: 0 0 0 0.2rem rgba(44, 82, 130, 0.15);
+}
+
+/* Profile Banner */
+.profile-banner {
+  border-radius: 1rem 1rem 0 0;
+}
+
+/* Profile Content - flex layout */
+.profile-content {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-top: -55px;
+}
+
+/* Avatar */
+.avatar-container {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar-xxl {
+  width: 120px !important;
+  height: 120px !important;
+}
+
+.avatar-actions {
+  position: absolute;
+  bottom: 0;
+  right: 0px;
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* User Info */
+.user-info {
+  flex: 1;
+  margin-bottom: -10px;
+  margin-left: 5px;
+}
+
+/* Save Button */
+.save-btn-desktop {
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: flex-end;
+  padding-top: 60px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 767.98px) {
+  .profile-content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-top: -55px;
+  }
+
+  .avatar-xxl {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  .user-info {
+    text-align: center;
+    padding-top: 0;
+    margin-top: 50px !important;
+    margin-bottom: 0;
+  }
+
+  .avatar-actions {
+    right: -5px;
+  }
+}
+
+/* Fix: Sidebar tetap sticky saat mode collapsed (icon-only) */
+@media (min-width: 992px) {
+
+  [data-toggled="close"] .app-sidebar,
+  [data-toggled="icon-overlay-close"] .app-sidebar,
+  [data-toggled="icon-text-close"] .app-sidebar,
+  [data-toggled="detached-close"] .app-sidebar,
+  [data-toggled="menu-click-closed"] .app-sidebar,
+  [data-toggled="menu-hover-closed"] .app-sidebar,
+  [data-toggled="icon-click-closed"] .app-sidebar,
+  [data-toggled="icon-hover-closed"] .app-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 105;
+  }
+
+  [dir="rtl"][data-toggled="close"] .app-sidebar,
+  [dir="rtl"][data-toggled="icon-overlay-close"] .app-sidebar,
+  [dir="rtl"][data-toggled="icon-text-close"] .app-sidebar,
+  [dir="rtl"][data-toggled="detached-close"] .app-sidebar,
+  [dir="rtl"][data-toggled="menu-click-closed"] .app-sidebar,
+  [dir="rtl"][data-toggled="menu-hover-closed"] .app-sidebar,
+  [dir="rtl"][data-toggled="icon-click-closed"] .app-sidebar,
+  [dir="rtl"][data-toggled="icon-hover-closed"] .app-sidebar {
+    left: auto;
+    right: 0;
+  }
+}
