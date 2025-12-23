@@ -27975,7 +27975,6 @@ button {
 
   .cart-dropdown,
   .timelines-dropdown,
-  .notifications-dropdown,
   .header-shortcuts-dropdown,
   .header-fullscreen {
     display: none !important;
@@ -32589,10 +32588,18 @@ ul.pos-system-orders-list li:last-child {
 
 .header-icon-pulse {
   position: absolute;
-  width: 5px;
-  height: 5px;
-  inset-block-start: 1.35rem;
-  inset-inline-end: 18px;
+  width: 8px;
+  height: 8px;
+  inset-block-start: 0.9rem;
+  inset-inline-end: 0.4rem;
+}
+
+@media (min-width: 576px) {
+  .header-icon-pulse {
+    inset-block-start: 1.35rem;
+    inset-inline-end: 10px;
+    size: 5px;
+  }
 }
 
 .related-app {
@@ -32608,6 +32615,154 @@ ul.pos-system-orders-list li:last-child {
 .header-profile-dropdown {
   min-width: 12rem;
 }
+
+.header-profile-dropdown .avatar.avatar-sm {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.header-profile-dropdown .avatar.avatar-sm img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ====================================== */
+/* Profile Page - Responsive Styles       */
+/* ====================================== */
+
+/* Base styles (Mobile first - below 480px) */
+.profile-main-card .avatar-container .avatar.avatar-xxl {
+  width: 7rem !important;
+  height: 7rem !important;
+  margin-bottom: -5rem !important;
+}
+
+.profile-main-card .avatar-container .avatar.avatar-xxl img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-main-card .avatar-container .avatar-actions {
+  margin-bottom: 0.5rem !important;
+}
+
+.profile-main-card .avatar-container .avatar-actions .btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+}
+
+/* Tablet styles (480px - 768px) */
+@media (min-width: 504px) {
+  .profile-main-card .avatar-container .avatar.avatar-xxl {
+    width: 7rem !important;
+    height: 7rem !important;
+    margin-bottom: 4.5rem !important;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions {
+    margin-bottom: 4.5rem !important;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions .btn {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions .btn i {
+    font-size: 0.875rem;
+  }
+
+  .profile-main-card .profile-name {
+    font-size: 1.15rem;
+  }
+
+  .profile-main-card .text-primary-dark {
+    font-size: 0.875rem;
+  }
+
+  .profile-main-card .text-muted.fs-13 {
+    font-size: 0.813rem !important;
+  }
+
+  .profile-main-card .fs-12 {
+    font-size: 0.75rem !important;
+  }
+
+  .profile-header-banner {
+    min-height: 150px !important;
+  }
+}
+
+/* Desktop styles (768px and above) */
+@media (min-width: 768px) {
+  .profile-main-card .avatar-container .avatar.avatar-xxl {
+    width: 8rem !important;
+    height: 8rem !important;
+    margin-bottom: 3rem !important;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions {
+    margin-bottom: 2.5rem !important;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions .btn {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions .btn i {
+    font-size: 1rem;
+  }
+
+  .profile-main-card .profile-name {
+    font-size: 1.35rem;
+  }
+
+  .profile-main-card .text-primary-dark {
+    font-size: 0.938rem;
+  }
+
+  .profile-main-card .text-muted.fs-13 {
+    font-size: 0.875rem !important;
+  }
+
+  .profile-main-card .fs-12 {
+    font-size: 0.813rem !important;
+  }
+
+  .profile-header-banner {
+    min-height: 180px !important;
+  }
+}
+
+/* Large Desktop styles (992px and above) */
+@media (min-width: 992px) {
+  .profile-main-card .avatar-container .avatar.avatar-xxl {
+    width: 10rem !important;
+    height: 10rem !important;
+    margin-bottom: 2rem !important;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions {
+    margin-bottom: 2rem !important;
+    margin-right: 1rem !important;
+  }
+
+  .profile-main-card .profile-name {
+    font-size: 1.5rem;
+  }
+
+  .profile-header-banner {
+    min-height: 200px !important;
+  }
+}
+
+/* ====================================== */
+/* End Profile Page Responsive Styles     */
+/* ====================================== */
 
 /* End::app-header */
 /* Start::main-header-container */
@@ -32638,6 +32793,7 @@ ul.pos-system-orders-list li:last-child {
   display: flex;
   align-items: center;
   padding: 1rem 0.5rem;
+  position: relative;
 }
 
 .main-header-container .header-link:hover .header-link-icon,
@@ -32647,14 +32803,14 @@ ul.pos-system-orders-list li:last-child {
 }
 
 .main-header-container .header-link-icon {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.3rem;
+  height: 2.3rem;
   font-size: 1rem;
   fill: var(--header-icon-color);
   color: var(--header-icon-color);
   transition: all ease 0.05s;
   position: relative;
-  padding: 6px;
+  padding: 5px;
   border-radius: 50%;
   background-color: var(--custom-white);
   border: 1px solid var(--default-border);
@@ -48902,30 +49058,7 @@ a.link-underline-dark {
 }
 
 /* Mobile Responsive */
-@media (max-width: 767.98px) {
-  .profile-content {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    margin-top: -55px;
-  }
 
-  .avatar-xxl {
-    width: 100px !important;
-    height: 100px !important;
-  }
-
-  .user-info {
-    text-align: center;
-    padding-top: 0;
-    margin-top: 50px !important;
-    margin-bottom: 0;
-  }
-
-  .avatar-actions {
-    right: -5px;
-  }
-}
 
 /* Fix: Sidebar tetap sticky saat mode collapsed (icon-only) */
 @media (min-width: 992px) {

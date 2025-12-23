@@ -111,7 +111,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
                   <i class="ri-briefcase-line"></i>{{ displayRole }}
                 </p>
                 <p
-                  class="text-muted fs-13 mb-0 d-flex align-items-center gap-1"
+                  class="text-black fs-13 mb-2 d-flex align-items-center gap-1"
                 >
                   <i class="ri-mail-line"></i>{{ displayEmail }}
                 </p>

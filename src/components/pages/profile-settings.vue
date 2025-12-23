@@ -216,7 +216,7 @@ const savePassword = async () => {
                     <img :src="avatarPreview" alt="Profile Avatar" />
                   </span>
                   <div
-                    class="avatar-actions position-absolute bottom-0 mb-2 d-flex gap-1"
+                    class="avatar-actions position-absolute bottom-0 d-flex gap-1"
                   >
                     <button
                       @click="triggerAvatarUpload"
@@ -224,13 +224,6 @@ const savePassword = async () => {
                       title="Ganti Foto"
                     >
                       <i class="ri-camera-line"></i>
-                    </button>
-                    <button
-                      @click="removeAvatar"
-                      class="btn btn-danger btn-icon btn-sm rounded-circle shadow"
-                      title="Hapus Foto"
-                    >
-                      <i class="ri-delete-bin-line"></i>
                     </button>
                   </div>
                 </div>
@@ -254,7 +247,7 @@ const savePassword = async () => {
                   <i class="ri-briefcase-line"></i>{{ formData.title }}
                 </p>
                 <p
-                  class="text-muted fs-13 mb-0 d-flex align-items-center gap-1"
+                  class="text-black fs-13 mb-2 d-flex align-items-center gap-1"
                 >
                   <i class="ri-mail-line"></i>{{ formData.email }}
                 </p>

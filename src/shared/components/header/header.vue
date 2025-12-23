@@ -276,9 +276,6 @@
             <div class="p-3 bg-primary text-fixed-white">
               <div class="d-flex align-items-center justify-content-between">
                 <p class="mb-0 fs-16">Profile</p>
-                <a href="javascript:void(0);" class="text-fixed-white"
-                  ><i class="ti ti-settings-cog"></i
-                ></a>
               </div>
             </div>
             <div class="dropdown-divider"></div>
@@ -324,7 +321,7 @@
               </li>
               <li>
                 <ul class="list-unstyled mb-0 sub-list">
-                  <li>
+                  <!-- <li>
                     <a
                       class="dropdown-item d-flex align-items-center"
                       href="javascript:void(0);"
@@ -337,14 +334,14 @@
                       href="javascript:void(0);"
                       ><i class="ti ti-bolt me-2 fs-18"></i>Activity Log</a
                     >
-                  </li>
-                  <li>
+                  </li> -->
+                  <!-- <li>
                     <a
                       class="dropdown-item d-flex align-items-center"
                       href="javascript:void(0);"
                       ><i class="ti ti-calendar me-2 fs-18"></i>Events</a
                     >
-                  </li>
+                  </li> -->
                   <li>
                     <a
                       href="javascript:void(0);"
