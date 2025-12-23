@@ -29,7 +29,9 @@ export default {
     const items = ref<User[]>([]);
     const loading = ref(false);
     const showModal = ref(false);
+    const showDeleteModal = ref(false);
     const selectedUser = ref<User | null>(null);
+    const currentDeleteItem = ref<User | null>(null);
     const newRoleName = ref("");
     const searchQuery = ref("");
     const sortField = ref<"name" | "role">("name");
@@ -37,6 +39,11 @@ export default {
     const showPermissionDetails = ref(false);
     const currentPage = ref(1);
     const itemsPerPage = ref(10);
+
+    // Toast state
+    const showToast = ref(false);
+    const toastMessage = ref("");
+    const toastType = ref<"success" | "error">("success");
 
     const loadUsers = async () => {
       loading.value = true;
@@ -80,6 +87,19 @@ export default {
       }
     };
 
+    // Show toast notification
+    const showNotification = (
+      message: string,
+      type: "success" | "error" = "success"
+    ) => {
+      toastMessage.value = message;
+      toastType.value = type;
+      showToast.value = true;
+      setTimeout(() => {
+        showToast.value = false;
+      }, 3000);
+    };
+
     const openEditModal = (user: User) => {
       selectedUser.value = { ...user };
       newRoleName.value = user.role;
@@ -99,15 +119,25 @@ export default {
             permissions: roleData.permissions,
             allAccess: roleData.allAccess ?? false,
           };
+          showNotification("Role berhasil diperbarui!", "success");
         }
       }
       showModal.value = false;
     };
 
-    const handleDelete = (userId: number) => {
-      if (confirm("Are you sure? This action cannot be undone.")) {
-        items.value = items.value.filter((u) => u.id !== userId);
-      }
+    // DELETE
+    const openDeleteModal = (user: User) => {
+      currentDeleteItem.value = user;
+      showDeleteModal.value = true;
+    };
+
+    const deleteUser = () => {
+      if (!currentDeleteItem.value) return;
+      items.value = items.value.filter(
+        (u) => u.id !== currentDeleteItem.value!.id
+      );
+      showDeleteModal.value = false;
+      showNotification("User berhasil dihapus!", "success");
     };
 
     const clearSearch = () => {
@@ -141,7 +171,9 @@ export default {
       items,
       loading,
       showModal,
+      showDeleteModal,
       selectedUser,
+      currentDeleteItem,
       newRoleName,
       searchQuery,
       sortField,
@@ -156,9 +188,13 @@ export default {
       getRoleByName,
       openEditModal,
       saveChanges,
-      handleDelete,
+      openDeleteModal,
+      deleteUser,
       clearSearch,
       showPermissionDetails,
+      showToast,
+      toastMessage,
+      toastType,
     };
   },
 };
@@ -166,6 +202,34 @@ export default {
 
 <template>
   <Pageheader :propData="dataToPass" />
+
+  <!-- Toast Notification -->
+  <div
+    v-if="showToast"
+    class="position-fixed top-0 end-0 p-3"
+    style="z-index: 9999"
+  >
+    <div
+      class="toast show"
+      :class="{
+        'bg-success': toastType === 'success',
+        'bg-danger': toastType === 'error',
+      }"
+      role="alert"
+    >
+      <div class="toast-body text-white">
+        <i
+          :class="
+            toastType === 'success'
+              ? 'ri-checkbox-circle-line'
+              : 'ri-error-warning-line'
+          "
+          class="me-2"
+        ></i>
+        {{ toastMessage }}
+      </div>
+    </div>
+  </div>
 
   <div class="row">
     <div class="col-xl-12">
@@ -371,7 +435,7 @@ export default {
                         </button>
                         <button
                           class="btn btn-sm btn-icon btn-danger-light"
-                          @click="handleDelete(user.id)"
+                          @click="openDeleteModal(user)"
                           title="Delete User"
                         >
                           <i class="ri-delete-bin-line"></i>
@@ -573,6 +637,53 @@ export default {
       </div>
     </div>
   </Transition>
+
+  <!-- Delete Confirmation Modal -->
+  <div
+    v-if="showDeleteModal"
+    class="modal fade show d-block"
+    tabindex="-1"
+    style="background-color: rgba(0, 0, 0, 0.5)"
+  >
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Konfirmasi Hapus</h5>
+          <button
+            type="button"
+            class="btn-close"
+            @click="showDeleteModal = false"
+          ></button>
+        </div>
+        <div class="modal-body text-center">
+          <div class="mb-3">
+            <i
+              class="ri-error-warning-line text-warning"
+              style="font-size: 4rem"
+            ></i>
+          </div>
+          <h5 class="mb-2">Apakah Anda yakin?</h5>
+          <p class="text-muted mb-0">
+            Anda akan menghapus user
+            <strong>{{ currentDeleteItem?.name }}</strong
+            >. Tindakan ini tidak dapat dibatalkan.
+          </p>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            @click="showDeleteModal = false"
+          >
+            Batal
+          </button>
+          <button type="button" class="btn btn-danger" @click="deleteUser">
+            <i class="ri-delete-bin-line me-1"></i>Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style></style>

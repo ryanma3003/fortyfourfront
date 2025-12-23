@@ -23,11 +23,11 @@ export default {
     <div :class="`card-body ${bodyClass}`">
         <div :class="`d-flex align-items-start gap-3 flex-wrap ${list.flexClass}`">
             <div class="flex-fill">
-                <span :class="titleClass" class="fs-13 fw-medium">{{ list.title }}</span>
+                <span :class="titleClass" class="fs-15 fw-bold">{{ list.title }}</span>
                 <div class="pb-0 mt-0">
                     <!-- listCard content -->
                     <div v-if="listCard">
-                        <span class="fs-13 fw-medium">{{ list.titles }}</span>
+                        <span class="fs-15 fw-bold">{{ list.titles }}</span>
                         <div :class="`d-flex align-items-center gap-2 my-2  ${list.ValueClass1}`">
                             <h4 :class="`fw-medium mb-0 custom-dashboard ${list.ValueClass}`">
                                 <span class="count-up" v-if="NoCountUp">{{ list.count }}</span>

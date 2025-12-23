@@ -2,25 +2,22 @@
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { stakeholdersData, type Stakeholder } from "../../data/dummydata";
-import EasyDataTable from "vue3-easy-data-table";
-import "vue3-easy-data-table/dist/style.css";
 
 export default {
   data() {
     return {
       dataToPass: {
         title: { label: "Dashboards", path: "/dashboards" },
-        currentpage: "Stakeholders",
-        activepage: "Stakeholders",
+        currentpage: "Stakeholders CRUD",
+        activepage: "Stakeholders CRUD",
       },
     };
   },
-  components: { Pageheader, EasyDataTable },
+  components: { Pageheader },
   setup() {
     const items = ref<Stakeholder[]>([]);
     const loading = ref(false);
     const searchQuery = ref("");
-    const searchValue2 = ref("");
     const sortField = ref<"nama_perusahaan" | "sektor">("nama_perusahaan");
     const sortOrder = ref<"asc" | "desc">("asc");
     const currentPage = ref(1);
@@ -142,8 +139,7 @@ export default {
         formErrors.value.website = "Website wajib diisi";
         isValid = false;
       } else if (!/^https?:\/\/.+/.test(formData.value.website)) {
-        formErrors.value.website =
-          "Format website tidak valid (harus dimulai dengan http:// atau https://)";
+        formErrors.value.website = "Format website tidak valid (harus dimulai dengan http:// atau https://)";
         isValid = false;
       }
 
@@ -151,10 +147,7 @@ export default {
     };
 
     // Show toast notification
-    const showNotification = (
-      message: string,
-      type: "success" | "error" = "success"
-    ) => {
+    const showNotification = (message: string, type: "success" | "error" = "success") => {
       toastMessage.value = message;
       toastType.value = type;
       showToast.value = true;
@@ -260,7 +253,6 @@ export default {
       items,
       loading,
       searchQuery,
-      searchValue2,
       headers,
       sortField,
       sortOrder,
@@ -339,10 +331,10 @@ export default {
         <div
           class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3"
         >
-          <div class="card-title">Tabel Daftar Stakeholders</div>
+          <div class="card-title">Tabel Daftar Stakeholders (CRUD)</div>
           <div class="d-flex gap-2 align-items-center flex-wrap flex-grow-1">
             <div
-              class="search-container position-relative ms-auto"
+              class="search-container position-relative"
               style="max-width: 350px; flex: 1"
             >
               <input
@@ -356,6 +348,12 @@ export default {
                 <i class="ri-close-line"></i>
               </button>
             </div>
+            <button
+              @click="openCreateModal"
+              class="btn btn-sm btn-primary"
+            >
+              <i class="ri-add-line me-1"></i>Tambah Stakeholder
+            </button>
           </div>
         </div>
 
@@ -371,9 +369,7 @@ export default {
             <div
               class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"
             >
-              <div
-                class="d-flex align-items-center flex-wrap flex-grow-1 gap-2"
-              >
+              <div class="d-flex align-items-center gap-2">
                 <span class="text-muted fs-13">Tampilkan</span>
                 <select
                   v-model="itemsPerPage"
@@ -389,12 +385,6 @@ export default {
                   </option>
                 </select>
                 <span class="text-muted fs-13">per halaman</span>
-                <button
-                  @click="openCreateModal"
-                  class="btn btn-sm btn-secondary btn-glare ms-auto"
-                >
-                  <i class="ri-add-line me-1"></i>Tambah Stakeholder
-                </button>
               </div>
             </div>
 
@@ -499,40 +489,20 @@ export default {
                     </td>
                     <td>{{ item.email }}</td>
                     <td class="text-center">
-                      <div
-                        class="btn-group-vertical btn-group-sm d-inline-flex gap-1"
+                      <button
+                        @click="openEditModal(item)"
+                        class="btn btn-sm btn-success-light me-1"
+                        title="Edit"
                       >
-                        <div class="d-flex gap-1">
-                          <router-link
-                            :to="`/profile-stakeholders/${item.slug}`"
-                            class="btn btn-sm btn-info-light"
-                            title="Lihat Profil"
-                          >
-                            <i class="ri-eye-line"></i>
-                          </router-link>
-                          <router-link
-                            :to="`/ikas?slug=${item.slug}`"
-                            class="btn btn-sm btn-warning-light"
-                            title="IKAS"
-                          >
-                            <i class="ri-file-chart-line"></i>
-                          </router-link>
-                          <button
-                            @click="openEditModal(item)"
-                            class="btn btn-sm btn-success-light"
-                            title="Edit"
-                          >
-                            <i class="ri-edit-line"></i>
-                          </button>
-                          <button
-                            @click="openDeleteModal(item)"
-                            class="btn btn-sm btn-danger-light"
-                            title="Delete"
-                          >
-                            <i class="ri-delete-bin-line"></i>
-                          </button>
-                        </div>
-                      </div>
+                        <i class="ri-edit-line"></i>
+                      </button>
+                      <button
+                        @click="openDeleteModal(item)"
+                        class="btn btn-sm btn-danger-light"
+                        title="Delete"
+                      >
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
                     </td>
                   </tr>
                 </tbody>
@@ -750,11 +720,7 @@ export default {
           >
             Batal
           </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            @click="createStakeholder"
-          >
+          <button type="button" class="btn btn-primary" @click="createStakeholder">
             <i class="ri-save-line me-1"></i>Simpan
           </button>
         </div>
@@ -892,11 +858,7 @@ export default {
           >
             Batal
           </button>
-          <button
-            type="button"
-            class="btn btn-success"
-            @click="updateStakeholder"
-          >
+          <button type="button" class="btn btn-success" @click="updateStakeholder">
             <i class="ri-save-line me-1"></i>Update
           </button>
         </div>
@@ -923,10 +885,7 @@ export default {
         </div>
         <div class="modal-body">
           <div class="text-center">
-            <i
-              class="ri-error-warning-line text-danger"
-              style="font-size: 3rem"
-            ></i>
+            <i class="ri-error-warning-line text-danger" style="font-size: 3rem"></i>
             <h5 class="mt-3">Apakah Anda yakin?</h5>
             <p class="text-muted">
               Anda akan menghapus stakeholder
@@ -943,11 +902,7 @@ export default {
           >
             Batal
           </button>
-          <button
-            type="button"
-            class="btn btn-danger"
-            @click="deleteStakeholder"
-          >
+          <button type="button" class="btn btn-danger" @click="deleteStakeholder">
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
         </div>
@@ -1023,24 +978,7 @@ export default {
   display: block;
 }
 
-/* Position modal in center of content area (accounting for sidebar) */
-.modal.show .modal-dialog {
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 800px;
-}
-
 .toast {
   min-width: 250px;
-}
-</style>
-
-<style>
-/* Global style untuk modal - tidak scoped agar bisa override */
-@media (min-width: 992px) {
-  .modal.fade.show.d-block .modal-dialog {
-    margin-left: calc(250px + ((100% - 250px - 800px) / 2)) !important;
-    margin-right: auto !important;
-  }
 }
 </style>

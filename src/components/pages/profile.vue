@@ -23,6 +23,7 @@ const {
 } = storeToRefs(profileStore);
 
 const dataToPass = {
+  title: { label: "Dashboards", path: "/dashboards" },
   currentpage: "Profile",
   activepage: "Profile",
 };
@@ -37,6 +38,8 @@ onMounted(() => {
 const displayName = computed(() => profileStore.displayName);
 const displayEmail = computed(() => profileStore.displayEmail);
 const displayRole = computed(() => profileStore.displayRole);
+const displayPhone = computed(() => profileStore.displayPhone);
+const displayLocation = computed(() => profileStore.displayLocation);
 </script>
 
 <template>
@@ -98,7 +101,7 @@ const displayRole = computed(() => profileStore.displayRole);
               </div>
 
               <!-- Name & Title -->
-              <div class="pb-2">
+              <div class="pb-2 mt-2 mt-md-5">
                 <h4 class="fw-bold mb-1 text-dark profile-name">
                   {{ displayName }}
                 </h4>
@@ -111,6 +114,15 @@ const displayRole = computed(() => profileStore.displayRole);
                   class="text-muted fs-13 mb-0 d-flex align-items-center gap-1"
                 >
                   <i class="ri-mail-line"></i>{{ displayEmail }}
+                </p>
+                <p class="fs-12 mb-0 mt-1">
+                  <span class="me-3"
+                    ><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span
+                  >
+                  <span
+                    ><i class="ri-map-pin-line me-1"></i
+                    >{{ displayLocation }}</span
+                  >
                 </p>
               </div>
             </div>
@@ -179,7 +191,7 @@ const displayRole = computed(() => profileStore.displayRole);
       </div>
 
       <!-- Contact Information Cards -->
-      <div class="row">
+      <div class="row mb-4">
         <div class="col-lg-6 col-md-6 col-12 mb-3 mb-lg-0">
           <div class="card custom-card contact-card h-100">
             <div class="card-body">

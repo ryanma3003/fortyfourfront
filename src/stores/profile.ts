@@ -57,6 +57,18 @@ export const useProfileStore = defineStore('profile', {
       const authStore = useAuthStore();
       return authStore.currentUser?.role || this.title;
     },
+    
+    // Get display phone from auth store or profile
+    displayPhone(): string {
+      const authStore = useAuthStore();
+      return authStore.currentUser?.phone || this.phone;
+    },
+    
+    // Get display location from auth store or profile
+    displayLocation(): string {
+      const authStore = useAuthStore();
+      return authStore.currentUser?.location || this.location;
+    },
   },
 
   actions: {

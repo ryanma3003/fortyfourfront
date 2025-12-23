@@ -13,6 +13,7 @@ const profileStore = useProfileStore();
 const authStore = useAuthStore();
 
 const dataToPass = {
+  title: { label: "Profile", path: "/profile" },
   currentpage: "Profile Settings",
   activepage: "Profile Settings",
 };
@@ -81,9 +82,11 @@ const saveProfile = async () => {
     });
 
     showSuccessAlert.value = true;
+
+    // Redirect to profile after short delay
     setTimeout(() => {
-      showSuccessAlert.value = false;
-    }, 3000);
+      router.push("/profile");
+    }, 1000);
   } catch (error) {
     showErrorAlert.value = true;
     setTimeout(() => {
@@ -181,9 +184,10 @@ const savePassword = async () => {
   <div class="row justify-content-center">
     <div class="col-xl-11 col-xxl-10">
       <!-- Profile Header Card -->
-      <div class="card custom-card overflow-hidden mb-3">
+      <div class="card custom-card overflow-hidden profile-main-card mb-3">
+        <!-- Header Gradient -->
         <div
-          class="position-relative"
+          class="profile-header-banner position-relative"
           style="
             background: linear-gradient(
               135deg,
@@ -191,90 +195,88 @@ const savePassword = async () => {
               #2c5282 50%,
               #1a365d 100%
             );
-            min-height: 130px;
+            min-height: 180px;
           "
-        >
-          <div
-            class="position-absolute top-0 start-0 w-100 p-3"
-            style="z-index: 10"
-          >
-            <button
-              @click="goToProfile"
-              class="btn btn-light btn-sm rounded-pill shadow-sm"
-            >
-              <i class="ri-arrow-left-line me-1"></i>
-              Kembali ke Profile
-            </button>
-          </div>
-        </div>
-        <div class="card-body pt-0">
-          <div
-            class="d-flex align-items-end flex-wrap gap-3"
-            style="margin-top: -55px; position: relative; z-index: 1"
-          >
-            <!-- Avatar Section -->
-            <div class="position-relative">
-              <span
-                class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white"
-              >
-                <img :src="avatarPreview" alt="Profile Avatar" />
-              </span>
-              <div class="position-absolute bottom-0 end-0 d-flex gap-1">
-                <button
-                  @click="triggerAvatarUpload"
-                  class="btn btn-primary btn-icon btn-sm rounded-circle shadow"
-                  title="Ganti Foto"
-                >
-                  <i class="ri-camera-line"></i>
-                </button>
-                <button
-                  @click="removeAvatar"
-                  class="btn btn-danger btn-icon btn-sm rounded-circle shadow"
-                  title="Hapus Foto"
-                >
-                  <i class="ri-delete-bin-line"></i>
-                </button>
-              </div>
-              <input
-                ref="avatarInput"
-                type="file"
-                accept="image/*"
-                class="d-none"
-                @change="handleAvatarChange"
-              />
-            </div>
+        ></div>
 
-            <!-- User Info -->
-            <div class="pb-2 flex-fill">
-              <h4 class="fw-bold mb-1 text-white">
-                {{ formData.name || "User Name" }}
-              </h4>
-              <p class="text-white mb-1">
-                <i class="ri-briefcase-line me-1"></i>{{ formData.title }}
-              </p>
-              <p class="text-black fs-13 mb-0">
-                <i class="ri-mail-line me-1"></i>{{ formData.email }}
-              </p>
-              <p class="text-black fs-12 mb-0 mt-1">
-                <span class="me-3"
-                  ><i class="ri-phone-line me-1"></i>{{ formData.phone }}</span
+        <!-- Card Body - Avatar + User Info -->
+        <div class="card-body p-3 p-md-4 pb-4 position-relative">
+          <!-- Avatar Section -->
+          <div
+            class="d-flex align-items-end justify-content-between flex-wrap gap-3"
+            style="margin-top: -70px"
+          >
+            <div class="d-flex align-items-end gap-3 flex-wrap">
+              <!-- Avatar with Edit Actions -->
+              <div class="position-relative">
+                <div class="avatar-container">
+                  <span
+                    class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden"
+                  >
+                    <img :src="avatarPreview" alt="Profile Avatar" />
+                  </span>
+                  <div
+                    class="avatar-actions position-absolute bottom-0 mb-2 d-flex gap-1"
+                  >
+                    <button
+                      @click="triggerAvatarUpload"
+                      class="btn btn-primary btn-icon btn-sm rounded-circle shadow"
+                      title="Ganti Foto"
+                    >
+                      <i class="ri-camera-line"></i>
+                    </button>
+                    <button
+                      @click="removeAvatar"
+                      class="btn btn-danger btn-icon btn-sm rounded-circle shadow"
+                      title="Hapus Foto"
+                    >
+                      <i class="ri-delete-bin-line"></i>
+                    </button>
+                  </div>
+                </div>
+                <input
+                  ref="avatarInput"
+                  type="file"
+                  accept="image/*"
+                  class="d-none"
+                  @change="handleAvatarChange"
+                />
+              </div>
+
+              <!-- Name & Title -->
+              <div class="pb-2 mt-2 mt-md-5">
+                <h4 class="fw-bold mb-1 text-dark profile-name">
+                  {{ formData.name || "User Name" }}
+                </h4>
+                <p
+                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
                 >
-                <span
-                  ><i class="ri-map-pin-line me-1"></i
-                  >{{ formData.location }}</span
+                  <i class="ri-briefcase-line"></i>{{ formData.title }}
+                </p>
+                <p
+                  class="text-muted fs-13 mb-0 d-flex align-items-center gap-1"
                 >
-              </p>
+                  <i class="ri-mail-line"></i>{{ formData.email }}
+                </p>
+                <p class="fs-12 mb-0 mt-1">
+                  <span class="me-3"
+                    ><i class="ri-phone-line me-1"></i
+                    >{{ formData.phone }}</span
+                  >
+                  <span
+                    ><i class="ri-map-pin-line me-1"></i
+                    >{{ formData.location }}</span
+                  >
+                </p>
+              </div>
             </div>
 
             <!-- Save Button (Desktop) -->
-            <div class="d-none d-md-block">
+            <div class="save-btn-desktop d-none d-md-block">
               <button
                 @click="saveProfile"
                 :disabled="isSaving"
-                class="btn text-white rounded-pill px-4"
-                style="
-                  background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
-                "
+                class="btn btn-secondary rounded-pill px-4"
               >
                 <span
                   v-if="isSaving"
@@ -565,30 +567,4 @@ const savePassword = async () => {
   </div>
 </template>
 
-<style scoped>
-.card {
-  border-radius: 1rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-
-.card-header {
-  border-radius: 1rem 1rem 0 0 !important;
-}
-
-.form-control:focus {
-  border-color: #2c5282;
-  box-shadow: 0 0 0 0.2rem rgba(44, 82, 130, 0.15);
-}
-
-.avatar-xxl {
-  width: 100px !important;
-  height: 100px !important;
-}
-
-@media (max-width: 767px) {
-  .avatar-xxl {
-    width: 80px !important;
-    height: 80px !important;
-  }
-}
-</style>
+<style scoped></style>
