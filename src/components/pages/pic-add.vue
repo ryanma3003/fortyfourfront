@@ -198,7 +198,7 @@ const handleCancel = () => router.back();
   <div class="row justify-content-center">
     <div class="col-xl-11 col-xxl-10">
       <!-- PIC Information Card -->
-      <div class="card custom-card">
+      <div class="card custom-card gradient-header-card">
         <div
           class="card-header d-flex align-items-center"
           style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
@@ -318,5 +318,25 @@ const handleCancel = () => router.back();
 <style scoped>
 .avatar img {
   object-fit: cover;
+}
+
+.gradient-header-card {
+  border: none !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  overflow: hidden !important;
+}
+
+.gradient-header-card .card-header {
+  border: none !important;
+  border-bottom: none !important;
+  border-block-end: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+.gradient-header-card .card-body {
+  border: 1px solid var(--default-border);
+  border-top: none !important;
+  border-radius: 0 !important;
 }
 </style>

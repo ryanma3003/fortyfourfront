@@ -39,6 +39,10 @@ const formData = ref({
 const avatarInput = ref(null);
 const avatarPreview = ref("");
 
+// Banner handling
+const bannerInput = ref(null);
+const bannerPreview = ref("");
+
 // Initialize form data from store
 onMounted(() => {
   profileStore.loadFromStorage();
@@ -59,6 +63,7 @@ const resetForm = () => {
     address: profileStore.address,
   };
   avatarPreview.value = profileStore.avatarUrl;
+  bannerPreview.value = profileStore.bannerUrl;
 };
 
 // Save profile changes
@@ -79,6 +84,7 @@ const saveProfile = async () => {
       bio: formData.value.bio,
       address: formData.value.address,
       avatarUrl: avatarPreview.value,
+      bannerUrl: bannerPreview.value,
     });
 
     showSuccessAlert.value = true;
@@ -115,6 +121,31 @@ const handleAvatarChange = (event) => {
 
 const removeAvatar = () => {
   avatarPreview.value = "/images/faces/9.jpg";
+};
+
+// Banner upload
+const triggerBannerUpload = () => {
+  bannerInput.value?.click();
+};
+
+const handleBannerChange = (event) => {
+  const file = event.target.files?.[0];
+  if (file) {
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Ukuran file maksimal 5MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      bannerPreview.value = e.target?.result;
+    };
+    reader.readAsDataURL(file);
+  }
+};
+
+const removeBanner = () => {
+  bannerPreview.value = "/images/media/media-3.jpg";
 };
 
 // Navigate back to profile
@@ -185,19 +216,57 @@ const savePassword = async () => {
     <div class="col-xl-11 col-xxl-10">
       <!-- Profile Header Card -->
       <div class="card custom-card overflow-hidden profile-main-card mb-3">
-        <!-- Header Gradient -->
+        <!-- Small Header Bar -->
+        <!-- Banner Image -->
         <div
           class="profile-header-banner position-relative"
-          style="
-            background: linear-gradient(
-              135deg,
-              #1e3a5f 0%,
-              #2c5282 50%,
-              #1a365d 100%
-            );
-            min-height: 180px;
-          "
-        ></div>
+          :style="{
+            backgroundImage: `url(${bannerPreview})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            minHeight: '180px',
+          }"
+        >
+          <!-- Overlay for better contrast -->
+          <div
+            class="position-absolute w-100 h-100"
+            style="
+              background: linear-gradient(
+                to bottom,
+                rgba(30, 58, 95, 0.3) 0%,
+                rgba(26, 54, 93, 0.1) 100%
+              );
+            "
+          ></div>
+          <!-- Banner Edit Button -->
+          <div class="position-absolute top-0 end-0 p-3">
+            <div class="d-flex gap-2">
+              <button
+                @click="triggerBannerUpload"
+                class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1"
+                title="Ganti Banner"
+              >
+                <i class="ri-image-edit-line"></i>
+                <span class="d-none d-sm-inline">Ganti Banner</span>
+              </button>
+              <button
+                v-if="bannerPreview !== '/images/media/media-3.jpg'"
+                @click="removeBanner"
+                class="btn btn-danger btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1"
+                title="Hapus Banner"
+              >
+                <i class="ri-delete-bin-line"></i>
+              </button>
+            </div>
+          </div>
+          <input
+            ref="bannerInput"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="d-none"
+            @change="handleBannerChange"
+          />
+        </div>
 
         <!-- Card Body - Avatar + User Info -->
         <div class="card-body p-3 p-md-4 pb-4 position-relative">
@@ -284,7 +353,7 @@ const savePassword = async () => {
       </div>
 
       <!-- Account Information Card -->
-      <div class="card custom-card">
+      <div class="card custom-card gradient-header-card">
         <div
           class="card-header d-flex align-items-center"
           style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
@@ -360,32 +429,6 @@ const savePassword = async () => {
               />
             </div>
 
-            <!-- Website -->
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-global-line me-1 text-primary"></i>Website
-              </label>
-              <input
-                type="url"
-                class="form-control"
-                v-model="formData.website"
-                placeholder="Masukkan website"
-              />
-            </div>
-
-            <!-- Address -->
-            <div class="col-12">
-              <label class="form-label fw-medium">
-                <i class="ri-home-line me-1 text-primary"></i>Alamat
-              </label>
-              <textarea
-                class="form-control"
-                v-model="formData.address"
-                rows="2"
-                placeholder="Masukkan alamat lengkap"
-              ></textarea>
-            </div>
-
             <!-- Bio -->
             <div class="col-12">
               <label class="form-label fw-medium">
@@ -422,7 +465,7 @@ const savePassword = async () => {
       </div>
 
       <!-- Change Password Card -->
-      <div class="card custom-card">
+      <div class="card custom-card gradient-header-card">
         <div
           class="card-header d-flex justify-content-between align-items-center"
           data-bs-toggle="collapse"
@@ -487,7 +530,7 @@ const savePassword = async () => {
       </div>
 
       <!-- Security Settings Card -->
-      <div class="card custom-card">
+      <div class="card custom-card gradient-header-card">
         <div
           class="card-header d-flex justify-content-between align-items-center"
           data-bs-toggle="collapse"
@@ -560,4 +603,30 @@ const savePassword = async () => {
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+.gradient-header-card {
+  border: none !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  overflow: hidden !important;
+}
+
+.gradient-header-card .card-header {
+  border: none !important;
+  border-bottom: none !important;
+  border-block-end: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+.gradient-header-card .card-body {
+  border: 1px solid var(--default-border);
+  border-top: none !important;
+  border-radius: 0 !important;
+}
+
+.gradient-header-card .card-footer {
+  border: 1px solid var(--default-border);
+  border-top: none !important;
+  border-radius: 0 !important;
+}
+</style>

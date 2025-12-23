@@ -21065,9 +21065,9 @@ html[dir=rtl] .carousel-item-prev:not(.carousel-item-end) {
   gap: 0.25rem;
 }
 
-.card.custom-card .card-header:first-child {
+/* .card.custom-card .card-header:first-child {
   border-radius: 0.625rem 0.625rem 0 0;
-}
+} */
 
 .card.custom-card .card-header .card-title {
   position: relative;
@@ -48946,9 +48946,9 @@ a.link-underline-dark {
 }
 
 /* Bio Card Header */
-.bio-card .card-header {
+/* .bio-card .card-header {
   border-radius: 1rem 1rem 0 0;
-}
+} */
 
 /* Responsive adjustments */
 @media (max-width: 991px) {
@@ -49001,9 +49001,9 @@ a.link-underline-dark {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
-.card-header {
+/* .card-header {
   border-radius: 1rem 1rem 0 0 !important;
-}
+} */
 
 .form-control:focus {
   border-color: #2c5282;

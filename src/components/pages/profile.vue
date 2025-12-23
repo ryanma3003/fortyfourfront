@@ -15,6 +15,7 @@ const {
   bio,
   stats,
   avatarUrl,
+  bannerUrl,
   name,
   title,
   email,
@@ -50,24 +51,27 @@ const displayLocation = computed(() => profileStore.displayLocation);
     <div class="col-xl-11 col-xxl-10">
       <!-- Main Profile Card -->
       <div class="card custom-card overflow-hidden profile-main-card">
-        <!-- Header Background with Dark Blue Gradient -->
+        <!-- Small Header Bar -->
+
+        <!-- Banner Image -->
         <div
           class="profile-header-banner position-relative"
-          style="
-            background: linear-gradient(
-              135deg,
-              #1e3a5f 0%,
-              #2c5282 50%,
-              #1a365d 100%
-            );
-            min-height: 180px;
-          "
+          :style="{
+            backgroundImage: `url(${bannerUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            minHeight: '180px',
+          }"
         >
+          <!-- Overlay for better contrast -->
           <div
             class="position-absolute w-100 h-100"
             style="
-              background: url('/images/media/media-3.jpg') center/cover;
-              opacity: 0.1;
+              background: linear-gradient(
+                to bottom,
+                rgba(30, 58, 95, 0.3) 0%,
+                rgba(26, 54, 93, 0.1) 100%
+              );
             "
           ></div>
           <div class="position-absolute top-0 end-0 p-3 p-md-4">
@@ -177,22 +181,31 @@ const displayLocation = computed(() => profileStore.displayLocation);
       </div>
 
       <!-- Bio & About Section -->
-      <div class="card custom-card bio-card">
+      <div class="card custom-card bio-card mb-0 overflow-hidden">
         <div
-          class="card-header d-flex align-items-center"
+          class="card-header d-flex align-items-center border-0"
           style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
         >
           <i class="ri-user-line text-white me-2"></i>
           <div class="card-title text-white mb-0">About</div>
         </div>
-        <div class="card-body">
+        <div
+          class="card-body"
+          style="
+            background: linear-gradient(
+              180deg,
+              rgba(30, 58, 95, 0.05) 0%,
+              rgba(255, 255, 255, 1) 50%
+            );
+          "
+        >
           <p class="text-muted mb-0 lh-lg">{{ bio }}</p>
         </div>
       </div>
 
       <!-- Contact Information Cards -->
-      <div class="row mb-4">
-        <div class="col-lg-6 col-md-6 col-12 mb-3 mb-lg-0">
+      <div class="row g-3 mt-3 mb-4">
+        <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
             <div class="card-body">
               <div class="d-flex align-items-center gap-3">
@@ -211,7 +224,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
           </div>
         </div>
 
-        <div class="col-lg-6 col-md-6 col-12 mb-3 mb-lg-0">
+        <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
             <div class="card-body">
               <div class="d-flex align-items-center gap-3">
@@ -230,7 +243,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
           </div>
         </div>
 
-        <div class="col-lg-6 col-md-6 col-12 mb-3 mb-md-0">
+        <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
             <div class="card-body">
               <div class="d-flex align-items-center gap-3">
@@ -358,4 +371,24 @@ const displayLocation = computed(() => profileStore.displayLocation);
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+.bio-card {
+  border: none !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  overflow: hidden !important;
+}
+
+.bio-card .card-header {
+  border: none !important;
+  border-bottom: none !important;
+  border-block-end: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+.bio-card .card-body {
+  border: 1px solid var(--default-border);
+  border-top: none !important;
+  border-radius: 0 !important;
+}
+</style>
