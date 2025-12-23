@@ -102,27 +102,33 @@ date.value = [startDate, endDate];
         </div>
     </div>
 
-    <!-- ROW 1 -->
-    <div class="row">
-        <div class="row">
-            <div class='col-md-4' 
-                 v-for='(idx, index) in PerusahaanCard1Filtered' 
-                 :key='index'>
+    <!-- ROW 1 - Card dengan 3 kolom -->
+    <div class="row g-3">
+        <div class="col-md-4" 
+            v-for="(idx, index) in PerusahaanCard1Filtered" 
+            :key="index">
+            <SpkReusebleJobs
+                titleClass="fs-13 fw-medium mb-0"
+                :listCard="true"
+                :cardClass="`card ${idx.cardClass}`"
+                :list="idx"
+                :NoCountUp="true"
+            />
+        </div>
+    </div>
 
-                <SpkReusebleJobs
-                    titleClass="fs-13 fw-medium mb-0"
-                    :listCard="true"
-                    :cardClass="`card ${idx.cardClass}`"
-                    :list="idx"
-                    :NoCountUp="true"
-                />
-            </div>
-            <div class="row">
-                <div class='col-md-6' v-for='(idx, index) in PerusahaanCard2Filtered' :key='index'>
-                    <SpkReusebleJobs titleClass="fs-13 fw-medium mb-0" :listCard="true"
-                    :cardClass="`card ${idx.cardClass}`" :list="idx" :NoCountUp="true" />
-                </div>
-            </div>
+    <!-- ROW 2 - Card dengan 2 kolom -->
+    <div class="row g-3">
+        <div class="col-md-6" 
+            v-for="(idx, index) in PerusahaanCard2Filtered" 
+            :key="index">
+            <SpkReusebleJobs 
+                titleClass="fs-13 fw-medium mb-0" 
+                :listCard="true"
+                :cardClass="`card ${idx.cardClass}`" 
+                :list="idx" 
+                :NoCountUp="true" 
+            />
         </div>
     </div>
 

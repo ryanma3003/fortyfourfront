@@ -21,7 +21,7 @@ export default {
 <template>
 <div :class="`custom-card ${cardClass}`">
     <div :class="`card-body ${bodyClass}`">
-        <div :class="`d-flex align-items-start gap-3 flex-wrap ${list.flexClass}`">
+        <div :class="`d-flex align-items-center gap-3 flex-wrap ${list.flexClass}`">
             <div class="flex-fill">
                 <span :class="titleClass" class="fs-15 fw-bold">{{ list.title }}</span>
                 <div class="pb-0 mt-0">
@@ -55,8 +55,8 @@ export default {
                     </div>
                 </div>
             </div>
-
-            <div :class="`avatar avatar-md ${list.avatarClass} bg-${list.priceColor}-transparent mb-3 svg-${list.priceColor} `" v-html="list.svgIcon"></div>
+            
+            <div :class="`avatar avatar-md ${list.avatarClass} bg-${list.priceColor}-transparent svg-${list.priceColor} `" v-html="list.svgIcon"></div>
         </div>
     </div>
 </div>
