@@ -122,6 +122,7 @@ td {
   background: #444;
   color: white;
   font-weight: bold;
+  text-align: center;
 }
 
 .item {
@@ -140,6 +141,7 @@ td {
   font-size: 26px;
   font-weight: bold;
   text-align: center;
+  border-collapse: collapse;
 }
 
 /* DOMAIN COLORS */
@@ -155,6 +157,7 @@ td {
 .purple { background: #8e44ad; }
 .orange { background: #f39c12; }
 .green { background: #2ecc71; }
+
 </style>
 
 
@@ -169,35 +172,28 @@ td {
               <table class="maturity-table">
                 <thead>
                   <tr>
-                    <th rowspan="2" class="left-title">
+                    <th rowspan="2" colspan="2" class="left-title fs-20">
                       Tingkat Kematangan<br />Keamanan Siber
                     </th>
-                    <th colspan="4" class="year-title">2025</th>
+                    <th colspan="5" class="year-title">2025</th>
+                  </tr>
+                  <tr class="center">
+                    <th>Target Nilai Kematangan</th>
+                    <th>Nilai Kematangan</th>
+                    <th rowspan="2">Nilai Kematangan per-Domain</th>
+                    <th rowspan="2">Kategori Tingkat Kematangan per-Domain</th>
                     <th rowspan="2" class="right-title">
                       Kategori Tingkat Kematangan<br />Keamanan Siber
                     </th>
                   </tr>
                   <tr>
-                    <th>Target Nilai Kematangan</th>
-                    <th>Nilai Kematangan</th>
-                    <th>Nilai Kematangan per-Domain</th>
-                    <th>Kategori Tingkat Kematangan per-Domain</th>
+                    <th colspan="2" class="total">Total</th>
+                    <th class="center bold">2.51</th>
+                    <th class="center bold">-</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  <!-- TOTAL -->
-                  <tr>
-                    <td class="total">Total</td>
-                    <td class="center bold">2.51</td>
-                    <td class="center">-</td>
-                    <td class="center">-</td>
-                    <td class="center">INPUT BELUM LENGKAP</td>
-                    <td :rowspan="totalRowspan" class="status-big">
-                      INPUT BELUM LENGKAP
-                    </td>
-                  </tr>
-
                   <!-- DOMAIN LOOP -->
                   <template v-for="(domain, dIndex) in domains" :key="dIndex">
                     <tr v-for="(item, iIndex) in domain.items" :key="iIndex">
@@ -215,6 +211,15 @@ td {
                       <td class="center">2.51</td>
                       <td class="center">-</td>
 
+                      <!-- PER DOMAIN -->
+                      <td
+                        v-if="iIndex === 0"
+                        :rowspan="domain.items.length"
+                        class="center"
+                      >
+                        -
+                      </td>
+
                       <!-- KATEGORI PER DOMAIN -->
                       <td
                         v-if="iIndex === 0"
@@ -223,6 +228,14 @@ td {
                       >
                         INPUT BELUM LENGKAP
                       </td>
+                      <!-- TOTAL -->
+                      <td
+                        v-if="dIndex === 0 && iIndex === 0"
+                        :rowspan="totalRowspan"
+                        class="status-big"
+                      >
+                        INPUT BELUM LENGKAP
+                      </td> 
                     </tr>
                   </template>
                 </tbody>
