@@ -216,7 +216,6 @@ const savePassword = async () => {
     <div class="col-xl-11 col-xxl-10">
       <!-- Profile Header Card -->
       <div class="card custom-card overflow-hidden profile-main-card mb-3">
-        <!-- Small Header Bar -->
         <!-- Banner Image -->
         <div
           class="profile-header-banner position-relative"
