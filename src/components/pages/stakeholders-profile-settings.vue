@@ -19,11 +19,17 @@ const form = reactive<Partial<Stakeholder>>({
   sektor: "",
   website: "",
   alamat: "",
-  photo: "", // Add photo to form
+  photo: "",
 });
 
 const currentSlug = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
+
+// Image validation constants
+const MAX_FILE_SIZE_MB = 2;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const ALLOWED_FORMATS = ["image/jpeg", "image/png", "image/gif"];
+const ALLOWED_EXTENSIONS = "JPEG, PNG, GIF";
 
 onMounted(() => {
   const slug = route.query.slug as string;
@@ -50,6 +56,29 @@ const onFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement;
   if (target.files && target.files[0]) {
     const file = target.files[0];
+
+    // Validate file format
+    if (!ALLOWED_FORMATS.includes(file.type)) {
+      showErrorAlert.value = true;
+      errorMessage.value = `Format file tidak didukung. Gunakan ${ALLOWED_EXTENSIONS}.`;
+      setTimeout(() => {
+        showErrorAlert.value = false;
+      }, 4000);
+      target.value = "";
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      showErrorAlert.value = true;
+      errorMessage.value = `Ukuran file terlalu besar. Maksimal ${MAX_FILE_SIZE_MB}MB.`;
+      setTimeout(() => {
+        showErrorAlert.value = false;
+      }, 4000);
+      target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
@@ -61,21 +90,40 @@ const onFileChange = (event: Event) => {
 };
 
 const removeImage = () => {
-  form.photo = ""; // Or set to a default placeholder path if you have one
+  form.photo = "";
 };
 
-const saveChanges = () => {
-  const foundIndex = stakeholdersData.findIndex(
-    (s) => s.slug === currentSlug.value
-  );
-  if (foundIndex !== -1) {
-    Object.assign(stakeholdersData[foundIndex], form);
-    router.push(`/profile-stakeholders/${currentSlug.value}`);
+const saveChanges = async () => {
+  isSaving.value = true;
+
+  try {
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    const foundIndex = stakeholdersData.findIndex(
+      (s) => s.slug === currentSlug.value
+    );
+    if (foundIndex !== -1) {
+      Object.assign(stakeholdersData[foundIndex], form);
+      showSuccessAlert.value = true;
+
+      // Redirect after short delay
+      setTimeout(() => {
+        router.push(`/profile-stakeholders/${currentSlug.value}`);
+      }, 1000);
+    }
+  } catch (error) {
+    showErrorAlert.value = true;
+    errorMessage.value = "Terjadi kesalahan. Silakan coba lagi.";
+    setTimeout(() => {
+      showErrorAlert.value = false;
+    }, 3000);
+  } finally {
+    isSaving.value = false;
   }
 };
 
 //Reactive State
-
 const dataToPass = computed(() => ({
   title: {
     label: `Profile ${form.nama_perusahaan || "Stakeholder"}`,
@@ -84,23 +132,78 @@ const dataToPass = computed(() => ({
   currentpage: "Account Settings",
   activepage: "Account Settings",
 }));
+
+const isSaving = ref(false);
+const showSuccessAlert = ref(false);
+const showErrorAlert = ref(false);
+const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
 </script>
 
 <template>
   <Pageheader :propData="dataToPass" />
-  
-  <!-- Start::row-1 -->
-  <div class="row">
-    <div class="col-xl-12">
-      <div class="card custom-card">
+
+  <!-- Alerts -->
+  <div
+    v-if="showSuccessAlert"
+    class="alert alert-success alert-dismissible fade show mb-3 d-flex align-items-center"
+    role="alert"
+  >
+    <i class="ri-checkbox-circle-line fs-18 me-2"></i>
+    <div>Perubahan berhasil disimpan!</div>
+    <button
+      type="button"
+      class="btn-close"
+      @click="showSuccessAlert = false"
+    ></button>
+  </div>
+
+  <div
+    v-if="showErrorAlert"
+    class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center"
+    role="alert"
+  >
+    <i class="ri-error-warning-line fs-18 me-2"></i>
+    <div>{{ errorMessage }}</div>
+    <button
+      type="button"
+      class="btn-close"
+      @click="showErrorAlert = false"
+    ></button>
+  </div>
+
+  <!-- Main Container -->
+  <div class="row justify-content-center">
+    <div class="col-xl-11 col-xxl-10">
+      <!-- Account Information Card -->
+      <div class="card custom-card gradient-header-card">
+        <div
+          class="card-header d-flex align-items-center"
+          style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
+        >
+          <i class="ri-building-2-line text-white me-2 fs-18"></i>
+          <div class="card-title text-white mb-0">Informasi Perusahaan</div>
+        </div>
         <div class="card-body p-4">
-          <div class="row gy-3">
+          <div class="row gy-4">
+            <!-- Profile Picture Section -->
             <div class="col-xl-12">
               <div class="d-flex align-items-start flex-wrap gap-3">
-                <div>
-                  <span class="avatar avatar-xxl">
-                    <img :src="form.photo || '/images/faces/9.jpg'" alt="" />
+                <div class="position-relative">
+                  <span
+                    class="avatar avatar-xxl avatar-rounded shadow border border-2 border-light overflow-hidden"
+                  >
+                    <img
+                      :src="form.photo || '/images/faces/9.jpg'"
+                      alt="Profile Avatar"
+                    />
                   </span>
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    :accept="ALLOWED_FORMATS.join(',')"
+                    class="d-none"
+                    @change="onFileChange"
+                  />
                 </div>
                 <div>
                   <span class="fw-medium d-block mb-2">Profile Picture</span>
@@ -117,60 +220,36 @@ const dataToPass = computed(() => ({
                     >
                       <i class="ri-delete-bin-line me-1"></i>Remove
                     </button>
-                    <input
-                      type="file"
-                      ref="fileInput"
-                      class="d-none"
-                      accept="image/*"
-                      @change="onFileChange"
-                    />
                   </div>
-                  <span class="d-block fs-12 text-muted"
-                    >Use JPEG, PNG, or GIF. Best size: 200x200 pixels. Keep it
-                    under 5MB</span
-                  >
+                  <span class="d-block fs-12 text-muted">
+                    <i class="ri-information-line me-1"></i>
+                    Format: {{ ALLOWED_EXTENSIONS }} | Max:
+                    {{ MAX_FILE_SIZE_MB }}MB | Best size: 200x200 pixels
+                  </span>
                 </div>
               </div>
             </div>
-            <div class="col-xl-6">
-              <label for="profile-user-name" class="form-label"
-                >Nama Perusahaan :</label
-              >
+
+            <!-- Nama Perusahaan -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <label class="form-label fw-medium">
+                <i class="ri-building-line me-1 text-primary"></i>Nama
+                Perusahaan
+              </label>
               <input
                 type="text"
                 class="form-control"
-                id="profile-user-name"
                 v-model="form.nama_perusahaan"
-                placeholder="Enter Name"
+                placeholder="Masukkan nama perusahaan"
               />
             </div>
-            <div class="col-xl-6">
-              <label for="profile-email" class="form-label">Email :</label>
-              <input
-                type="email"
-                class="form-control"
-                id="profile-email"
-                v-model="form.email"
-                placeholder="Enter Email"
-              />
-            </div>
-            <div class="col-xl-6">
-              <label for="profile-phn-no" class="form-label">Phone No :</label>
-              <input
-                type="text"
-                class="form-control"
-                id="profile-phn-no"
-                v-model="form.telepon"
-                placeholder="Enter Number"
-              />
-            </div>
-            <div class="col-xl-6">
-              <label for="profile-sector" class="form-label">Sektor :</label>
-              <select
-                class="form-select"
-                id="profile-sector"
-                v-model="form.sektor"
-              >
+
+            <!-- Sektor -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <label class="form-label fw-medium">
+                <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
+              </label>
+              <select class="form-select" v-model="form.sektor">
                 <option value="" disabled>-- Pilih Sektor --</option>
                 <option value="Teknologi Informasi">Teknologi Informasi</option>
                 <option value="Perdagangan Umum">Perdagangan Umum</option>
@@ -185,41 +264,107 @@ const dataToPass = computed(() => ({
                 <option value="manufaktur">Manufaktur</option>
               </select>
             </div>
-            <div class="col-xl-6">
-              <label for="profile-web" class="form-label">Website :</label>
+
+            <!-- Email -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <label class="form-label fw-medium">
+                <i class="ri-mail-line me-1 text-primary"></i>Email
+              </label>
               <input
-                type="text"
+                type="email"
                 class="form-control"
-                id="profile-web"
-                v-model="form.website"
-                placeholder="Enter Website"
+                v-model="form.email"
+                placeholder="Masukkan email"
               />
             </div>
-            <div class="col-xl-12">
-              <label for="profile-address" class="form-label">Alamat :</label>
+
+            <!-- Phone -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <label class="form-label fw-medium">
+                <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon
+              </label>
+              <input
+                type="tel"
+                class="form-control"
+                v-model="form.telepon"
+                placeholder="Masukkan nomor telepon"
+              />
+            </div>
+
+            <!-- Website -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <label class="form-label fw-medium">
+                <i class="ri-global-line me-1 text-primary"></i>Website
+              </label>
+              <input
+                type="url"
+                class="form-control"
+                v-model="form.website"
+                placeholder="Masukkan website"
+              />
+            </div>
+
+            <!-- Empty column for alignment -->
+            <div class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"></div>
+
+            <!-- Alamat -->
+            <div class="col-12">
+              <label class="form-label fw-medium">
+                <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
+              </label>
               <textarea
                 class="form-control"
-                id="profile-address"
-                rows="3"
                 v-model="form.alamat"
+                rows="3"
+                placeholder="Masukkan alamat lengkap"
               ></textarea>
             </div>
-            <div class="d-flex justify-content-end gap-2">
-              <button class="btn btn-secondary" @click="handleCancel">
-                Cancel
-              </button>
-              <button class="btn btn-primary" @click="saveChanges">
-                Save Changes
-              </button>
+
+            <!-- Action Buttons -->
+            <div class="col-12">
+              <div class="d-flex justify-content-end gap-2">
+                <button @click="handleCancel" class="btn btn-outline-danger">
+                  <i class="ri-arrow-left-line me-1"></i>Batal
+                </button>
+                <button
+                  @click="saveChanges"
+                  :disabled="isSaving"
+                  class="btn btn-secondary"
+                >
+                  <span
+                    v-if="isSaving"
+                    class="spinner-border spinner-border-sm me-2"
+                  ></span>
+                  <i v-else class="ri-save-line me-1"></i>
+                  {{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-  <!--End::row-1 -->
 </template>
 
 <style scoped>
-/* Add your styles here */
+.gradient-header-card {
+  border: none !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  overflow: hidden !important;
+}
+
+.gradient-header-card .card-header {
+  border: none !important;
+  border-bottom: none !important;
+  border-block-end: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+.gradient-header-card .card-body {
+  border: 1px solid var(--default-border);
+  border-top: none !important;
+  border-radius: 0 !important;
+}
 </style>

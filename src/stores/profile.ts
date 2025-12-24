@@ -13,6 +13,7 @@ export interface ProfileData {
   bio: string;
   address: string;
   avatarUrl: string;
+  bannerUrl: string;
   stats: {
     projects: string;
     followers: string;
@@ -32,6 +33,7 @@ export const useProfileStore = defineStore('profile', {
     bio: 'Passionate about creating delightful user experiences and solving complex design challenges. Love to collaborate with teams to bring ideas to life.',
     address: 'Jl. Sudirman No. 123, Jakarta Pusat',
     avatarUrl: '/images/faces/9.jpg',
+    bannerUrl: '/images/media/media-3.jpg',
     stats: {
       projects: '47',
       followers: '2.4K',
@@ -112,6 +114,18 @@ export const useProfileStore = defineStore('profile', {
     // Reset avatar to default
     resetAvatar() {
       this.avatarUrl = '/images/faces/9.jpg';
+      this.saveToStorage();
+    },
+
+    // Update banner
+    updateBanner(url: string) {
+      this.bannerUrl = url;
+      this.saveToStorage();
+    },
+
+    // Reset banner to default
+    resetBanner() {
+      this.bannerUrl = '/images/media/media-3.jpg';
       this.saveToStorage();
     },
   },
