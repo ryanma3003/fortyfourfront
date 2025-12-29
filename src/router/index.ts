@@ -339,6 +339,11 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/ikas.vue"),
         },
         {
+          path: `ikas-crud`,
+          name: 'Ikas Crud',
+          component: () => import("../components/ikas-crud.vue"),
+        },
+        {
           path: `kse`,
           name: 'Kse',
           component: () => import("../components/kse.vue"),
@@ -1178,15 +1183,15 @@ router.beforeEach((to, from, next) => {
   // Check if user is authenticated from localStorage
   const token = localStorage.getItem('token');
   const isAuthenticated = !!token;
-  
+
   // List of public routes that don't require authentication
-  const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover', 
+  const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover',
     '/pages/authentication/reset-password/basic', '/pages/authentication/reset-password/cover',
     '/pages/authentication/sign-in/basic', '/pages/authentication/sign-in/cover',
     '/pages/error/401-error', '/pages/error/404-error', '/pages/error/500-error'];
-  
+
   const isPublicRoute = publicRoutes.includes(to.path) || to.path.startsWith('/pages/authentication');
-  
+
   if (!isAuthenticated && !isPublicRoute) {
     // Redirect to login if not authenticated
     next('/');
