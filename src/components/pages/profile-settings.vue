@@ -1,16 +1,12 @@
-<script setup>
-import { ref, computed, onMounted, watch } from "vue";
+<script setup lang="ts">
+import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
-import { useAuthStore } from "../../stores/auth";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
-// Router
-const router = useRouter();
-
-// Stores
-const profileStore = useProfileStore();
-const authStore = useAuthStore();
+const DEFAULT_AVATAR = "/images/faces/9.jpg";
+const DEFAULT_BANNER = "/images/media/media-3.jpg";
+const MAX_BANNER_SIZE = 5 * 1024 * 1024; // 5MB
 
 const dataToPass = {
   title: { label: "Profile", path: "/profile" },
@@ -18,15 +14,17 @@ const dataToPass = {
   activepage: "Profile Settings",
 };
 
-// Editing state
+const router = useRouter();
+const profileStore = useProfileStore();
+
 const isSaving = ref(false);
 const showSuccessAlert = ref(false);
 const showErrorAlert = ref(false);
 
-// Form data (editable copy of profile)
 const formData = ref({
   name: "",
-  title: "",
+  role: "",
+  jabatan: "",
   location: "",
   email: "",
   phone: "",
@@ -35,26 +33,28 @@ const formData = ref({
   address: "",
 });
 
-// Avatar handling
-const avatarInput = ref(null);
+const avatarInput = ref<HTMLInputElement | null>(null);
 const avatarPreview = ref("");
-
-// Banner handling
-const bannerInput = ref(null);
+const bannerInput = ref<HTMLInputElement | null>(null);
 const bannerPreview = ref("");
 
-// Initialize form data from store
+const passwordData = ref({
+  currentPassword: "",
+  newPassword: "",
+  confirmPassword: "",
+});
+
 onMounted(() => {
   profileStore.loadFromStorage();
   profileStore.initFromAuth();
   resetForm();
 });
 
-// Reset form to current profile values
 const resetForm = () => {
   formData.value = {
     name: profileStore.displayName,
-    title: profileStore.displayRole,
+    role: profileStore.displayRole,
+    jabatan: profileStore.displayJabatan,
     location: profileStore.location,
     email: profileStore.displayEmail,
     phone: profileStore.phone,
@@ -66,116 +66,79 @@ const resetForm = () => {
   bannerPreview.value = profileStore.bannerUrl;
 };
 
-// Save profile changes
 const saveProfile = async () => {
   isSaving.value = true;
 
   try {
-    // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     profileStore.updateProfile({
-      name: formData.value.name,
-      title: formData.value.title,
-      location: formData.value.location,
-      email: formData.value.email,
-      phone: formData.value.phone,
-      website: formData.value.website,
-      bio: formData.value.bio,
-      address: formData.value.address,
+      ...formData.value,
       avatarUrl: avatarPreview.value,
       bannerUrl: bannerPreview.value,
     });
 
     showSuccessAlert.value = true;
-
-    // Redirect to profile after short delay
-    setTimeout(() => {
-      router.push("/profile");
-    }, 1000);
-  } catch (error) {
+    setTimeout(() => router.push("/profile"), 1000);
+  } catch {
     showErrorAlert.value = true;
-    setTimeout(() => {
-      showErrorAlert.value = false;
-    }, 3000);
+    setTimeout(() => (showErrorAlert.value = false), 3000);
   } finally {
     isSaving.value = false;
   }
 };
 
-// Avatar upload
-const triggerAvatarUpload = () => {
-  avatarInput.value?.click();
+const triggerAvatarUpload = () => avatarInput.value?.click();
+
+const handleAvatarChange = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    avatarPreview.value = e.target?.result as string;
+  };
+  reader.readAsDataURL(file);
 };
 
-const handleAvatarChange = (event) => {
-  const file = event.target.files?.[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      avatarPreview.value = e.target?.result;
-    };
-    reader.readAsDataURL(file);
+const triggerBannerUpload = () => bannerInput.value?.click();
+
+const handleBannerChange = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  if (file.size > MAX_BANNER_SIZE) {
+    alert("Ukuran file maksimal 5MB");
+    return;
   }
-};
 
-const removeAvatar = () => {
-  avatarPreview.value = "/images/faces/9.jpg";
-};
-
-// Banner upload
-const triggerBannerUpload = () => {
-  bannerInput.value?.click();
-};
-
-const handleBannerChange = (event) => {
-  const file = event.target.files?.[0];
-  if (file) {
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Ukuran file maksimal 5MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      bannerPreview.value = e.target?.result;
-    };
-    reader.readAsDataURL(file);
-  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    bannerPreview.value = e.target?.result as string;
+  };
+  reader.readAsDataURL(file);
 };
 
 const removeBanner = () => {
-  bannerPreview.value = "/images/media/media-3.jpg";
+  bannerPreview.value = DEFAULT_BANNER;
 };
-
-// Navigate back to profile
-const goToProfile = () => {
-  router.push("/profile");
-};
-
-// Password change
-const passwordData = ref({
-  currentPassword: "",
-  newPassword: "",
-  confirmPassword: "",
-});
 
 const savePassword = async () => {
   if (passwordData.value.newPassword !== passwordData.value.confirmPassword) {
     alert("Password tidak cocok!");
     return;
   }
-  // Simulate password change
+
   await new Promise((resolve) => setTimeout(resolve, 500));
+
   passwordData.value = {
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
   };
+
   showSuccessAlert.value = true;
-  setTimeout(() => {
-    showSuccessAlert.value = false;
-  }, 3000);
+  setTimeout(() => (showSuccessAlert.value = false), 3000);
 };
 </script>
 
@@ -214,7 +177,6 @@ const savePassword = async () => {
   <!-- Main Container -->
   <div class="row justify-content-center">
     <div class="col-xl-11 col-xxl-10">
-      <!-- Profile Header Card -->
       <div class="card custom-card overflow-hidden profile-main-card mb-3">
         <!-- Banner Image -->
         <div
@@ -226,7 +188,7 @@ const savePassword = async () => {
             minHeight: '180px',
           }"
         >
-          <!-- Overlay for better contrast -->
+          <!-- Overlay -->
           <div
             class="position-absolute w-100 h-100"
             style="
@@ -237,7 +199,8 @@ const savePassword = async () => {
               );
             "
           ></div>
-          <!-- Banner Edit Button -->
+
+          <!-- Banner Edit Buttons -->
           <div class="position-absolute top-0 end-0 p-3">
             <div class="d-flex gap-2">
               <button
@@ -249,7 +212,7 @@ const savePassword = async () => {
                 <span class="d-none d-sm-inline">Ganti Banner</span>
               </button>
               <button
-                v-if="bannerPreview !== '/images/media/media-3.jpg'"
+                v-if="bannerPreview !== DEFAULT_BANNER"
                 @click="removeBanner"
                 class="btn btn-danger btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1"
                 title="Hapus Banner"
@@ -258,6 +221,7 @@ const savePassword = async () => {
               </button>
             </div>
           </div>
+
           <input
             ref="bannerInput"
             type="file"
@@ -269,7 +233,6 @@ const savePassword = async () => {
 
         <!-- Card Body - Avatar + User Info -->
         <div class="card-body p-3 p-md-4 pb-4 position-relative">
-          <!-- Avatar Section -->
           <div
             class="d-flex align-items-end justify-content-between flex-wrap gap-3"
             style="margin-top: -70px"
@@ -312,7 +275,12 @@ const savePassword = async () => {
                 <p
                   class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
                 >
-                  <i class="ri-briefcase-line"></i>{{ formData.title }}
+                  <i class="ri-user-line"></i>{{ formData.role }}
+                </p>
+                <p
+                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
+                >
+                  <i class="ri-briefcase-line"></i>{{ formData.jabatan }}
                 </p>
                 <p
                   class="text-black fs-13 mb-2 d-flex align-items-center gap-1"
@@ -320,14 +288,12 @@ const savePassword = async () => {
                   <i class="ri-mail-line"></i>{{ formData.email }}
                 </p>
                 <p class="fs-12 mb-0 mt-1">
-                  <span class="me-3"
-                    ><i class="ri-phone-line me-1"></i
-                    >{{ formData.phone }}</span
-                  >
-                  <span
-                    ><i class="ri-map-pin-line me-1"></i
-                    >{{ formData.location }}</span
-                  >
+                  <span class="me-3">
+                    <i class="ri-phone-line me-1"></i>{{ formData.phone }}
+                  </span>
+                  <span>
+                    <i class="ri-map-pin-line me-1"></i>{{ formData.location }}
+                  </span>
                 </p>
               </div>
             </div>
@@ -351,7 +317,6 @@ const savePassword = async () => {
         </div>
       </div>
 
-      <!-- Account Information Card -->
       <div class="card custom-card gradient-header-card">
         <div
           class="card-header d-flex align-items-center"
@@ -360,6 +325,7 @@ const savePassword = async () => {
           <i class="ri-user-settings-line text-white me-2 fs-18"></i>
           <div class="card-title text-white mb-0">Informasi Akun</div>
         </div>
+
         <div class="card-body p-4">
           <div class="row gy-4">
             <!-- Name -->
@@ -375,16 +341,15 @@ const savePassword = async () => {
               />
             </div>
 
-            <!-- Title/Role -->
+            <!-- Jabatan -->
             <div class="col-xl-6 col-lg-6 col-md-6">
               <label class="form-label fw-medium">
-                <i class="ri-briefcase-line me-1 text-primary"></i>Jabatan /
-                Role
+                <i class="ri-briefcase-line me-1 text-primary"></i>Jabatan
               </label>
               <input
                 type="text"
                 class="form-control"
-                v-model="formData.title"
+                v-model="formData.jabatan"
                 placeholder="Masukkan jabatan"
               />
             </div>
@@ -428,17 +393,19 @@ const savePassword = async () => {
               />
             </div>
 
-            <!-- Bio -->
-            <div class="col-12">
+            <!-- Role (Read-only) -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
               <label class="form-label fw-medium">
-                <i class="ri-file-text-line me-1 text-primary"></i>Tentang Saya
+                <i class="ri-shield-user-line me-1 text-primary"></i>Role
+                <span class="text-muted fs-11 ms-1">(Tidak dapat diubah)</span>
               </label>
-              <textarea
-                class="form-control"
-                v-model="formData.bio"
-                rows="3"
-                placeholder="Ceritakan tentang diri Anda"
-              ></textarea>
+              <input
+                type="text"
+                class="form-control bg-light"
+                v-model="formData.role"
+                readonly
+                disabled
+              />
             </div>
 
             <!-- Save Button (Mobile) -->
@@ -463,7 +430,6 @@ const savePassword = async () => {
         </div>
       </div>
 
-      <!-- Change Password Card -->
       <div class="card custom-card gradient-header-card">
         <div
           class="card-header d-flex justify-content-between align-items-center"
@@ -480,6 +446,7 @@ const savePassword = async () => {
           </div>
           <i class="ri-arrow-down-s-line text-white fs-20"></i>
         </div>
+
         <div id="changePassword" class="collapse">
           <div class="card-body p-4">
             <div class="row gy-3">
@@ -512,6 +479,7 @@ const savePassword = async () => {
               </div>
             </div>
           </div>
+
           <div class="card-footer bg-light border-top-0">
             <div class="d-flex justify-content-end">
               <button
@@ -522,77 +490,6 @@ const savePassword = async () => {
                 "
               >
                 <i class="ri-lock-line me-1"></i>Update Password
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Security Settings Card -->
-      <div class="card custom-card gradient-header-card">
-        <div
-          class="card-header d-flex justify-content-between align-items-center"
-          data-bs-toggle="collapse"
-          data-bs-target="#securitySettings"
-          aria-expanded="false"
-          style="
-            cursor: pointer;
-            background: linear-gradient(90deg, #1a365d 0%, #2a4365 100%);
-          "
-        >
-          <div class="d-flex align-items-center">
-            <i class="ri-shield-check-line text-white me-2 fs-18"></i>
-            <div class="card-title text-white mb-0">Pengaturan Keamanan</div>
-          </div>
-          <i class="ri-arrow-down-s-line text-white fs-20"></i>
-        </div>
-        <div id="securitySettings" class="collapse">
-          <div class="card-body p-4">
-            <div
-              class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4 pb-3 border-bottom"
-            >
-              <div class="flex-fill">
-                <p class="fs-14 mb-1 fw-medium">Verifikasi Login</p>
-                <p class="fs-12 mb-0 text-muted">
-                  Aktifkan verifikasi dua langkah untuk keamanan akun yang lebih
-                  baik.
-                </p>
-              </div>
-              <a
-                href="javascript:void(0);"
-                class="btn btn-outline-primary btn-sm"
-              >
-                <i class="ri-shield-keyhole-line me-1"></i>Atur Verifikasi
-              </a>
-            </div>
-            <div
-              class="d-flex align-items-start justify-content-between flex-wrap gap-3"
-            >
-              <div class="flex-fill">
-                <p class="fs-14 mb-1 fw-medium">Verifikasi Password</p>
-                <p class="fs-12 mb-0 text-muted">
-                  Minta verifikasi password saat mengubah detail penting akun.
-                </p>
-              </div>
-              <div class="form-check form-switch">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  id="password-verification"
-                />
-                <label class="form-check-label" for="password-verification"
-                  >Aktifkan</label
-                >
-              </div>
-            </div>
-          </div>
-          <div class="card-footer bg-light border-top-0">
-            <div class="d-flex justify-content-between flex-wrap gap-2">
-              <button class="btn btn-outline-danger btn-sm">
-                <i class="ri-user-unfollow-line me-1"></i>Nonaktifkan Akun
-              </button>
-              <button class="btn btn-outline-secondary btn-sm">
-                <i class="ri-refresh-line me-1"></i>Reset ke Default
               </button>
             </div>
           </div>

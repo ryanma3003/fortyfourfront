@@ -18,6 +18,7 @@ const {
   bannerUrl,
   name,
   title,
+  role,
   email,
   website,
   address,
@@ -38,6 +39,7 @@ onMounted(() => {
 // Computed display values from store (these use getters so need computed)
 const displayName = computed(() => profileStore.displayName);
 const displayEmail = computed(() => profileStore.displayEmail);
+const displayJabatan = computed(() => profileStore.displayJabatan);
 const displayRole = computed(() => profileStore.displayRole);
 const displayPhone = computed(() => profileStore.displayPhone);
 const displayLocation = computed(() => profileStore.displayLocation);
@@ -112,7 +114,12 @@ const displayLocation = computed(() => profileStore.displayLocation);
                 <p
                   class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
                 >
-                  <i class="ri-briefcase-line"></i>{{ displayRole }}
+                  <i class="ri-user-line"></i>{{ displayRole }}
+                </p>
+                <p
+                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
+                >
+                  <i class="ri-briefcase-line"></i>{{ displayJabatan }}
                 </p>
                 <p
                   class="text-black fs-13 mb-2 d-flex align-items-center gap-1"
@@ -181,7 +188,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
       </div>
 
       <!-- Bio & About Section -->
-      <div class="card custom-card bio-card mb-0 overflow-hidden">
+      <!-- <div class="card custom-card bio-card mb-0 overflow-hidden">
         <div
           class="card-header d-flex align-items-center border-0"
           style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
@@ -201,13 +208,13 @@ const displayLocation = computed(() => profileStore.displayLocation);
         >
           <p class="text-muted mb-0 lh-lg">{{ bio }}</p>
         </div>
-      </div>
+      </div> -->
 
       <!-- Contact Information Cards -->
       <div class="row g-3 mt-3 mb-4">
         <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
-            <div class="card-body">
+            <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
                 <span
                   class="avatar avatar-md rounded-3"
@@ -226,7 +233,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
 
         <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
-            <div class="card-body">
+            <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
                 <span
                   class="avatar avatar-md rounded-3"
@@ -245,7 +252,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
 
         <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
-            <div class="card-body">
+            <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
                 <span
                   class="avatar avatar-md rounded-3"
@@ -264,7 +271,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
 
         <div class="col-lg-6 col-md-6 col-12">
           <div class="card custom-card contact-card h-100">
-            <div class="card-body">
+            <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
                 <span
                   class="avatar avatar-md rounded-3"

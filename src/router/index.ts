@@ -35,6 +35,12 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/dashboards/profile-stakeholders.vue"),
         },
         {
+          path: `profile-user/:slug`,
+          name: 'Profile User',
+          component: () => import("../components/dashboards/user-profile.vue"),
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'profile',
           name: "Profile",
           component: () => import("../components/pages/profile.vue"),
@@ -53,6 +59,12 @@ const routes: RouteRecordRaw[] = [
           path: 'pic-add',
           name: "Pic Add",
           component: () => import("../components/pages/pic-add.vue"),
+        },
+        {
+          path: 'users-list',
+          name: "Users List",
+          component: () => import("../components/dashboards/users-list.vue"),
+          meta: { requiresAdmin: true },
         },
         {
           path: 'role-list',
@@ -1198,6 +1210,16 @@ router.beforeEach((to, from, next) => {
   } else if (isAuthenticated && to.path === '/') {
     // Redirect to dashboard if already authenticated and trying to access login
     next('/dashboards');
+  } else if (to.meta?.requiresAdmin) {
+    // Check admin role for admin-only routes
+    const storedUser = localStorage.getItem('currentUser');
+    const currentUser = storedUser ? JSON.parse(storedUser) : null;
+    if (currentUser?.role !== 'Admin') {
+      // Redirect non-admin users to dashboards
+      next('/dashboards');
+    } else {
+      next();
+    }
   } else {
     next();
   }

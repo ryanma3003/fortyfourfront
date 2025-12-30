@@ -41,6 +41,9 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
   {
     path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false
   },
+  {
+    path: "/users-list", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "Admin"
+  },
   // {
   //   path: "/kse", icon: Svgicons.Dashboardicon, title: "Kse", type: "link", active: true, dirchange: false, selected: false
   // },

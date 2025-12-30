@@ -32654,16 +32654,28 @@ ul.pos-system-orders-list li:last-child {
   padding: 0;
 }
 
-/* Tablet styles (480px - 768px) */
-@media (min-width: 504px) {
+@media (min-width: 482px) {
   .profile-main-card .avatar-container .avatar.avatar-xxl {
     width: 7rem !important;
     height: 7rem !important;
-    margin-bottom: 4.5rem !important;
+    margin-bottom: 6rem !important;
   }
 
   .profile-main-card .avatar-container .avatar-actions {
-    margin-bottom: 4.5rem !important;
+    margin-bottom: 6rem !important;
+  }
+}
+
+/* Tablet styles (480px - 768px) */
+@media (min-width: 512px) {
+  .profile-main-card .avatar-container .avatar.avatar-xxl {
+    width: 7rem !important;
+    height: 7rem !important;
+    margin-bottom: 6rem !important;
+  }
+
+  .profile-main-card .avatar-container .avatar-actions {
+    margin-bottom: 6rem !important;
   }
 
   .profile-main-card .avatar-container .avatar-actions .btn {
@@ -32701,11 +32713,11 @@ ul.pos-system-orders-list li:last-child {
   .profile-main-card .avatar-container .avatar.avatar-xxl {
     width: 8rem !important;
     height: 8rem !important;
-    margin-bottom: 3rem !important;
+    margin-bottom: 5rem !important;
   }
 
   .profile-main-card .avatar-container .avatar-actions {
-    margin-bottom: 2.5rem !important;
+    margin-bottom: 5rem !important;
   }
 
   .profile-main-card .avatar-container .avatar-actions .btn {
@@ -32743,11 +32755,11 @@ ul.pos-system-orders-list li:last-child {
   .profile-main-card .avatar-container .avatar.avatar-xxl {
     width: 10rem !important;
     height: 10rem !important;
-    margin-bottom: 2rem !important;
+    margin-bottom: 3rem !important;
   }
 
   .profile-main-card .avatar-container .avatar-actions {
-    margin-bottom: 2rem !important;
+    margin-bottom: 3rem !important;
     margin-right: 1rem !important;
   }
 
@@ -48881,7 +48893,7 @@ a.link-underline-dark {
 
 /* Text Colors */
 .text-primary-dark {
-  color: #2c5282 !important;
+  color: #333 !important;
 }
 
 /* Cards */

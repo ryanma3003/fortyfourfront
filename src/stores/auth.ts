@@ -10,6 +10,7 @@ interface LoginPayload {
 interface User {
   id: number;
   username: string;
+  jabatan: string;
   password: string;
   name: string;
   role: string;
@@ -19,6 +20,7 @@ interface User {
 interface CurrentUser {
   id: number;
   username: string;
+  jabatan: string;
   name: string;
   role: string;
   phone: string;
@@ -44,6 +46,9 @@ export const useAuthStore = defineStore('auth', {
     },
     userEmail(): string {
       return this.currentUser?.username || '';
+    },
+    userJabatan(): string {
+      return this.currentUser?.jabatan || '';
     }
   },
 
@@ -63,6 +68,7 @@ export const useAuthStore = defineStore('auth', {
           username: user.username,
           name: user.name,
           role: user.role,
+          jabatan: user.jabatan,
         };
         
         localStorage.setItem('token', token);
