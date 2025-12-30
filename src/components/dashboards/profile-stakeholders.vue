@@ -103,6 +103,11 @@ const dataToPass = computed(() => ({
   object-fit: cover;
 }
 
+.pic-item:hover {
+  background-color: #f9fafb;
+  border-radius: 6px;
+}
+
 /* Responsive - Tablet (768px - 991px) */
 @media (max-width: 991px) {
   .profile-banner-image {
@@ -232,71 +237,46 @@ const dataToPass = computed(() => ({
                           ><span>Add PIC</span></router-link
                         >
                       </div>
-                      <div class="card-body">
-                        <div class="row g-5">
-                          <div
-                            class="col-xl-4 col-lg-6 col-md-6 col-sm-12"
-                            v-for="(idx, index) in friends"
-                            :key="index"
-                          >
-                            <div
-                              class="card custom-card h-100 d-flex align-items-center"
-                            >
-                              <div class="card-body p-4 text-center">
-                                <div
-                                  v-if="isAdmin"
-                                  class="dropdown profile-friends-actions"
-                                >
-                                  <a
-                                    aria-label="anchor"
-                                    href="javascript:void(0);"
-                                    class="btn btn-icon rounded-circle border btn-light"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false"
-                                  >
-                                    <i class="ri-more-2-fill"></i>
-                                  </a>
-                                  <ul class="dropdown-menu">
-                                    <li>
-                                      <a
-                                        class="dropdown-item"
-                                        @click="editPIC(index)"
-                                      >
-                                        <i class="ri-edit-line me-2"></i>Edit
-                                      </a>
-                                    </li>
-                                    <li>
-                                      <a
-                                        class="dropdown-item text-danger"
-                                        @click="deletePIC(index)"
-                                      >
-                                        <i class="ri-delete-bin-line me-2"></i
-                                        >Delete
-                                      </a>
-                                    </li>
-                                  </ul>
-                                </div>
-                                <div class="lh-1 mb-2">
-                                  <span
-                                    class="avatar avatar-xxl avatar-rounded"
-                                  >
-                                    <img :src="idx.imgSrc" alt="" />
+                      <div class="card-body p-0">
+                        <div class="table-responsive">
+                          <table class="table text-nowrap">
+                            <thead>
+                              <tr>
+                                <th>No</th>
+                                <th>Nama</th>
+                                <th>Telepon</th>
+                                <th v-if="isAdmin" class="text-center">Aksi</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-if="!friends.length">
+                                <td colspan="4" class="text-center text-muted py-4">
+                                  <i class="ri-inbox-line fs-2 d-block mb-2"></i>
+                                  Data tidak ditemukan
+                                </td>
+                              </tr>
+                              <tr v-for="(idx, index) in friends" :key="index">
+                                <td>{{ index + 1 }}</td>
+                                <td class="fw-semibold">{{ idx.name }}</td>
+                                <td>
+                                  <span class="text-muted fs-13">
+                                    <i class="ri-phone-line align-middle fs-15 me-1"></i>
+                                    {{ idx.telepon }}
                                   </span>
-                                </div>
-                                <div class="mb-2">
-                                  <span class="d-block fw-semibold">{{
-                                    idx.name
-                                  }}</span>
-                                  <span class="text-muted fs-13"
-                                    ><i
-                                      class="ri-phone-line align-middle fs-15"
-                                    ></i
-                                    >{{ idx.telepon }}</span
-                                  >
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                                </td>
+                                <td v-if="isAdmin" class="text-center">
+                                  <div class="btn-group btn-group-sm">
+                                    <button @click="editPIC(index)" class="btn btn-sm btn-info-light" title="Edit">
+                                      <i class="ri-edit-line"></i>
+                                    </button>
+                                    <button @click="deletePIC(index)" class="btn btn-sm btn-danger-light" title="Delete">
+                                      <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     </div>
