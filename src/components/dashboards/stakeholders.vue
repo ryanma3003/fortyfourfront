@@ -4,6 +4,9 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { stakeholdersData, type Stakeholder } from "../../data/dummydata";
 import EasyDataTable from "vue3-easy-data-table";
 import "vue3-easy-data-table/dist/style.css";
+import { useAuthStore } from "../../stores/auth";
+
+
 
 export default {
   data() {
@@ -17,6 +20,9 @@ export default {
   },
   components: { Pageheader, EasyDataTable },
   setup() {
+    const authStore = useAuthStore();
+    const isAdmin = computed(() => authStore.isAdmin);
+
     const items = ref<Stakeholder[]>([]);
     const loading = ref(false);
     const searchQuery = ref("");
@@ -311,6 +317,7 @@ export default {
     };
 
     return {
+      isAdmin,
       items,
       loading,
       searchQuery,
@@ -451,7 +458,7 @@ export default {
                   </option>
                 </select>
                 <span class="text-muted fs-13">per halaman</span>
-                <button
+                <button v-if="isAdmin"
                   @click="openCreateModal"
                   class="btn btn-sm btn-secondary btn-glare ms-auto"
                 >
@@ -579,14 +586,14 @@ export default {
                           >
                             <i class="ri-file-chart-line"></i>
                           </router-link>
-                          <button
+                          <button v-if="isAdmin"
                             @click="openEditModal(item)"
                             class="btn btn-sm btn-success-light"
                             title="Edit"
                           >
                             <i class="ri-edit-line"></i>
                           </button>
-                          <button
+                          <button v-if="isAdmin"
                             @click="openDeleteModal(item)"
                             class="btn btn-sm btn-danger-light"
                             title="Delete"

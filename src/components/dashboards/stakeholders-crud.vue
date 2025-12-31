@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { stakeholdersData, type Stakeholder } from "../../data/dummydata";
+import { useAuthStore } from "../../stores/auth";
 
 export default {
   data() {
@@ -15,6 +16,8 @@ export default {
   },
   components: { Pageheader },
   setup() {
+    const authStore = useAuthStore();
+    const isAdmin = computed(() => authStore.isAdmin);
     const items = ref<Stakeholder[]>([]);
     const loading = ref(false);
     const searchQuery = ref("");
@@ -304,6 +307,7 @@ export default {
     };
 
     return {
+      isAdmin,
       items,
       loading,
       searchQuery,
@@ -409,7 +413,7 @@ export default {
                 <i class="ri-close-line"></i>
               </button>
             </div>
-            <button
+            <button v-if="isAdmin"
               @click="openCreateModal"
               class="btn btn-sm btn-primary"
             >
@@ -550,14 +554,14 @@ export default {
                     </td>
                     <td>{{ item.email }}</td>
                     <td class="text-center">
-                      <button
+                      <button v-if="isAdmin"
                         @click="openEditModal(item)"
                         class="btn btn-sm btn-success-light me-1"
                         title="Edit"
                       >
                         <i class="ri-edit-line"></i>
                       </button>
-                      <button
+                      <button v-if="isAdmin"
                         @click="openDeleteModal(item)"
                         class="btn btn-sm btn-danger-light"
                         title="Delete"

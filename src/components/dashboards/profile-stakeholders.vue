@@ -265,7 +265,7 @@ const dataToPass = computed(() => ({
                                   </span>
                                 </td>
                                 <td v-if="isAdmin" class="text-center">
-                                  <div class="btn-group btn-group-sm">
+                                  <div class="btn btn-sm gap-2 d-flex justify-content-center">
                                     <button @click="editPIC(index)" class="btn btn-sm btn-info-light" title="Edit">
                                       <i class="ri-edit-line"></i>
                                     </button>
