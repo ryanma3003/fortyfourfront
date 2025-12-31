@@ -132,6 +132,20 @@
       <!-- End::nav -->
     </PerfectScrollbar>
     <!-- End::main-sidebar -->
+    
+    <!-- Chatbot Sidebar Footer -->
+    <!-- Chatbot Sidebar Footer -->
+    <div class="sidebar-chatbot-footer">
+       <a href="javascript:void(0);" class="side-menu__item" @click="toggleChat">
+          <i class="ti ti-message-chatbot side-menu__icon"></i>
+          <span class="side-menu__label">AI Assistant</span>
+       </a>
+    </div>
+
+    <Teleport to="body">
+      <ChatModal :isOpen="isChatOpen" @close="isChatOpen = false" />
+    </Teleport>
+
   </aside>
   <!-- End::app-sidebar -->
 </template>
@@ -153,6 +167,7 @@ import media80 from "/images/media/media-80.png";
 import { switcherStore } from "../../../stores/switcher";
 import { useAuthStore } from "../../../stores/auth";
 import RecursiveMenu from "../../UI/recursiveMenu.vue";
+import ChatModal from "../chatbot/ChatModal.vue";
 
 const authStore = useAuthStore();
 
@@ -194,6 +209,12 @@ const previousUrl = ref("/");
 
 const router = useRouter();
 const route = useRoute();
+
+const isChatOpen = ref(false);
+
+const toggleChat = () => {
+  isChatOpen.value = !isChatOpen.value;
+};
 
 function toggleSubmenu(
   event,
@@ -861,3 +882,74 @@ onBeforeMount(() => {
   window.removeEventListener("resize", menuResizeFn);
 });
 </script>
+
+<style scoped lang="scss">
+.app-sidebar {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.main-sidebar {
+  flex: 1; /* Takes up remaining space */
+}
+
+.sidebar-chatbot-footer {
+  padding: 10px 20px;
+  border-top: 1px solid var(--menu-border-color);
+  background: var(--menu-bg);
+  
+  .side-menu__item {
+    display: flex;
+    align-items: center;
+    color: var(--menu-prime-color);
+    padding: 10px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    
+    &:hover {
+      background-color: var(--primary01);
+      color: var(--primary-color);
+      
+      .side-menu__icon {
+        color: var(--primary-color);
+        fill: var(--primary-color);
+      }
+    }
+    
+    .side-menu__icon {
+      font-size: 20px;
+      margin-right: 10px;
+      color: var(--menu-icon-color);
+      fill: var(--menu-icon-color);
+      transition: all 0.3s ease;
+    }
+    
+    .side-menu__label {
+      font-size: 14px;
+      white-space: nowrap;
+    }
+  }
+}
+
+/* Handle collapsed state */
+[data-toggled="icon-overlay-close"] .sidebar-chatbot-footer,
+[data-toggled="close"] .sidebar-chatbot-footer,
+[data-toggled="icon-text-close"] .sidebar-chatbot-footer {
+  padding: 10px 5px; /* Reduce padding */
+  text-align: center;
+  
+  .side-menu__item {
+    justify-content: center;
+    padding: 10px 0;
+    
+    .side-menu__icon {
+      margin-right: 0;
+      font-size: 24px;
+    }
+    
+    .side-menu__label {
+      display: none;
+    }
+  }
+}
+</style>
