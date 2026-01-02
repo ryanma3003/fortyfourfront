@@ -1,6 +1,7 @@
 // stores/auth.ts
 import { defineStore } from 'pinia';
 import users from '../utils/users.json';
+import { useProfileStore } from './profile';
 
 interface LoginPayload {
   username: string;
@@ -77,6 +78,11 @@ export const useAuthStore = defineStore('auth', {
         this.authenticated = true;
         this.currentUser = userData;
         this.loading = false;
+        
+        // Switch profile to new user (loads user-specific profile data)
+        const profileStore = useProfileStore();
+        profileStore.switchUser();
+        
         return { authenticated: true };
       } else {
         localStorage.removeItem('token');
@@ -89,6 +95,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     logUserOut() {
+      // Reset profile before clearing user data
+      const profileStore = useProfileStore();
+      profileStore.resetToDefaults();
+      
       localStorage.removeItem('token');
       localStorage.removeItem('currentUser');
       this.authenticated = false;

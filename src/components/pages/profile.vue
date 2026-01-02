@@ -16,6 +16,10 @@ const {
   stats,
   avatarUrl,
   bannerUrl,
+  bannerPositionX,
+  bannerPositionY,
+  avatarPositionX,
+  avatarPositionY,
   name,
   title,
   role,
@@ -32,8 +36,7 @@ const dataToPass = {
 
 // Initialize profile data on mount
 onMounted(() => {
-  profileStore.loadFromStorage();
-  profileStore.initFromAuth();
+  profileStore.switchUser();
 });
 
 // Computed display values from store (these use getters so need computed)
@@ -56,18 +59,16 @@ const displayLocation = computed(() => profileStore.displayLocation);
         <!-- Small Header Bar -->
 
         <!-- Banner Image -->
-        <div
-          class="profile-header-banner position-relative"
+        <div class="profile-header-banner position-relative"
           :style="{
             backgroundImage: `url(${bannerUrl})`,
             backgroundSize: 'cover',
-            backgroundPosition: 'center',
+            backgroundPosition: `${bannerPositionX ?? 50}% ${bannerPositionY ?? 50}%`,
             minHeight: '180px',
           }"
         >
           <!-- Overlay for better contrast -->
-          <div
-            class="position-absolute w-100 h-100"
+          <div class="position-absolute w-100 h-100"
             style="
               background: linear-gradient(
                 to bottom,
@@ -77,10 +78,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
             "
           ></div>
           <div class="position-absolute top-0 end-0 p-3 p-md-4">
-            <router-link
-              to="/profile-settings"
-              class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2"
-            >
+            <router-link to="/profile-settings" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
               <i class="ri-edit-2-line"></i>
               <span class="d-none d-sm-inline">Edit Profile</span>
             </router-link>
@@ -90,18 +88,17 @@ const displayLocation = computed(() => profileStore.displayLocation);
         <!-- Profile Content -->
         <div class="card-body p-3 p-md-4 pb-4 position-relative">
           <!-- Avatar Section -->
-          <div
-            class="d-flex align-items-end justify-content-between flex-wrap gap-3"
-            style="margin-top: -70px"
-          >
+          <div class="d-flex align-items-end justify-content-between flex-wrap gap-3" style="margin-top: -70px">
             <div class="d-flex align-items-end gap-3 flex-wrap">
               <!-- Avatar with Online Status -->
               <div class="position-relative">
                 <div class="avatar-container">
-                  <span
-                    class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden"
-                  >
-                    <img :src="avatarUrl" alt="Profile Avatar" />
+                  <span class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden">
+                    <img 
+                      :src="avatarUrl" 
+                      alt="Profile Avatar" 
+                      :style="{ objectPosition: `${avatarPositionX ?? 50}% ${avatarPositionY ?? 50}%`, objectFit: 'cover', width: '100%', height: '100%' }"
+                    />
                   </span>
                 </div>
               </div>
@@ -111,29 +108,18 @@ const displayLocation = computed(() => profileStore.displayLocation);
                 <h4 class="fw-bold mb-1 text-dark profile-name">
                   {{ displayName }}
                 </h4>
-                <p
-                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
-                >
+                <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1">
                   <i class="ri-user-line"></i>{{ displayRole }}
                 </p>
-                <p
-                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
-                >
+                <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1">
                   <i class="ri-briefcase-line"></i>{{ displayJabatan }}
                 </p>
-                <p
-                  class="text-black fs-13 mb-2 d-flex align-items-center gap-1"
-                >
+                <p class="text-black fs-13 mb-2 d-flex align-items-center gap-1">
                   <i class="ri-mail-line"></i>{{ displayEmail }}
                 </p>
                 <p class="fs-12 mb-0 mt-1">
-                  <span class="me-3"
-                    ><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span
-                  >
-                  <span
-                    ><i class="ri-map-pin-line me-1"></i
-                    >{{ displayLocation }}</span
-                  >
+                  <span class="me-3"><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span>
+                  <span><i class="ri-map-pin-line me-1"></i>{{ displayLocation }}</span>
                 </p>
               </div>
             </div>
@@ -216,10 +202,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #1e3a5f, #2c5282)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
                   <i class="ri-mail-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -235,10 +218,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #2c5282, #3182ce)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2c5282, #3182ce)">
                   <i class="ri-phone-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -254,10 +234,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #1a365d, #2a4365)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1a365d, #2a4365)">
                   <i class="ri-map-pin-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -273,10 +250,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #2b6cb0, #4299e1)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2b6cb0, #4299e1)">
                   <i class="ri-calendar-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -379,6 +353,11 @@ const displayLocation = computed(() => profileStore.displayLocation);
 </template>
 
 <style scoped>
+/* Make entire content area fill viewport height */
+.row.justify-content-center {
+  min-height: calc(84vh);
+}
+
 .bio-card {
   border: none !important;
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;

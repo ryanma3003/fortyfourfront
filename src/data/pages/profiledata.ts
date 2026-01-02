@@ -5,7 +5,7 @@ import face9 from "/images/faces/face9.png";
 export interface FriendType {
   name: string;
   telepon: string;
-  imgSrc: string;
+  imgSrc?: string;
 }
 
 export const FriendsList: FriendType[] = [

@@ -2,6 +2,24 @@
 import { defineStore } from 'pinia';
 import { useAuthStore } from './auth';
 
+// Helper to get user-specific storage key
+const getStorageKey = (userId?: number): string => {
+  if (userId) {
+    return `userProfile_${userId}`;
+  }
+  // Fallback to check localStorage for current user
+  const storedUser = localStorage.getItem('currentUser');
+  if (storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      return `userProfile_${user.id}`;
+    } catch {
+      return 'userProfile';
+    }
+  }
+  return 'userProfile';
+};
+
 export interface ProfileData {
   name: string;
   title: string;
@@ -16,6 +34,11 @@ export interface ProfileData {
   address: string;
   avatarUrl: string;
   bannerUrl: string;
+  // Image position properties (percentage values 0-100)
+  bannerPositionX: number;
+  bannerPositionY: number;
+  avatarPositionX: number;
+  avatarPositionY: number;
   // Flag to track if profile has been customized
   isCustomized: boolean;
   stats: {
@@ -40,6 +63,11 @@ export const useProfileStore = defineStore('profile', {
     address: 'Jl. Sudirman No. 123, Jakarta Pusat',
     avatarUrl: '/images/faces/9.jpg',
     bannerUrl: '/images/media/media-3.jpg',
+    // Default positions (centered)
+    bannerPositionX: 50,
+    bannerPositionY: 50,
+    avatarPositionX: 50,
+    avatarPositionY: 50,
     isCustomized: false,
     stats: {
       projects: '47',
@@ -132,20 +160,59 @@ export const useProfileStore = defineStore('profile', {
       this.saveToStorage();
     },
 
-    // Save profile to localStorage
+    // Save profile to localStorage (user-specific)
     saveToStorage() {
-      localStorage.setItem('userProfile', JSON.stringify(this.$state));
+      const key = getStorageKey();
+      localStorage.setItem(key, JSON.stringify(this.$state));
     },
 
-    // Load profile from localStorage
+    // Load profile from localStorage (user-specific)
     loadFromStorage() {
-      const stored = localStorage.getItem('userProfile');
-      console.log('loadFromStorage - raw:', stored);
+      const key = getStorageKey();
+      const stored = localStorage.getItem(key);
+      console.log('loadFromStorage - key:', key, 'raw:', stored);
       if (stored) {
         const data = JSON.parse(stored);
         console.log('loadFromStorage - parsed jabatan:', data.jabatan, 'isCustomized:', data.isCustomized);
         Object.assign(this, data);
       }
+    },
+
+    // Reset profile to defaults (call when switching users)
+    resetToDefaults() {
+      this.name = '';
+      this.title = 'Senior Product Designer';
+      this.role = '';
+      this.location = 'Jakarta, Indonesia';
+      this.email = '';
+      this.phone = '+62 812-3456-7890';
+      this.jabatan = 'Senior Product Designer';
+      this.website = 'www.yourwebsite.com';
+      this.joined = 'Januari 2022';
+      this.bio = 'Passionate about creating delightful user experiences and solving complex design challenges. Love to collaborate with teams to bring ideas to life.';
+      this.address = 'Jl. Sudirman No. 123, Jakarta Pusat';
+      this.avatarUrl = '/images/faces/9.jpg';
+      this.bannerUrl = '/images/media/media-3.jpg';
+      this.bannerPositionX = 50;
+      this.bannerPositionY = 50;
+      this.avatarPositionX = 50;
+      this.avatarPositionY = 50;
+      this.isCustomized = false;
+      this.stats = {
+        projects: '47',
+        followers: '2.4K',
+        following: '892',
+      };
+    },
+
+    // Reinitialize profile for new user (call after login)
+    switchUser() {
+      // Reset to defaults first
+      this.resetToDefaults();
+      // Try to load user-specific data
+      this.loadFromStorage();
+      // Initialize from auth if not customized
+      this.initFromAuth();
     },
 
     // Update avatar

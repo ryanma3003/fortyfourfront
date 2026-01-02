@@ -49,9 +49,8 @@ const loadUser = () => {
       authStore.currentUser.username === foundUser.username
     ) {
       isCurrentUser.value = true;
-      // Load profile data from store for current user
-      profileStore.loadFromStorage();
-      profileStore.initFromAuth();
+      // Load profile data from store for current user - use switchUser for proper initialization
+      profileStore.switchUser();
     } else {
       isCurrentUser.value = false;
     }
@@ -164,8 +163,7 @@ const displayBanner = computed(() => {
       <!-- Main Profile Card -->
       <div class="card custom-card overflow-hidden profile-main-card">
         <!-- Banner Image -->
-        <div
-          class="profile-header-banner position-relative"
+        <div class="profile-header-banner position-relative"
           :style="{
             backgroundImage: `url(${displayBanner})`,
             backgroundSize: 'cover',
@@ -174,8 +172,7 @@ const displayBanner = computed(() => {
           }"
         >
           <!-- Overlay for better contrast -->
-          <div
-            class="position-absolute w-100 h-100"
+          <div class="position-absolute w-100 h-100"
             style="
               background: linear-gradient(
                 to bottom,
@@ -193,10 +190,7 @@ const displayBanner = computed(() => {
               <i class="ri-edit-2-line"></i>
               <span class="d-none d-sm-inline">Edit Profile</span>
             </router-link> -->
-            <router-link
-              to="/users-list"
-              class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2"
-            >
+            <router-link to="/users-list" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
               <i class="ri-arrow-left-line"></i>
               <span class="d-none d-sm-inline">Kembali</span>
             </router-link>
@@ -206,17 +200,12 @@ const displayBanner = computed(() => {
         <!-- Profile Content -->
         <div class="card-body p-3 p-md-4 pb-4 position-relative">
           <!-- Avatar Section -->
-          <div
-            class="d-flex align-items-end justify-content-between flex-wrap gap-3"
-            style="margin-top: -70px"
-          >
+          <div class="d-flex align-items-end justify-content-between flex-wrap gap-3" style="margin-top: -70px">
             <div class="d-flex align-items-end gap-3 flex-wrap">
               <!-- Avatar with Online Status -->
               <div class="position-relative">
                 <div class="avatar-container">
-                  <span
-                    class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden"
-                  >
+                  <span class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden">
                     <img :src="displayAvatar" alt="Profile Avatar" />
                   </span>
                 </div>
@@ -227,29 +216,18 @@ const displayBanner = computed(() => {
                 <h4 class="fw-bold mb-1 text-dark profile-name">
                   {{ displayName }}
                 </h4>
-                <p
-                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
-                >
+                <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1">
                   <i class="ri-user-line"></i>{{ displayRole }}
                 </p>
-                <p
-                  class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"
-                >
+                <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1">
                   <i class="ri-briefcase-line"></i>{{ displayJabatan }}
                 </p>
-                <p
-                  class="text-black fs-13 mb-2 d-flex align-items-center gap-1"
-                >
+                <p class="text-black fs-13 mb-2 d-flex align-items-center gap-1">
                   <i class="ri-mail-line"></i>{{ displayEmail }}
                 </p>
                 <p class="fs-12 mb-0 mt-1">
-                  <span class="me-3"
-                    ><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span
-                  >
-                  <span
-                    ><i class="ri-map-pin-line me-1"></i
-                    >{{ displayLocation }}</span
-                  >
+                  <span class="me-3"><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span>
+                  <span><i class="ri-map-pin-line me-1"></i>{{ displayLocation }}</span>
                 </p>
               </div>
             </div>
@@ -263,10 +241,7 @@ const displayBanner = computed(() => {
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #1e3a5f, #2c5282)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
                   <i class="ri-mail-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -282,10 +257,7 @@ const displayBanner = computed(() => {
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #2c5282, #3182ce)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2c5282, #3182ce)">
                   <i class="ri-phone-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -301,10 +273,7 @@ const displayBanner = computed(() => {
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #1a365d, #2a4365)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1a365d, #2a4365)">
                   <i class="ri-map-pin-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -320,10 +289,7 @@ const displayBanner = computed(() => {
           <div class="card custom-card contact-card h-100">
             <div class="card-body d-flex align-items-center">
               <div class="d-flex align-items-center gap-3">
-                <span
-                  class="avatar avatar-md rounded-3"
-                  style="background: linear-gradient(135deg, #2b6cb0, #4299e1)"
-                >
+                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2b6cb0, #4299e1)">
                   <i class="ri-calendar-line text-white fs-18"></i>
                 </span>
                 <div>
@@ -340,6 +306,9 @@ const displayBanner = computed(() => {
 </template>
 
 <style scoped>
+  .row.justify-content-center {
+  min-height: calc(84vh);
+}
 .bio-card {
   border: none !important;
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;

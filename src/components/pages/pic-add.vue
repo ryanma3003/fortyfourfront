@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { FriendsList } from "../../data/pages/profiledata";
@@ -7,13 +7,6 @@ import { stakeholdersData } from "../../data/dummydata";
 
 const route = useRoute();
 const router = useRouter();
-const DEFAULT_IMAGE = "/images/faces/face9.png";
-
-// Image validation constants
-const MAX_FILE_SIZE_MB = 2;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const ALLOWED_FORMATS = ["image/jpeg", "image/png", "image/gif"];
-const ALLOWED_EXTENSIONS = "JPEG, PNG, GIF";
 
 const index = computed(() =>
   route.query.index !== undefined ? Number(route.query.index) : null
@@ -37,7 +30,6 @@ const dataToPass = computed(() => ({
 const form = ref({
   name: "",
   telepon: "",
-  imgSrc: DEFAULT_IMAGE,
 });
 
 const errors = ref({
@@ -53,7 +45,6 @@ const isFormValid = computed(
     !errors.value.telepon
 );
 
-const fileInput = ref<HTMLInputElement | null>(null);
 const showSuccessAlert = ref(false);
 const showErrorAlert = ref(false);
 const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
@@ -82,45 +73,6 @@ const validatePhone = () => {
   errors.value.telepon = form.value.telepon.trim()
     ? ""
     : "Phone number is required";
-};
-
-const openFilePicker = () => fileInput.value?.click();
-
-const handleImageChange = (e: Event) => {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-
-  // Validate file format
-  if (!ALLOWED_FORMATS.includes(file.type)) {
-    showErrorAlert.value = true;
-    errorMessage.value = `Format file tidak didukung. Gunakan ${ALLOWED_EXTENSIONS}.`;
-    setTimeout(() => {
-      showErrorAlert.value = false;
-    }, 4000);
-    input.value = "";
-    return;
-  }
-
-  // Validate file size
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    showErrorAlert.value = true;
-    errorMessage.value = `Ukuran file terlalu besar. Maksimal ${MAX_FILE_SIZE_MB}MB.`;
-    setTimeout(() => {
-      showErrorAlert.value = false;
-    }, 4000);
-    input.value = "";
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = () => (form.value.imgSrc = reader.result as string);
-  reader.readAsDataURL(file);
-};
-
-const removeImage = () => {
-  form.value.imgSrc = DEFAULT_IMAGE;
-  if (fileInput.value) fileInput.value.value = "";
 };
 
 const handleSave = async () => {
@@ -164,34 +116,16 @@ const handleCancel = () => router.back();
 
 <template>
   <Pageheader :propData="dataToPass" />
-
-  <!-- Alerts -->
-  <div
-    v-if="showSuccessAlert"
-    class="alert alert-success alert-dismissible fade show mb-3 d-flex align-items-center"
-    role="alert"
-  >
+  <div v-if="showSuccessAlert" class="alert alert-success alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
     <i class="ri-checkbox-circle-line fs-18 me-2"></i>
     <div>Perubahan berhasil disimpan!</div>
-    <button
-      type="button"
-      class="btn-close"
-      @click="showSuccessAlert = false"
-    ></button>
+    <button type="button" class="btn-close" @click="showSuccessAlert = false"></button>
   </div>
 
-  <div
-    v-if="showErrorAlert"
-    class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center"
-    role="alert"
-  >
+  <div v-if="showErrorAlert" class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
     <i class="ri-error-warning-line fs-18 me-2"></i>
     <div>{{ errorMessage }}</div>
-    <button
-      type="button"
-      class="btn-close"
-      @click="showErrorAlert = false"
-    ></button>
+    <button type="button" class="btn-close" @click="showErrorAlert = false"></button>
   </div>
 
   <!-- Main Container -->
@@ -199,10 +133,7 @@ const handleCancel = () => router.back();
     <div class="col-xl-11 col-xxl-10">
       <!-- PIC Information Card -->
       <div class="card custom-card gradient-header-card">
-        <div
-          class="card-header d-flex align-items-center"
-          style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
-        >
+        <div class="card-header d-flex align-items-center" style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
           <i class="ri-user-add-line text-white me-2 fs-18"></i>
           <div class="card-title text-white mb-0">
             {{ isEdit ? "Edit PIC" : "Tambah PIC" }}
@@ -210,61 +141,13 @@ const handleCancel = () => router.back();
         </div>
         <div class="card-body p-4">
           <div class="row gy-4">
-            <!-- Profile Picture Section -->
-            <div class="col-xl-12">
-              <div class="d-flex align-items-start flex-wrap gap-3">
-                <div class="position-relative">
-                  <span
-                    class="avatar avatar-xxl avatar-rounded shadow border border-2 border-light overflow-hidden"
-                  >
-                    <img :src="form.imgSrc" alt="Profile Avatar" />
-                  </span>
-                  <input
-                    ref="fileInput"
-                    type="file"
-                    :accept="ALLOWED_FORMATS.join(',')"
-                    class="d-none"
-                    @change="handleImageChange"
-                  />
-                </div>
-                <div>
-                  <span class="fw-medium d-block mb-2">Profile Picture</span>
-                  <div class="btn-list mb-1">
-                    <button
-                      class="btn btn-sm btn-primary btn-wave"
-                      @click="openFilePicker"
-                    >
-                      <i class="ri-upload-2-line me-1"></i>Change Image
-                    </button>
-                    <button
-                      class="btn btn-sm btn-light btn-wave"
-                      @click="removeImage"
-                    >
-                      <i class="ri-delete-bin-line me-1"></i>Remove
-                    </button>
-                  </div>
-                  <span class="d-block fs-12 text-muted">
-                    <i class="ri-information-line me-1"></i>
-                    Format: {{ ALLOWED_EXTENSIONS }} | Max:
-                    {{ MAX_FILE_SIZE_MB }}MB | Best size: 200x200 pixels
-                  </span>
-                </div>
-              </div>
-            </div>
-
             <!-- Name -->
             <div class="col-xl-6 col-lg-6 col-md-6">
               <label class="form-label fw-medium">
                 <i class="ri-user-line me-1 text-primary"></i>Nama PIC
               </label>
-              <input
-                type="text"
-                class="form-control"
-                v-model="form.name"
-                @blur="validateName"
-                placeholder="Masukkan nama PIC"
-                :class="{ 'is-invalid': errors.name }"
-              />
+              <input type="text" class="form-control" v-model="form.name" @blur="validateName" placeholder="Masukkan nama PIC" 
+                :class="{ 'is-invalid': errors.name }" />
               <div class="invalid-feedback">{{ errors.name }}</div>
             </div>
 
@@ -273,18 +156,9 @@ const handleCancel = () => router.back();
               <label class="form-label fw-medium">
                 <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon
               </label>
-              <input
-                type="tel"
-                class="form-control"
-                v-model="form.telepon"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="15"
-                placeholder="Masukkan nomor telepon"
-                @input="form.telepon = form.telepon.replace(/[^0-9]/g, '')"
-                @blur="validatePhone"
-                :class="{ 'is-invalid': errors.telepon }"
-              />
+              <input type="tel" class="form-control" v-model="form.telepon" inputmode="numeric" pattern="[0-9]*" maxlength="15" 
+                placeholder="Masukkan nomor telepon" @input="form.telepon = form.telepon.replace(/[^0-9]/g, '')" @blur="validatePhone" 
+                :class="{ 'is-invalid': errors.telepon }" />
               <div class="invalid-feedback">{{ errors.telepon }}</div>
             </div>
 
@@ -294,15 +168,8 @@ const handleCancel = () => router.back();
                 <button @click="handleCancel" class="btn btn-outline-danger">
                   <i class="ri-arrow-left-line me-1"></i>Batal
                 </button>
-                <button
-                  @click="handleSave"
-                  :disabled="!isFormValid || isSaving"
-                  class="btn btn-secondary"
-                >
-                  <span
-                    v-if="isSaving"
-                    class="spinner-border spinner-border-sm me-2"
-                  ></span>
+                <button @click="handleSave" :disabled="!isFormValid || isSaving" class="btn btn-secondary">
+                  <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
                   <i v-else class="ri-save-line me-1"></i>
                   {{ isSaving ? "Menyimpan..." : "Simpan" }}
                 </button>
@@ -316,10 +183,6 @@ const handleCancel = () => router.back();
 </template>
 
 <style scoped>
-.avatar img {
-  object-fit: cover;
-}
-
 .gradient-header-card {
   border: none !important;
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;

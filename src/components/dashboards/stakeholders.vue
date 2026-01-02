@@ -265,7 +265,7 @@ export default {
     const fileInput = ref<HTMLInputElement | null>(null);
 
     // Image validation constants
-    const MAX_FILE_SIZE_MB = 2;
+    const MAX_FILE_SIZE_MB = 5;
     const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
     const ALLOWED_FORMATS = ["image/jpeg", "image/png", "image/gif"];
     const ALLOWED_EXTENSIONS = "JPEG, PNG, GIF";
@@ -365,6 +365,20 @@ export default {
       ALLOWED_EXTENSIONS,
       MAX_FILE_SIZE_MB,
       ALLOWED_FORMATS,
+      getSektorBadgeClass: (sektor: string) => {
+        const sektorColors: Record<string, string> = {
+          'Teknologi Informasi': 'bg-primary-transparent text-primary',
+          'Software Development': 'bg-info-transparent text-info',
+          'Teknologi': 'bg-indigo-transparent text-indigo',
+          'Keuangan': 'bg-success-transparent text-success',
+          'Kesehatan': 'bg-danger-transparent text-danger',
+          'Pendidikan': 'bg-warning-transparent text-warning',
+          'Manufaktur': 'bg-secondary-transparent text-secondary',
+          'Konstruksi': 'bg-orange-transparent text-orange',
+          'Perdagangan Umum': 'bg-teal-transparent text-teal',
+        };
+        return sektorColors[sektor] || 'bg-info-transparent text-info';
+      },
     };
   },
 };
@@ -375,19 +389,13 @@ export default {
   <Pageheader :propData="dataToPass" />
 
   <!-- Toast Notification -->
-  <div
-    v-if="showToast"
-    class="position-fixed top-0 end-0 p-3"
-    style="z-index: 9999"
-  >
-    <div
-      class="toast show"
+  <div v-if="showToast" class="position-fixed top-0 end-0 p-3" style="z-index: 9999">
+    <div class="toast show"
       :class="{
         'bg-success': toastType === 'success',
         'bg-danger': toastType === 'error',
       }"
-      role="alert"
-    >
+      role="alert">
       <div class="toast-body text-white">
         <i
           :class="
@@ -404,86 +412,70 @@ export default {
 
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card">
-        <div
-          class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3"
-        >
-          <div class="card-title">Tabel Daftar Stakeholders</div>
-          <div class="d-flex gap-2 align-items-center flex-wrap flex-grow-1">
-            <div
-              class="search-container position-relative ms-auto"
-              style="max-width: 350px; flex: 1"
-            >
-              <input
-                v-model="searchQuery"
-                type="text"
-                class="form-control form-control-sm"
-                placeholder="Cari perusahaan, sektor, atau email"
-              />
-              <i v-if="!searchQuery" class="ri-search-line search-icon"></i>
-              <button v-else @click="clearSearch" class="btn btn-sm clear-btn">
+      <div class="card custom-card gradient-header-card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+          <div class="d-flex align-items-center">
+            <i class="ri-building-2-line text-white me-2 fs-18"></i>
+            <div class="card-title text-white mb-0">Daftar Stakeholders</div>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div class="search-container position-relative" style="min-width: 250px">
+              <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
+                placeholder="Cari perusahaan, sektor, atau email..." 
+                style="background: #fff; color: #333; border: none; padding-right: 60px;" />
+              <i class="ri-search-line search-icon" style="color: #666; right: 35px;"></i>
+              <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" style="color: #666;">
                 <i class="ri-close-line"></i>
               </button>
             </div>
           </div>
         </div>
 
-        <div class="card-body p-3">
-          <div v-if="loading" class="text-center p-4">
-            <div class="spinner-border" role="status">
+        <div class="card-body p-4">
+          <div v-if="loading" class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading...</span>
             </div>
+            <p class="text-muted mt-2 mb-0">Memuat data...</p>
           </div>
 
           <template v-else>
-            <!-- Controls -->
-            <div
-              class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"
-            >
-              <div
-                class="d-flex align-items-center flex-wrap flex-grow-1 gap-2"
-              >
-                <span class="text-muted fs-13">Tampilkan</span>
-                <select
-                  v-model="itemsPerPage"
-                  class="form-select form-select-sm"
-                  style="width: 75px"
-                >
-                  <option
-                    v-for="n in [5, 10, 15, 20, 25, 50]"
-                    :key="n"
-                    :value="n"
-                  >
-                    {{ n }}
-                  </option>
-                </select>
-                <span class="text-muted fs-13">per halaman</span>
-                <button v-if="isAdmin"
-                  @click="openCreateModal"
-                  class="btn btn-sm btn-secondary btn-glare ms-auto"
-                >
-                  <i class="ri-add-line me-1"></i>Tambah Stakeholder
-                </button>
+            <!-- Controls Bar -->
+            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
+                  <i class="ri-list-ordered me-2 text-primary"></i>
+                  <span class="text-muted fs-13 me-2">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm border-0 bg-transparent" style="width: 70px">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </div>
+                <span class="badge bg-primary-transparent text-primary px-3 py-2">
+                  <i class="ri-database-2-line me-1"></i>{{ displayData.length }} data
+                </span>
               </div>
+              <button v-if="isAdmin"
+                @click="openCreateModal"
+                class="btn btn-secondary d-flex align-items-center gap-2 shadow-sm"
+              >
+                <i class="ri-add-circle-line"></i>
+                <span>Tambah Stakeholder</span>
+              </button>
             </div>
 
             <!-- Table -->
-            <div class="table-responsive">
-              <table class="table text-nowrap mb-0">
-                <thead>
+            <div class="table-responsive rounded-3 border">
+              <table class="table table-hover text-nowrap mb-0">
+                <thead class="table-light">
                   <tr>
-                    <th>No</th>
-                    <th class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span
-                          class="column-label"
-                          @click="toggleSort('nama_perusahaan')"
-                          title="Click to toggle sort"
-                          >Nama Perusahaan</span
-                        >
+                    <th class="fw-semibold text-muted" style="width: 60px">No</th>
+                    <th class="sortable fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-building-line text-primary"></i>
+                        <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Click to toggle sort">Nama Perusahaan</span>
                         <div class="sort-arrows">
-                          <i
-                            class="ri-arrow-up-s-line"
+                          <i class="ri-arrow-up-s-line" 
                             :class="{
                               active:
                                 sortField === 'nama_perusahaan' &&
@@ -495,8 +487,7 @@ export default {
                             "
                             title="Sort A-Z"
                           ></i>
-                          <i
-                            class="ri-arrow-down-s-line"
+                          <i class="ri-arrow-down-s-line" 
                             :class="{
                               active:
                                 sortField === 'nama_perusahaan' &&
@@ -511,17 +502,12 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span
-                          class="column-label"
-                          @click="toggleSort('sektor')"
-                          title="Click to toggle sort"
-                          >Sektor</span
-                        >
+                    <th class="sortable fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-pie-chart-line text-primary"></i>
+                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sektor</span>
                         <div class="sort-arrows">
-                          <i
-                            class="ri-arrow-up-s-line"
+                          <i class="ri-arrow-up-s-line" 
                             :class="{
                               active:
                                 sortField === 'sektor' && sortOrder === 'asc',
@@ -532,8 +518,7 @@ export default {
                             "
                             title="Sort A-Z"
                           ></i>
-                          <i
-                            class="ri-arrow-down-s-line"
+                          <i class="ri-arrow-down-s-line" 
                             :class="{
                               active:
                                 sortField === 'sektor' && sortOrder === 'desc',
@@ -547,60 +532,83 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th>Email</th>
-                    <th class="text-center">Aksi</th>
+                    <th class="fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-mail-line text-primary"></i>
+                        <span>Email</span>
+                      </div>
+                    </th>
+                    <th class="text-center fw-semibold" style="width: 180px">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="5" class="text-center text-muted py-4">
-                      <i class="ri-inbox-line fs-2 d-block mb-2"></i>Data tidak
-                      ditemukan
+                    <td colspan="5" class="text-center py-5">
+                      <div class="empty-state">
+                        <div class="empty-icon mb-3">
+                          <i class="ri-building-2-line"></i>
+                        </div>
+                        <h6 class="text-muted mb-1">Tidak Ada Stakeholder</h6>
+                        <p class="text-muted fs-13 mb-0">Coba ubah kriteria pencarian Anda</p>
+                      </div>
                     </td>
                   </tr>
-                  <tr v-for="(item, i) in displayData" :key="item.slug">
-                    <td>{{ (currentPage - 1) * itemsPerPage + i + 1 }}</td>
-                    <td class="fw-semibold">{{ item.nama_perusahaan }}</td>
-                    <td>
-                      <span class="badge bg-info-transparent fs-13">{{
-                        item.sektor
-                      }}</span>
+                  <tr v-for="(item, i) in displayData" :key="item.slug" class="table-row-hover">
+                    <td class="align-middle">
+                      <span class="badge bg-light text-muted fw-medium">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
-                    <td>{{ item.email }}</td>
-                    <td class="text-center">
-                      <div
-                        class="btn-group-vertical btn-group-sm d-inline-flex gap-1"
-                      >
-                        <div class="d-flex gap-1">
-                          <router-link
-                            :to="`/profile-stakeholders/${item.slug}`"
-                            class="btn btn-sm btn-info-light"
-                            title="Lihat Profil"
-                          >
-                            <i class="ri-eye-line"></i>
-                          </router-link>
-                          <router-link
-                            :to="`/ikas?slug=${item.slug}`"
-                            class="btn btn-sm btn-warning-light"
-                            title="IKAS"
-                          >
-                            <i class="ri-file-chart-line"></i>
-                          </router-link>
-                          <button v-if="isAdmin"
-                            @click="openEditModal(item)"
-                            class="btn btn-sm btn-success-light"
-                            title="Edit"
-                          >
-                            <i class="ri-edit-line"></i>
-                          </button>
-                          <button v-if="isAdmin"
-                            @click="openDeleteModal(item)"
-                            class="btn btn-sm btn-danger-light"
-                            title="Delete"
-                          >
-                            <i class="ri-delete-bin-line"></i>
-                          </button>
+                    <td class="align-middle">
+                      <div class="d-flex align-items-center gap-3">
+                        <span class="avatar avatar-md avatar-rounded shadow-sm overflow-hidden" 
+                          :style="{ background: item.photo ? 'transparent' : 'linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%)' }">
+                          <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="w-100 h-100 object-fit-cover" />
+                          <span v-else class="text-white fw-bold fs-16">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                        </span>
+                        <div>
+                          <span class="fw-semibold d-block text-dark">{{ item.nama_perusahaan }}</span>
+                          <small class="text-muted d-none d-lg-block">
+                            <i class="ri-map-pin-line me-1"></i>{{ item.alamat?.substring(0, 30) }}...
+                          </small>
                         </div>
+                      </div>
+                    </td>
+                    <td class="align-middle">
+                      <span class="badge rounded-pill px-3 py-2 fs-12" 
+                        :class="getSektorBadgeClass(item.sektor)">
+                        {{ item.sektor }}
+                      </span>
+                    </td>
+                    <td class="align-middle">
+                      <a :href="`mailto:${item.email}`" class="email-link d-inline-flex align-items-center gap-2 text-decoration-none">
+                        <span class="email-text">{{ item.email }}</span>
+                      </a>
+                    </td>
+                    <td class="text-center align-middle">
+                      <div class="d-flex gap-1 justify-content-center">
+                        <router-link
+                          :to="`/profile-stakeholders/${item.slug}`"
+                          class="btn btn-sm btn-icon btn-wave btn-info-light"
+                          title="Lihat Profil">
+                          <i class="ri-eye-line"></i>
+                        </router-link>
+                        <router-link
+                          :to="`/ikas?slug=${item.slug}`"
+                          class="btn btn-sm btn-icon btn-wave btn-warning-light"
+                          title="IKAS">
+                          <i class="ri-file-chart-line"></i>
+                        </router-link>
+                        <button v-if="isAdmin"
+                          @click="openEditModal(item)"
+                          class="btn btn-sm btn-icon btn-wave btn-success-light"
+                          title="Edit">
+                          <i class="ri-edit-line"></i>
+                        </button>
+                        <button v-if="isAdmin"
+                          @click="openDeleteModal(item)"
+                          class="btn btn-sm btn-icon btn-wave btn-danger-light"
+                          title="Delete">
+                          <i class="ri-delete-bin-line"></i>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -609,76 +617,42 @@ export default {
             </div>
 
             <!-- Pagination -->
-            <div
-              v-if="totalPages > 1"
-              class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top gap-2"
-            >
-              <span class="text-muted fs-13"
-                >Halaman {{ currentPage }} dari {{ totalPages }}</span
-              >
+            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-muted px-3 py-2">
+                  <i class="ri-file-list-3-line me-1"></i>
+                  Halaman {{ currentPage }} dari {{ totalPages }}
+                </span>
+              </div>
               <nav>
-                <ul class="pagination pagination-sm mb-0">
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === 1 }"
-                  >
-                    <a
-                      class="page-link"
-                      href="#"
-                      @click.prevent="currentPage = 1"
-                      ><i class="ri-skip-back-mini-line"></i
-                    ></a>
+                <ul class="pagination pagination-sm mb-0 gap-1">
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1" title="First">
+                      <i class="ri-skip-back-mini-line"></i>
+                    </a>
                   </li>
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === 1 }"
-                  >
-                    <a class="page-link" href="#" @click.prevent="currentPage--"
-                      ><i class="ri-arrow-left-s-line"></i
-                    ></a>
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--" title="Previous">
+                      <i class="ri-arrow-left-s-line"></i>
+                    </a>
                   </li>
                   <template v-for="p in totalPages" :key="p">
-                    <li
-                      v-if="
-                        p === 1 ||
-                        p === totalPages ||
-                        (p >= currentPage - 1 && p <= currentPage + 1)
-                      "
-                      class="page-item"
-                      :class="{ active: p === currentPage }"
-                    >
-                      <a
-                        class="page-link"
-                        href="#"
-                        @click.prevent="currentPage = p"
-                        >{{ p }}</a
-                      >
+                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
+                      <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
                     </li>
-                    <li
-                      v-else-if="p === currentPage - 2 || p === currentPage + 2"
-                      class="page-item disabled"
-                    >
-                      <span class="page-link">...</span>
+                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">
+                      <span class="page-link border-0 bg-transparent">...</span>
                     </li>
                   </template>
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === totalPages }"
-                  >
-                    <a class="page-link" href="#" @click.prevent="currentPage++"
-                      ><i class="ri-arrow-right-s-line"></i
-                    ></a>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++" title="Next">
+                      <i class="ri-arrow-right-s-line"></i>
+                    </a>
                   </li>
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === totalPages }"
-                  >
-                    <a
-                      class="page-link"
-                      href="#"
-                      @click.prevent="currentPage = totalPages"
-                      ><i class="ri-skip-forward-mini-line"></i
-                    ></a>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages" title="Last">
+                      <i class="ri-skip-forward-mini-line"></i>
+                    </a>
                   </li>
                 </ul>
               </nav>
@@ -690,221 +664,63 @@ export default {
   </div>
 
   <!-- Create Modal -->
-  <div
-    v-if="showCreateModal"
-    class="modal fade show d-block"
-    tabindex="-1"
-    style="background-color: rgba(0, 0, 0, 0.5)"
-  >
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Tambah Stakeholder Baru</h5>
-          <button
-            type="button"
-            class="btn-close"
-            @click="showCreateModal = false"
-          ></button>
-        </div>
-        <div class="modal-body">
-          <form @submit.prevent="createStakeholder">
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Nama Perusahaan <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.nama_perusahaan"
-                  type="text"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.nama_perusahaan }"
-                  placeholder="Masukkan nama perusahaan"
-                />
-                <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">
-                  {{ formErrors.nama_perusahaan }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Sektor <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.sektor"
-                  type="text"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.sektor }"
-                  placeholder="Masukkan sektor"
-                />
-                <div v-if="formErrors.sektor" class="invalid-feedback">
-                  {{ formErrors.sektor }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Email <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.email"
-                  type="email"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.email }"
-                  placeholder="email@example.com"
-                />
-                <div v-if="formErrors.email" class="invalid-feedback">
-                  {{ formErrors.email }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Telepon <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.telepon"
-                  type="text"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.telepon }"
-                  placeholder="+62 21 1234 5678"
-                />
-                <div v-if="formErrors.telepon" class="invalid-feedback">
-                  {{ formErrors.telepon }}
-                </div>
-              </div>
-              <div class="col-md-12 mb-3">
-                <label class="form-label"
-                  >Alamat <span class="text-danger">*</span></label
-                >
-                <textarea
-                  v-model="formData.alamat"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.alamat }"
-                  rows="2"
-                  placeholder="Masukkan alamat lengkap"
-                ></textarea>
-                <div v-if="formErrors.alamat" class="invalid-feedback">
-                  {{ formErrors.alamat }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Website <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.website"
-                  type="url"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.website }"
-                  placeholder="https://example.com"
-                />
-                <div v-if="formErrors.website" class="invalid-feedback">
-                  {{ formErrors.website }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Photo URL (Opsional)</label>
-                <input
-                  v-model="formData.photo"
-                  type="text"
-                  class="form-control"
-                  placeholder="/images/media/photo.png"
-                />
-              </div>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            @click="showCreateModal = false"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            @click="createStakeholder"
-          >
-            <i class="ri-save-line me-1"></i>Simpan
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Edit Modal -->
-  <div
-    v-if="showEditModal"
-    class="modal fade show d-block"
-    tabindex="-1"
-    style="background-color: rgba(0, 0, 0, 0.5)"
-  >
+  <div v-if="showCreateModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
     <div class="modal-dialog modal-dialog-centered modal-xl">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div
-            class="card-header d-flex justify-content-between align-items-center"
-            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
-          >
+          <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
             <div class="d-flex align-items-center">
-              <i class="ri-building-2-line text-white me-2 fs-18"></i>
+              <i class="ri-add-circle-line text-white me-2 fs-18"></i>
               <div class="card-title text-white mb-0">
-                Edit Stakeholder - Informasi Perusahaan
+                Tambah Stakeholder Baru
               </div>
             </div>
-            <button
-              type="button"
-              class="btn-close btn-close-white"
-              @click="showEditModal = false"
-            ></button>
+            <button type="button" class="btn-close btn-close-white" @click="showCreateModal = false"></button>
           </div>
           <div class="card-body p-4 bg-white">
-            <form @submit.prevent="updateStakeholder">
+            <form @submit.prevent="createStakeholder">
               <div class="row gy-4">
-                <!-- Profile Picture Section -->
+                <!-- Photo Section - Horizontal Layout -->
                 <div class="col-xl-12">
-                  <div class="d-flex align-items-start flex-wrap gap-3">
-                    <div class="position-relative">
-                      <span
-                        class="avatar avatar-xxl avatar-rounded shadow border border-2 border-light overflow-hidden"
-                      >
-                        <img
-                          :src="formData.photo || '/images/faces/9.jpg'"
-                          alt="Profile Avatar"
-                        />
-                      </span>
-                      <input
-                        ref="fileInput"
-                        type="file"
-                        :accept="ALLOWED_FORMATS.join(',')"
-                        class="d-none"
-                        @change="onFileChange"
-                      />
+                  <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
+                    <!-- Photo Preview (Left) -->
+                    <div 
+                      class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
+                      :style="{ 
+                        backgroundImage: formData.photo ? `url(${formData.photo})` : 'none',
+                        backgroundColor: formData.photo ? 'transparent' : '#e9ecef',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }"
+                    >
+                      <!-- Empty State -->
+                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted" 
+                        style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
+                        <span class="fs-11">Belum ada foto</span>
+                      </div>
                     </div>
-                    <div>
-                      <span class="fw-medium d-block mb-2"
-                        >Profile Picture</span
-                      >
-                      <div class="btn-list mb-1">
-                        <button
-                          type="button"
-                          class="btn btn-sm btn-primary btn-wave me-1"
-                          @click="triggerFileInput"
-                        >
-                          <i class="ri-upload-2-line me-1"></i>Change Image
+                    <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
+                    
+                    <!-- Photo Info & Actions (Right) -->
+                    <div class="flex-grow-1">
+                      <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
+                        <i class="ri-image-2-line text-primary"></i>
+                        Foto Perusahaan
+                      </h6>
+                      <div class="d-flex flex-wrap gap-2 mb-2">
+                        <button type="button" class="btn btn-primary btn-sm" @click="triggerFileInput">
+                          <i class="ri-upload-2-line me-1"></i>
+                          {{ formData.photo ? 'Ganti Gambar' : 'Upload Gambar' }}
                         </button>
-                        <button
-                          type="button"
-                          class="btn btn-sm btn-light btn-wave"
-                          @click="removeImage"
-                        >
-                          <i class="ri-delete-bin-line me-1"></i>Remove
+                        <button v-if="formData.photo" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
+                          <i class="ri-delete-bin-line me-1"></i>Hapus
                         </button>
                       </div>
-                      <span class="d-block fs-12 text-muted">
-                        <i class="ri-information-line me-1"></i>
-                        Format: {{ ALLOWED_EXTENSIONS }} | Max:
-                        {{ MAX_FILE_SIZE_MB }}MB | Best size: 200x200 pixels
-                      </span>
+                      <div class="d-flex align-items-center gap-3 fs-11 text-muted">
+                        <span><i class="ri-file-type-line me-1"></i>{{ ALLOWED_EXTENSIONS }}</span>
+                        <span><i class="ri-upload-cloud-line me-1"></i>Max {{ MAX_FILE_SIZE_MB }}MB</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -915,17 +731,8 @@ export default {
                     <i class="ri-building-line me-1 text-primary"></i>Nama
                     Perusahaan <span class="text-danger">*</span>
                   </label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    v-model="formData.nama_perusahaan"
-                    :class="{ 'is-invalid': formErrors.nama_perusahaan }"
-                    placeholder="Masukkan nama perusahaan"
-                  />
-                  <div
-                    v-if="formErrors.nama_perusahaan"
-                    class="invalid-feedback"
-                  >
+                  <input type="text" class="form-control" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
+                  <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">
                     {{ formErrors.nama_perusahaan }}
                   </div>
                 </div>
@@ -936,19 +743,11 @@ export default {
                     <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
                     <span class="text-danger">*</span>
                   </label>
-                  <select
-                    v-model="formData.sektor"
-                    class="form-select"
-                    :class="{ 'is-invalid': formErrors.sektor }"
-                  >
+                  <select v-model="formData.sektor" class="form-select" :class="{ 'is-invalid': formErrors.sektor }">
                     <option value="" disabled>-- Pilih Sektor --</option>
-                    <option value="Teknologi Informasi">
-                      Teknologi Informasi
-                    </option>
+                    <option value="Teknologi Informasi">Teknologi Informasi</option>
                     <option value="Perdagangan Umum">Perdagangan Umum</option>
-                    <option value="Software Development">
-                      Software Development
-                    </option>
+                    <option value="Software Development">Software Development</option>
                     <option value="Konstruksi">Konstruksi</option>
                     <option value="Teknologi">Teknologi</option>
                     <option value="Keuangan">Keuangan</option>
@@ -967,13 +766,7 @@ export default {
                     <i class="ri-mail-line me-1 text-primary"></i>Email
                     <span class="text-danger">*</span>
                   </label>
-                  <input
-                    type="email"
-                    class="form-control"
-                    v-model="formData.email"
-                    :class="{ 'is-invalid': formErrors.email }"
-                    placeholder="Masukkan email"
-                  />
+                  <input type="email" class="form-control" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
                   <div v-if="formErrors.email" class="invalid-feedback">
                     {{ formErrors.email }}
                   </div>
@@ -985,13 +778,7 @@ export default {
                     <i class="ri-phone-line me-1 text-primary"></i>Nomor
                     Telepon <span class="text-danger">*</span>
                   </label>
-                  <input
-                    type="tel"
-                    class="form-control"
-                    v-model="formData.telepon"
-                    :class="{ 'is-invalid': formErrors.telepon }"
-                    placeholder="Masukkan nomor telepon"
-                  />
+                  <input type="tel" class="form-control" v-model="formData.telepon" :class="{ 'is-invalid': formErrors.telepon }" placeholder="Masukkan nomor telepon" />
                   <div v-if="formErrors.telepon" class="invalid-feedback">
                     {{ formErrors.telepon }}
                   </div>
@@ -1003,22 +790,14 @@ export default {
                     <i class="ri-global-line me-1 text-primary"></i>Website
                     <span class="text-danger">*</span>
                   </label>
-                  <input
-                    type="url"
-                    class="form-control"
-                    v-model="formData.website"
-                    :class="{ 'is-invalid': formErrors.website }"
-                    placeholder="Masukkan website"
-                  />
+                  <input type="url" class="form-control" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="Masukkan website" />
                   <div v-if="formErrors.website" class="invalid-feedback">
                     {{ formErrors.website }}
                   </div>
                 </div>
 
                 <!-- Empty column for alignment -->
-                <div
-                  class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"
-                ></div>
+                <div class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"></div>
 
                 <!-- Alamat -->
                 <div class="col-12">
@@ -1026,13 +805,170 @@ export default {
                     <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
                     <span class="text-danger">*</span>
                   </label>
-                  <textarea
-                    class="form-control"
-                    v-model="formData.alamat"
-                    :class="{ 'is-invalid': formErrors.alamat }"
-                    rows="3"
-                    placeholder="Masukkan alamat lengkap"
-                  ></textarea>
+                  <textarea class="form-control" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
+                  <div v-if="formErrors.alamat" class="invalid-feedback">
+                    {{ formErrors.alamat }}
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="card-footer bg-light d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-danger" @click="showCreateModal = false">
+              <i class="ri-close-line me-1"></i>Batal
+            </button>
+            <button type="button" class="btn btn-secondary" @click="createStakeholder">
+              <i class="ri-save-line me-1"></i>Simpan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content border-0 bg-transparent">
+        <div class="card custom-card gradient-header-card w-100 mb-0">
+          <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+            <div class="d-flex align-items-center">
+              <i class="ri-building-2-line text-white me-2 fs-18"></i>
+              <div class="card-title text-white mb-0">
+                Edit Stakeholder - Informasi Perusahaan
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" @click="showEditModal = false"></button>
+          </div>
+          <div class="card-body p-4 bg-white">
+            <form @submit.prevent="updateStakeholder">
+              <div class="row gy-4">
+                <!-- Photo Section - Horizontal Layout -->
+                <div class="col-xl-12">
+                  <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
+                    <!-- Photo Preview (Left) -->
+                    <div 
+                      class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
+                      :style="{ 
+                        backgroundImage: formData.photo ? `url(${formData.photo})` : 'none',
+                        backgroundColor: formData.photo ? 'transparent' : '#e9ecef',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }"
+                    >
+                      <!-- Empty State -->
+                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted" 
+                        style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
+                        <span class="fs-11">Belum ada foto</span>
+                      </div>
+                    </div>
+                    <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
+                    
+                    <!-- Photo Info & Actions (Right) -->
+                    <div class="flex-grow-1">
+                      <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
+                        <i class="ri-image-2-line text-primary"></i>
+                        Foto Perusahaan
+                      </h6>
+                      <div class="d-flex flex-wrap gap-2 mb-2">
+                        <button type="button" class="btn btn-primary btn-sm" @click="triggerFileInput">
+                          <i class="ri-upload-2-line me-1"></i>
+                          {{ formData.photo ? 'Ganti Gambar' : 'Upload Gambar' }}
+                        </button>
+                        <button v-if="formData.photo" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
+                          <i class="ri-delete-bin-line me-1"></i>Hapus
+                        </button>
+                      </div>
+                      <div class="d-flex align-items-center gap-3 fs-11 text-muted">
+                        <span><i class="ri-file-type-line me-1"></i>{{ ALLOWED_EXTENSIONS }}</span>
+                        <span><i class="ri-upload-cloud-line me-1"></i>Max {{ MAX_FILE_SIZE_MB }}MB</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Nama Perusahaan -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-building-line me-1 text-primary"></i>Nama
+                    Perusahaan <span class="text-danger">*</span>
+                  </label>
+                  <input type="text" class="form-control" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
+                  <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">
+                    {{ formErrors.nama_perusahaan }}
+                  </div>
+                </div>
+
+                <!-- Sektor -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
+                    <span class="text-danger">*</span>
+                  </label>
+                  <select v-model="formData.sektor" class="form-select" :class="{ 'is-invalid': formErrors.sektor }">
+                    <option value="" disabled>-- Pilih Sektor --</option>
+                    <option value="Teknologi Informasi">Teknologi Informasi</option>
+                    <option value="Perdagangan Umum">Perdagangan Umum</option>
+                    <option value="Software Development">Software Development</option>
+                    <option value="Konstruksi">Konstruksi</option>
+                    <option value="Teknologi">Teknologi</option>
+                    <option value="Keuangan">Keuangan</option>
+                    <option value="Kesehatan">Kesehatan</option>
+                    <option value="Pendidikan">Pendidikan</option>
+                    <option value="Manufaktur">Manufaktur</option>
+                  </select>
+                  <div v-if="formErrors.sektor" class="invalid-feedback">
+                    {{ formErrors.sektor }}
+                  </div>
+                </div>
+
+                <!-- Email -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-mail-line me-1 text-primary"></i>Email
+                    <span class="text-danger">*</span>
+                  </label>
+                  <input type="email" class="form-control" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
+                  <div v-if="formErrors.email" class="invalid-feedback">
+                    {{ formErrors.email }}
+                  </div>
+                </div>
+
+                <!-- Phone -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-phone-line me-1 text-primary"></i>Nomor
+                    Telepon <span class="text-danger">*</span>
+                  </label>
+                  <input type="tel" class="form-control" v-model="formData.telepon" :class="{ 'is-invalid': formErrors.telepon }" placeholder="Masukkan nomor telepon" />
+                  <div v-if="formErrors.telepon" class="invalid-feedback">
+                    {{ formErrors.telepon }}
+                  </div>
+                </div>
+
+                <!-- Website -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-global-line me-1 text-primary"></i>Website
+                    <span class="text-danger">*</span>
+                  </label>
+                  <input type="url" class="form-control" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="Masukkan website" />
+                  <div v-if="formErrors.website" class="invalid-feedback">
+                    {{ formErrors.website }}
+                  </div>
+                </div>
+
+                <!-- Empty column for alignment -->
+                <div class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"></div>
+
+                <!-- Alamat -->
+                <div class="col-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
+                    <span class="text-danger">*</span>
+                  </label>
+                  <textarea class="form-control" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
                   <div v-if="formErrors.alamat" class="invalid-feedback">
                     {{ formErrors.alamat }}
                   </div>
@@ -1041,17 +977,10 @@ export default {
                 <!-- Action Buttons -->
                 <div class="col-12">
                   <div class="d-flex justify-content-end gap-2">
-                    <button
-                      type="button"
-                      @click="showEditModal = false"
-                      class="btn btn-outline-danger"
-                    >
+                    <button type="button" @click="showEditModal = false" class="btn btn-outline-danger">
                       <i class="ri-arrow-left-line me-1"></i>Batal
                     </button>
-                    <button
-                      type="submit"
-                      class="btn btn-secondary"
-                    >
+                    <button type="submit" class="btn btn-secondary">
                       <i class="ri-save-line me-1"></i> Simpan Perubahan
                     </button>
                   </div>
@@ -1065,28 +994,16 @@ export default {
   </div>
 
   <!-- Delete Confirmation Modal -->
-  <div
-    v-if="showDeleteModal"
-    class="modal fade show d-block"
-    tabindex="-1"
-    style="background-color: rgba(0, 0, 0, 0.5)"
-  >
+  <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Konfirmasi Hapus</h5>
-          <button
-            type="button"
-            class="btn-close"
-            @click="showDeleteModal = false"
-          ></button>
+          <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
         </div>
         <div class="modal-body">
           <div class="text-center">
-            <i
-              class="ri-error-warning-line text-danger"
-              style="font-size: 3rem"
-            ></i>
+            <i class="ri-error-warning-line text-danger" style="font-size: 3rem"></i>
             <h5 class="mt-3">Apakah Anda yakin?</h5>
             <p class="text-muted">
               Anda akan menghapus stakeholder
@@ -1096,18 +1013,8 @@ export default {
           </div>
         </div>
         <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            @click="showDeleteModal = false"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            class="btn btn-danger"
-            @click="deleteStakeholder"
-          >
+          <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">Batal</button>
+          <button type="button" class="btn btn-danger" @click="deleteStakeholder">
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
         </div>
@@ -1117,102 +1024,42 @@ export default {
 </template>
 
 <style scoped>
-.gradient-header-card {
-  border: none !important;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
-  overflow: hidden !important;
-}
+.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075) !important; overflow: hidden !important; }
+.gradient-header-card .card-header { border: none !important; border-radius: 0 !important; margin: 0 !important; }
+.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
 
-.gradient-header-card .card-header {
-  border: none !important;
-  border-bottom: none !important;
-  border-block-end: none !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-}
+.search-container { position: relative; }
+.search-container input { padding-right: 60px !important; }
+.search-container input::placeholder { color: #999; }
+.search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
+.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
+.clear-btn:hover { color: #333; }
 
-.gradient-header-card .card-body {
-  border: 1px solid var(--default-border);
-  border-top: none !important;
-  border-radius: 0 !important;
-}
+.sortable, .column-label { cursor: pointer; user-select: none; }
+.sort-arrows { display: flex; flex-direction: column; line-height: 0.5; }
+.sort-arrows i { font-size: 1rem; color: #d1d5db; cursor: pointer; transition: color 0.2s; }
+.sort-arrows i:hover { color: #6b7280; }
+.sort-arrows i.active { color: #3b82f6; }
 
-.cursor-pointer {
-  cursor: pointer;
-}
+.modal.show { display: block; }
+.modal.show .modal-dialog { margin: 0 auto; max-width: 800px; }
+.toast { min-width: 250px; }
 
-.search-container {
-  position: relative;
-}
+.empty-state { padding: 2rem 1rem; }
+.empty-state .empty-icon { width: 80px; height: 80px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--secondary-rgb),0.1)); border-radius: 50%; }
+.empty-state .empty-icon i { font-size: 2.5rem; color: var(--primary-color); opacity: 0.7; }
 
-.search-icon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #8c9097;
-  pointer-events: none;
-}
+.btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
 
-.clear-btn {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 0.25rem 0.5rem;
-  background: transparent;
-  border: none;
-  color: #8c9097;
-}
+.email-link { color: var(--default-text-color); transition: all 0.2s ease; }
+.email-link:hover { color: var(--primary-color); }
+.email-link .email-icon-wrapper { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--info-rgb),0.1)); border-radius: 6px; color: var(--primary-color); font-size: 14px; transition: all 0.2s ease; }
+.email-link:hover .email-icon-wrapper { background: linear-gradient(135deg, rgba(var(--primary-rgb),0.2), rgba(var(--info-rgb),0.2)); transform: scale(1.05); }
+.email-link .email-text { font-size: 13px; color: #6c757d; transition: color 0.2s ease; }
+.email-link:hover .email-text { color: var(--primary-color); }
 
-.clear-btn:hover {
-  color: #495057;
-}
-
-.sortable {
-  cursor: pointer;
-  user-select: none;
-}
-
-.column-label {
-  cursor: pointer;
-}
-
-.sort-arrows {
-  display: flex;
-  flex-direction: column;
-  line-height: 0.5;
-}
-
-.sort-arrows i {
-  font-size: 1rem;
-  color: #d1d5db;
-  cursor: pointer;
-  transition: color 0.2s;
-}
-
-.sort-arrows i:hover {
-  color: #6b7280;
-}
-
-.sort-arrows i.active {
-  color: #3b82f6;
-}
-
-.modal.show {
-  display: block;
-}
-
-/* Position modal in center of content area (accounting for sidebar) */
-.modal.show .modal-dialog {
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 800px;
-}
-
-.toast {
-  min-width: 250px;
-}
+.photo-preview-modal { width: 180px; height: 120px; border-color: #dee2e6 !important; }
+@media (max-width: 575px) { .photo-preview-modal { width: 100%; height: 150px; } }
 </style>
 
 <style>

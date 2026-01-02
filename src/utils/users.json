@@ -5,24 +5,26 @@
     "username": "D44@gmail.com",
     "password": "fortyfour",
     "name": "Forty Four",
-    "jabatan": "Admin",
+    "jabatan": "Project Manager",
     "role": "Admin",
     "phone": "+62 812 3456 7890",
     "location": "Jakarta, Indonesia",
     "joined": "January 2024",
-    "token": ""
+    "token": "",
+    "photo": "/images/faces/1.jpg"
   },
   {
     "id": 2,
     "slug": "user",
     "username": "user@gmail.com",
     "password": "user1234",
-    "name": "User",
-    "jabatan": "User",
+    "name": "Jacob",
+    "jabatan": "Frontend Developer",
     "role": "User",
     "phone": "+62 821 9876 5432",
     "location": "Bandung, Indonesia",
     "joined": "March 2024",
-    "token": ""
+    "token": "",
+    "photo": "/images/faces/2.jpg"
   }
 ]

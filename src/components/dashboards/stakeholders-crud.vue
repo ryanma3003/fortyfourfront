@@ -431,9 +431,7 @@ export default {
 
           <template v-else>
             <!-- Controls -->
-            <div
-              class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"
-            >
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
               <div class="d-flex align-items-center gap-2">
                 <span class="text-muted fs-13">Tampilkan</span>
                 <select

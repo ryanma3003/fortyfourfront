@@ -17,6 +17,7 @@ interface User {
   location: string;
   joined: string;
   token: string;
+  photo?: string;
 }
 
 export default {
@@ -61,13 +62,13 @@ export default {
       loading.value = true;
       await new Promise((r) => setTimeout(r, 500));
 
-      // Load profile data from storage
-      profileStore.loadFromStorage();
+      // Load profile data from storage with proper user switching
+      profileStore.switchUser();
 
       // Get current logged-in user info
       const currentUser = authStore.currentUser;
 
-      // Map users and merge dynamic jabatan for current user
+      // Map users and merge dynamic data for current user
       items.value = users.map((u: User) => {
         // If this is the current logged-in user and profile has been customized
         if (
@@ -79,6 +80,7 @@ export default {
             ...u,
             jabatan: profileStore.jabatan || u.jabatan,
             name: profileStore.name || u.name,
+            photo: profileStore.avatarUrl || u.photo,
           };
         }
         return { ...u };
@@ -247,104 +249,87 @@ export default {
 
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
-          <div class="card-title">User List</div>
-          <div class="d-flex gap-2 align-items-center flex-wrap flex-grow-1">
-            <div class="search-container position-relative ms-auto" style="max-width: 350px; flex: 1">
-              <input v-model="searchQuery" type="text" class="form-control form-control-sm" placeholder="Search by name, email, jabatan, or role" />
-              <i v-if="!searchQuery" class="ri-search-line search-icon"></i>
-              <button v-else @click="clearSearch" class="btn btn-sm clear-btn">
+      <div class="card custom-card gradient-header-card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+          <div class="d-flex align-items-center">
+            <i class="ri-group-line text-white me-2 fs-18"></i>
+            <div class="card-title text-white mb-0">Daftar User</div>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div class="search-container position-relative" style="min-width: 250px">
+              <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
+                placeholder="Cari nama, email, jabatan, atau role..." 
+                style="background: #fff; color: #333; border: none; padding-right: 60px;" />
+              <i class="ri-search-line search-icon" style="color: #666; right: 35px;"></i>
+              <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" style="color: #666;">
                 <i class="ri-close-line"></i>
               </button>
             </div>
           </div>
         </div>
 
-        <div class="card-body p-3">
-          <div v-if="loading" class="text-center p-4">
-            <div class="spinner-border" role="status">
+        <div class="card-body p-4">
+          <div v-if="loading" class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading...</span>
             </div>
+            <p class="text-muted mt-2 mb-0">Memuat data...</p>
           </div>
 
           <template v-else>
-            <!-- Controls -->
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-              <div class="d-flex align-items-center flex-wrap flex-grow-1 gap-2">
-                <span class="text-muted fs-13">Show</span>
-                <select
-                  v-model="itemsPerPage"
-                  class="form-select form-select-sm"
-                  style="width: 75px"
-                >
-                  <option
-                    v-for="n in [5, 10, 15, 20, 25, 50]"
-                    :key="n"
-                    :value="n"
-                  >
-                    {{ n }}
-                  </option>
-                </select>
-                <span class="text-muted fs-13">per page</span>
+            <!-- Controls Bar -->
+            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
+                  <i class="ri-list-ordered me-2 text-primary"></i>
+                  <span class="text-muted fs-13 me-2">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm border-0 bg-transparent" style="width: 70px">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </div>
+                <span class="badge bg-primary-transparent text-primary px-3 py-2">
+                  <i class="ri-database-2-line me-1"></i>{{ displayData.length }} data
+                </span>
               </div>
             </div>
 
             <!-- Table -->
-            <div class="table-responsive">
-              <table class="table text-nowrap mb-0">
-                <thead>
+            <div class="table-responsive rounded-3 border">
+              <table class="table table-hover text-nowrap mb-0">
+                <thead class="table-light">
                   <tr>
-                    <th>No</th>
-                    <th class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span
-                          class="column-label"
-                          @click="toggleSort('name')"
-                          title="Click to toggle sort"
-                          >Name</span
-                        >
+                    <th class="fw-semibold text-muted" style="width: 60px">No</th>
+                    <th class="sortable fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-user-line text-primary"></i>
+                        <span class="column-label" @click="toggleSort('name')" title="Click to toggle sort">Nama</span>
                         <div class="sort-arrows">
-                          <i
-                            class="ri-arrow-up-s-line"
-                            :class="{
-                              active:
-                                sortField === 'name' && sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'name';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i
-                            class="ri-arrow-down-s-line"
-                            :class="{
-                              active:
-                                sortField === 'name' && sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'name';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
+                          <i class="ri-arrow-up-s-line" 
+                            :class="{ active: sortField === 'name' && sortOrder === 'asc' }" @click.stop="sortField = 'name'; sortOrder = 'asc';" title="Sort A-Z"></i>
+                          <i class="ri-arrow-down-s-line" 
+                            :class="{ active: sortField === 'name' && sortOrder === 'desc' }" @click.stop="sortField = 'name'; sortOrder = 'desc';" title="Sort Z-A"></i>
                         </div>
                       </div>
                     </th>
-                    <th>Email</th>
-                    <th>Position</th>
-                    <th class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span
-                          class="column-label"
-                          @click="toggleSort('role')"
-                          title="Click to toggle sort"
-                          >Role</span
-                        >
+                    <th class="fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-mail-line text-primary"></i>
+                        <span>Email</span>
+                      </div>
+                    </th>
+                    <th class="fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-briefcase-line text-primary"></i>
+                        <span>Jabatan</span>
+                      </div>
+                    </th>
+                    <th class="sortable fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-shield-user-line text-primary"></i>
+                        <span class="column-label" @click="toggleSort('role')" title="Click to toggle sort">Role</span>
                         <div class="sort-arrows">
-                          <i
-                            class="ri-arrow-up-s-line"
+                          <i class="ri-arrow-up-s-line" 
                             :class="{
                               active:
                                 sortField === 'role' && sortOrder === 'asc',
@@ -355,8 +340,7 @@ export default {
                             "
                             title="Sort A-Z"
                           ></i>
-                          <i
-                            class="ri-arrow-down-s-line"
+                          <i class="ri-arrow-down-s-line" 
                             :class="{
                               active:
                                 sortField === 'role' && sortOrder === 'desc',
@@ -370,54 +354,61 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="text-center">Action</th>
+                    <th class="text-center fw-semibold" style="width: 120px">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="6" class="text-center text-muted py-4">
-                      <i class="ri-inbox-line fs-2 d-block mb-2"></i>
-                      Data not found
+                    <td colspan="6" class="text-center py-5">
+                      <div class="empty-state">
+                        <div class="empty-icon mb-3">
+                          <i class="ri-user-search-line"></i>
+                        </div>
+                        <h6 class="text-muted mb-1">No Users Found</h6>
+                        <p class="text-muted fs-13 mb-0">Try adjusting your search criteria</p>
+                      </div>
                     </td>
                   </tr>
                   <tr v-for="(item, i) in displayData" :key="item.id">
-                    <td>{{ (currentPage - 1) * itemsPerPage + i + 1 }}</td>
-                    <td class="fw-semibold">{{ item.name }}</td>
-                    <td>{{ item.username }}</td>
-                    <td>{{ item.jabatan }}</td>
-                    <td>
-                      <span
-                        :class="['badge fs-13', getStatusClass(item.role)]"
-                        >{{ item.role }}</span
-                      >
+                    <td class="align-middle">
+                      <span class="text-muted fw-medium">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
-                    <td class="text-center">
-                      <div
-                        class="btn-group-vertical btn-group-sm d-inline-flex gap-1"
-                      >
-                        <div class="d-flex gap-1">
-                          <router-link
-                            :to="`/profile-user/${item.slug}`"
-                            class="btn btn-sm btn-info-light"
-                            title="Lihat Profil"
-                          >
-                            <i class="ri-eye-line"></i>
-                          </router-link>
-                          <!-- <button
-                            @click="openEditModal(item)"
-                            class="btn btn-sm btn-success-light"
-                            title="Edit Role"
-                          >
-                            <i class="ri-edit-line"></i>
-                          </button> -->
-                          <button
-                            @click="openDeleteModal(item)"
-                            class="btn btn-sm btn-danger-light"
-                            title="Delete"
-                          >
-                            <i class="ri-delete-bin-line"></i>
-                          </button>
+                    <td class="align-middle">
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="avatar avatar-sm avatar-rounded bg-primary-transparent overflow-hidden">
+                          <img v-if="item.photo" :src="item.photo" :alt="item.name" />
+                          <span v-else class="text-primary fw-semibold">{{ item.name.charAt(0).toUpperCase() }}</span>
+                        </span>
+                        <div>
+                          <span class="fw-semibold d-block">{{ item.name }}</span>
                         </div>
+                      </div>
+                    </td>
+                    <td class="align-middle">
+                      <div class="d-flex align-items-center gap-1">
+                        <span class="text-muted fs-13">{{ item.username }}</span>
+                      </div>
+                    </td>
+                    <td class="align-middle">
+                      <span class="badge bg-light text-dark border fs-12">
+                        <i class="ri-briefcase-line me-1"></i>{{ item.jabatan }}
+                      </span>
+                    </td>
+                    <td class="align-middle">
+                      <span :class="['badge rounded-pill px-3 py-2 fs-12', getStatusClass(item.role)]">
+                        <i :class="item.role === 'Admin' ? 'ri-shield-star-line me-1' : 'ri-user-line me-1'"></i>
+                        {{ item.role }}
+                      </span>
+                    </td>
+                    <td class="text-center align-middle">
+                      <div class="d-flex gap-1 justify-content-center">
+                        <router-link :to="`/profile-user/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
+                          <i class="ri-eye-line"></i>
+                        </router-link>
+                        <button 
+                          @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Delete">
+                          <i class="ri-delete-bin-line"></i>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -426,76 +417,29 @@ export default {
             </div>
 
             <!-- Pagination -->
-            <div
-              v-if="totalPages > 1"
-              class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top gap-2"
-            >
+            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top gap-2">
               <span class="text-muted fs-13">
                 Page {{ currentPage }} of {{ totalPages }}
               </span>
               <nav>
                 <ul class="pagination pagination-sm mb-0">
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === 1 }"
-                  >
-                    <a
-                      class="page-link"
-                      href="#"
-                      @click.prevent="currentPage = 1"
-                      ><i class="ri-skip-back-mini-line"></i
-                    ></a>
-                  </li>
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === 1 }"
-                  >
-                    <a class="page-link" href="#" @click.prevent="currentPage--"
-                      ><i class="ri-arrow-left-s-line"></i
-                    ></a>
-                  </li>
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <a class="page-link" href="#" @click.prevent="currentPage = 1">
+                      <i class="ri-skip-back-mini-line"></i></a></li>
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <a class="page-link" href="#" @click.prevent="currentPage--">
+                      <i class="ri-arrow-left-s-line"></i></a></li>
                   <template v-for="p in totalPages" :key="p">
-                    <li
-                      v-if="
-                        p === 1 ||
-                        p === totalPages ||
-                        (p >= currentPage - 1 && p <= currentPage + 1)
-                      "
-                      class="page-item"
-                      :class="{ active: p === currentPage }"
-                    >
-                      <a
-                        class="page-link"
-                        href="#"
-                        @click.prevent="currentPage = p"
-                        >{{ p }}</a
-                      >
+                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
+                      <a class="page-link" href="#" @click.prevent="currentPage = p">{{ p }}</a>
                     </li>
-                    <li
-                      v-else-if="p === currentPage - 2 || p === currentPage + 2"
-                      class="page-item disabled"
-                    >
-                      <span class="page-link">...</span>
-                    </li>
+                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled"><span class="page-link">...</span></li>
                   </template>
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === totalPages }"
-                  >
-                    <a class="page-link" href="#" @click.prevent="currentPage++"
-                      ><i class="ri-arrow-right-s-line"></i
-                    ></a>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                    <a class="page-link" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a>
                   </li>
-                  <li
-                    class="page-item"
-                    :class="{ disabled: currentPage === totalPages }"
-                  >
-                    <a
-                      class="page-link"
-                      href="#"
-                      @click.prevent="currentPage = totalPages"
-                      ><i class="ri-skip-forward-mini-line"></i
-                    ></a>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                    <a class="page-link" href="#" @click.prevent="currentPage = totalPages"><i class="ri-skip-forward-mini-line"></i></a>
                   </li>
                 </ul>
               </nav>
@@ -507,56 +451,28 @@ export default {
   </div>
 
   <!-- Edit Modal -->
-  <!-- <div
-    v-if="showEditModal"
-    class="modal fade show d-block"
-    tabindex="-1"
-    style="background-color: rgba(0, 0, 0, 0.5)"
-  >
+  <!-- <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Edit User</h5>
-          <button
-            type="button"
-            class="btn-close"
-            @click="showEditModal = false"
-          ></button>
+          <button type="button" class="btn-close" @click="showEditModal = false"></button>
         </div>
         <div class="modal-body" v-if="currentEditItem">
           <div class="mb-3">
             <label class="form-label">Nama</label>
-            <input
-              type="text"
-              class="form-control"
-              :value="currentEditItem.name"
-              disabled
-            />
+            <input type="text" class="form-control" :value="currentEditItem.name" disabled />
           </div>
           <div class="mb-3">
             <label class="form-label">Email</label>
-            <input
-              type="text"
-              class="form-control"
-              :value="currentEditItem.username"
-              disabled
-            />
+            <input type="text" class="form-control" :value="currentEditItem.username" disabled />
           </div>
           <div class="mb-3">
-            <label class="form-label"
-              >Jabatan <span class="text-danger">*</span></label
-            >
-            <input
-              v-model="formData.jabatan"
-              type="text"
-              class="form-control"
-              placeholder="Masukkan jabatan"
-            />
+            <label class="form-label">Jabatan <span class="text-danger">*</span></label>
+            <input v-model="formData.jabatan" type="text" class="form-control" placeholder="Masukkan jabatan" />
           </div>
           <div class="mb-3">
-            <label class="form-label"
-              >Role <span class="text-danger">*</span></label
-            >
+            <label class="form-label">Role <span class="text-danger">*</span></label>
             <select v-model="formData.role" class="form-select">
               <option value="Admin">Admin</option>
               <option value="User">User</option>
@@ -564,13 +480,7 @@ export default {
           </div>
         </div>
         <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            @click="showEditModal = false"
-          >
-            Batal
-          </button>
+          <button type="button" class="btn btn-secondary" @click="showEditModal = false">Batal</button>
           <button type="button" class="btn btn-primary" @click="updateUser">
             <i class="ri-save-line me-1"></i>Simpan
           </button>
@@ -580,21 +490,12 @@ export default {
   </div> -->
 
   <!-- Delete Modal -->
-  <div
-    v-if="showDeleteModal"
-    class="modal fade show d-block"
-    tabindex="-1"
-    style="background-color: rgba(0, 0, 0, 0.5)"
-  >
+  <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Hapus User</h5>
-          <button
-            type="button"
-            class="btn-close"
-            @click="showDeleteModal = false"
-          ></button>
+          <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
         </div>
         <div class="modal-body" v-if="currentDeleteItem">
           <p class="mb-0">
@@ -607,13 +508,7 @@ export default {
           </p>
         </div>
         <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            @click="showDeleteModal = false"
-          >
-            Batal
-          </button>
+          <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">Batal</button>
           <button type="button" class="btn btn-danger" @click="deleteUser">
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
@@ -624,54 +519,37 @@ export default {
 </template>
 
 <style scoped>
-.search-container .search-icon {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6c757d;
-  pointer-events: none;
-}
+.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075) !important; overflow: hidden !important; }
+.gradient-header-card .card-header { border: none !important; border-radius: 0 !important; margin: 0 !important; }
+.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
 
-.search-container .clear-btn {
-  position: absolute;
-  right: 5px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 0.15rem 0.35rem;
-  color: #6c757d;
-}
+.search-container { position: relative; }
+.search-container input { padding-right: 60px !important; }
+.search-container input::placeholder { color: #999; }
+.search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
+.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
+.clear-btn:hover { color: #333; }
 
-.search-container .clear-btn:hover {
-  color: #dc3545;
-}
+.sortable, .column-label { cursor: pointer; user-select: none; }
+.sort-arrows { display: flex; flex-direction: column; line-height: 0.5; }
+.sort-arrows i { font-size: 1rem; color: #d1d5db; cursor: pointer; transition: color 0.2s; }
+.sort-arrows i:hover { color: #6b7280; }
+.sort-arrows i.active { color: #3b82f6; }
 
-.sortable .column-label {
-  cursor: pointer;
-}
+.modal.show { display: block; }
+.modal.show .modal-dialog { margin: 0 auto; max-width: 600px; }
+.toast { min-width: 250px; }
 
-.sortable .column-label:hover {
-  color: var(--primary-color);
-}
+.empty-state { padding: 2rem 1rem; }
+.empty-state .empty-icon { width: 80px; height: 80px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--secondary-rgb),0.1)); border-radius: 50%; }
+.empty-state .empty-icon i { font-size: 2.5rem; color: var(--primary-color); opacity: 0.7; }
 
-.sort-arrows {
-  display: flex;
-  flex-direction: column;
-  line-height: 0.7;
-  font-size: 14px;
-}
+.btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
 
-.sort-arrows i {
-  cursor: pointer;
-  color: #adb5bd;
-  transition: color 0.15s ease;
-}
-
-.sort-arrows i:hover {
-  color: var(--primary-color);
-}
-
-.sort-arrows i.active {
-  color: var(--primary-color);
-}
+.email-link { color: var(--default-text-color); transition: all 0.2s ease; }
+.email-link:hover { color: var(--primary-color); }
+.email-link .email-icon-wrapper { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--info-rgb),0.1)); border-radius: 6px; color: var(--primary-color); font-size: 14px; transition: all 0.2s ease; }
+.email-link:hover .email-icon-wrapper { background: linear-gradient(135deg, rgba(var(--primary-rgb),0.2), rgba(var(--info-rgb),0.2)); transform: scale(1.05); }
+.email-link .email-text { font-size: 13px; color: #6c757d; transition: color 0.2s ease; }
+.email-link:hover .email-text { color: var(--primary-color); }
 </style>

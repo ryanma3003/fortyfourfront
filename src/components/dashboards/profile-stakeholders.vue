@@ -84,6 +84,18 @@ const dataToPass = computed(() => ({
   activepage:
     currentStakeholder.value?.nama_perusahaan || "Profile Stakeholder",
 }));
+
+// Computed for dynamic banner style with photo position
+const bannerStyle = computed(() => {
+  if (!currentStakeholder.value) return {};
+  const stakeholder = currentStakeholder.value as any;
+  return {
+    backgroundImage: `url(${stakeholder.photo})`,
+    backgroundSize: 'cover',
+    backgroundPosition: `${stakeholder.photoPositionX ?? 50}% ${stakeholder.photoPositionY ?? 50}%`,
+    backgroundRepeat: 'no-repeat'
+  };
+});
 </script>
 
 <style scoped>
@@ -95,12 +107,7 @@ const dataToPass = computed(() => ({
 .profile-banner-image {
   height: 400px;
   overflow: hidden;
-}
-
-.profile-banner-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  border-radius: 0.5rem 0.5rem 0 0;
 }
 
 .pic-item:hover {
@@ -136,18 +143,9 @@ const dataToPass = computed(() => ({
   <div class="row justify-content-center">
     <div class="col-xl-10">
       <!-- Error handling jika stakeholder tidak ditemukan -->
-      <div
-        v-if="!currentStakeholder"
-        class="alert alert-warning alert-dismissible fade show"
-        role="alert"
-      >
+      <div v-if="!currentStakeholder" class="alert alert-warning alert-dismissible fade show" role="alert">
         <strong>Oops!</strong> Data stakeholder tidak ditemukan.
-        <button
-          type="button"
-          class="btn-close"
-          data-bs-dismiss="alert"
-          aria-label="Close"
-        ></button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>
 
       <!-- Content jika stakeholder ditemukan -->
@@ -155,87 +153,43 @@ const dataToPass = computed(() => ({
         <div class="row">
           <div class="col-xl-12">
             <div class="card custom-card profile-card">
-              <div class="profile-banner-image">
-                <img
-                  :src="currentStakeholder.photo"
-                  class="card-img-top"
-                  alt="foto-perusahaan"
-                />
-              </div>
+              <div 
+                class="profile-banner-image"
+                :style="bannerStyle"
+              ></div>
               <div class="card-body p-4 pb-0 position-relative">
-                <div
-                  class="d-flex align-items-end justify-content-between flex-wrap"
-                >
+                <div class="d-flex align-items-end justify-content-between flex-wrap">
                   <div class="profile-avatar-container">
-                    <div
-                      class="mt-4 mb-3 d-flex align-items-center flex-wrap gap-3 justify-content-between"
-                    >
+                    <div class="mt-4 mb-3 d-flex align-items-center flex-wrap gap-3 justify-content-between">
                       <div>
-                        <h1
-                          class="fw-semibold"
-                          style="margin-top: -1.75rem !important"
-                        >
-                          {{ currentStakeholder.nama_perusahaan }}
-                        </h1>
-                        <span class="d-block fw-medium text-muted mb-1">{{
-                          currentStakeholder.sektor
-                        }}</span>
+                        <h1 class="fw-semibold" style="margin-top: -1.75rem !important">{{ currentStakeholder.nama_perusahaan }}</h1>
+                        <span class="d-block fw-medium text-muted mb-1">{{ currentStakeholder.sektor }}</span>
                         <p class="fs-12 mb-0 fw-medium text-muted">
-                          <span class="me-3"
-                            ><i class="ri-building-line me-1 align-middle"></i
-                            >{{ currentStakeholder.alamat }}</span
-                          >
-                          <span class="me-3"
-                            ><i class="ri-phone-line me-1 align-middle"></i
-                            >{{ currentStakeholder.telepon }}</span
-                          >
-                          <span
-                            ><i class="ri-mail-line me-1 align-middle"></i
-                            >{{ currentStakeholder.email }}</span
-                          >
+                          <span class="me-3">
+                            <i class="ri-building-line me-1 align-middle"></i>{{ currentStakeholder.alamat }}</span>
+                          <span class="me-3">
+                            <i class="ri-phone-line me-1 align-middle"></i>{{ currentStakeholder.telepon }}</span>
+                          <span>
+                            <i class="ri-mail-line me-1 align-middle"></i>{{ currentStakeholder.email }}</span>
                         </p>
                       </div>
                     </div>
                   </div>
-                  <router-link
-                    v-if="isAdmin"
-                    :to="`/stakeholders-profile-settings?slug=${currentStakeholder.slug}`"
-                    class="btn btn-warning d-flex align-items-start mb-5 gap-2"
-                    ><i class="ri-edit-line"></i
-                    ><span>Edit Profil</span></router-link
-                  >
-                  <!-- <router-link :to="`/pages/profile-settings`" class="btn btn-primary mb-3">Edit Profile</router-link> -->
+                  <router-link v-if="isAdmin" :to="`/stakeholders-profile-settings?slug=${currentStakeholder.slug}`" class="btn btn-warning d-flex align-items-start mb-5 gap-2"><i class="ri-edit-line"></i><span>Edit Profil</span></router-link>
                 </div>
               </div>
             </div>
           </div>
           <div class="col-xl-12">
             <div class="tab-content" id="profile-tabs">
-              <div
-                class="tab-pane show active p-0 border-0"
-                id="profile-about-tab-pane"
-                role="tabpanel"
-                aria-labelledby="profile-about-tab"
-                tabindex="0"
-              >
+              <div class="tab-pane show active p-0 border-0" id="profile-about-tab-pane" role="tabpanel" aria-labelledby="profile-about-tab" tabindex="0">
                 <div class="row">
-                  <SpkReusableAnlyticsCard
-                    :analyticData="penilaian"
-                    :csirtId="relatedCsirtId"
-                  />
+                  <SpkReusableAnlyticsCard :analyticData="penilaian" :csirtId="relatedCsirtId" />
                   <div class="col-xl-12">
                     <div class="card custom-card">
-                      <div
-                        class="card-header d-flex align-items-center justify-content-between"
-                      >
+                      <div class="card-header d-flex align-items-center justify-content-between">
                         <div class="card-title">PIC Perusahaan</div>
-                        <router-link
-                          v-if="isAdmin"
-                          to="/pic-add"
-                          class="btn btn-warning d-flex align-items-start gap-2"
-                          ><i class="ri-add-line"></i
-                          ><span>Add PIC</span></router-link
-                        >
+                        <router-link v-if="isAdmin" to="/pic-add" class="btn btn-warning d-flex align-items-start gap-2"><i class="ri-add-line"></i><span>Add PIC</span></router-link>
                       </div>
                       <div class="card-body p-0">
                         <div class="table-responsive">
@@ -294,58 +248,32 @@ const dataToPass = computed(() => ({
                           {{ currentStakeholder.sektor }}.
                         </p>
                         <div class="text-muted">
-                          <div
-                            class="mb-2 d-flex align-items-center gap-1 flex-wrap"
-                          >
-                            <span
-                              class="avatar avatar-sm avatar-rounded text-default"
-                            >
+                          <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
+                            <span class="avatar avatar-sm avatar-rounded text-default">
                               <i class="ri-mail-line align-middle fs-15"></i>
                             </span>
                             <span class="fw-medium text-default">Email : </span>
                             {{ currentStakeholder.email }}
                           </div>
-                          <div
-                            class="mb-2 d-flex align-items-center gap-1 flex-wrap"
-                          >
-                            <span
-                              class="avatar avatar-sm avatar-rounded text-default"
-                            >
+                          <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
+                            <span class="avatar avatar-sm avatar-rounded text-default">
                               <i class="ri-phone-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default"
-                              >Telepon :
-                            </span>
+                            <span class="fw-medium text-default">Telepon :</span>
                             {{ currentStakeholder.telepon }}
                           </div>
-                          <div
-                            class="mb-2 d-flex align-items-center gap-1 flex-wrap"
-                          >
-                            <span
-                              class="avatar avatar-sm avatar-rounded text-default"
-                            >
+                          <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
+                            <span class="avatar avatar-sm avatar-rounded text-default">
                               <i class="ri-map-pin-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default"
-                              >Website :
-                            </span>
-                            <a
-                              :href="currentStakeholder.website"
-                              target="_blank"
-                              >{{ currentStakeholder.website }}</a
-                            >
+                            <span class="fw-medium text-default">Website :</span>
+                            <a :href="currentStakeholder.website" target="_blank">{{ currentStakeholder.website }}</a>
                           </div>
                           <div class="mb-0 d-flex align-items-center gap-1">
-                            <span
-                              class="avatar avatar-sm avatar-rounded text-default"
-                            >
-                              <i
-                                class="ri-building-line align-middle fs-15"
-                              ></i>
+                            <span class="avatar avatar-sm avatar-rounded text-default">
+                              <i class="ri-building-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default"
-                              >Lokasi :
-                            </span>
+                            <span class="fw-medium text-default">Lokasi :</span>
                             {{ currentStakeholder.alamat }}
                           </div>
                         </div>

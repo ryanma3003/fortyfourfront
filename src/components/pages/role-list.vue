@@ -4,6 +4,7 @@ import { Tooltip } from "bootstrap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import usersData from "../../utils/users.json";
 import { useAuthStore } from "../../stores/auth";
+import { useProfileStore } from "../../stores/profile";
 import { rolesDummy, type User, getRoleByName } from "../../data/roledummydata";
 
 const dataToPass = {
@@ -59,18 +60,40 @@ const displayData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
   return filteredData.value.slice(start, start + itemsPerPage.value);
 });
+const profileStore = useProfileStore();
 
 const loadUsers = async () => {
   loading.value = true;
   await new Promise((resolve) => setTimeout(resolve, 300));
 
-  items.value = usersData.map((u: any) => ({
-    id: u.id,
-    name: u.name,
-    role: u.role,
-    permissions: getRoleByName(u.role)?.permissions ?? [],
-    allAccess: getRoleByName(u.role)?.allAccess ?? false,
-  }));
+  // Load profile data with proper user switching
+  profileStore.switchUser();
+
+  // Get current logged-in user
+  const currentUser = currentLoggedInUser.value;
+
+  // Map users and merge dynamic data for current user
+  items.value = usersData.map((u: any) => {
+    const baseUser = {
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      permissions: getRoleByName(u.role)?.permissions ?? [],
+      allAccess: getRoleByName(u.role)?.allAccess ?? false,
+      photo: u.photo,
+    };
+
+    // If this is the current logged-in user and profile has been customized
+    if (currentUser && u.id === currentUser.id && profileStore.isCustomized) {
+      return {
+        ...baseUser,
+        name: profileStore.name || baseUser.name,
+        photo: profileStore.avatarUrl || baseUser.photo,
+      };
+    }
+
+    return baseUser;
+  });
 
   loading.value = false;
 };
@@ -186,63 +209,66 @@ onMounted(() => loadUsers());
 
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card">
+      <div class="card custom-card gradient-header-card">
         <!-- Card Header -->
-        <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3">
-          <div class="card-title">User Role Administration</div>
-
-          <!-- Search Input -->
-          <div class="search-container position-relative flex-grow-1" style="max-width: 400px">
-            <input v-model="searchQuery" type="text" class="form-control form-control-sm" placeholder="Search by name..." aria-label="Search users"/>
-            <i v-if="!searchQuery" class="ri-search-line search-icon"></i>
-            <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" title="Clear search">
-              <i class="ri-close-line"></i>
-            </button>
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+          <div class="d-flex align-items-center">
+            <i class="ri-shield-user-line text-white me-2 fs-18"></i>
+            <div class="card-title text-white mb-0">Daftar Role</div>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div class="search-container position-relative" style="min-width: 250px">
+              <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
+                placeholder="Cari nama user..." 
+                style="background: #fff; color: #333; border: none; padding-right: 60px;" />
+              <i class="ri-search-line search-icon" style="color: #666; right: 35px;"></i>
+              <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" style="color: #666;">
+                <i class="ri-close-line"></i>
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- Card Body -->
-        <div class="card-body p-0 p-sm-3">
+        <div class="card-body p-4">
           <!-- Loading State -->
-          <div v-if="loading" class="text-center p-4">
-            <div class="spinner-border" role="status">
+          <div v-if="loading" class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading...</span>
             </div>
+            <p class="text-muted mt-2 mb-0">Memuat data...</p>
           </div>
 
           <template v-else>
-            <!-- Non-admin Info Banner
-            <div v-if="!isAdmin" class="alert alert-info-transparent border-0 mb-3">
-              <i class="ri-information-line me-2"></i>
-              <small>
-                Anda login sebagai
-                <strong>{{ currentLoggedInUser?.role }}</strong
-                >. Hanya Admin yang dapat mengubah role user.
-              </small>
-            </div> -->
-
-            <!-- Items Per Page Control -->
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+            <!-- Controls Bar -->
+            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
               <div class="d-flex align-items-center gap-2">
-                <span class="text-muted fs-13">Tampilkan</span>
-                <select v-model="itemsPerPage" class="form-select form-select-sm" style="width: 75px">
-                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                </select>
-                <span class="text-muted fs-13">per halaman</span>
+                <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
+                  <i class="ri-list-ordered me-2 text-primary"></i>
+                  <span class="text-muted fs-13 me-2">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm border-0 bg-transparent" style="width: 70px">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </div>
+                <span class="badge bg-primary-transparent text-primary px-3 py-2">
+                  <i class="ri-database-2-line me-1"></i>{{ displayData.length }} data
+                </span>
               </div>
             </div>
 
             <!-- Data Table -->
-            <div class="table-responsive">
+            <div class="table-responsive rounded-3 border">
               <table class="table table-hover text-nowrap mb-0">
-                <thead>
+                <thead class="table-light">
                   <tr>
-                    <th scope="col">No</th>
+                    <th class="fw-semibold text-muted" style="width: 60px">No</th>
 
                     <!-- Name Column (Sortable) -->
-                    <th scope="col" class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span class="column-label" @click="toggleSort('name')" title="Click to toggle sort">Name</span>
+                    <th class="sortable fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-user-line text-primary"></i>
+                        <span class="column-label" @click="toggleSort('name')" title="Click to toggle sort">Nama</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" 
                             :class="{ active: sortField === 'name' && sortOrder === 'asc' }" 
@@ -257,9 +283,10 @@ onMounted(() => loadUsers());
                     </th>
 
                     <!-- Role Column (Sortable)-->
-                    <th scope="col" class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span class="column-label" @click="toggleSort('role')" title="Click to toggle sort">Current Role</span>
+                    <th class="sortable fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-shield-star-line text-primary"></i>
+                        <span class="column-label" @click="toggleSort('role')" title="Click to toggle sort">Role</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" 
                             :class="{ active: sortField === 'role' && sortOrder === 'asc' }" 
@@ -274,53 +301,74 @@ onMounted(() => loadUsers());
                         </div>
                       </div>
                     </th>
-                    <th scope="col">Permissions</th>
-                    <th scope="col" class="text-center">Action</th>
+                    <th class="fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-lock-line text-primary"></i>
+                        <span>Permissions</span>
+                      </div>
+                    </th>
+                    <th class="text-center fw-semibold" style="width: 120px">Aksi</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <!-- Empty State -->
                   <tr v-if="!displayData.length">
-                    <td colspan="5" class="text-center text-muted py-4">
-                      <i class="ri-inbox-line fs-2 d-block mb-2"></i>
-                      Data tidak ditemukan
+                    <td colspan="5" class="text-center py-5">
+                      <div class="empty-state">
+                        <div class="empty-icon mb-3">
+                          <i class="ri-user-search-line"></i>
+                        </div>
+                        <h6 class="text-muted mb-1">No Users Found</h6>
+                        <p class="text-muted fs-13 mb-0">Try adjusting your search criteria</p>
+                      </div>
                     </td>
                   </tr>
 
                   <!-- User Rows -->
                   <tr v-for="(user, index) in displayData" :key="user.id">
-                    <td>{{ (currentPage - 1) * itemsPerPage + index + 1 }}</td>
-
-                    <td>
-                      <div class="fw-semibold">{{ user.name }}</div>
+                    <td class="align-middle">
+                      <span class="text-muted fw-medium">{{ (currentPage - 1) * itemsPerPage + index + 1 }}</span>
                     </td>
 
-                    <td>
-                      <span :class="['badge role-badge', user.role === 'Admin' ? 'bg-danger-transparent' : 'bg-info-transparent']">
+                    <td class="align-middle">
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="avatar avatar-sm avatar-rounded bg-primary-transparent overflow-hidden">
+                          <img v-if="user.photo" :src="user.photo" :alt="user.name" />
+                          <span v-else class="text-primary fw-semibold">{{ user.name.charAt(0).toUpperCase() }}</span>
+                        </span>
+                        <div>
+                          <span class="fw-semibold d-block">{{ user.name }}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td class="align-middle">
+                      <span :class="['badge rounded-pill px-3 py-2 fs-12', user.role === 'Admin' ? 'bg-danger-transparent' : 'bg-info-transparent']">
+                        <i :class="user.role === 'Admin' ? 'ri-shield-star-line me-1' : 'ri-user-line me-1'"></i>
                         {{ user.role }}
                       </span>
                     </td>
 
-                    <td>
-                      <span v-if="user.allAccess" class="text-success small fw-bold" data-bs-toggle="tooltip" data-bs-placement="top" title="All permissions enabled">
+                    <td class="align-middle">
+                      <span v-if="user.allAccess" class="badge bg-success-transparent text-success px-2 py-1 fs-11" data-bs-toggle="tooltip" data-bs-placement="top" title="All permissions enabled">
                         <i class="ri-shield-check-line me-1"></i>Full Access
                       </span>
-                      <span v-else class="text-muted small permission-tooltip" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" :title="user.permissions.join(', ') || 'No permissions'">
+                      <span v-else class="badge bg-light text-muted border px-2 py-1 permission-tooltip fs-11" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" :title="user.permissions.join(', ') || 'No permissions'">
                         <i class="ri-lock-2-line me-1"></i>
                         {{ user.permissions.length }} active
                       </span>
                     </td>
 
-                    <td class="text-center">
-                      <div class="btn-list">
-                        <button :class="['btn btn-sm btn-icon me-2', isAdmin ? 'btn-primary-light' : 'btn-secondary-light opacity-50']"
+                    <td class="text-center align-middle">
+                      <div class="d-flex gap-1 justify-content-center">
+                        <button :class="['btn btn-sm btn-icon btn-wave', isAdmin ? 'btn-primary-light' : 'btn-secondary-light opacity-50']"
                           @click="openEditModal(user)"
                           :title="isAdmin ? 'Edit Role' : 'Hanya Admin yang dapat mengubah role'">
                           <i class="ri-edit-line"></i>
                         </button>
                         <button
-                          :class="['btn btn-sm btn-icon', isAdmin ? 'btn-danger-light' : 'btn-secondary-light opacity-50']"
+                          :class="['btn btn-sm btn-icon btn-wave', isAdmin ? 'btn-danger-light' : 'btn-secondary-light opacity-50']"
                           @click="openDeleteModal(user)"
                           :title="isAdmin ? 'Delete User' : 'Hanya Admin yang dapat menghapus user'"
                           :disabled="!!(currentLoggedInUser && user.id === currentLoggedInUser.id)">
@@ -454,4 +502,37 @@ onMounted(() => loadUsers());
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075) !important; overflow: hidden !important; }
+.gradient-header-card .card-header { border: none !important; border-radius: 0 !important; margin: 0 !important; }
+.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
+
+.search-container { position: relative; }
+.search-container input { padding-right: 60px !important; }
+.search-container input::placeholder { color: #999; }
+.search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
+.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
+.clear-btn:hover { color: #333; }
+
+.sortable, .column-label { cursor: pointer; user-select: none; }
+.sort-arrows { display: flex; flex-direction: column; line-height: 0.5; }
+.sort-arrows i { font-size: 1rem; color: #d1d5db; cursor: pointer; transition: color 0.2s; }
+.sort-arrows i:hover { color: #6b7280; }
+.sort-arrows i.active { color: #3b82f6; }
+
+.modal.show { display: block; }
+.modal.show .modal-dialog { margin: 0 auto; max-width: 600px; }
+.toast { min-width: 250px; }
+
+.empty-state { padding: 2rem 1rem; }
+.empty-state .empty-icon { width: 80px; height: 80px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--secondary-rgb),0.1)); border-radius: 50%; }
+.empty-state .empty-icon i { font-size: 2.5rem; color: var(--primary-color); opacity: 0.7; }
+
+.btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1050; }
+.modal-overlay .modal-content { min-width: 320px; max-width: 500px; width: 100%; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
