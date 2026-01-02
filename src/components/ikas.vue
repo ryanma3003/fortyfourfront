@@ -45,6 +45,91 @@ const dataToPass = computed(() => {
 
 const route = useRoute();
 
+// --- STATE: Upload Excel Feature ---
+const fileInput = ref(null);
+const selectedFile = ref(null);
+const tableData = ref([]);
+const loading = ref(false);
+const errorMessage = ref('');
+
+// --- FUNCTION: Trigger Input File ---
+const triggerFileInput = () => {
+    errorMessage.value = ''; // Reset error msg
+    fileInput.value.click();
+};
+
+// --- FUNCTION: Handle File Selection ---
+const handleFile = (event) => {
+    const file = event.target.files[0];
+    
+    if (!file) return;
+
+    // Validasi ekstensi .xlsx dan .xls
+    const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+    const fileName = file.name.toLowerCase();
+    const isValidExt = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+    if (!isValidExt) {
+        errorMessage.value = 'Format file harus .xlsx atau .xls';
+        alert(errorMessage.value); // Simple alert for now as requested by "logic only" scope
+        event.target.value = ''; // Reset input
+        return;
+    }
+
+    selectedFile.value = file;
+    // Auto upload saat file dipilih (optional, bisa juga dipisah tombol upload)
+    uploadExcel();
+};
+
+// --- FUNCTION: Upload Excel to Backend ---
+const uploadExcel = async () => {
+    if (!selectedFile.value) {
+        errorMessage.value = 'Pilih file terlebih dahulu!';
+        return;
+    }
+
+    loading.value = true;
+    errorMessage.value = '';
+
+    const formData = new FormData();
+    formData.append('file', selectedFile.value);
+
+    try {
+        // Mengirim file ke endpoint backend
+        const response = await fetch('/api/ikas/import', {
+            method: 'POST',
+            body: formData,
+            // Headers untuk Content-Type otomatis diatur oleh browser saat menggunakan FormData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Gagal mengupload file');
+        }
+
+        if (result.success) {
+            // Mengisi data hasil response ke state tableData
+            tableData.value = result.data;
+            alert('Upload berhasil!');
+        } else {
+            throw new Error(result.message || 'Terjadi kesalahan pada server');
+        }
+
+    } catch (error) {
+        // Handle error response
+        console.error('Upload error:', error);
+        errorMessage.value = error.message;
+        alert(`Error: ${errorMessage.value}`);
+    } finally {
+        // Handle loading state
+        loading.value = false;
+        // Reset input agar bisa upload file yang sama jika perlu
+        if (fileInput.value) fileInput.value.value = '';
+        selectedFile.value = null; 
+    }
+};
+
 </script>
 
 <style scoped>
@@ -267,7 +352,11 @@ td {
             </div>
             <div class="d-flex justify-content-end gap-2 mt-3">
               <button @click="router.push('/ikas-crud')" class="btn btn-secondary btn-glare rounded-pill btn-md">Input Data</button>
-              <button class="btn btn-success btn-glare rounded-pill btn-md">Upload</button>
+              <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
+              <button @click="triggerFileInput" class="btn btn-success btn-glare rounded-pill btn-md" :disabled="loading">
+                <span v-if="loading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                Upload Excel
+              </button>
             </div>
         </div>
       </div>
