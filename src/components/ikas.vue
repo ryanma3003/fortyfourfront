@@ -8,42 +8,45 @@ import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 
 const router = useRouter();
 
+const route = useRoute();
+
 const dataToPass = computed(() => {
     try {
         const slug = route.query.slug;
-        console.log("IKAS Debug: Slug is/is not present:", slug);
+        const source = route.query.source;
+        console.log("IKAS Debug: Slug:", slug, "Source:", source);
         
-        if (!stakeholdersData || !Array.isArray(stakeholdersData)) {
-            console.error("IKAS Error: stakeholdersData is missing or not an array", stakeholdersData);
-            return {
-                title: { label: "Dashboards", path: "/dashboards" },
+        // If source is 'list', user came from the list page, so back button should go to list.
+        if (source === 'list') {
+             return {
+                title: { label: "Stakeholders", path: "/stakeholders" },
                 currentpage: "IKAS",
                 activepage: "IKAS",
             };
         }
 
-        const stakeholder = slug ? stakeholdersData.find(s => s.slug === String(slug)) : null;
-        console.log("IKAS Debug: Found stakeholder:", stakeholder);
+        if (slug && stakeholdersData && Array.isArray(stakeholdersData)) {
+            const stakeholder = stakeholdersData.find(s => s.slug === String(slug));
+            console.log("IKAS Debug: Found stakeholder:", stakeholder);
 
-        if (stakeholder) {
-            return {
-                title: { label: `Profile ${stakeholder.nama_perusahaan}`, path: `/profile-stakeholders/${stakeholder.slug}` },
-                currentpage: "IKAS",
-                activepage: "IKAS",
-            };
+            if (stakeholder) {
+                return {
+                    title: { label: `Profile ${stakeholder.nama_perusahaan}`, path: `/profile-stakeholders/${stakeholder.slug}` },
+                    currentpage: "IKAS",
+                    activepage: "IKAS",
+                };
+            }
         }
     } catch (error) {
         console.error("IKAS Error doing computed:", error);
     }
 
     return {
-        title: { label: "Dashboards", path: "/dashboards" },
+        title: { label: "Stakeholders", path: "/stakeholders" },
         currentpage: "IKAS",
         activepage: "IKAS",
     }
 });
-
-const route = useRoute();
 
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);

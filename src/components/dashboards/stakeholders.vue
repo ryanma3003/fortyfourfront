@@ -592,7 +592,7 @@ export default {
                           <i class="ri-eye-line"></i>
                         </router-link>
                         <router-link
-                          :to="`/ikas?slug=${item.slug}`"
+                          :to="`/ikas?slug=${item.slug}&source=list`"
                           class="btn btn-sm btn-icon btn-wave btn-warning-light"
                           title="IKAS">
                           <i class="ri-file-chart-line"></i>

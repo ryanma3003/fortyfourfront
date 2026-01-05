@@ -184,7 +184,7 @@ const bannerStyle = computed(() => {
             <div class="tab-content" id="profile-tabs">
               <div class="tab-pane show active p-0 border-0" id="profile-about-tab-pane" role="tabpanel" aria-labelledby="profile-about-tab" tabindex="0">
                 <div class="row">
-                  <SpkReusableAnlyticsCard :analyticData="penilaian" :csirtId="relatedCsirtId" />
+                  <SpkReusableAnlyticsCard :analyticData="penilaian" :csirtId="relatedCsirtId" :stakeholderSlug="currentStakeholder.slug" />
                   <div class="col-xl-12">
                     <div class="card custom-card">
                       <div class="card-header d-flex align-items-center justify-content-between">
