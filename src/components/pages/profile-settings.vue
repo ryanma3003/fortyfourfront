@@ -330,7 +330,7 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
 
       <!-- Account Info Card -->
       <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex align-items-center" style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+        <div class="card-header d-flex align-items-center gradient-header-blue">
           <i class="ri-user-settings-line text-white me-2 fs-18"></i>
           <div class="card-title text-white mb-0">Informasi Akun</div>
         </div>
@@ -376,7 +376,7 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
 
       <!-- Password Card -->
       <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer; background: linear-gradient(90deg, #2c5282 0%, #1e3a5f 100%);">
+        <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
           <div class="d-flex align-items-center">
             <i class="ri-lock-password-line text-white me-2 fs-18"></i>
             <div class="card-title text-white mb-0">Ubah Password</div>
@@ -441,7 +441,7 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
                 </div>
               </div>
               <div class="col-xl-2 col-lg-2 col-md-3 col-6 mb-2 mb-md-0 d-flex align-items-end">
-                <button @click="generatePassword" class="btn text-white w-100" style="background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%)" :disabled="!isPasswordLengthValid">
+                <button @click="generatePassword" class="btn btn-gradient-blue text-white w-100" :disabled="!isPasswordLengthValid">
                   <i class="ri-key-2-line me-1"></i>Generate
                 </button>
               </div>
@@ -470,7 +470,7 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
           </div>
           <div class="card-footer bg-light border-top-0">
             <div class="d-flex justify-content-end">
-              <button @click="savePassword" class="btn text-white" style="background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);">
+              <button @click="savePassword" class="btn btn-gradient-blue text-white">
                 <i class="ri-lock-line me-1"></i>Update Password
               </button>
             </div>
@@ -500,4 +500,65 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
 .avatar-drag-indicator { opacity: 0; transition: opacity 0.3s ease; border-radius: 50%; }
 .avatar-container:hover .avatar-drag-indicator { opacity: 1; }
 .avatar-container.dragging .avatar-drag-indicator { opacity: 0.5; }
+
+/* Dark Mode Styles */
+html[data-theme-mode="dark"] .text-dark,
+html.dark .text-dark {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .text-black,
+html.dark .text-black {
+  color: #cbd5e0 !important;
+}
+
+html[data-theme-mode="dark"] .text-primary-dark,
+html.dark .text-primary-dark {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .form-label,
+html.dark .form-label {
+  color: #cbd5e0 !important;
+}
+
+html[data-theme-mode="dark"] .text-muted,
+html.dark .text-muted {
+  color: #9ca3af !important;
+}
+
+html[data-theme-mode="dark"] .avatar.border-white,
+html.dark .avatar.border-white {
+  border-color: #374151 !important;
+}
+
+/* Blue Button with White Text */
+.btn-gradient-blue {
+  background: #08377c !important;
+  border: none !important;
+  color: #ffffff !important;
+}
+
+.btn-gradient-blue:hover {
+  background: #0b5ed7 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  color: #ffffff !important;
+}
+
+.btn-gradient-blue:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Ensure white text in dark mode */
+html[data-theme-mode="dark"] .btn-gradient-blue,
+html.dark .btn-gradient-blue {
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .btn-gradient-blue:hover,
+html.dark .btn-gradient-blue:hover {
+  color: #ffffff !important;
+}
 </style>

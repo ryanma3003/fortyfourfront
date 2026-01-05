@@ -49102,3 +49102,21 @@ a.link-underline-dark {
     right: 0;
   }
 }
+/* Custom Gradient Classes */
+.gradient-header-blue {
+  background: radial-gradient(ellipse at top, #032a5c, #084696) !important;
+}
+
+/* Dark Mode Gradient Header Text */
+html[data-theme-mode="dark"] .gradient-header-blue .card-title,
+html[data-theme-mode="dark"] .gradient-header-blue i,
+html.dark .gradient-header-blue .card-title,
+html.dark .gradient-header-blue i {
+  color: rgb(0, 0, 0) !important;
+}
+
+/* Dark Mode Text White Override for Gradient Headers */
+html[data-theme-mode="dark"] .gradient-header-blue .text-white,
+html.dark .gradient-header-blue .text-white {
+  color: #fff !important;
+}

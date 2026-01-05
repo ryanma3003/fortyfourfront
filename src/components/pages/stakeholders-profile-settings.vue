@@ -226,8 +226,7 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
     <div class="col-xl-10">
       <!-- Account Information Card -->
       <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex align-items-center" 
-            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+        <div class="card-header d-flex align-items-center gradient-header-blue">
           <i class="ri-building-2-line text-white me-2 fs-18"></i>
           <div class="card-title text-white mb-0">Informasi Perusahaan</div>
         </div>

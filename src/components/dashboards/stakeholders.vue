@@ -414,13 +414,15 @@ export default {
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
-            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+            style="background:
+  radial-gradient(ellipse at top, #032a5c, #084696);
+">
           <div class="d-flex align-items-center">
-            <i class="ri-building-2-line text-white me-2 fs-18"></i>
-            <div class="card-title text-white mb-0">Daftar Stakeholders</div>
+            <i class="ri-building-2-line me-2 fs-18" style="color: white !important;"></i>
+            <div class="card-title mb-0" style="color: white !important;">Daftar Stakeholders</div>
           </div>
           <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-container position-relative" style="min-width: 250px">
+            <div class="search-container position-relative" style="min-width: 400px">
               <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
                 placeholder="Cari perusahaan, sektor, atau email..." 
                 style="background: #fff; color: #333; border: none; padding-right: 60px;" />
@@ -668,7 +670,7 @@ export default {
     <div class="modal-dialog modal-dialog-centered modal-xl">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+          <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
             <div class="d-flex align-items-center">
               <i class="ri-add-circle-line text-white me-2 fs-18"></i>
               <div class="card-title text-white mb-0">
@@ -831,7 +833,7 @@ export default {
     <div class="modal-dialog modal-dialog-centered modal-xl">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+          <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
             <div class="d-flex align-items-center">
               <i class="ri-building-2-line text-white me-2 fs-18"></i>
               <div class="card-title text-white mb-0">
@@ -1029,7 +1031,7 @@ export default {
 .gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
 
 .search-container { position: relative; }
-.search-container input { padding-right: 60px !important; }
+.search-container input { padding-right: 35px !important; }
 .search-container input::placeholder { color: #999; }
 .search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
 .clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
@@ -1060,6 +1062,60 @@ export default {
 
 .photo-preview-modal { width: 180px; height: 120px; border-color: #dee2e6 !important; }
 @media (max-width: 575px) { .photo-preview-modal { width: 100%; height: 150px; } }
+
+
+/* Dark Mode Specific Styles */
+html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
+html[data-theme-mode="dark"] .card-header[style*="gradient"] i,
+html.dark .card-header[style*="gradient"] .card-title,
+html.dark .card-header[style*="gradient"] i {
+  color: rgb(0, 0, 0) !important;
+}
+
+html[data-theme-mode="dark"] .search-container input::placeholder,
+html.dark .search-container input::placeholder {
+  color: #000000 !important;
+}
+
+html[data-theme-mode="dark"] .search-icon,
+html[data-theme-mode="dark"] .clear-btn,
+html.dark .search-icon,
+html.dark .clear-btn {  
+  color: #000000 !important;
+}
+
+html[data-theme-mode="dark"] .table thead th,
+html.dark .table thead th {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .table tbody .text-dark,
+html[data-theme-mode="dark"] .email-link,
+html[data-theme-mode="dark"] .email-link .email-text,
+html.dark .table tbody .text-dark,
+html.dark .email-link,
+html.dark .email-link .email-text {
+  color: #cbd5e0 !important;
+}
+
+html[data-theme-mode="dark"] .table tbody .text-muted,
+html.dark .table tbody .text-muted {
+  color: #a0aec0 !important;
+}
+
+html[data-theme-mode="dark"] .badge.bg-light,
+html.dark .badge.bg-light {
+  background-color: #374151 !important;
+  color: #d1d5db !important;
+}
+
+html[data-theme-mode="dark"] .email-link:hover,
+html[data-theme-mode="dark"] .email-link:hover .email-text,
+html.dark .email-link:hover,
+html.dark .email-link:hover .email-text {
+  color: var(--primary-color) !important;
+}
+
 </style>
 
 <style>

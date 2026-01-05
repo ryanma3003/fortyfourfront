@@ -212,13 +212,13 @@ onMounted(() => loadUsers());
       <div class="card custom-card gradient-header-card">
         <!-- Card Header -->
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
-            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)">
+            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
           <div class="d-flex align-items-center">
-            <i class="ri-shield-user-line text-white me-2 fs-18"></i>
-            <div class="card-title text-white mb-0">Daftar Role</div>
+            <i class="ri-shield-user-line me-2 fs-18" style="color: white !important;"></i>
+            <div class="card-title mb-0" style="color: white !important;">Daftar Role</div>
           </div>
           <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-container position-relative" style="min-width: 250px">
+            <div class="search-container position-relative" style="min-width: 400px">
               <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
                 placeholder="Cari nama user..." 
                 style="background: #fff; color: #333; border: none; padding-right: 60px;" />
@@ -508,7 +508,7 @@ onMounted(() => loadUsers());
 .gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
 
 .search-container { position: relative; }
-.search-container input { padding-right: 60px !important; }
+.search-container input { padding-right: 35px !important; }
 .search-container input::placeholder { color: #999; }
 .search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
 .clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
@@ -535,4 +535,37 @@ onMounted(() => loadUsers());
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* Dark Mode Specific Styles */
+html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
+html[data-theme-mode="dark"] .card-header[style*="gradient"] i,
+html.dark .card-header[style*="gradient"] .card-title,
+html.dark .card-header[style*="gradient"] i {
+  color: rgb(0, 0, 0) !important;
+}
+html[data-theme-mode="dark"] .search-container input::placeholder,
+html.dark .search-container input::placeholder {
+  color: #000000 !important;
+}
+
+html[data-theme-mode="dark"] .table thead th,
+html.dark .table thead th {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .table tbody .text-dark,
+html.dark .table tbody .text-dark {
+  color: #cbd5e0 !important;
+}
+
+html[data-theme-mode="dark"] .table tbody .text-muted,
+html.dark .table tbody .text-muted {
+  color: #a0aec0 !important;
+}
+
+html[data-theme-mode="dark"] .badge.bg-light,
+html.dark .badge.bg-light {
+  background-color: #374151 !important;
+  color: #d1d5db !important;
+}
 </style>

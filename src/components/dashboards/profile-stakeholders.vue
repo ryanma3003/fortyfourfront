@@ -77,12 +77,9 @@ const relatedCsirtId = computed(() => {
 });
 
 const dataToPass = computed(() => ({
-  currentpage: `Profile ${
-    currentStakeholder.value?.nama_perusahaan || "Stakeholder"
-  }`,
+  currentpage: "Profile Stakeholders",
   title: { label: "Stakeholders", path: "/stakeholders" },
-  activepage:
-    currentStakeholder.value?.nama_perusahaan || "Profile Stakeholder",
+  activepage: "Profile Stakeholder",
 }));
 
 // Computed for dynamic banner style with photo position
@@ -102,23 +99,111 @@ const bannerStyle = computed(() => {
 /* Profile Card Styles */
 .profile-card {
   overflow: visible;
+  border: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 }
 
 .profile-banner-image {
   height: 400px;
   overflow: hidden;
-  border-radius: 0.5rem 0.5rem 0 0;
+  border-radius: 0.75rem 0.75rem 0 0;
+  position: relative;
 }
 
-.pic-item:hover {
-  background-color: #f9fafb;
-  border-radius: 6px;
+.profile-banner-image::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  z-index: 1;
+}
+
+.enhanced-card {
+  border: none;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.enhanced-card .card-header {
+  background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%);
+  color: white;
+  padding: 1.25rem 1.5rem;
+  border: none;
+}
+
+.enhanced-card .card-title {
+  font-weight: 700;
+  font-size: 1.25rem;
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.btn-add-pic {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 0.5rem 1.25rem;
+  border-radius: 50px;
+  font-weight: 600;
+}
+
+.about-card {
+  border: none;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.about-card .card-header {
+  background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%);
+  color: white;
+  padding: 1.25rem 1.5rem;
+  border: none;
+}
+
+.info-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.info-detail-item .avatar {
+  background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%);
+  color: white;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.info-detail-item .fw-medium {
+  font-weight: 700;
+  color: #1e3a5f;
+  min-width: 80px;
 }
 
 /* Responsive - Tablet (768px - 991px) */
 @media (max-width: 991px) {
   .profile-banner-image {
     height: 220px;
+  }
+  
+  .company-name {
+    font-size: 2rem;
   }
 }
 
@@ -127,6 +212,10 @@ const bannerStyle = computed(() => {
   .profile-banner-image {
     height: 180px;
   }
+  
+  .company-name {
+    font-size: 1.75rem;
+  }
 }
 
 /* Responsive - Small Mobile (< 576px) */
@@ -134,19 +223,112 @@ const bannerStyle = computed(() => {
   .profile-banner-image {
     height: 150px;
   }
+  
+  .company-name {
+    font-size: 1.5rem;
+  }
+  
+  .info-item {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+  }
+}
+
+/* Dark Mode Specific Styles */
+html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
+html[data-theme-mode="dark"] .card-header[style*="gradient"] i,
+html.dark .card-header[style*="gradient"] .card-title,
+html.dark .card-header[style*="gradient"] i {
+  color: rgb(0, 0, 0) !important;
+}
+
+html[data-theme-mode="dark"] .enhanced-card .card-header,
+html.dark .enhanced-card .card-header {
+  color: rgb(0, 0, 0) !important;
+}
+
+html[data-theme-mode="dark"] .enhanced-card .card-title,
+html.dark .enhanced-card .card-title {
+  color: rgb(0, 0, 0) !important;
+}
+
+html[data-theme-mode="dark"] .about-card .card-header,
+html.dark .about-card .card-header {
+  color: rgb(0, 0, 0) !important;
+}
+
+html[data-theme-mode="dark"] .about-card .card-title,
+html.dark .about-card .card-title {
+  color: rgb(0, 0, 0) !important;
+}
+
+html[data-theme-mode="dark"] .text-black,
+html.dark .text-black {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .text-dark,
+html.dark .text-dark {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .text-muted,
+html.dark .text-muted {
+  color: #a0aec0 !important;
+}
+
+html[data-theme-mode="dark"] .table thead th,
+html.dark .table thead th {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .fw-semibold,
+html.dark .fw-semibold {
+  color: inherit !important;
+}
+
+html[data-theme-mode="dark"] .about-card,
+html.dark .about-card {
+  background: #1a202c !important;
+}
+
+html[data-theme-mode="dark"] .about-card .card-body,
+html.dark .about-card .card-body {
+  background: #1a202c !important;
+}
+
+html[data-theme-mode="dark"] .info-detail-item,
+html.dark .info-detail-item {
+  background: #2d3748 !important;
+}
+
+html[data-theme-mode="dark"] .info-detail-item .fw-medium,
+html.dark .info-detail-item .fw-medium {
+  color: #cbd5e0 !important;
 }
 </style>
 
 <template>
   <Pageheader :propData="dataToPass" />
   <!-- Start:: row-1 -->
-  <div class="row justify-content-center">
-    <div class="col-xl-10">
-      <!-- Error handling jika stakeholder tidak ditemukan -->
-      <div v-if="!currentStakeholder" class="alert alert-warning alert-dismissible fade show" role="alert">
-        <strong>Oops!</strong> Data stakeholder tidak ditemukan.
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
+  <div class="row">
+    <div class="col-xl-12">
+      <!-- Outer wrapper card with "Profile Stakeholders" title -->
+      <div class="card custom-card gradient-header-card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+          <div class="d-flex align-items-center">
+            <i class="ri-building-2-line me-2 fs-18" style="color: white !important;"></i>
+            <div class="card-title mb-0" style="color: white !important;">{{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }}</div>
+          </div>
+        </div>
+
+        <div class="card-body p-4">
+          <!-- Error handling jika stakeholder tidak ditemukan -->
+          <div v-if="!currentStakeholder" class="alert alert-warning alert-dismissible fade show" role="alert">
+            <strong>Oops!</strong> Data stakeholder tidak ditemukan.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
 
       <!-- Content jika stakeholder ditemukan -->
       <template v-else>
@@ -163,8 +345,8 @@ const bannerStyle = computed(() => {
                     <div class="mt-4 mb-3 d-flex align-items-center flex-wrap gap-3 justify-content-between">
                       <div>
                         <h1 class="fw-semibold" style="margin-top: -1.75rem !important">{{ currentStakeholder.nama_perusahaan }}</h1>
-                        <span class="d-block fw-medium text-muted mb-1">{{ currentStakeholder.sektor }}</span>
-                        <p class="fs-12 mb-0 fw-medium text-muted">
+                        <span class="d-block fw-medium text-black fs-18 mb-2">{{ currentStakeholder.sektor }}</span>
+                        <p class="fs-12 mb-0 fw-medium text-black">
                           <span class="me-3">
                             <i class="ri-building-line me-1 align-middle"></i>{{ currentStakeholder.alamat }}</span>
                           <span class="me-3">
@@ -186,10 +368,14 @@ const bannerStyle = computed(() => {
                 <div class="row">
                   <SpkReusableAnlyticsCard :analyticData="penilaian" :csirtId="relatedCsirtId" :stakeholderSlug="currentStakeholder.slug" />
                   <div class="col-xl-12">
-                    <div class="card custom-card">
-                      <div class="card-header d-flex align-items-center justify-content-between">
-                        <div class="card-title">PIC Perusahaan</div>
-                        <router-link v-if="isAdmin" to="/pic-add" class="btn btn-warning d-flex align-items-start gap-2"><i class="ri-add-line"></i><span>Add PIC</span></router-link>
+                    <div class="card custom-card enhanced-card">
+                      <div class="card-header d-flex align-items-center justify-content-between" 
+                          style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+                        <div class="card-title" style="color: white !important;">PIC Perusahaan</div>
+                        <router-link v-if="isAdmin" to="/pic-add" class="btn btn-add-pic d-flex align-items-center gap-2">
+                          <i class="ri-add-line"></i>
+                          <span>Add PIC</span>
+                        </router-link>
                       </div>
                       <div class="card-body p-0">
                         <div class="table-responsive">
@@ -236,45 +422,45 @@ const bannerStyle = computed(() => {
                     </div>
                   </div>
                   <div class="col-xl-12">
-                    <div class="card custom-card">
-                      <div class="card-header">
-                        <div class="card-title">Tentang Perusahaan</div>
+                    <div class="card custom-card about-card">
+                      <div class="card-header" style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+                        <div class="card-title" style="color: white !important;">Tentang Perusahaan</div>
                       </div>
                       <div class="card-body">
-                        <p class="text-muted">
+                        <p class="text-dark fw-medium mb-4">
                           Informasi lengkap tentang
                           {{ currentStakeholder.nama_perusahaan }}, perusahaan
                           yang bergerak di bidang
                           {{ currentStakeholder.sektor }}.
                         </p>
-                        <div class="text-muted">
-                          <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
-                            <span class="avatar avatar-sm avatar-rounded text-default">
+                        <div>
+                          <div class="info-detail-item">
+                            <span class="avatar avatar-sm avatar-rounded">
                               <i class="ri-mail-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default">Email : </span>
-                            {{ currentStakeholder.email }}
+                            <span class="fw-medium">Email :</span>
+                            <span class="text-dark">{{ currentStakeholder.email }}</span>
                           </div>
-                          <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
-                            <span class="avatar avatar-sm avatar-rounded text-default">
+                          <div class="info-detail-item">
+                            <span class="avatar avatar-sm avatar-rounded">
                               <i class="ri-phone-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default">Telepon :</span>
-                            {{ currentStakeholder.telepon }}
+                            <span class="fw-medium">Telepon :</span>
+                            <span class="text-dark">{{ currentStakeholder.telepon }}</span>
                           </div>
-                          <div class="mb-2 d-flex align-items-center gap-1 flex-wrap">
-                            <span class="avatar avatar-sm avatar-rounded text-default">
+                          <div class="info-detail-item">
+                            <span class="avatar avatar-sm avatar-rounded">
                               <i class="ri-map-pin-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default">Website :</span>
-                            <a :href="currentStakeholder.website" target="_blank">{{ currentStakeholder.website }}</a>
+                            <span class="fw-medium">Website :</span>
+                            <a :href="currentStakeholder.website" target="_blank" class="text-primary fw-semibold">{{ currentStakeholder.website }}</a>
                           </div>
-                          <div class="mb-0 d-flex align-items-center gap-1">
-                            <span class="avatar avatar-sm avatar-rounded text-default">
+                          <div class="info-detail-item">
+                            <span class="avatar avatar-sm avatar-rounded">
                               <i class="ri-building-line align-middle fs-15"></i>
                             </span>
-                            <span class="fw-medium text-default">Lokasi :</span>
-                            {{ currentStakeholder.alamat }}
+                            <span class="fw-medium">Lokasi :</span>
+                            <span class="text-dark">{{ currentStakeholder.alamat }}</span>
                           </div>
                         </div>
                       </div>
@@ -286,6 +472,8 @@ const bannerStyle = computed(() => {
           </div>
         </div>
       </template>
+        </div>
+      </div>
     </div>
   </div>
   <!-- End:: row-1 -->

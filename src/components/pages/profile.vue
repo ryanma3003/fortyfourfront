@@ -56,8 +56,6 @@ const displayLocation = computed(() => profileStore.displayLocation);
     <div class="col-xl-11 col-xxl-10">
       <!-- Main Profile Card -->
       <div class="card custom-card overflow-hidden profile-main-card">
-        <!-- Small Header Bar -->
-
         <!-- Banner Image -->
         <div class="profile-header-banner position-relative"
           :style="{
@@ -123,231 +121,111 @@ const displayLocation = computed(() => profileStore.displayLocation);
                 </p>
               </div>
             </div>
-
-            <!-- Stats -->
-            <!-- <div class="d-none d-md-flex gap-4 stats-section">
-              <div class="text-center stat-item">
-                <h4 class="fw-bold mb-0 text-dark">
-                  {{ profile.stats.projects }}
-                </h4>
-                <span class="text-muted fs-12">Projects</span>
-              </div>
-              <div class="text-center border-start border-end px-4 stat-item">
-                <h4 class="fw-bold mb-0 text-dark">
-                  {{ profile.stats.followers }}
-                </h4>
-                <span class="text-muted fs-12">Followers</span>
-              </div>
-              <div class="text-center stat-item">
-                <h4 class="fw-bold mb-0 text-dark">
-                  {{ profile.stats.following }}
-                </h4>
-                <span class="text-muted fs-12">Following</span>
-              </div>
-            </div> -->
-          </div>
-
-          <!-- Mobile Stats -->
-          <!-- <div
-            class="d-flex d-md-none justify-content-around py-3 mt-3 border-top border-bottom mobile-stats"
-          >
-            <div class="text-center">
-              <h5 class="fw-bold mb-0 text-dark">
-                {{ profile.stats.projects }}
-              </h5>
-              <span class="text-muted fs-12">Projects</span>
-            </div>
-            <div class="text-center">
-              <h5 class="fw-bold mb-0 text-dark">
-                {{ profile.stats.followers }}
-              </h5>
-              <span class="text-muted fs-12">Followers</span>
-            </div>
-            <div class="text-center">
-              <h5 class="fw-bold mb-0 text-dark">
-                {{ profile.stats.following }}
-              </h5>
-              <span class="text-muted fs-12">Following</span>
-            </div>
-          </div> -->
-        </div>
-      </div>
-
-      <!-- Bio & About Section -->
-      <!-- <div class="card custom-card bio-card mb-0 overflow-hidden">
-        <div
-          class="card-header d-flex align-items-center border-0"
-          style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
-        >
-          <i class="ri-user-line text-white me-2"></i>
-          <div class="card-title text-white mb-0">About</div>
-        </div>
-        <div
-          class="card-body"
-          style="
-            background: linear-gradient(
-              180deg,
-              rgba(30, 58, 95, 0.05) 0%,
-              rgba(255, 255, 255, 1) 50%
-            );
-          "
-        >
-          <p class="text-muted mb-0 lh-lg">{{ bio }}</p>
-        </div>
-      </div> -->
-
-      <!-- Contact Information Cards -->
-      <div class="row g-3 mt-3 mb-4">
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
-                  <i class="ri-mail-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Email</span>
-                  <span class="fw-medium">{{ displayEmail }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2c5282, #3182ce)">
-                  <i class="ri-phone-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Phone</span>
-                  <span class="fw-medium">{{ phone }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1a365d, #2a4365)">
-                  <i class="ri-map-pin-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Location</span>
-                  <span class="fw-medium">{{ location }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2b6cb0, #4299e1)">
-                  <i class="ri-calendar-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Member Since</span>
-                  <span class="fw-medium">{{ joined }}</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
 
-      <!-- <div class="card custom-card action-buttons-card">
-        <div class="card-body">
+      <!-- Account Information Section (moved to top) -->
+      <div class="card custom-card mt-3 overflow-hidden">
+        <div class="card-header d-flex align-items-center border-0 gradient-header-blue">
+          <i class="ri-file-user-line text-white me-2 fs-18"></i>
+          <div class="card-title text-white mb-0">Informasi Akun</div>
+        </div>
+        <div class="card-body" style="background: linear-gradient(180deg, rgba(26, 54, 93, 0.03) 0%, rgba(255, 255, 255, 1) 100%);">
           <div class="row g-3">
-            <div class="col-sm-4 col-12">
-              <button class="btn btn-follow w-100 text-white fw-semibold py-2">
-                <i class="ri-user-add-line me-1"></i>
-                Follow
-              </button>
+            <!-- Email -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-mail-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Email</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayEmail }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="col-sm-4 col-12">
-              <button
-                class="btn btn-outline-primary w-100 py-2 fw-semibold btn-message"
-              >
-                <i class="ri-message-3-line me-1"></i>
-                Message
-              </button>
+
+            <!-- Phone -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-phone-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Telepon</span>
+                    <span class="fw-medium text-truncate d-block">{{ phone }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="col-sm-4 col-12">
-              <button class="btn btn-outline-danger w-100 py-2 btn-like">
-                <i class="ri-heart-line me-1"></i>
-                Like
-              </button>
+
+            <!-- Location -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-map-pin-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Lokasi</span>
+                    <span class="fw-medium text-truncate d-block">{{ location }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Jabatan -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-briefcase-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Jabatan</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayJabatan }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Role -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-shield-user-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Role</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayRole }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+             <!-- Member Since -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-calendar-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Bergabung Sejak</span>
+                    <span class="fw-medium text-truncate d-block">{{ joined }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="row">
-        <div class="col-lg-4 col-md-6 col-12 mb-3 mb-lg-0">
-          <div class="card custom-card quick-info-card h-100">
-            <div class="card-body">
-              <div
-                class="d-flex align-items-center justify-content-between mb-3"
-              >
-                <span class="avatar avatar-md rounded-3 bg-warning-transparent">
-                  <i class="ri-award-line fs-20 text-warning"></i>
-                </span>
-                <span class="badge bg-light text-muted fs-10 fw-semibold"
-                  >ACHIEVEMENT</span
-                >
-              </div>
-              <h5 class="fw-bold mb-1 text-dark">Top Contributor</h5>
-              <span class="text-muted fs-13">2024 Q1</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-4 col-md-6 col-12 mb-3 mb-lg-0">
-          <div class="card custom-card quick-info-card h-100">
-            <div class="card-body">
-              <div
-                class="d-flex align-items-center justify-content-between mb-3"
-              >
-                <span class="avatar avatar-md rounded-3 bg-info-transparent">
-                  <i class="ri-briefcase-line fs-20 text-info"></i>
-                </span>
-                <span class="badge bg-light text-muted fs-10 fw-semibold"
-                  >EXPERIENCE</span
-                >
-              </div>
-              <h5 class="fw-bold mb-1 text-dark">5+ Years</h5>
-              <span class="text-muted fs-13">Product Design</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-4 col-md-12 col-12">
-          <div class="card custom-card quick-info-card h-100">
-            <div class="card-body">
-              <div
-                class="d-flex align-items-center justify-content-between mb-3"
-              >
-                <span class="avatar avatar-md rounded-3 bg-danger-transparent">
-                  <i class="ri-heart-line fs-20 text-danger"></i>
-                </span>
-                <span class="badge bg-light text-muted fs-10 fw-semibold"
-                  >LIKES</span
-                >
-              </div>
-              <h5 class="fw-bold mb-1 text-dark">8.5K</h5>
-              <span class="text-muted fs-13">Total Reactions</span>
-            </div>
-          </div>
-        </div>
-      </div> -->
     </div>
   </div>
 </template>
@@ -376,5 +254,51 @@ const displayLocation = computed(() => profileStore.displayLocation);
   border: 1px solid var(--default-border);
   border-top: none !important;
   border-radius: 0 !important;
+}
+
+/* Dark Mode Styles */
+html[data-theme-mode="dark"] .text-dark,
+html.dark .text-dark {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .text-black,
+html.dark .text-black {
+  color: #cbd5e0 !important;
+}
+
+html[data-theme-mode="dark"] .text-primary-dark,
+html.dark .text-primary-dark {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .text-muted,
+html.dark .text-muted {
+  color: #9ca3af !important;
+}
+
+html[data-theme-mode="dark"] .fw-medium,
+html.dark .fw-medium {
+  color: #e5e7eb !important;
+}
+
+html[data-theme-mode="dark"] .card-body[style*="linear-gradient"],
+html.dark .card-body[style*="linear-gradient"] {
+  background: #1f2937 !important;
+}
+
+html[data-theme-mode="dark"] .info-item[style*="rgba"],
+html.dark .info-item[style*="rgba"] {
+  background: #374151 !important;
+}
+
+html[data-theme-mode="dark"] .avatar.border-white,
+html.dark .avatar.border-white {
+  border-color: #374151 !important;
+}
+
+html[data-theme-mode="dark"] .avatar .text-white,
+html.dark .avatar .text-white {
+  color: #ffffff !important;
 }
 </style>

@@ -74,3 +74,23 @@ const handleCsirt = () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
+html.dark .card-header[style*="gradient"] .card-title {
+  color: rgb(255, 255, 255) !important;
+}
+
+html[data-theme-mode="dark"] .btn-outline-primary,
+html.dark .btn-outline-primary {
+  color: rgb(255, 255, 255) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+html[data-theme-mode="dark"] .btn-outline-primary:hover,
+html.dark .btn-outline-primary:hover {
+  color: rgb(0, 0, 0) !important;
+  background-color: rgb(255, 255, 255) !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+</style>

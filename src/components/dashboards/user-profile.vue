@@ -236,65 +236,100 @@ const displayBanner = computed(() => {
       </div>
 
       <!-- Contact Information Cards -->
-      <div class="row g-3 mt-3 mb-4">
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
-                  <i class="ri-mail-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Email</span>
-                  <span class="fw-medium">{{ displayEmail }}</span>
+      <!-- Account Information Section -->
+      <div class="card custom-card mt-3 overflow-hidden">
+        <div class="card-header d-flex align-items-center border-0 gradient-header-blue">
+          <i class="ri-file-user-line text-white me-2 fs-18"></i>
+          <div class="card-title text-white mb-0">Informasi Akun</div>
+        </div>
+        <div class="card-body" style="background: linear-gradient(180deg, rgba(26, 54, 93, 0.03) 0%, rgba(255, 255, 255, 1) 100%);">
+          <div class="row g-3">
+            <!-- Email -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-mail-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Email</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayEmail }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2c5282, #3182ce)">
-                  <i class="ri-phone-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Phone</span>
-                  <span class="fw-medium">{{ displayPhone }}</span>
+            <!-- Phone -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-phone-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Telepon</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayPhone }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1a365d, #2a4365)">
-                  <i class="ri-map-pin-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Location</span>
-                  <span class="fw-medium">{{ displayLocation }}</span>
+            <!-- Location -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-map-pin-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Lokasi</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayLocation }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div class="col-lg-6 col-md-6 col-12">
-          <div class="card custom-card contact-card h-100">
-            <div class="card-body d-flex align-items-center">
-              <div class="d-flex align-items-center gap-3">
-                <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #2b6cb0, #4299e1)">
-                  <i class="ri-calendar-line text-white fs-18"></i>
-                </span>
-                <div>
-                  <span class="text-muted fs-12 d-block">Member Since</span>
-                  <span class="fw-medium">{{ displayJoined }}</span>
+            <!-- Jabatan -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-briefcase-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Jabatan</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayJabatan }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Role -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-shield-user-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Role</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayRole }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+             <!-- Member Since -->
+            <div class="col-md-6 col-12">
+              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+                <div class="d-flex align-items-center gap-3">
+                  <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
+                    <i class="ri-calendar-line text-white fs-18"></i>
+                  </span>
+                  <div class="flex-fill min-width-0">
+                    <span class="text-muted fs-12 d-block">Bergabung Sejak</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayJoined }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -327,5 +362,51 @@ const displayBanner = computed(() => {
   border: 1px solid var(--default-border);
   border-top: none !important;
   border-radius: 0 !important;
+}
+
+/* Dark Mode Styles */
+html[data-theme-mode="dark"] .text-dark,
+html.dark .text-dark {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .text-black,
+html.dark .text-black {
+  color: #cbd5e0 !important;
+}
+
+html[data-theme-mode="dark"] .text-primary-dark,
+html.dark .text-primary-dark {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .text-muted,
+html.dark .text-muted {
+  color: #9ca3af !important;
+}
+
+html[data-theme-mode="dark"] .fw-medium,
+html.dark .fw-medium {
+  color: #e5e7eb !important;
+}
+
+html[data-theme-mode="dark"] .card-body[style*="linear-gradient"],
+html.dark .card-body[style*="linear-gradient"] {
+  background: #1f2937 !important;
+}
+
+html[data-theme-mode="dark"] .info-item[style*="rgba"],
+html.dark .info-item[style*="rgba"] {
+  background: #374151 !important;
+}
+
+html[data-theme-mode="dark"] .avatar.border-white,
+html.dark .avatar.border-white {
+  border-color: #374151 !important;
+}
+
+html[data-theme-mode="dark"] .avatar .text-white,
+html.dark .avatar .text-white {
+  color: #ffffff !important;
 }
 </style>
