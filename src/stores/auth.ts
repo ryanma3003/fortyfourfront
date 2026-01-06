@@ -1,6 +1,7 @@
 // stores/auth.ts
 import { defineStore } from 'pinia';
 import users from '../utils/users.json';
+import { useProfileStore } from './profile';
 
 interface LoginPayload {
   username: string;
@@ -10,6 +11,7 @@ interface LoginPayload {
 interface User {
   id: number;
   username: string;
+  jabatan: string;
   password: string;
   name: string;
   role: string;
@@ -19,6 +21,7 @@ interface User {
 interface CurrentUser {
   id: number;
   username: string;
+  jabatan: string;
   name: string;
   role: string;
   phone: string;
@@ -44,6 +47,9 @@ export const useAuthStore = defineStore('auth', {
     },
     userEmail(): string {
       return this.currentUser?.username || '';
+    },
+    userJabatan(): string {
+      return this.currentUser?.jabatan || '';
     }
   },
 
@@ -63,6 +69,7 @@ export const useAuthStore = defineStore('auth', {
           username: user.username,
           name: user.name,
           role: user.role,
+          jabatan: user.jabatan,
         };
         
         localStorage.setItem('token', token);
@@ -71,6 +78,11 @@ export const useAuthStore = defineStore('auth', {
         this.authenticated = true;
         this.currentUser = userData;
         this.loading = false;
+        
+        // Switch profile to new user (loads user-specific profile data)
+        const profileStore = useProfileStore();
+        profileStore.switchUser();
+        
         return { authenticated: true };
       } else {
         localStorage.removeItem('token');
@@ -83,6 +95,10 @@ export const useAuthStore = defineStore('auth', {
     },
 
     logUserOut() {
+      // Reset profile before clearing user data
+      const profileStore = useProfileStore();
+      profileStore.resetToDefaults();
+      
       localStorage.removeItem('token');
       localStorage.removeItem('currentUser');
       this.authenticated = false;

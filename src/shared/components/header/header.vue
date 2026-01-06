@@ -597,10 +597,9 @@ const profileStore = useProfileStore();
 const { logUserOut } = authStore;
 const router = useRouter();
 
-// Load profile data on mount
+// Load profile data on mount - use switchUser to handle proper initialization
 onMounted(() => {
-  profileStore.loadFromStorage();
-  profileStore.initFromAuth();
+  profileStore.switchUser();
 });
 
 // Reactive profile data

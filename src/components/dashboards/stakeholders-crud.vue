@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { stakeholdersData, type Stakeholder } from "../../data/dummydata";
+import { useAuthStore } from "../../stores/auth";
 
 export default {
   data() {
@@ -15,6 +16,8 @@ export default {
   },
   components: { Pageheader },
   setup() {
+    const authStore = useAuthStore();
+    const isAdmin = computed(() => authStore.isAdmin);
     const items = ref<Stakeholder[]>([]);
     const loading = ref(false);
     const searchQuery = ref("");
@@ -249,7 +252,62 @@ export default {
 
     onMounted(loadStakeholders);
 
+    const fileInput = ref<HTMLInputElement | null>(null);
+
+    // Image validation constants
+    const MAX_FILE_SIZE_MB = 2;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+    const ALLOWED_FORMATS = ["image/jpeg", "image/png", "image/gif"];
+    const ALLOWED_EXTENSIONS = "JPEG, PNG, GIF";
+
+    const triggerFileInput = () => {
+      fileInput.value?.click();
+    };
+
+    const onFileChange = (event: Event) => {
+      const target = event.target as HTMLInputElement;
+      if (target.files && target.files[0]) {
+        const file = target.files[0];
+
+        // Validate file format
+        if (!ALLOWED_FORMATS.includes(file.type)) {
+          showNotification(
+            `Format file tidak didukung. Gunakan ${ALLOWED_EXTENSIONS}.`,
+            "error"
+          );
+          target.value = "";
+          return;
+        }
+
+        // Validate file size
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+          showNotification(
+            `Ukuran file terlalu besar. Maksimal ${MAX_FILE_SIZE_MB}MB.`,
+            "error"
+          );
+          target.value = "";
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            formData.value.photo = e.target.result as string;
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+
+    const removeImage = () => {
+      formData.value.photo = "";
+      if (fileInput.value) {
+        fileInput.value.value = "";
+      }
+    };
+
     return {
+      isAdmin,
       items,
       loading,
       searchQuery,
@@ -289,6 +347,13 @@ export default {
         searchQuery.value = "";
         currentPage.value = 1;
       },
+      fileInput,
+      triggerFileInput,
+      onFileChange,
+      removeImage,
+      ALLOWED_EXTENSIONS,
+      MAX_FILE_SIZE_MB,
+      ALLOWED_FORMATS,
     };
   },
 };
@@ -348,7 +413,7 @@ export default {
                 <i class="ri-close-line"></i>
               </button>
             </div>
-            <button
+            <button v-if="isAdmin"
               @click="openCreateModal"
               class="btn btn-sm btn-primary"
             >
@@ -366,9 +431,7 @@ export default {
 
           <template v-else>
             <!-- Controls -->
-            <div
-              class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"
-            >
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
               <div class="d-flex align-items-center gap-2">
                 <span class="text-muted fs-13">Tampilkan</span>
                 <select
@@ -489,14 +552,14 @@ export default {
                     </td>
                     <td>{{ item.email }}</td>
                     <td class="text-center">
-                      <button
+                      <button v-if="isAdmin"
                         @click="openEditModal(item)"
                         class="btn btn-sm btn-success-light me-1"
                         title="Edit"
                       >
                         <i class="ri-edit-line"></i>
                       </button>
-                      <button
+                      <button v-if="isAdmin"
                         @click="openDeleteModal(item)"
                         class="btn btn-sm btn-danger-light"
                         title="Delete"
@@ -735,132 +798,227 @@ export default {
     tabindex="-1"
     style="background-color: rgba(0, 0, 0, 0.5)"
   >
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Edit Stakeholder</h5>
-          <button
-            type="button"
-            class="btn-close"
-            @click="showEditModal = false"
-          ></button>
-        </div>
-        <div class="modal-body">
-          <form @submit.prevent="updateStakeholder">
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Nama Perusahaan <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.nama_perusahaan"
-                  type="text"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.nama_perusahaan }"
-                  placeholder="Masukkan nama perusahaan"
-                />
-                <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">
-                  {{ formErrors.nama_perusahaan }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Sektor <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.sektor"
-                  type="text"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.sektor }"
-                  placeholder="Masukkan sektor"
-                />
-                <div v-if="formErrors.sektor" class="invalid-feedback">
-                  {{ formErrors.sektor }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Email <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.email"
-                  type="email"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.email }"
-                  placeholder="email@example.com"
-                />
-                <div v-if="formErrors.email" class="invalid-feedback">
-                  {{ formErrors.email }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Telepon <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.telepon"
-                  type="text"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.telepon }"
-                  placeholder="+62 21 1234 5678"
-                />
-                <div v-if="formErrors.telepon" class="invalid-feedback">
-                  {{ formErrors.telepon }}
-                </div>
-              </div>
-              <div class="col-md-12 mb-3">
-                <label class="form-label"
-                  >Alamat <span class="text-danger">*</span></label
-                >
-                <textarea
-                  v-model="formData.alamat"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.alamat }"
-                  rows="2"
-                  placeholder="Masukkan alamat lengkap"
-                ></textarea>
-                <div v-if="formErrors.alamat" class="invalid-feedback">
-                  {{ formErrors.alamat }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label"
-                  >Website <span class="text-danger">*</span></label
-                >
-                <input
-                  v-model="formData.website"
-                  type="url"
-                  class="form-control"
-                  :class="{ 'is-invalid': formErrors.website }"
-                  placeholder="https://example.com"
-                />
-                <div v-if="formErrors.website" class="invalid-feedback">
-                  {{ formErrors.website }}
-                </div>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Photo URL (Opsional)</label>
-                <input
-                  v-model="formData.photo"
-                  type="text"
-                  class="form-control"
-                  placeholder="/images/media/photo.png"
-                />
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content border-0 bg-transparent">
+        <div class="card custom-card gradient-header-card w-100 mb-0">
+          <div
+            class="card-header d-flex justify-content-between align-items-center"
+            style="background: linear-gradient(90deg, #1e3a5f 0%, #2c5282 100%)"
+          >
+            <div class="d-flex align-items-center">
+              <i class="ri-building-2-line text-white me-2 fs-18"></i>
+              <div class="card-title text-white mb-0">
+                Edit Stakeholder - Informasi Perusahaan
               </div>
             </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            @click="showEditModal = false"
-          >
-            Batal
-          </button>
-          <button type="button" class="btn btn-success" @click="updateStakeholder">
-            <i class="ri-save-line me-1"></i>Update
-          </button>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              @click="showEditModal = false"
+            ></button>
+          </div>
+          <div class="card-body p-4 bg-white">
+            <form @submit.prevent="updateStakeholder">
+              <div class="row gy-4">
+                <!-- Profile Picture Section -->
+                <div class="col-xl-12">
+                  <div class="d-flex align-items-start flex-wrap gap-3">
+                    <div class="position-relative">
+                      <span
+                        class="avatar avatar-xxl avatar-rounded shadow border border-2 border-light overflow-hidden"
+                      >
+                        <img
+                          :src="formData.photo || '/images/faces/9.jpg'"
+                          alt="Profile Avatar"
+                        />
+                      </span>
+                      <input
+                        ref="fileInput"
+                        type="file"
+                        :accept="ALLOWED_FORMATS.join(',')"
+                        class="d-none"
+                        @change="onFileChange"
+                      />
+                    </div>
+                    <div>
+                      <span class="fw-medium d-block mb-2"
+                        >Profile Picture</span
+                      >
+                      <div class="btn-list mb-1">
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-primary btn-wave me-1"
+                          @click="triggerFileInput"
+                        >
+                          <i class="ri-upload-2-line me-1"></i>Change Image
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-light btn-wave"
+                          @click="removeImage"
+                        >
+                          <i class="ri-delete-bin-line me-1"></i>Remove
+                        </button>
+                      </div>
+                      <span class="d-block fs-12 text-muted">
+                        <i class="ri-information-line me-1"></i>
+                        Format: {{ ALLOWED_EXTENSIONS }} | Max:
+                        {{ MAX_FILE_SIZE_MB }}MB | Best size: 200x200 pixels
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Nama Perusahaan -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-building-line me-1 text-primary"></i>Nama
+                    Perusahaan <span class="text-danger">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    v-model="formData.nama_perusahaan"
+                    :class="{ 'is-invalid': formErrors.nama_perusahaan }"
+                    placeholder="Masukkan nama perusahaan"
+                  />
+                  <div
+                    v-if="formErrors.nama_perusahaan"
+                    class="invalid-feedback"
+                  >
+                    {{ formErrors.nama_perusahaan }}
+                  </div>
+                </div>
+
+                <!-- Sektor -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
+                    <span class="text-danger">*</span>
+                  </label>
+                  <select
+                    v-model="formData.sektor"
+                    class="form-select"
+                    :class="{ 'is-invalid': formErrors.sektor }"
+                  >
+                    <option value="" disabled>-- Pilih Sektor --</option>
+                    <option value="Teknologi Informasi">
+                      Teknologi Informasi
+                    </option>
+                    <option value="Perdagangan Umum">Perdagangan Umum</option>
+                    <option value="Software Development">
+                      Software Development
+                    </option>
+                    <option value="Konstruksi">Konstruksi</option>
+                    <option value="Teknologi">Teknologi</option>
+                    <option value="Keuangan">Keuangan</option>
+                    <option value="Kesehatan">Kesehatan</option>
+                    <option value="Pendidikan">Pendidikan</option>
+                    <option value="Manufaktur">Manufaktur</option>
+                  </select>
+                  <div v-if="formErrors.sektor" class="invalid-feedback">
+                    {{ formErrors.sektor }}
+                  </div>
+                </div>
+
+                <!-- Email -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-mail-line me-1 text-primary"></i>Email
+                    <span class="text-danger">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    class="form-control"
+                    v-model="formData.email"
+                    :class="{ 'is-invalid': formErrors.email }"
+                    placeholder="Masukkan email"
+                  />
+                  <div v-if="formErrors.email" class="invalid-feedback">
+                    {{ formErrors.email }}
+                  </div>
+                </div>
+
+                <!-- Phone -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-phone-line me-1 text-primary"></i>Nomor
+                    Telepon <span class="text-danger">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    class="form-control"
+                    v-model="formData.telepon"
+                    :class="{ 'is-invalid': formErrors.telepon }"
+                    placeholder="Masukkan nomor telepon"
+                  />
+                  <div v-if="formErrors.telepon" class="invalid-feedback">
+                    {{ formErrors.telepon }}
+                  </div>
+                </div>
+
+                <!-- Website -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-global-line me-1 text-primary"></i>Website
+                    <span class="text-danger">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    class="form-control"
+                    v-model="formData.website"
+                    :class="{ 'is-invalid': formErrors.website }"
+                    placeholder="Masukkan website"
+                  />
+                  <div v-if="formErrors.website" class="invalid-feedback">
+                    {{ formErrors.website }}
+                  </div>
+                </div>
+
+                <!-- Empty column for alignment -->
+                <div
+                  class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"
+                ></div>
+
+                <!-- Alamat -->
+                <div class="col-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
+                    <span class="text-danger">*</span>
+                  </label>
+                  <textarea
+                    class="form-control"
+                    v-model="formData.alamat"
+                    :class="{ 'is-invalid': formErrors.alamat }"
+                    rows="3"
+                    placeholder="Masukkan alamat lengkap"
+                  ></textarea>
+                  <div v-if="formErrors.alamat" class="invalid-feedback">
+                    {{ formErrors.alamat }}
+                  </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="col-12">
+                  <div class="d-flex justify-content-end gap-2">
+                    <button
+                      type="button"
+                      @click="showEditModal = false"
+                      class="btn btn-outline-danger"
+                    >
+                      <i class="ri-arrow-left-line me-1"></i>Batal
+                    </button>
+                    <button
+                      type="submit"
+                      class="btn btn-secondary"
+                    >
+                      <i class="ri-save-line me-1"></i> Simpan Perubahan
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -912,6 +1070,26 @@ export default {
 </template>
 
 <style scoped>
+.gradient-header-card {
+  border: none !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  overflow: hidden !important;
+}
+
+.gradient-header-card .card-header {
+  border: none !important;
+  border-bottom: none !important;
+  border-block-end: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+.gradient-header-card .card-body {
+  border: 1px solid var(--default-border);
+  border-top: none !important;
+  border-radius: 0 !important;
+}
+
 .cursor-pointer {
   cursor: pointer;
 }

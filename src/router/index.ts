@@ -35,6 +35,12 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/dashboards/profile-stakeholders.vue"),
         },
         {
+          path: `profile-user/:slug`,
+          name: 'Profile User',
+          component: () => import("../components/dashboards/user-profile.vue"),
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'profile',
           name: "Profile",
           component: () => import("../components/pages/profile.vue"),
@@ -53,6 +59,12 @@ const routes: RouteRecordRaw[] = [
           path: 'pic-add',
           name: "Pic Add",
           component: () => import("../components/pages/pic-add.vue"),
+        },
+        {
+          path: 'users-list',
+          name: "Users List",
+          component: () => import("../components/dashboards/users-list.vue"),
+          meta: { requiresAdmin: true },
         },
         {
           path: 'role-list',
@@ -337,6 +349,11 @@ const routes: RouteRecordRaw[] = [
           path: `ikas`,
           name: 'Ikas',
           component: () => import("../components/ikas.vue"),
+        },
+        {
+          path: `ikas-crud`,
+          name: 'Ikas Crud',
+          component: () => import("../components/ikas-crud.vue"),
         },
         {
           path: `kse`,
@@ -1178,21 +1195,31 @@ router.beforeEach((to, from, next) => {
   // Check if user is authenticated from localStorage
   const token = localStorage.getItem('token');
   const isAuthenticated = !!token;
-  
+
   // List of public routes that don't require authentication
-  const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover', 
+  const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover',
     '/pages/authentication/reset-password/basic', '/pages/authentication/reset-password/cover',
     '/pages/authentication/sign-in/basic', '/pages/authentication/sign-in/cover',
     '/pages/error/401-error', '/pages/error/404-error', '/pages/error/500-error'];
-  
+
   const isPublicRoute = publicRoutes.includes(to.path) || to.path.startsWith('/pages/authentication');
-  
+
   if (!isAuthenticated && !isPublicRoute) {
     // Redirect to login if not authenticated
     next('/');
   } else if (isAuthenticated && to.path === '/') {
     // Redirect to dashboard if already authenticated and trying to access login
     next('/dashboards');
+  } else if (to.meta?.requiresAdmin) {
+    // Check admin role for admin-only routes
+    const storedUser = localStorage.getItem('currentUser');
+    const currentUser = storedUser ? JSON.parse(storedUser) : null;
+    if (currentUser?.role !== 'Admin') {
+      // Redirect non-admin users to dashboards
+      next('/dashboards');
+    } else {
+      next();
+    }
   } else {
     next();
   }

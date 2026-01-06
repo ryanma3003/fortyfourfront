@@ -2,7 +2,7 @@
 import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
 import { ref, onMounted, watch, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { sdmCsirtData, type sdmCsirt } from "../../data/pages/csirt";
+import { sdmCsirtData, type sdmCsirt, seCsirtData, type seCsirt } from "../../data/pages/csirt";
 import { csirtMembersData, type csirtMember } from "../../data/pages/csirt";
 import { useRoute } from "vue-router";
 import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
@@ -30,7 +30,17 @@ export default {
             { text: "Sertifikasi" }
         ];
 
+        const seHeaders = [
+            { text: "Nama SE" },
+            { text: "IP SE" },
+            { text: "AS Number" },
+            { text: "Pengelola" },
+            { text: "Fitur" },
+            { text: "Kategori" }
+        ];
+
         const items = ref < sdmCsirt[] > ([]);
+        const seItems = ref < seCsirt[] > ([]);
         const loading = ref(false);
 
         // SOURCE DATA
@@ -58,8 +68,10 @@ export default {
             // Load data filtered by CSIRT ID
             if (csirtId.value) {
                 items.value = sdmCsirtData.filter((member) => member.id_csirt === csirtId.value);
+                seItems.value = seCsirtData.filter((item) => item.id_csirt === csirtId.value);
             } else {
                 items.value = [];
+                seItems.value = [];
             }
 
             loading.value = false;
@@ -96,7 +108,9 @@ export default {
             loading,
             loadCSIRTs,
             currentCsirt,
-            dataToPass
+            dataToPass,
+            seHeaders,
+            seItems
         };
     },
 };
@@ -192,6 +206,36 @@ export default {
                     <td>{{ row.jabatan_csirt }}</td>
                     <td>{{ row.skill }}</td>
                     <td><span class="badge bg-light text-dark">{{ row.sertifikasi }}</span></td>
+                </TableComponent>
+            </template>
+        </SimpleCardComponent>
+    </div>
+</div>
+
+<div class="row" v-if="currentCsirt">
+    <div class="col-xl-12">
+        <SimpleCardComponent title="Tabel Daftar SE-CSIRT">
+            <!-- Loading state -->
+            <div v-if="loading" class="text-center p-4">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <template v-else>
+                <TableComponent 
+                    :headers="seHeaders" 
+                    :rows="seItems" 
+                    tableClass="table text-nowrap" 
+                    v-slot:cell="{ row }"
+                >
+                    <td>{{ row.nama_se }}</td>
+                    <td class="text-success small fw-bold">{{ row.ip_se }}</td>
+                    <td>{{ row.as_number_se }}</td>
+                    <td>{{ row.pengelola_se }}</td>
+                    <td>{{ row.fitur_se }}</td>
+                    <td><span class="badge bg-light text-dark">{{ row.kategori_se }}</span></td>
                 </TableComponent>
             </template>
         </SimpleCardComponent>

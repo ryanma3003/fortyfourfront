@@ -22,6 +22,7 @@ export interface User {
   role: string
   permissions: string[]
   allAccess: boolean
+  photo?: string
 }
 
 // =====================

@@ -1,67 +1,173 @@
-<script setup>
-import { computed, onMounted } from "vue";
-import { storeToRefs } from "pinia";
+<script setup lang="ts">
+import { ref, computed, onMounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
+import { useAuthStore } from "../../stores/auth";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
+import users from "../../utils/users.json";
 
-// Profile store
+interface User {
+  id: number;
+  slug: string;
+  username: string;
+  password: string;
+  name: string;
+  jabatan: string;
+  role: string;
+  phone: string;
+  location: string;
+  joined: string;
+  token: string;
+}
+
+const route = useRoute();
+const router = useRouter();
 const profileStore = useProfileStore();
+const authStore = useAuthStore();
 
-// Use storeToRefs for reactive state
-const {
-  location,
-  phone,
-  joined,
-  bio,
-  stats,
-  avatarUrl,
-  bannerUrl,
-  bannerPositionX,
-  bannerPositionY,
-  avatarPositionX,
-  avatarPositionY,
-  name,
-  title,
-  role,
-  email,
-  website,
-  address,
-} = storeToRefs(profileStore);
+// Reactive user data
+const user = ref<User | null>(null);
+const loading = ref(true);
+const isCurrentUser = ref(false);
 
-const dataToPass = {
-  title: { label: "Dashboards", path: "/dashboards" },
-  currentpage: "Profile",
-  activepage: "Profile",
+// Get slug from route params
+const slug = computed(() => route.params.slug as string);
+
+// Load user data based on slug
+const loadUser = () => {
+  loading.value = true;
+
+  // Find user from users.json
+  const foundUser = users.find((u: User) => u.slug === slug.value);
+
+  if (foundUser) {
+    user.value = foundUser;
+
+    // Check if this is the currently logged-in user
+    if (
+      authStore.currentUser &&
+      authStore.currentUser.username === foundUser.username
+    ) {
+      isCurrentUser.value = true;
+      // Load profile data from store for current user - use switchUser for proper initialization
+      profileStore.switchUser();
+    } else {
+      isCurrentUser.value = false;
+    }
+  } else {
+    // Redirect to users-list if user not found
+    router.push("/users-list");
+  }
+  loading.value = false;
 };
 
-// Initialize profile data on mount
-onMounted(() => {
-  profileStore.switchUser();
+// Watch for slug changes
+watch(slug, () => {
+  loadUser();
 });
 
-// Computed display values from store (these use getters so need computed)
-const displayName = computed(() => profileStore.displayName);
-const displayEmail = computed(() => profileStore.displayEmail);
-const displayJabatan = computed(() => profileStore.displayJabatan);
-const displayRole = computed(() => profileStore.displayRole);
-const displayPhone = computed(() => profileStore.displayPhone);
-const displayLocation = computed(() => profileStore.displayLocation);
+onMounted(() => {
+  loadUser();
+});
+
+const dataToPass = computed(() => ({
+  title: { label: "Users", path: "/users-list" },
+  currentpage: displayName.value || "User Profile",
+  activepage: "User Profile",
+}));
+
+// Computed values - use profileStore for current user, users.json for others
+const displayName = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.displayName;
+  }
+  return user.value?.name || "";
+});
+
+const displayEmail = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.displayEmail;
+  }
+  return user.value?.username || "";
+});
+
+const displayRole = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.displayRole;
+  }
+  return user.value?.role || "";
+});
+
+const displayJabatan = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.displayJabatan;
+  }
+  return user.value?.jabatan || "";
+});
+
+const displayPhone = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.displayPhone;
+  }
+  return user.value?.phone || "";
+});
+
+const displayLocation = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.displayLocation;
+  }
+  return user.value?.location || "";
+});
+
+const displayJoined = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.joined;
+  }
+  return user.value?.joined || "";
+});
+
+const displayAvatar = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.avatarUrl;
+  }
+  return "/images/faces/15.jpg";
+});
+
+const displayBanner = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.bannerUrl;
+  }
+  return "/images/media/media-21.jpg";
+});
 </script>
 
 <template>
   <Pageheader :propData="dataToPass" />
 
+  <!-- Loading State -->
+  <div v-if="loading" class="row justify-content-center">
+    <div class="col-xl-11 col-xxl-10">
+      <div class="card custom-card">
+        <div class="card-body text-center p-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Profile Container -->
-  <div class="row justify-content-center">
+  <div v-else-if="user" class="row justify-content-center">
     <div class="col-xl-11 col-xxl-10">
       <!-- Main Profile Card -->
       <div class="card custom-card overflow-hidden profile-main-card">
         <!-- Banner Image -->
         <div class="profile-header-banner position-relative"
           :style="{
-            backgroundImage: `url(${bannerUrl})`,
+            backgroundImage: `url(${displayBanner})`,
             backgroundSize: 'cover',
-            backgroundPosition: `${bannerPositionX ?? 50}% ${bannerPositionY ?? 50}%`,
+            backgroundPosition: 'center',
             minHeight: '180px',
           }"
         >
@@ -76,9 +182,17 @@ const displayLocation = computed(() => profileStore.displayLocation);
             "
           ></div>
           <div class="position-absolute top-0 end-0 p-3 p-md-4">
-            <router-link to="/profile-settings" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
+            <!-- <router-link
+              v-if="isCurrentUser"
+              to="/profile-settings"
+              class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2"
+            >
               <i class="ri-edit-2-line"></i>
               <span class="d-none d-sm-inline">Edit Profile</span>
+            </router-link> -->
+            <router-link to="/users-list" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
+              <i class="ri-arrow-left-line"></i>
+              <span class="d-none d-sm-inline">Kembali</span>
             </router-link>
           </div>
         </div>
@@ -92,11 +206,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
               <div class="position-relative">
                 <div class="avatar-container">
                   <span class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden">
-                    <img 
-                      :src="avatarUrl" 
-                      alt="Profile Avatar" 
-                      :style="{ objectPosition: `${avatarPositionX ?? 50}% ${avatarPositionY ?? 50}%`, objectFit: 'cover', width: '100%', height: '100%' }"
-                    />
+                    <img :src="displayAvatar" alt="Profile Avatar" />
                   </span>
                 </div>
               </div>
@@ -125,7 +235,8 @@ const displayLocation = computed(() => profileStore.displayLocation);
         </div>
       </div>
 
-      <!-- Account Information Section (moved to top) -->
+      <!-- Contact Information Cards -->
+      <!-- Account Information Section -->
       <div class="card custom-card mt-3 overflow-hidden">
         <div class="card-header d-flex align-items-center border-0 gradient-header-blue">
           <i class="ri-file-user-line text-white me-2 fs-18"></i>
@@ -157,7 +268,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
                   </span>
                   <div class="flex-fill min-width-0">
                     <span class="text-muted fs-12 d-block">Telepon</span>
-                    <span class="fw-medium text-truncate d-block">{{ phone }}</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayPhone }}</span>
                   </div>
                 </div>
               </div>
@@ -172,7 +283,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
                   </span>
                   <div class="flex-fill min-width-0">
                     <span class="text-muted fs-12 d-block">Lokasi</span>
-                    <span class="fw-medium text-truncate d-block">{{ location }}</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayLocation }}</span>
                   </div>
                 </div>
               </div>
@@ -217,7 +328,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
                   </span>
                   <div class="flex-fill min-width-0">
                     <span class="text-muted fs-12 d-block">Bergabung Sejak</span>
-                    <span class="fw-medium text-truncate d-block">{{ joined }}</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayJoined }}</span>
                   </div>
                 </div>
               </div>
@@ -225,17 +336,14 @@ const displayLocation = computed(() => profileStore.displayLocation);
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Make entire content area fill viewport height */
-.row.justify-content-center {
+  .row.justify-content-center {
   min-height: calc(84vh);
 }
-
 .bio-card {
   border: none !important;
   box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
