@@ -13,6 +13,11 @@ const picked = ref(new Date());
 const picked2 = ref(new Date());
 const lowerpicked = new Date(picked2.value);
 const date = ref();
+const showMetabase = ref(false);
+
+const toggleMetabase = () => {
+    showMetabase.value = !showMetabase.value;
+};
 
 const currentDay = picked.value.getDate();
 const ChartCards = defineAsyncComponent(() => import('../../shared/components/@spk/chart-cards.vue'));
@@ -90,52 +95,72 @@ date.value = [startDate, endDate];
                     class="form-control breadcrumb-input border-0 bg-white custom-date-input"
                     autoApply v-model="date" range />
             </div>
-
-            <div class="btn-list custom-button-list">
-                <button class="btn btn-icon btn-primary btn-wave">
+            <div class="ms-2">
+                <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" @click="toggleMetabase">
                     <i class="ri-refresh-line"></i>
+                    <span>Dashboard Metabase</span>
                 </button>
-                <button class="btn btn-icon btn-primary btn-wave me-0">
-                    <i class="ri-filter-3-line"></i>
+                <button v-if="showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" @click="toggleMetabase">
+                    <i class="ri-refresh-line"></i>
+                    <span>Dashboard Utama</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ROW 1 - Card dengan 3 kolom -->
-    <div class="row g-3">
-        <div class="col-md-4" 
-            v-for="(idx, index) in PerusahaanCard1Filtered" 
-            :key="index">
-            <SpkReusebleJobs
-                titleClass="fs-13 fw-medium mb-0"
-                :listCard="true"
-                :cardClass="`card ${idx.cardClass}`"
-                :list="idx"
-                :NoCountUp="true"
-            />
+    <div v-if="!showMetabase">
+        <!-- ROW 1 - Card dengan 3 kolom -->
+        <div class="row g-3">
+            <div class="col-md-4" 
+                v-for="(idx, index) in PerusahaanCard1Filtered" 
+                :key="index">
+                <SpkReusebleJobs
+                    titleClass="fs-13 fw-medium mb-0"
+                    :listCard="true"
+                    :cardClass="`card ${idx.cardClass}`"
+                    :list="idx"
+                    :NoCountUp="true"
+                />
+            </div>
+        </div>
+
+        <!-- ROW 2 - Card dengan 2 kolom -->
+        <div class="row g-3">
+            <div class="col-md-6" 
+                v-for="(idx, index) in PerusahaanCard2Filtered" 
+                :key="index">
+                <SpkReusebleJobs 
+                    titleClass="fs-13 fw-medium mb-0" 
+                    :listCard="true"
+                    :cardClass="`card ${idx.cardClass}`" 
+                    :list="idx" 
+                    :NoCountUp="true" 
+                />
+            </div>
+        </div>
+
+        <!-- RADAR CHARTS -->
+        <div class="row">
+            <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
+                <ChartCards :card="card" :title="card.title" />
+            </div>
         </div>
     </div>
 
-    <!-- ROW 2 - Card dengan 2 kolom -->
-    <div class="row g-3">
-        <div class="col-md-6" 
-            v-for="(idx, index) in PerusahaanCard2Filtered" 
-            :key="index">
-            <SpkReusebleJobs 
-                titleClass="fs-13 fw-medium mb-0" 
-                :listCard="true"
-                :cardClass="`card ${idx.cardClass}`" 
-                :list="idx" 
-                :NoCountUp="true" 
-            />
-        </div>
-    </div>
-
-    <!-- RADAR CHARTS -->
-    <div class="row">
-        <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
-            <ChartCards :card="card" :title="card.title" />
+    <!-- METABASE EMBED -->
+    <div v-else class="row">
+        <div class="col-12">
+            <div class="card custom-card">
+                <div class="card-body p-0">
+                    <iframe
+                        src="http://localhost:3000/public/dashboard/1f17ae54-78b7-4bf8-9333-1febfdf5d4ed"
+                        frameborder="0"
+                        width="100%"
+                        height="800"
+                        allowtransparency
+                    ></iframe>
+                </div>
+            </div>
         </div>
     </div>
 </template>
