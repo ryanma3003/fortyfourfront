@@ -41,6 +41,9 @@ export const monthlyDataByCategory = {
     { month: "Juni", value: 13, date: new Date(2024, 5, 1) },
     { month: "Juli", value: 14, date: new Date(2024, 6, 1) },
     { month: "Agustus", value: 15, date: new Date(2024, 7, 1) },
+    { month: "September", value: 16, date: new Date(2024, 8, 1) },
+    { month: "Oktober", value: 17, date: new Date(2024, 9, 1) },
+    { month: "November", value: 18, date: new Date(2024, 10, 1) },
     { month: "Desember", value: 5, date: new Date(2025, 11, 1) },
   ],
 
@@ -51,7 +54,12 @@ export const monthlyDataByCategory = {
     { month: "April", value: 13, date: new Date(2024, 3, 1) },
     { month: "Mei", value: 14, date: new Date(2024, 4, 1) },
     { month: "Juni", value: 15, date: new Date(2024, 5, 1) },
-    { month: "Juli", value: 16, date: new Date(2024, 6, 1) }
+    { month: "Juli", value: 16, date: new Date(2024, 6, 1) },
+    { month: "Agustus", value: 17, date: new Date(2024, 7, 1) },
+    { month: "September", value: 18, date: new Date(2024, 8, 1) },
+    { month: "Oktober", value: 19, date: new Date(2024, 9, 1) },
+    { month: "November", value: 20, date: new Date(2024, 10, 1) },
+    { month: "Desember", value: 21, date: new Date(2024, 11, 1) },
   ],
 
   IKFT: [
@@ -61,7 +69,12 @@ export const monthlyDataByCategory = {
     { month: "April", value: 9, date: new Date(2024, 3, 1) },
     { month: "Mei", value: 10, date: new Date(2024, 4, 1) },
     { month: "Juni", value: 11, date: new Date(2024, 5, 1) },
-    { month: "Juli", value: 12, date: new Date(2024, 6, 1) }
+    { month: "Juli", value: 12, date: new Date(2024, 6, 1) },
+    { month: "Agustus", value: 13, date: new Date(2024, 7, 1) },
+    { month: "September", value: 14, date: new Date(2024, 8, 1) },
+    { month: "Oktober", value: 15, date: new Date(2024, 9, 1) },
+    { month: "November", value: 16, date: new Date(2024, 10, 1) },
+    { month: "Desember", value: 17, date: new Date(2024, 11, 1) },
   ],
 
   IKAS: [
@@ -71,7 +84,12 @@ export const monthlyDataByCategory = {
     { month: "April", value: 15, date: new Date(2024, 3, 1) },
     { month: "Mei", value: 16, date: new Date(2024, 4, 1) },
     { month: "Juni", value: 17, date: new Date(2024, 5, 1) },
-    { month: "Juli", value: 18, date: new Date(2024, 6, 1) }
+    { month: "Juli", value: 18, date: new Date(2024, 6, 1) },
+    { month: "Agustus", value: 19, date: new Date(2024, 7, 1) },
+    { month: "September", value: 20, date: new Date(2024, 8, 1) },
+    { month: "Oktober", value: 21, date: new Date(2024, 9, 1) },
+    { month: "November", value: 22, date: new Date(2024, 10, 1) },
+    { month: "Desember", value: 23, date: new Date(2024, 11, 1) },
   ],
 
   SE: [
@@ -81,8 +99,28 @@ export const monthlyDataByCategory = {
     { month: "April", value: 11, date: new Date(2024, 3, 1) },
     { month: "Mei", value: 12, date: new Date(2024, 4, 1) },
     { month: "Juni", value: 13, date: new Date(2024, 5, 1) },
-    { month: "Juli", value: 14, date: new Date(2024, 6, 1) }
-  ]
+    { month: "Juli", value: 14, date: new Date(2024, 6, 1) },
+    { month: "Agustus", value: 15, date: new Date(2024, 7, 1) },
+    { month: "September", value: 16, date: new Date(2024, 8, 1) },
+    { month: "Oktober", value: 17, date: new Date(2024, 9, 1) },
+    { month: "November", value: 18, date: new Date(2024, 10, 1) },
+    { month: "Desember", value: 19, date: new Date(2024, 11, 1) },
+  ],
+
+  CSIRT: [
+    { month: "Januari", value: 10, date: new Date(2024, 0, 1) },
+    { month: "Februari", value: 9, date: new Date(2024, 1, 1) },
+    { month: "Maret", value: 10, date: new Date(2024, 2, 1) },
+    { month: "April", value: 11, date: new Date(2024, 3, 1) },
+    { month: "Mei", value: 12, date: new Date(2024, 4, 1) },
+    { month: "Juni", value: 13, date: new Date(2024, 5, 1) },
+    { month: "Juli", value: 12, date: new Date(2024, 6, 1) },
+    { month: "Agustus", value: 11, date: new Date(2024, 7, 1) },
+    { month: "September", value: 16, date: new Date(2024, 8, 1) },
+    { month: "Oktober", value: 15, date: new Date(2024, 9, 1) },
+    { month: "November", value: 3, date: new Date(2024, 10, 1) },
+    { month: "Desember", value: 5, date: new Date(2024, 11, 1) },
+  ],
 };
 
 // =====================================================
