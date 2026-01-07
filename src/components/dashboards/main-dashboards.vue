@@ -126,7 +126,7 @@ date.value = [startDate, endDate];
 
         <!-- ROW 2 - Card dengan 2 kolom -->
         <div class="row g-3">
-            <div class="col-md-6" 
+            <div class="col-md-4" 
                 v-for="(idx, index) in PerusahaanCard2Filtered" 
                 :key="index">
                 <SpkReusebleJobs 
