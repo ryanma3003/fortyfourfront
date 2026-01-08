@@ -1,74 +1,119 @@
-<script lang="ts" setup>
+<script lang="ts">
+import { defineComponent, ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import ParticlesJs from '../../../../shared/components/@spk/reuseble-plugin/particles-js.vue';
 
-import PasswordInput from '../../../../shared/UI/passwordInput.vue';
+export default defineComponent({
+  components: {
+    ParticlesJs,
+  },
+  setup() {
+    const email = ref('');
+    const password = ref('');
+    const showPassword = ref(false);
 
+    const router = useRouter();
 
+    const signUp = () => {
+      // Add your sign up logic here
+      router.push('/dashboards');
+    };
+
+    const setBodyClass = (action: string) => {
+      if (action === 'add') {
+        document.body.classList.add('authentication-background');
+      } else {
+        document.body.classList.remove('authentication-background');
+      }
+    };
+
+    onMounted(() => {
+      if (localStorage.getItem('visited') === 'true') {
+        setBodyClass('add');
+      } else {
+        setBodyClass('add');
+        localStorage.setItem('visited', 'true');
+      }
+
+      router.beforeEach(() => {
+        setBodyClass('remove');
+      });
+
+      const handleBeforeUnload = () => {
+        setBodyClass('remove');
+        localStorage.removeItem('visited');
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload, {
+        passive: true,
+      });
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        setBodyClass('remove');
+      };
+    });
+
+    return {
+      email,
+      password,
+      showPassword,
+      signUp,
+    };
+  },
+});
 </script>
 
 <template>
-    <div class="authentication-background">
-        
-        <div class="container">
-            <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
-                <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-7 col-sm-9 col-12">
-                    <div class="card custom-card border-0 my-4">
-                        <div class="card-body p-5">
-                            <div class="mb-4 align-items-center d-flex justify-content-center">
-                                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
-                            </div>
-                            <div>
-                                <h4 class="mb-1 fw-semibold">Sign Up</h4>
-                                <p class="mb-4 text-muted fw-normal">Join us by creating a free account !</p>
-                            </div>
-                            <div class="row gy-3">
-                                <div class="col-xl-12">
-                                    <label for="signin-email" class="form-label text-default">Email</label>
-                                    <input type="text" class="form-control" id="signin-email" placeholder="Enter Email"
-                                        value="tomphillip21@gmail.com">
-                                </div>
-                                <div class="col-xl-12 mb-2">
-                                    <label for="signin-password"
-                                        class="form-label text-default d-block">Password</label>
-                                    <div class="position-relative">
-                                        <PasswordInput initialValue="12345678" name="newpassword" id="newpassword"
-                                            placeholder="Enter Password" />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="d-grid mt-3">
-                                <router-link to="/dashboards" class="btn btn-primary">Sign In</router-link>
-                            </div>
-                            <!-- <div class="text-center my-3 authentication-barrier">
-                                <span class="op-4 fs-13">OR</span>
-                            </div>
-                            <div class="d-grid mb-3">
-                                <button
-                                    class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill mb-3">
-                                    <span class="avatar avatar-xs">
-                                        <img src="/images/media/apps/google.png" alt="">
-                                    </span>
-                                    <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Google</span>
-                                </button>
-                                <button
-                                    class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill">
-                                    <span class="avatar avatar-xs">
-                                        <img src="/images/media/apps/facebook.png" alt="">
-                                    </span>
-                                    <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Facebook</span>
-                                </button>
-                            </div> -->
-                            <div class="text-center mt-3 fw-medium">
-                                Already have a account? <router-link to="/pages/authentication/sign-in/basic"
-                                    class="text-primary">Sign In</router-link>
-                            </div>
-                        </div>
-                    </div>
+  <div class="authentication-background">
+    <ParticlesJs />
+    <div class="container">
+      <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
+        <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-6 col-sm-8 col-12">
+          <div class="card custom-card border-0 my-4">
+            <div class="card-body p-5">
+              <div class="mb-4 align-items-center d-flex justify-content-center">
+                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px; width: auto"/>
+                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px; width: auto"/>
+              </div>
+              <div>
+                <h4 class="mb-1 fw-semibold">Sign Up</h4>
+                <p class="mb-4 text-muted fw-normal">
+                  Join us by creating a free account!
+                </p>
+              </div>
+              <div class="row gy-3">
+                <div class="col-xl-12">
+                  <label for="signup-email" class="form-label text-default">Email</label>
+                  <input type="email" class="form-control form-control-lg" id="signup-email" v-model="email" placeholder="Enter Email" @keyup.enter="signUp"/>
                 </div>
+                <div class="col-xl-12 mb-2">
+                  <label for="signup-password" class="form-label text-default d-block">Password</label>
+                  <div class="position-relative">
+                    <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-password" v-model="password" placeholder="Password" @keyup.enter="signUp"/>
+                    <a href="javascript:void(0);" @click="showPassword = !showPassword" class="show-password-button text-muted">
+                      <i class="align-middle" :class="showPassword ? 'ri-eye-line' : 'ri-eye-off-line'"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+              <div class="d-grid mt-3">
+                <button class="btn btn-primary btn-lg" @click="signUp">
+                  Sign Up
+                </button>
+              </div>
+              <div class="text-center mt-3 fw-medium">
+                Already have an account?
+                <router-link to="/auth/login" class="text-primary">Sign In</router-link>
+              </div>
             </div>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 </template>
 
-<style scoped>
-/* Add your styles here */
+<style scoped lang="scss">
+@import '../../../auth/login.scss';
 </style>

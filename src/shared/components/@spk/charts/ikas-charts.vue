@@ -37,7 +37,18 @@ const ApexRadarChart = [
 <template>
     <div class="row">
         <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
-            <ChartCards :card="card" :title="card.title" />
+            <ChartCards :card="card" :title="card.title" cardHeaderClass="gradient-header-ikas" />
         </div>
     </div>
 </template>
+
+<style scoped>
+:deep(.gradient-header-ikas) {
+  background: radial-gradient(ellipse at top, #032a5c, #084696) !important;
+  color: white !important;
+}
+
+:deep(.gradient-header-ikas .card-title) {
+  color: white !important;
+}
+</style>

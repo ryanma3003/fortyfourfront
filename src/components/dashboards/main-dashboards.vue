@@ -7,6 +7,7 @@ import * as dummytotal from "../../data/dummytotal";  // ⬅️ PENTING
 import SpkReusebleJobs from "../../shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
 import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
 import * as radarData from '../../data/apexcharts/apexchart-radar.ts';
+import RadarChartIkas from '../../shared/components/@spk/charts/ikas-charts.vue';
 import { defineAsyncComponent } from 'vue';
 
 const picked = ref(new Date());
@@ -139,12 +140,8 @@ date.value = [startDate, endDate];
             </div>
         </div>
 
-        <!-- RADAR CHARTS -->
-        <div class="row">
-            <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
-                <ChartCards :card="card" :title="card.title" />
-            </div>
-        </div>
+    <!-- RADAR CHARTS -->
+        <RadarChartIkas />
     </div>
 
     <!-- METABASE EMBED -->

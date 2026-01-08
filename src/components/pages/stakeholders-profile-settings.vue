@@ -1,9 +1,41 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
+import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 import { useRouter, useRoute } from "vue-router";
 import { stakeholdersData } from "../../data/dummydata";
 import type { Stakeholder } from "../../data/dummydata";
+
+// Phone input state
+const selectedCountryCode = ref("+62");
+const phoneNumber = ref("");
+
+// Format phone number
+const formatPhoneNumber = (value: string) => {
+  const numbers = value.replace(/\D/g, "");
+  if (selectedCountryCode.value === "+62") {
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+  } else {
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 6) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+  }
+};
+
+const handlePhoneInput = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const numbers = input.value.replace(/\D/g, "").slice(0, 11);
+  phoneNumber.value = formatPhoneNumber(numbers);
+  form.telepon = selectedCountryCode.value + " " + phoneNumber.value;
+};
+
+const handleCountryCodeChange = () => {
+  if (phoneNumber.value) {
+    form.telepon = selectedCountryCode.value + " " + phoneNumber.value;
+  }
+};
 
 const router = useRouter();
 const route = useRoute();
@@ -94,6 +126,16 @@ onMounted(() => {
       form.nama_perusahaan = found.nama_perusahaan;
       form.email = found.email;
       form.telepon = found.telepon;
+      // Parse existing phone number
+      if (found.telepon) {
+        const match = found.telepon.match(/^(\+\d+)\s*(.+)$/);
+        if (match) {
+          selectedCountryCode.value = match[1];
+          phoneNumber.value = match[2];
+        } else {
+          phoneNumber.value = found.telepon;
+        }
+      }
       form.sektor = found.sektor;
       form.website = found.website;
       form.alamat = found.alamat;
@@ -333,7 +375,23 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
               <label class="form-label fw-medium">
                 <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon
               </label>
-              <input type="tel" class="form-control" v-model="form.telepon" placeholder="Masukkan nomor telepon" />
+              <div class="input-group">
+                <CountryCodeDropdown 
+                  v-model="selectedCountryCode" 
+                  @update:modelValue="handleCountryCodeChange"
+                />
+                <input 
+                  type="tel" 
+                  class="form-control" 
+                  v-model="phoneNumber"
+                  @input="handlePhoneInput"
+                  inputmode="numeric" 
+                  placeholder="813 8282 8282"
+                />
+              </div>
+              <div class="form-text text-muted mt-1">
+                <i class="ri-information-line"></i> Format: {{ selectedCountryCode }} 813 8282 8282
+              </div>
             </div>
 
             <!-- Website -->

@@ -2,48 +2,60 @@
 import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
+import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 import { FriendsList } from "../../data/pages/profiledata";
 import { stakeholdersData } from "../../data/dummydata";
 
 const route = useRoute();
 const router = useRouter();
 
-const index = computed(() =>
-  route.query.index !== undefined ? Number(route.query.index) : null
-);
-const isEdit = computed(
-  () => index.value !== null && !!FriendsList[index.value]
-);
+const index = computed(() => route.query.index !== undefined ? Number(route.query.index) : null);
+const isEdit = computed(() => index.value !== null && !!FriendsList[index.value]);
 
 const currentSlug = ref("");
 const stakeholderName = ref("");
 
 const dataToPass = computed(() => ({
-  title: {
-    label: `Profile ${stakeholderName.value || "Stakeholder"}`,
-    path: `/profile-stakeholders/${currentSlug.value}`,
-  },
+  title: { label: `Profile ${stakeholderName.value || "Stakeholder"}`, path: `/profile-stakeholders/${currentSlug.value}` },
   currentpage: isEdit.value ? "Edit PIC" : "Add PIC",
   activepage: "Account Settings",
 }));
 
-const form = ref({
-  name: "",
-  telepon: "",
-});
+// Phone input state
+const selectedCountryCode = ref("+62");
+const phoneNumber = ref("");
 
-const errors = ref({
-  name: "",
-  telepon: "",
-});
+const form = ref({ name: "", telepon: "" });
+const errors = ref({ name: "", telepon: "" });
 
-const isFormValid = computed(
-  () =>
-    form.value.name.trim() &&
-    form.value.telepon.trim() &&
-    !errors.value.name &&
-    !errors.value.telepon
-);
+// Format phone number
+const formatPhoneNumber = (value: string) => {
+  const numbers = value.replace(/\D/g, "");
+  if (selectedCountryCode.value === "+62") {
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+  } else {
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 6) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+  }
+};
+
+const handlePhoneInput = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const numbers = input.value.replace(/\D/g, "").slice(0, 11);
+  phoneNumber.value = formatPhoneNumber(numbers);
+  form.value.telepon = selectedCountryCode.value + " " + phoneNumber.value;
+};
+
+const handleCountryCodeChange = () => {
+  if (phoneNumber.value) {
+    form.value.telepon = selectedCountryCode.value + " " + phoneNumber.value;
+  }
+};
+
+const isFormValid = computed(() => form.value.name.trim() && form.value.telepon.trim() && !errors.value.name && !errors.value.telepon);
 
 const showSuccessAlert = ref(false);
 const showErrorAlert = ref(false);
@@ -53,15 +65,22 @@ const isSaving = ref(false);
 onMounted(() => {
   if (isEdit.value && index.value !== null) {
     Object.assign(form.value, FriendsList[index.value]);
+    if (form.value.telepon) {
+      const match = form.value.telepon.match(/^(\+\d+)\s*(.+)$/);
+      if (match) {
+        selectedCountryCode.value = match[1];
+        phoneNumber.value = match[2];
+      } else {
+        phoneNumber.value = form.value.telepon;
+      }
+    }
   }
 
   const slug = route.query.slug as string;
   if (slug) {
     currentSlug.value = slug;
     const found = stakeholdersData.find((s) => s.slug === slug);
-    if (found) {
-      stakeholderName.value = found.nama_perusahaan;
-    }
+    if (found) stakeholderName.value = found.nama_perusahaan;
   }
 });
 
@@ -70,9 +89,14 @@ const validateName = () => {
 };
 
 const validatePhone = () => {
-  errors.value.telepon = form.value.telepon.trim()
-    ? ""
-    : "Phone number is required";
+  const numbers = phoneNumber.value.replace(/\D/g, "");
+  if (!numbers) {
+    errors.value.telepon = "Phone number is required";
+  } else if (numbers.length < 8) {
+    errors.value.telepon = "Phone number must be at least 8 digits";
+  } else {
+    errors.value.telepon = "";
+  }
 };
 
 const handleSave = async () => {
@@ -156,10 +180,30 @@ const handleCancel = () => router.back();
               <label class="form-label fw-medium">
                 <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon
               </label>
-              <input type="tel" class="form-control" v-model="form.telepon" inputmode="numeric" pattern="[0-9]*" maxlength="15" 
-                placeholder="Masukkan nomor telepon" @input="form.telepon = form.telepon.replace(/[^0-9]/g, '')" @blur="validatePhone" 
-                :class="{ 'is-invalid': errors.telepon }" />
-              <div class="invalid-feedback">{{ errors.telepon }}</div>
+              <div class="input-group" :class="{ 'is-invalid': errors.telepon }">
+                <!-- Country Code Dropdown Component -->
+                <CountryCodeDropdown 
+                  v-model="selectedCountryCode" 
+                  :error="!!errors.telepon"
+                  @update:modelValue="handleCountryCodeChange"
+                />
+                
+                <!-- Phone Number Input -->
+                <input 
+                  type="tel" 
+                  class="form-control" 
+                  v-model="phoneNumber"
+                  @input="handlePhoneInput"
+                  @blur="validatePhone"
+                  inputmode="numeric" 
+                  placeholder="813 8282 8282"
+                  :class="{ 'is-invalid': errors.telepon }"
+                />
+              </div>
+              <div class="invalid-feedback d-block" v-if="errors.telepon">{{ errors.telepon }}</div>
+              <div class="form-text text-muted mt-1">
+                <i class="ri-information-line"></i> Format: {{ selectedCountryCode }} 813 8282 8282
+              </div>
             </div>
 
             <!-- Action Buttons -->
@@ -183,34 +227,5 @@ const handleCancel = () => router.back();
 </template>
 
 <style scoped>
-.gradient-header-card {
-  border: none !important;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
-  overflow: hidden !important;
-}
-
-.gradient-header-card .card-header {
-  border: none !important;
-  border-bottom: none !important;
-  border-block-end: none !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-}
-
-.gradient-header-card .card-body {
-  border: 1px solid var(--default-border);
-  border-top: none !important;
-  border-radius: 0 !important;
-}
-
-/* Dark mode support for form labels and text */
-html[data-theme-mode="dark"] .form-label,
-html.dark .form-label {
-  color: #cbd5e0 !important;
-}
-
-html[data-theme-mode="dark"] .text-primary,
-html.dark .text-primary {
-  color: var(--primary-color) !important;
-}
+/* Component styles are now in CountryCodeDropdown.vue */
 </style>

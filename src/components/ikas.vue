@@ -48,6 +48,15 @@ const dataToPass = computed(() => {
     }
 });
 
+// Computed property untuk mendapatkan stakeholder berdasarkan slug
+const currentStakeholder = computed(() => {
+    const slug = route.query.slug;
+    if (slug && stakeholdersData && Array.isArray(stakeholdersData)) {
+        return stakeholdersData.find(s => s.slug === String(slug));
+    }
+    return null;
+});
+
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);
 const selectedFile = ref(null);
@@ -204,6 +213,11 @@ td {
 .orange { background: #f39c12; }
 .green { background: #2ecc71; }
 
+/* Gradient Header Card Styling */
+.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important; overflow: hidden !important; }
+.gradient-header-card .card-header { border: none !important; border-bottom: none !important; border-block-end: none !important; border-radius: 0 !important; margin: 0 !important; }
+.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
+
 </style>
 
 
@@ -212,7 +226,14 @@ td {
   <Pageheader :propData="dataToPass" />
   <div class="row">
     <div class="col-12">
-      <div class="card">
+      <div class="card custom-card gradient-header-card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+          <div class="d-flex align-items-center">
+            <i class="ri-building-2-line me-2 fs-18" style="color: white !important;"></i>
+            <div class="card-title mb-0" style="color: white !important;">IKAS ({{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }})</div>
+          </div>
+        </div>
         <div class="card-body">
            <div class="table-wrapper">
               <table class="maturity-table">

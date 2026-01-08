@@ -1,121 +1,114 @@
 <script lang="ts" setup>
-const particlesLoaded = async (container: any) => {
-  console.log("Particles container loaded", container);
+import { ref, reactive, onMounted, watch } from 'vue';
+
+const isDarkMode = ref(false);
+
+const checkTheme = () => {
+  const theme = document.documentElement.getAttribute('data-theme-mode');
+  const hasClass =
+    document.documentElement.classList.contains('dark-mode') ||
+    document.body.classList.contains('dark-mode');
+
+  isDarkMode.value = theme === 'dark' || hasClass;
 };
+
+const particlesOptions = reactive({
+  particles: {
+    number: {
+      value: 200,
+      density: {
+        enable: true,
+        area: 400
+      }
+    },
+    color: {
+      value: '#000000'
+    },
+    size: {
+      value: 1.5
+    },
+    opacity: {
+      value: 0.5
+    },
+
+    // ❌ NO STATIC LINES
+    links: {
+      enable: false
+    },
+
+    move: {
+      enable: true,
+      speed: 1,
+      outModes: 'out'
+    }
+  },
+
+  interactivity: {
+    events: {
+      onHover: {
+        enable: true,
+        mode: 'grab'
+      }
+    },
+    modes: {
+      grab: {
+        distance: 130,
+        links: {
+          opacity: 0.6,
+          width: 1.4,
+          color: '#000000' // will be overridden
+        }
+      }
+    }
+  },
+
+  detectRetina: false
+});
+
+// 🎯 THE REAL FIX
+watch(
+  isDarkMode,
+  (dark) => {
+    if (dark) {
+      // 🌙 DARK MODE
+      particlesOptions.particles.color.value = '#ffffff';
+      particlesOptions.interactivity.modes.grab.links.color = '#ffffff';
+      particlesOptions.interactivity.modes.grab.links.opacity = 0.35;
+      particlesOptions.interactivity.modes.grab.links.width = 1.1;
+    } else {
+      // ☀️ LIGHT MODE (ANTI BERANTEM)
+      particlesOptions.particles.color.value = '#000000';
+      particlesOptions.interactivity.modes.grab.links.color = '#444444';
+      particlesOptions.interactivity.modes.grab.links.opacity = 0.65;
+      particlesOptions.interactivity.modes.grab.links.width = 1.5;
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  checkTheme();
+
+  const observer = new MutationObserver(checkTheme);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme-mode', 'class']
+  });
+  observer.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+});
 </script>
+
 <template>
-<vue-particles id="particles-js" :particlesLoaded="particlesLoaded" />
-<vue-particles id="particles-js" :particlesLoaded="particlesLoaded" :options="{
-                               particles: {
-        number: {
-          value: 200,
-          density: {
-            enable: true,
-            value_area: 400
-          }
-        },
-        color: {
-          value: '#985ffd'
-        },
-        shape: {
-          type: 'circle',
-          stroke: {
-            width: 0,
-            color: '#ff0000'
-          },
-          polygon: {
-            nb_sides: 5
-          },
-          image: {
-            src: '',
-            width: 100,
-            height: 100
-          }
-        },
-        opacity: {
-          value: 0.5,
-          random: false,
-          anim: {
-            enable: false,
-            speed: 2,
-            opacity_min: 0,
-            sync: false
-          }
-        },
-        size: {
-          value: 1.5,
-          random: false,
-          anim: {
-            enable: false,
-            speed: 5,
-            size_min: 0,
-            sync: false
-          }
-        },
-        line_linked: {
-          enable: true,
-          distance: 100,
-          color: '#fff',
-          opacity: 1,
-          width: 1
-        },
-        move: {
-          enable: true,
-          speed: 1,
-          direction: 'none',
-          random: false,
-          straight: false,
-          out_mode: 'out',
-          bounce: false,
-          attract: {
-            enable: false,
-            rotateX: 3000,
-            rotateY: 3000
-          }
-        },
-        array: []
-      },
-      interactivity: {
-        detect_on: 'canvas',
-        events: {
-          onHover: {
-            enable: true,
-            mode: 'grab'
-          },
-          onClick: {
-            enable: true,
-            mode: 'push'
-          },
-          resize: true
-        },
-        modes: {
-          grab: {
-            distance: 100,
-            line_linked: {
-              opacity: 1
-            }
-          },
-          bubble: {
-            distance: 200,
-            size: 80,
-            duration: 0.4
-          },
-          repulse: {
-            distance: 200,
-            duration: 0.4
-          },
-          push: {
-            particles_nb: 4
-          },
-          remove: {
-            particles_nb: 2
-          }
-        },
-        mouse: {}
-      },
-      retina_detect: false,
-                }" />
+  <vue-particles id="particles-js" :options="particlesOptions" />
 </template>
 
 <style scoped>
+#particles-js {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
 </style>

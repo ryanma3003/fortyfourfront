@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted, computed, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
+import { useAuthStore } from "../../stores/auth";
+import { useUsersStore, type User } from "../../stores/users";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 // Constants
@@ -39,13 +41,25 @@ const compressImage = (file: File, maxWidth: number, quality: number): Promise<s
 
 // Core State
 const router = useRouter();
+const route = useRoute();
 const profileStore = useProfileStore();
+const authStore = useAuthStore();
+const usersStore = useUsersStore();
 const imageError = ref("");
 const isSaving = ref(false);
 const showSuccessAlert = ref(false);
 const showErrorAlert = ref(false);
+const errorMessage = ref("");
 
-const dataToPass = { title: { label: "Profile", path: "/profile" }, currentpage: "Profile Settings", activepage: "Profile Settings" };
+// Self-edit mode only (no admin edit mode)
+const isAdminEditMode = false;
+
+// Computed for page header
+const dataToPass = computed(() => ({
+  title: { label: "Profile", path: "/profile" },
+  currentpage: "Profile Settings",
+  activepage: "Profile Settings"
+}));
 
 const formData = ref({
   name: "", role: "", jabatan: "", location: "", email: "", phone: "", website: "", bio: "", address: ""
@@ -64,7 +78,7 @@ const avatarContainer = ref<HTMLElement | null>(null);
 // Unified Drag State
 const dragState = ref({ type: '' as 'banner' | 'avatar' | '', startX: 0, startY: 0, initialX: 0, initialY: 0 });
 
-// Password State
+// Password State (only used in self-edit mode)
 const passwordData = ref({ currentPassword: "", newPassword: "", confirmPassword: "" });
 const showHint = ref(false);
 const generatedPassword = ref("");
@@ -117,8 +131,25 @@ const useGeneratedPassword = () => {
   showHint.value = true;
 };
 
+// Load user data (self-edit mode only)
+const loadUserData = () => {
+  // Initialize users store
+  usersStore.initialize();
+  
+  // Self-edit mode: load from profileStore
+  profileStore.switchUser();
+  resetForm();
+};
+
 // Form Management
-onMounted(() => { profileStore.switchUser(); resetForm(); });
+onMounted(() => { 
+  loadUserData();
+});
+
+// Watch for route changes
+watch(() => route.params.slug, () => {
+  loadUserData();
+});
 
 const resetForm = () => {
   formData.value = {
@@ -162,7 +193,7 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
 };
 
 const stopDrag = () => {
-  if (dragState.value.type) {
+  if (dragState.value.type && !isAdminEditMode) {
     const pos = dragState.value.type === 'banner' ? bannerPosition.value : avatarPosition.value;
     profileStore.updateProfile(dragState.value.type === 'banner' 
       ? { bannerPositionX: pos.x, bannerPositionY: pos.y }
@@ -205,16 +236,34 @@ const saveProfile = async () => {
   isSaving.value = true;
   try {
     await new Promise(r => setTimeout(r, 800));
+    
+    // Self-edit mode: update profile store
     profileStore.updateProfile({
       ...formData.value,
       avatarUrl: avatarPreview.value, bannerUrl: bannerPreview.value,
       bannerPositionX: bannerPosition.value.x, bannerPositionY: bannerPosition.value.y,
       avatarPositionX: avatarPosition.value.x, avatarPositionY: avatarPosition.value.y,
     });
+    
+    // Sync profile data to usersStore so admin can see updated user data
+    const currentUser = authStore.currentUser;
+    if (currentUser) {
+      usersStore.initialize(); // Ensure usersStore is initialized
+      usersStore.updateUserById(currentUser.id, {
+        name: formData.value.name,
+        jabatan: formData.value.jabatan,
+        phone: formData.value.phone,
+        location: formData.value.location,
+        photo: avatarPreview.value, // Sync photo to usersStore
+        banner: bannerPreview.value, // Sync banner to usersStore
+      });
+    }
+    
     showSuccessAlert.value = true;
     setTimeout(() => router.push("/profile"), 1000);
   } catch {
     showErrorAlert.value = true;
+    errorMessage.value = "Terjadi kesalahan. Silakan coba lagi.";
     setTimeout(() => showErrorAlert.value = false, 3000);
   } finally { isSaving.value = false; }
 };
@@ -227,9 +276,17 @@ const savePassword = async () => {
   setTimeout(() => showSuccessAlert.value = false, 3000);
 };
 
+// Cancel handler
+const handleCancel = () => {
+  router.push("/profile");
+};
+
 // Computed for drag state
 const isDraggingBanner = computed(() => dragState.value.type === 'banner');
 const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
+
+// Role options for admin edit mode
+const roleOptions = ['Admin', 'User'];
 </script>
 
 <template>
@@ -241,7 +298,7 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
     <button type="button" class="btn-close" @click="showSuccessAlert = false"></button>
   </div>
   <div v-if="showErrorAlert" class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
-    <i class="ri-error-warning-line fs-18 me-2"></i><div>Terjadi kesalahan. Silakan coba lagi.</div>
+    <i class="ri-error-warning-line fs-18 me-2"></i><div>{{ errorMessage || 'Terjadi kesalahan. Silakan coba lagi.' }}</div>
     <button type="button" class="btn-close" @click="showErrorAlert = false"></button>
   </div>
   <div v-if="imageError" class="alert alert-warning alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
@@ -254,117 +311,72 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
     <div class="col-xl-11 col-xxl-10">
       <div class="card custom-card overflow-hidden profile-main-card mb-3">
         <!-- Banner Image -->
-        <div ref="bannerContainer" class="profile-header-banner position-relative"
-          :class="{ 'dragging': isDraggingBanner, 'draggable': true }"
-          :style="{ backgroundImage: `url(${bannerPreview})`, backgroundSize: 'cover', backgroundPosition: `${bannerPosition.x}% ${bannerPosition.y}%`, minHeight: '180px', cursor: isDraggingBanner ? 'grabbing' : 'grab' }"
-          @mousedown="startDrag('banner', $event)" @touchstart="startDrag('banner', $event)">
-          <!-- Overlay -->
-          <div class="position-absolute w-100 h-100 pointer-events-none" style="background: linear-gradient(to bottom, rgba(30, 58, 95, 0.3) 0%, rgba(26, 54, 93, 0.1) 100%);"></div>
-          <!-- Banner Edit Buttons -->
-          <div class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
-            <div class="d-flex gap-2">
-              <button @click.stop="triggerBannerUpload" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1" title="Ganti Banner">
-                <i class="ri-image-edit-line"></i><span class="d-none d-sm-inline">Ganti Banner</span>
-              </button>
-              <button v-if="bannerPreview !== DEFAULT_BANNER" @click="removeBanner" class="btn btn-danger btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1" title="Hapus Banner">
-                <i class="ri-delete-bin-line"></i>
-              </button>
-            </div>
-          </div>
-          <!-- Drag Indicator -->
-          <div class="drag-indicator position-absolute d-flex flex-column align-items-center justify-content-center pointer-events-none" style="top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5;">
-            <div class="drag-hint-box bg-dark bg-opacity-50 text-white px-3 py-2 rounded-pill d-flex align-items-center gap-2">
-              <i class="ri-drag-move-2-fill fs-16"></i><span class="fs-12">Seret untuk atur posisi</span>
-            </div>
-          </div>
-          <input ref="bannerInput" type="file" accept="image/jpeg,image/png,image/webp" class="d-none" @change="handleImageUpload('banner', $event)" />
-        </div>
-
-        <!-- Card Body - Avatar + User Info -->
-        <div class="card-body p-3 p-md-4 pb-4 position-relative">
-          <div class="d-flex align-items-end justify-content-between flex-wrap gap-3" style="margin-top: -70px">
-            <div class="d-flex align-items-end gap-3 flex-wrap">
-              <!-- Avatar with Edit Actions -->
-              <div class="position-relative">
-                <div ref="avatarContainer" class="avatar-container" :class="{ 'dragging': isDraggingAvatar, 'draggable': true }"
-                  :style="{ cursor: isDraggingAvatar ? 'grabbing' : 'grab' }"
-                  @mousedown="startDrag('avatar', $event)" @touchstart="startDrag('avatar', $event)">
-                  <span class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden position-relative">
-                    <img :src="avatarPreview" alt="Profile Avatar" :style="{ objectPosition: `${avatarPosition.x}% ${avatarPosition.y}%`, objectFit: 'cover', width: '100%', height: '100%' }" />
-                    <!-- Avatar Drag Indicator -->
-                    <div class="avatar-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" style="top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2);">
-                      <i class="ri-drag-move-2-fill text-white fs-20"></i>
-                    </div>
-                  </span>
-                  <div class="avatar-actions position-absolute bottom-0 d-flex gap-1" style="z-index: 10;">
-                    <button @click.stop="triggerAvatarUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
-                      <i class="ri-camera-line"></i>
-                    </button>
-                  </div>
-                </div>
-                <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('avatar', $event)" />
-              </div>
-              <!-- Name & Title -->
-              <div class="pb-2 mt-2 mt-md-5">
-                <h4 class="fw-bold mb-1 text-dark profile-name">{{ formData.name || "User Name" }}</h4>
-                <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"><i class="ri-user-line"></i>{{ formData.role }}</p>
-                <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"><i class="ri-briefcase-line"></i>{{ formData.jabatan }}</p>
-                <p class="text-black fs-13 mb-2 d-flex align-items-center gap-1"><i class="ri-mail-line"></i>{{ formData.email }}</p>
-                <p class="fs-12 mb-0 mt-1">
-                  <span class="me-3"><i class="ri-phone-line me-1"></i>{{ formData.phone }}</span>
-                  <span><i class="ri-map-pin-line me-1"></i>{{ formData.location }}</span>
-                </p>
-              </div>
-            </div>
-            <!-- Action Buttons (Desktop) -->
-            <div class="save-btn-desktop d-none d-md-flex gap-2">
-              <button @click="router.push('/profile')" class="btn btn-outline-danger rounded-pill px-4"><i class="ri-arrow-left-line me-1"></i>Batal</button>
-              <button @click="saveProfile" :disabled="isSaving" class="btn btn-secondary rounded-pill px-4">
-                <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
-                <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Account Info Card -->
-      <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex align-items-center gradient-header-blue">
-          <i class="ri-user-settings-line text-white me-2 fs-18"></i>
-          <div class="card-title text-white mb-0">Informasi Akun</div>
-        </div>
-        <div class="card-body p-4">
-          <div class="row gy-4">
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium"><i class="ri-user-line me-1 text-primary"></i>Nama Lengkap</label>
-              <input type="text" class="form-control" v-model="formData.name" placeholder="Masukkan nama lengkap" />
-            </div>
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium"><i class="ri-briefcase-line me-1 text-primary"></i>Jabatan</label>
-              <input type="text" class="form-control" v-model="formData.jabatan" placeholder="Masukkan jabatan" />
-            </div>
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium"><i class="ri-mail-line me-1 text-primary"></i>Email</label>
-              <input type="email" class="form-control" v-model="formData.email" placeholder="Masukkan email" />
-            </div>
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium"><i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon</label>
-              <input type="tel" class="form-control" v-model="formData.phone" placeholder="Masukkan nomor telepon" />
-            </div>
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium"><i class="ri-map-pin-line me-1 text-primary"></i>Lokasi</label>
-              <input type="text" class="form-control" v-model="formData.location" placeholder="Masukkan lokasi" />
-            </div>
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium"><i class="ri-shield-user-line me-1 text-primary"></i>Role <span class="text-muted fs-11 ms-1">(Tidak dapat diubah)</span></label>
-              <input type="text" class="form-control bg-light" v-model="formData.role" readonly disabled />
-            </div>
-            <!-- Mobile Action Buttons -->
-            <div class="col-12 d-md-none">
+          <div ref="bannerContainer" class="profile-header-banner position-relative"
+            :class="{ 'dragging': isDraggingBanner, 'draggable': !isAdminEditMode }"
+            :style="{ backgroundImage: `url(${bannerPreview})`, backgroundSize: 'cover', backgroundPosition: `${bannerPosition.x}% ${bannerPosition.y}%`, minHeight: '180px', cursor: isAdminEditMode ? 'default' : (isDraggingBanner ? 'grabbing' : 'grab') }"
+            @mousedown="!isAdminEditMode && startDrag('banner', $event)" @touchstart="!isAdminEditMode && startDrag('banner', $event)">
+            <!-- Overlay -->
+            <div class="position-absolute w-100 h-100 pointer-events-none" style="background: linear-gradient(to bottom, rgba(30, 58, 95, 0.3) 0%, rgba(26, 54, 93, 0.1) 100%);"></div>
+            <!-- Banner Edit Buttons (only show in self-edit mode) -->
+            <div v-if="!isAdminEditMode" class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
               <div class="d-flex gap-2">
-                <button @click="router.push('/profile')" class="btn btn-outline-secondary w-50 py-2"><i class="ri-arrow-left-line me-1"></i>Batal</button>
-                <button @click="saveProfile" :disabled="isSaving" class="btn text-white w-50 py-2" style="background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);">
+                <button @click.stop="triggerBannerUpload" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1" title="Ganti Banner">
+                  <i class="ri-image-edit-line"></i><span class="d-none d-sm-inline">Ganti Banner</span>
+                </button>
+                <button v-if="bannerPreview !== DEFAULT_BANNER" @click="removeBanner" class="btn btn-danger btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1" title="Hapus Banner">
+                  <i class="ri-delete-bin-line"></i>
+                </button>
+              </div>
+            </div>
+            <!-- Drag Indicator (only show in self-edit mode) -->
+            <div v-if="!isAdminEditMode" class="drag-indicator position-absolute d-flex flex-column align-items-center justify-content-center pointer-events-none" style="top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5;">
+              <div class="drag-hint-box bg-dark bg-opacity-50 text-white px-3 py-2 rounded-pill d-flex align-items-center gap-2">
+                <i class="ri-drag-move-2-fill fs-16"></i><span class="fs-12">Seret untuk atur posisi</span>
+              </div>
+            </div>
+            <input ref="bannerInput" type="file" accept="image/jpeg,image/png,image/webp" class="d-none" @change="handleImageUpload('banner', $event)" />
+          </div>
+
+          <!-- Card Body - Avatar + User Info -->
+          <div class="card-body p-3 p-md-4 pb-4 position-relative">
+            <div class="d-flex align-items-end justify-content-between flex-wrap gap-3" style="margin-top: -70px">
+              <div class="d-flex align-items-end gap-3 flex-wrap">
+                <!-- Avatar with Edit Actions -->
+                <div class="position-relative">
+                  <div ref="avatarContainer" class="avatar-container" :class="{ 'dragging': isDraggingAvatar, 'draggable': !isAdminEditMode }"
+                    :style="{ cursor: isAdminEditMode ? 'default' : (isDraggingAvatar ? 'grabbing' : 'grab') }"
+                    @mousedown="!isAdminEditMode && startDrag('avatar', $event)" @touchstart="!isAdminEditMode && startDrag('avatar', $event)">
+                    <span class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden position-relative">
+                      <img :src="avatarPreview" alt="Profile Avatar" :style="{ objectPosition: `${avatarPosition.x}% ${avatarPosition.y}%`, objectFit: 'cover', width: '100%', height: '100%' }" />
+                      <!-- Avatar Drag Indicator (only show in self-edit mode) -->
+                      <div v-if="!isAdminEditMode" class="avatar-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" style="top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2);">
+                        <i class="ri-drag-move-2-fill text-white fs-20"></i>
+                      </div>
+                    </span>
+                    <div v-if="!isAdminEditMode" class="avatar-actions position-absolute bottom-0 d-flex gap-1" style="z-index: 10;">
+                      <button @click.stop="triggerAvatarUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
+                        <i class="ri-camera-line"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('avatar', $event)" />
+                </div>
+                <!-- Name & Title -->
+                <div class="pb-2 mt-2 mt-md-5">
+                  <h4 class="fw-bold mb-1 text-dark profile-name">{{ formData.name || "User Name" }}</h4>
+                  <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"><i class="ri-user-line"></i>{{ formData.role }}</p>
+                  <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"><i class="ri-briefcase-line"></i>{{ formData.jabatan }}</p>
+                  <p class="text-black fs-13 mb-2 d-flex align-items-center gap-1"><i class="ri-mail-line"></i>{{ formData.email }}</p>
+                  <p class="fs-12 mb-0 mt-1">
+                    <span class="me-3"><i class="ri-phone-line me-1"></i>{{ formData.phone }}</span>
+                    <span><i class="ri-map-pin-line me-1"></i>{{ formData.location }}</span>
+                  </p>
+                </div>
+              </div>
+              <!-- Action Buttons (Desktop) -->
+              <div class="save-btn-desktop d-none d-md-flex gap-2">
+                <button @click="handleCancel" class="btn btn-outline-danger rounded-pill px-4"><i class="ri-arrow-left-line me-1"></i>Batal</button>
+                <button @click="saveProfile" :disabled="isSaving" class="btn btn-secondary rounded-pill px-4">
                   <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
                   <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
                 </button>
@@ -372,113 +384,171 @@ const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Password Card -->
-      <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
-          <div class="d-flex align-items-center">
-            <i class="ri-lock-password-line text-white me-2 fs-18"></i>
-            <div class="card-title text-white mb-0">Ubah Password</div>
+        <!-- Account Info Card -->
+        <div class="card custom-card gradient-header-card">
+          <div class="card-header d-flex align-items-center gradient-header-blue">
+            <i class="ri-user-settings-line text-white me-2 fs-18"></i>
+            <div class="card-title text-white mb-0">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
           </div>
-          <i class="ri-arrow-down-s-line text-white fs-20"></i>
-        </div>
-        <div id="changePassword" class="collapse">
           <div class="card-body p-4">
-            <div class="row gy-3">
-              <div class="col-xl-4 col-lg-4 col-md-6">
-                <label class="form-label fw-medium">Password Saat Ini</label>
-                <div class="input-group">
-                  <input :type="showCurrentPassword ? 'text' : 'password'" class="form-control" v-model="passwordData.currentPassword" placeholder="Masukkan password saat ini" />
-                  <button @click="showCurrentPassword = !showCurrentPassword" class="btn btn-outline-secondary" type="button" :title="showCurrentPassword ? 'Sembunyikan' : 'Tampilkan'">
-                    <i :class="showCurrentPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+            <div class="row gy-4">
+              <!-- Name (readonly in admin mode) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <label class="form-label fw-medium"><i class="ri-user-line me-1 text-primary"></i>Nama Lengkap</label>
+                <input type="text" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.name" placeholder="Masukkan nama lengkap" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+              </div>
+              <!-- Jabatan (readonly in admin mode) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <label class="form-label fw-medium"><i class="ri-briefcase-line me-1 text-primary"></i>Jabatan</label>
+                <input type="text" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.jabatan" placeholder="Masukkan jabatan" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+              </div>
+              <!-- Email (readonly in admin mode) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <label class="form-label fw-medium"><i class="ri-mail-line me-1 text-primary"></i>Email</label>
+                <input type="email" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.email" placeholder="Masukkan email" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+              </div>
+              <!-- Phone (readonly in admin mode) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <label class="form-label fw-medium"><i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon</label>
+                <input type="tel" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.phone" placeholder="Masukkan nomor telepon" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+              </div>
+              <!-- Location (readonly in admin mode) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <label class="form-label fw-medium"><i class="ri-map-pin-line me-1 text-primary"></i>Lokasi</label>
+                <input type="text" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.location" placeholder="Masukkan lokasi" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+              </div>
+              <!-- Role (editable dropdown in admin mode, readonly in self-edit mode) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <label class="form-label fw-medium">
+                  <i class="ri-shield-user-line me-1 text-primary"></i>Role 
+                  <span v-if="!isAdminEditMode" class="text-muted fs-11 ms-1">(Tidak dapat diubah)</span>
+                  <span v-else class="text-success fs-11 ms-1">(Dapat diubah)</span>
+                </label>
+                <select v-if="isAdminEditMode" v-model="formData.role" class="form-select">
+                  <option v-for="role in roleOptions" :key="role" :value="role">{{ role }}</option>
+                </select>
+                <input v-else type="text" class="form-control bg-light" v-model="formData.role" readonly disabled />
+              </div>
+              <!-- Mobile Action Buttons -->
+              <div class="col-12 d-md-none">
+                <div class="d-flex gap-2">
+                  <button @click="handleCancel" class="btn btn-outline-secondary w-50 py-2"><i class="ri-arrow-left-line me-1"></i>Batal</button>
+                  <button @click="saveProfile" :disabled="isSaving" class="btn text-white w-50 py-2" style="background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);">
+                    <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
+                    <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
                   </button>
                 </div>
-              </div>
-              <div class="col-xl-4 col-lg-4 col-md-6">
-                <label class="form-label fw-medium">Password Baru</label>
-                <div class="input-group">
-                  <input :type="showNewPassword ? 'text' : 'password'" class="form-control" v-model="passwordData.newPassword" placeholder="Masukkan password baru" @focus="showHint = true" @blur="hideHint" />
-                  <button @click="showNewPassword = !showNewPassword" class="btn btn-outline-secondary" type="button" :title="showNewPassword ? 'Sembunyikan' : 'Tampilkan'">
-                    <i :class="showNewPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                  </button>
-                </div>
-                <!-- Password Rules - Simplified -->
-                <div v-if="showHint && passwordData.newPassword" class="mt-2 small">
-                  <div class="d-flex gap-4">
-                    <ul class="list-unstyled mb-0">
-                      <li v-for="(rule, i) in passwordRules.slice(0, 3)" :key="i" :class="rule.valid ? 'text-success' : 'text-danger'">
-                        <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="me-1"></i>{{ rule.label }}
-                      </li>
-                    </ul>
-                    <ul class="list-unstyled mb-0">
-                      <li v-for="(rule, i) in passwordRules.slice(3)" :key="i" :class="rule.valid ? 'text-success' : 'text-danger'">
-                        <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="me-1"></i>{{ rule.label }}
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              <div class="col-xl-4 col-lg-4 col-md-12">
-                <label class="form-label fw-medium">Konfirmasi Password</label>
-                <div class="input-group">
-                  <input :type="showConfirmPassword ? 'text' : 'password'" class="form-control" v-model="passwordData.confirmPassword" placeholder="Konfirmasi password baru" />
-                  <button @click="showConfirmPassword = !showConfirmPassword" class="btn btn-outline-secondary" type="button" :title="showConfirmPassword ? 'Sembunyikan' : 'Tampilkan'">
-                    <i :class="showConfirmPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <!-- Password Generator -->
-            <div class="row mt-3">
-              <div class="col-xl-2 col-lg-2 col-md-3 col-6 mb-2 mb-md-0">
-                <label class="form-label fw-medium">Panjang <span class="text-muted fs-11">(8-32)</span></label>
-                <div class="position-relative">
-                  <input type="number" v-model="passwordLength" min="8" max="32" class="form-control" :class="{ 'is-invalid': !isPasswordLengthValid }" />
-                  <small v-if="!isPasswordLengthValid" class="text-danger position-absolute" style="white-space: nowrap; top: 100%; left: 0;">
-                    <i class="ri-error-warning-line me-1"></i>Min 8, Max 32
-                  </small>
-                </div>
-              </div>
-              <div class="col-xl-2 col-lg-2 col-md-3 col-6 mb-2 mb-md-0 d-flex align-items-end">
-                <button @click="generatePassword" class="btn btn-gradient-blue text-white w-100" :disabled="!isPasswordLengthValid">
-                  <i class="ri-key-2-line me-1"></i>Generate
-                </button>
-              </div>
-              <div class="col-xl-4 col-lg-4 col-md-6">
-                <label class="form-label fw-medium">Hasil Generate Password</label>
-                <div class="position-relative">
-                  <div class="input-group">
-                    <input :type="showGeneratedPassword ? 'text' : 'password'" class="form-control" v-model="generatedPassword" placeholder="Klik Generate Password" readonly />
-                    <button v-if="generatedPassword" @click="showGeneratedPassword = !showGeneratedPassword" class="btn btn-outline-secondary" type="button" :title="showGeneratedPassword ? 'Sembunyikan' : 'Tampilkan'">
-                      <i :class="showGeneratedPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                    </button>
-                    <button v-if="generatedPassword" @click="copyToClipboard" class="btn btn-outline-secondary" type="button" :title="copiedToClipboard ? 'Tersalin!' : 'Salin'">
-                      <i :class="copiedToClipboard ? 'ri-check-line text-success' : 'ri-file-copy-line'"></i>
-                    </button>
-                  </div>
-                  <small v-if="copiedToClipboard" class="text-success position-absolute" style="white-space: nowrap; top: 100%; left: 0;">Password berhasil disalin!</small>
-                </div>
-              </div>
-              <div class="col-xl-4 col-lg-4 col-md-12 mt-2 mt-lg-0">
-                <label class="form-label fw-medium d-none d-md-block">&nbsp;</label>
-                <button v-if="generatedPassword" @click="useGeneratedPassword" class="btn btn-success w-100">
-                  <i class="ri-arrow-right-circle-line me-1"></i>Gunakan Password Ini
-                </button>
               </div>
             </div>
           </div>
-          <div class="card-footer bg-light border-top-0">
-            <div class="d-flex justify-content-end">
-              <button @click="savePassword" class="btn btn-gradient-blue text-white">
-                <i class="ri-lock-line me-1"></i>Update Password
-              </button>
+        </div>
+
+        <!-- Password Card (Hidden in Admin Edit Mode) -->
+        <div v-if="!isAdminEditMode" class="card custom-card gradient-header-card">
+          <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
+            <div class="d-flex align-items-center">
+              <i class="ri-lock-password-line text-white me-2 fs-18"></i>
+              <div class="card-title text-white mb-0">Ubah Password</div>
+            </div>
+            <i class="ri-arrow-down-s-line text-white fs-20"></i>
+          </div>
+          <div id="changePassword" class="collapse">
+            <div class="card-body p-4">
+              <div class="row gy-3">
+                <div class="col-xl-4 col-lg-4 col-md-6">
+                  <label class="form-label fw-medium">Password Saat Ini</label>
+                  <div class="input-group">
+                    <input :type="showCurrentPassword ? 'text' : 'password'" class="form-control" v-model="passwordData.currentPassword" placeholder="Masukkan password saat ini" />
+                    <button @click="showCurrentPassword = !showCurrentPassword" class="btn btn-outline-secondary" type="button" :title="showCurrentPassword ? 'Sembunyikan' : 'Tampilkan'">
+                      <i :class="showCurrentPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="col-xl-4 col-lg-4 col-md-6">
+                  <label class="form-label fw-medium">Password Baru</label>
+                  <div class="input-group">
+                    <input :type="showNewPassword ? 'text' : 'password'" class="form-control" v-model="passwordData.newPassword" placeholder="Masukkan password baru" @focus="showHint = true" @blur="hideHint" />
+                    <button @click="showNewPassword = !showNewPassword" class="btn btn-outline-secondary" type="button" :title="showNewPassword ? 'Sembunyikan' : 'Tampilkan'">
+                      <i :class="showNewPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                    </button>
+                  </div>
+                  <!-- Password Rules - Simplified -->
+                  <div v-if="showHint && passwordData.newPassword" class="mt-2 small">
+                    <div class="d-flex gap-4">
+                      <ul class="list-unstyled mb-0">
+                        <li v-for="(rule, i) in passwordRules.slice(0, 3)" :key="i" :class="rule.valid ? 'text-success' : 'text-danger'">
+                          <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="me-1"></i>{{ rule.label }}
+                        </li>
+                      </ul>
+                      <ul class="list-unstyled mb-0">
+                        <li v-for="(rule, i) in passwordRules.slice(3)" :key="i" :class="rule.valid ? 'text-success' : 'text-danger'">
+                          <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="me-1"></i>{{ rule.label }}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-xl-4 col-lg-4 col-md-12">
+                  <label class="form-label fw-medium">Konfirmasi Password</label>
+                  <div class="input-group">
+                    <input :type="showConfirmPassword ? 'text' : 'password'" class="form-control" v-model="passwordData.confirmPassword" placeholder="Konfirmasi password baru" />
+                    <button @click="showConfirmPassword = !showConfirmPassword" class="btn btn-outline-secondary" type="button" :title="showConfirmPassword ? 'Sembunyikan' : 'Tampilkan'">
+                      <i :class="showConfirmPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <!-- Password Generator -->
+              <div class="row mt-3">
+                <div class="col-xl-2 col-lg-2 col-md-3 col-6 mb-2 mb-md-0">
+                  <label class="form-label fw-medium">Panjang <span class="text-muted fs-11">(8-32)</span></label>
+                  <div class="position-relative">
+                    <input type="number" v-model="passwordLength" min="8" max="32" class="form-control" :class="{ 'is-invalid': !isPasswordLengthValid }" />
+                    <small v-if="!isPasswordLengthValid" class="text-danger position-absolute" style="white-space: nowrap; top: 100%; left: 0;">
+                      <i class="ri-error-warning-line me-1"></i>Min 8, Max 32
+                    </small>
+                  </div>
+                </div>
+                <div class="col-xl-2 col-lg-2 col-md-3 col-6 mb-2 mb-md-0 d-flex align-items-end">
+                  <button @click="generatePassword" class="btn btn-gradient-blue text-white w-100" :disabled="!isPasswordLengthValid">
+                    <i class="ri-key-2-line me-1"></i>Generate
+                  </button>
+                </div>
+                <div class="col-xl-4 col-lg-4 col-md-6">
+                  <label class="form-label fw-medium">Hasil Generate Password</label>
+                  <div class="position-relative">
+                    <div class="input-group">
+                      <input :type="showGeneratedPassword ? 'text' : 'password'" class="form-control" v-model="generatedPassword" placeholder="Klik Generate Password" readonly />
+                      <button v-if="generatedPassword" @click="showGeneratedPassword = !showGeneratedPassword" class="btn btn-outline-secondary" type="button" :title="showGeneratedPassword ? 'Sembunyikan' : 'Tampilkan'">
+                        <i :class="showGeneratedPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                      </button>
+                      <button v-if="generatedPassword" @click="copyToClipboard" class="btn btn-outline-secondary" type="button" :title="copiedToClipboard ? 'Tersalin!' : 'Salin'">
+                        <i :class="copiedToClipboard ? 'ri-check-line text-success' : 'ri-file-copy-line'"></i>
+                      </button>
+                    </div>
+                    <small v-if="copiedToClipboard" class="text-success position-absolute" style="white-space: nowrap; top: 100%; left: 0;">Password berhasil disalin!</small>
+                  </div>
+                </div>
+                <div class="col-xl-4 col-lg-4 col-md-12 mt-2 mt-lg-0">
+                  <label class="form-label fw-medium d-none d-md-block">&nbsp;</label>
+                  <button v-if="generatedPassword" @click="useGeneratedPassword" class="btn btn-success w-100">
+                    <i class="ri-arrow-right-circle-line me-1"></i>Gunakan Password Ini
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer bg-light border-top-0">
+              <div class="d-flex justify-content-end">
+                <button @click="savePassword" class="btn btn-gradient-blue text-white">
+                  <i class="ri-lock-line me-1"></i>Update Password
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 </template>
 
 <style scoped>

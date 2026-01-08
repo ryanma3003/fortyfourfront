@@ -1,0 +1,209 @@
+/* Import Better Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Card Improvements */
+.custom-card {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: box-shadow 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Better Typography */
+.fw-semibold {
+  letter-spacing: -0.3px;
+}
+
+.text-muted {
+  color: #6b7280 !important;
+}
+
+/* Form Label */
+.form-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: #374151;
+}
+
+/* Input Fields */
+.form-control-lg {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1.5px solid #e5e7eb;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+}
+
+/* Password Toggle */
+.show-password-button {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  transition: color 0.2s ease;
+  text-decoration: none;
+
+  &:hover {
+    color: #3b82f6;
+  }
+}
+
+/* Remember Me Checkbox */
+.custom-login {
+  .form-check-input {
+    width: 18px;
+    height: 18px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .form-check-label {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #4b5563;
+  }
+}
+
+/* Forget Password Link */
+.link-danger {
+  color: #3b82f6 !important;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #2563eb !important;
+  }
+}
+
+/* Button Improvements */
+.btn-primary {
+  background: #3b82f6;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+
+  &:hover:not(:disabled) {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+}
+
+/* Register Link */
+.text-primary {
+  color: #3b82f6 !important;
+  font-weight: 600;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #2563eb !important;
+  }
+}
+
+/* Spinner */
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 2px;
+}
+
+/* Logo - Theme Based Visibility */
+#logo-light {
+  display: block;
+  transition: transform 0.3s ease;
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+#logo-dark {
+  display: none;
+  transition: transform 0.3s ease;
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+/* Dark Mode Logo Switch */
+[data-theme-mode="dark"],
+.dark-mode {
+  #logo-light {
+    display: none;
+  }
+
+  #logo-dark {
+    display: block;
+  }
+}
+
+/* Background Image with Opacity */
+.authentication-background {
+  position: relative;
+  min-height: 100vh;
+  
+  &::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('/images/media/bssn.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.07;
+    z-index: 0;
+    pointer-events: none;
+  }
+  
+  // Ensure particles are above background
+  #particles-js {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+  }
+  
+  // Ensure content is above everything
+  .container {
+    position: relative;
+    z-index: 2;
+  }
+}
+
+/* Responsive */
+@media (max-width: 576px) {
+  .custom-card {
+    border-radius: 12px;
+  }
+}
