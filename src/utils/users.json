@@ -11,7 +11,8 @@
     "location": "Jakarta, Indonesia",
     "joined": "January 2024",
     "token": "",
-    "photo": "/images/faces/1.jpg"
+    "photo": "/images/faces/1.jpg",
+    "banner": "/images/media/media-3.jpg"
   },
   {
     "id": 2,
@@ -25,6 +26,7 @@
     "location": "Bandung, Indonesia",
     "joined": "March 2024",
     "token": "",
-    "photo": "/images/faces/2.jpg"
+    "photo": "/images/faces/2.jpg",
+    "banner": "/images/media/media-3.jpg"
   }
 ]

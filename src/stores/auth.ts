@@ -1,6 +1,5 @@
 // stores/auth.ts
 import { defineStore } from 'pinia';
-import users from '../utils/users.json';
 import { useProfileStore } from './profile';
 
 interface LoginPayload {
@@ -10,16 +9,20 @@ interface LoginPayload {
 
 interface User {
   id: number;
+  slug: string;
   username: string;
   jabatan: string;
   password: string;
   name: string;
   role: string;
+  phone?: string;
+  location?: string;
   token?: string;
 }
 
 interface CurrentUser {
   id: number;
+  slug: string;
   username: string;
   jabatan: string;
   name: string;
@@ -57,19 +60,29 @@ export const useAuthStore = defineStore('auth', {
     async authenticateUser({ username, password }: LoginPayload) {
       this.loading = true;
 
-      // Simulate API authentication using mock data
-      const user = users.find(
-        (u: User) => u.username === username && u.password === password
+      // Import usersStore dynamically to avoid circular dependency
+      const { useUsersStore } = await import('./users');
+      const usersStore = useUsersStore();
+      
+      // Initialize usersStore to load from localStorage (which has updated roles)
+      usersStore.initialize();
+      
+      // Use usersStore for authentication (has updated data from admin changes)
+      const user = usersStore.allUsers.find(
+        (u) => u.username === username && u.password === password
       );
 
       if (user) {
         const token = this.generateToken(user as User);
         const userData: CurrentUser = {
           id: user.id,
+          slug: user.slug,
           username: user.username,
           name: user.name,
-          role: user.role,
+          role: user.role, // This will now reflect admin's role changes
           jabatan: user.jabatan,
+          phone: user.phone || '',
+          location: user.location || '',
         };
         
         localStorage.setItem('token', token);

@@ -3,32 +3,24 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
+import { useUsersStore, type User } from "../../stores/users";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import users from "../../utils/users.json";
 
-interface User {
-  id: number;
-  slug: string;
-  username: string;
-  password: string;
-  name: string;
-  jabatan: string;
-  role: string;
-  phone: string;
-  location: string;
-  joined: string;
-  token: string;
-}
+// User interface is imported from usersStore
 
 const route = useRoute();
 const router = useRouter();
 const profileStore = useProfileStore();
 const authStore = useAuthStore();
+const usersStore = useUsersStore();
 
 // Reactive user data
 const user = ref<User | null>(null);
 const loading = ref(true);
 const isCurrentUser = ref(false);
+
+// Check if current logged-in user is admin
+const isAdmin = computed(() => authStore.isAdmin);
 
 // Get slug from route params
 const slug = computed(() => route.params.slug as string);
@@ -37,8 +29,11 @@ const slug = computed(() => route.params.slug as string);
 const loadUser = () => {
   loading.value = true;
 
-  // Find user from users.json
-  const foundUser = users.find((u: User) => u.slug === slug.value);
+  // Initialize users store first
+  usersStore.initialize();
+
+  // Find user from usersStore (which has synced data including photos)
+  const foundUser = usersStore.getUserBySlug(slug.value);
 
   if (foundUser) {
     user.value = foundUser;
@@ -130,15 +125,61 @@ const displayAvatar = computed(() => {
   if (isCurrentUser.value) {
     return profileStore.avatarUrl;
   }
-  return "/images/faces/15.jpg";
+  // Use photo from usersStore data (synced when user saved their profile)
+  return user.value?.photo || "/images/faces/15.jpg";
 });
 
 const displayBanner = computed(() => {
   if (isCurrentUser.value) {
     return profileStore.bannerUrl;
   }
-  return "/images/media/media-21.jpg";
+  // Use banner from usersStore data (synced when user saved their profile)
+  return user.value?.banner || "/images/media/media-21.jpg";
 });
+
+// Edit Role Modal State
+const showEditModal = ref(false);
+const selectedRole = ref("");
+const isSaving = ref(false);
+const showToast = ref(false);
+const toastMessage = ref("");
+const toastType = ref<"success" | "error">("success");
+
+const openEditModal = () => {
+  if (user.value) {
+    selectedRole.value = user.value.role;
+    showEditModal.value = true;
+  }
+};
+
+const showNotification = (message: string, type: "success" | "error" = "success") => {
+  toastMessage.value = message;
+  toastType.value = type;
+  showToast.value = true;
+  setTimeout(() => { showToast.value = false; }, 3000);
+};
+
+const saveRole = () => {
+  if (!user.value) return;
+  
+  isSaving.value = true;
+  
+  // Update in usersStore
+  const success = usersStore.updateUserById(user.value.id, {
+    role: selectedRole.value,
+  });
+  
+  if (success) {
+    // Update local user data
+    user.value = { ...user.value, role: selectedRole.value };
+    showEditModal.value = false;
+    showNotification("Role berhasil diperbarui!", "success");
+  } else {
+    showNotification("Gagal memperbarui role!", "error");
+  }
+  
+  isSaving.value = false;
+};
 </script>
 
 <template>
@@ -181,15 +222,7 @@ const displayBanner = computed(() => {
               );
             "
           ></div>
-          <div class="position-absolute top-0 end-0 p-3 p-md-4">
-            <!-- <router-link
-              v-if="isCurrentUser"
-              to="/profile-settings"
-              class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2"
-            >
-              <i class="ri-edit-2-line"></i>
-              <span class="d-none d-sm-inline">Edit Profile</span>
-            </router-link> -->
+          <div class="position-absolute top-0 end-0 p-3 p-md-4 d-flex gap-2">
             <router-link to="/users-list" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
               <i class="ri-arrow-left-line"></i>
               <span class="d-none d-sm-inline">Kembali</span>
@@ -304,9 +337,14 @@ const displayBanner = computed(() => {
               </div>
             </div>
 
-            <!-- Role -->
+            <!-- Role (Clickable for Admin) -->
             <div class="col-md-6 col-12">
-              <div class="info-item p-4 rounded-3 h-100" style="background: rgba(26, 54, 93, 0.04);">
+              <div 
+                class="info-item p-4 rounded-3 h-100 role-card"
+                :class="{ 'role-card-editable': isAdmin && !isCurrentUser }"
+                :style="{ background: 'rgba(26, 54, 93, 0.04)' }"
+                @click="isAdmin && !isCurrentUser && openEditModal()"
+              >
                 <div class="d-flex align-items-center gap-3">
                   <span class="avatar avatar-md rounded-3" style="background: linear-gradient(135deg, #1e3a5f, #2c5282)">
                     <i class="ri-shield-user-line text-white fs-18"></i>
@@ -315,6 +353,8 @@ const displayBanner = computed(() => {
                     <span class="text-muted fs-12 d-block">Role</span>
                     <span class="fw-medium text-truncate d-block">{{ displayRole }}</span>
                   </div>
+                  <!-- Edit Icon Indicator (shows on hover for admin) -->
+                  <i v-if="isAdmin && !isCurrentUser" class="ri-edit-2-line fs-18 text-primary"></i>
                 </div>
               </div>
             </div>
@@ -334,6 +374,59 @@ const displayBanner = computed(() => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div v-if="showToast" class="position-fixed top-0 end-0 p-3" style="z-index: 9999">
+    <div class="toast show" :class="{ 'bg-success': toastType === 'success', 'bg-danger': toastType === 'error' }" role="alert">
+      <div class="toast-body text-white">
+        <i :class="toastType === 'success' ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'" class="me-2"></i>
+        {{ toastMessage }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Role Modal -->
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="ri-shield-user-line me-2"></i>Edit Role
+          </h5>
+          <button type="button" class="btn-close" @click="showEditModal = false"></button>
+        </div>
+        <div class="modal-body" v-if="user">
+          <!-- User Info (Readonly) -->
+          <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded">
+            <span class="avatar avatar-md avatar-rounded bg-primary-transparent overflow-hidden">
+              <img v-if="user.photo" :src="user.photo" :alt="user.name" />
+              <span v-else class="text-primary fw-semibold">{{ user.name.charAt(0).toUpperCase() }}</span>
+            </span>
+            <div>
+              <h6 class="mb-0 fw-semibold">{{ user.name }}</h6>
+              <span class="text-muted fs-13">{{ user.username }}</span>
+            </div>
+          </div>
+          
+          <!-- Role Selection -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
+            <select v-model="selectedRole" class="form-select">
+              <option value="Admin">Admin</option>
+              <option value="User">User</option>
+            </select>
+            <small class="text-muted">Pilih role untuk user ini.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showEditModal = false">Batal</button>
+          <button type="button" class="btn btn-primary" @click="saveRole" :disabled="isSaving">
+            <i class="ri-save-line me-1"></i>{{ isSaving ? 'Menyimpan...' : 'Simpan' }}
+          </button>
         </div>
       </div>
     </div>
@@ -408,5 +501,43 @@ html.dark .avatar.border-white {
 html[data-theme-mode="dark"] .avatar .text-white,
 html.dark .avatar .text-white {
   color: #ffffff !important;
+}
+
+/* Role Card Editable Styles */
+.role-card-editable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.role-card-editable:hover {
+  background: rgba(26, 54, 93, 0.25) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(26, 54, 93, 0.15);
+}
+
+.role-card-editable:hover .edit-icon-indicator {
+  opacity: 1;
+}
+
+html[data-theme-mode="dark"] .role-card-editable:hover,
+html.dark .role-card-editable:hover {
+  background: rgba(99, 102, 241, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+/* Modal Centering */
+.modal.show { display: block; }
+.modal.show .modal-dialog.custom-modal { 
+  margin: 0 auto !important; 
+  max-width: 800px !important;
+  width: 800px !important;
+  position: fixed;
+  top: 50%;
+  left: calc(50% + 125px);
+  transform: translate(-50%, -50%);
+}
+.modal.show .modal-dialog.custom-modal .modal-content {
+  width: 100% !important;
 }
 </style>

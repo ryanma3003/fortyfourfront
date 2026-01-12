@@ -1,14 +1,40 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { stakeholdersData } from '../data/dummydata';
-import { ikasDataStatic, ikasDataDynamic } from '../data/ikas-data';
+import { ikasDataStatic } from '../data/ikas-data';
+import { useIkasStore } from '../stores/ikas';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 
 const router = useRouter();
-
 const route = useRoute();
+const ikasStore = useIkasStore();
+
+// Initialize store
+onMounted(() => {
+    ikasStore.initialize();
+});
+
+// Get current stakeholder slug and source
+const currentSlug = computed(() => String(route.query.slug || ''));
+const currentSource = computed(() => String(route.query.source || ''));
+
+// Get IKAS data for current stakeholder
+const ikasDataDynamic = computed(() => {
+    if (currentSlug.value) {
+        return ikasStore.getIkasData(currentSlug.value);
+    }
+    // Return default empty structure if no slug
+    return {
+        total_rata_rata: 0,
+        total_kategori: "INPUT BELUM LENGKAP",
+        identifikasi: { nilai_identifikasi: 0, kategori_identifikasi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0, nilai_subdomain5: 0 },
+        proteksi: { nilai_proteksi: 0, kategori_proteksi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0, nilai_subdomain5: 0, nilai_subdomain6: 0 },
+        deteksi: { nilai_deteksi: 0, kategori_deteksi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0 },
+        gulih: { nilai_gulih: 0, kategori_gulih: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0 },
+    };
+});
 
 const dataToPass = computed(() => {
     try {
@@ -47,6 +73,24 @@ const dataToPass = computed(() => {
         activepage: "IKAS",
     }
 });
+
+// Computed property untuk mendapatkan stakeholder berdasarkan slug
+const currentStakeholder = computed(() => {
+    const slug = route.query.slug;
+    if (slug && stakeholdersData && Array.isArray(stakeholdersData)) {
+        return stakeholdersData.find(s => s.slug === String(slug));
+    }
+    return null;
+});
+
+// Navigate to IKAS CRUD with slug and source
+const goToIkasCrud = () => {
+    const query = { slug: currentSlug.value };
+    if (currentSource.value) {
+        query.source = currentSource.value;
+    }
+    router.push({ path: '/ikas-crud', query });
+};
 
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);
@@ -204,6 +248,11 @@ td {
 .orange { background: #f39c12; }
 .green { background: #2ecc71; }
 
+/* Gradient Header Card Styling */
+.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important; overflow: hidden !important; }
+.gradient-header-card .card-header { border: none !important; border-bottom: none !important; border-block-end: none !important; border-radius: 0 !important; margin: 0 !important; }
+.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
+
 </style>
 
 
@@ -212,7 +261,14 @@ td {
   <Pageheader :propData="dataToPass" />
   <div class="row">
     <div class="col-12">
-      <div class="card">
+      <div class="card custom-card gradient-header-card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+          <div class="d-flex align-items-center">
+            <i class="ri-building-2-line me-2 fs-18" style="color: white !important;"></i>
+            <div class="card-title mb-0" style="color: white !important;">IKAS ({{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }})</div>
+          </div>
+        </div>
         <div class="card-body">
            <div class="table-wrapper">
               <table class="maturity-table">
@@ -354,7 +410,7 @@ td {
               </table>
             </div>
             <div class="d-flex justify-content-end gap-2 mt-3">
-              <button @click="router.push('/ikas-crud')" class="btn btn-secondary btn-glare rounded-pill btn-md">Input Data</button>
+              <button @click="goToIkasCrud" class="btn btn-secondary btn-glare rounded-pill btn-md">Input Data</button>
               <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
               <button @click="triggerFileInput" class="btn btn-success btn-glare rounded-pill btn-md" :disabled="loading">
                 <span v-if="loading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>

@@ -21,11 +21,16 @@ export default defineComponent({
     });
 
     const showPassword = ref(false);
+    const isLoading = ref(false);
 
     const router = useRouter();
 
     const login = async () => {
+      if (isLoading.value) return;
+      isLoading.value = true;
+      
       let data = await authenticateUser(user.value);
+      
       if (data.authenticated) {
         toast.success("Logged In", {
           theme: "auto",
@@ -34,10 +39,14 @@ export default defineComponent({
           autoClose: true,
           position: "top-right",
         });
-        // setTimeout(() => {
-        router.push("/dashboards");
-        // }, 300);
+        
+        // Kasih jeda 1 detik supaya toast notification keliatan
+        setTimeout(() => {
+          isLoading.value = false;
+          router.push("/dashboards");
+        }, 1000);
       } else {
+        isLoading.value = false;
         toast.error("Invalid credentials", {
           theme: "auto",
           icon: true,
@@ -45,6 +54,12 @@ export default defineComponent({
           autoClose: true,
           position: "top-right",
         });
+      }
+    };
+
+    const handleEnter = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        login();
       }
     };
 
@@ -87,72 +102,83 @@ export default defineComponent({
       user,
       login,
       showPassword,
+      isLoading,
+      handleEnter,
     };
   },
 });
 </script>
 
 <template>
-  <ParticlesJs />
-  <div class="container">
-    <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
-      <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-6 col-sm-8 col-12">
-        <div class="card custom-card border-0 my-4">
-          <div class="card-body p-5">
-            <div class="mb-4 align-items-center d-flex justify-content-center">
-              <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height: 50px; width: auto"/>
-            </div>
-            <div>
-              <h4 class="mb-1 fw-semibold">Hi,Welcome back!</h4>
-              <p class="mb-4 text-muted fw-normal">
-                Please enter your credentials
-              </p>
-            </div>
-            <div class="row gy-3">
-              <div class="col-xl-12">
-                <label for="signin-email" class="form-label text-default">Email</label>
-                <input type="text" class="form-control" id="signin-email" v-model="user.username" placeholder="Enter Email"/>
+  <div class="authentication-background">
+    <ParticlesJs />
+    <div class="container">
+      <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
+        <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-6 col-sm-8 col-12">
+          <div class="card custom-card border-0 my-4">
+            <div class="card-body p-5">
+              <div class="mb-4 align-items-center d-flex justify-content-center">
+                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px; width: auto"/>
+                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px; width: auto"/>
               </div>
-              <div class="col-xl-12 mb-2">
-                <label for="signin-password" class="form-label text-default d-block">Password</label>
-                <div class="position-relative">
-                  <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Password"/>
-                  <a href="javascript:void(0);" @click="showPassword = !showPassword" class="show-password-button text-muted">
-                    <i class="align-middle" :class="showPassword ? 'ri-eye-line' : 'ri-eye-off-line'"></i>
-                  </a>
+              <div>
+                <h4 class="mb-1 fw-semibold">Hi,Welcome back!</h4>
+                <p class="mb-4 text-muted fw-normal">
+                  Please enter your credentials
+                </p>
+              </div>
+              <div class="row gy-3">
+                <div class="col-xl-12">
+                  <label for="signin-email" class="form-label text-default">Email</label>
+                  <input type="text" class="form-control form-control-lg" id="signin-email" v-model="user.username" placeholder="Enter Email" @keyup.enter="login"/>
                 </div>
-                <div class="mt-3">
-                  <div class="form-check custom-login">
-                    <input class="form-check-input" type="checkbox" value="" id="defaultCheck1" checked/>
-                    <label class="form-check-label" for="defaultCheck1">Remember me</label>
-                    <router-link to="/pages/authentication/reset-password/basic" class="float-end link-danger fw-medium fs-12">Forget password ?</router-link>
+                <div class="col-xl-12 mb-2">
+                  <label for="signin-password" class="form-label text-default d-block">Password</label>
+                  <div class="position-relative">
+                    <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Password" @keyup.enter="login"/>
+                    <a href="javascript:void(0);" @click="showPassword = !showPassword" class="show-password-button text-muted">
+                      <i class="align-middle" :class="showPassword ? 'ri-eye-line' : 'ri-eye-off-line'"></i>
+                    </a>
+                  </div>
+                  <div class="mt-3">
+                    <div class="form-check custom-login">
+                      <input class="form-check-input" type="checkbox" value="" id="defaultCheck1" checked/>
+                      <label class="form-check-label" for="defaultCheck1">Remember me</label>
+                      <router-link to="/pages/authentication/reset-password/basic" class="float-end link-danger fw-medium fs-12">Forget password ?</router-link>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div class="d-grid mt-2">
-              <router-link to="/dashboards" class="btn btn-primary" @click.prevent="login">Sign In</router-link>
-            </div>
-            <!-- <div class="text-center my-3 authentication-barrier">
-                            <span class="op-4 fs-13">OR</span>
-                        </div> -->
-            <!-- <div class="d-grid mb-3">
-                            <button class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill mb-3">
-                                <span class="avatar avatar-xs">
-                                    <img src="/images/media/apps/google.png" alt="">
-                                </span>
-                                <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Google</span>
-                            </button>
-                            <button class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill">
-                                <span class="avatar avatar-xs">
-                                    <img src="/images/media/apps/facebook.png" alt="">
-                                </span>
-                                <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Facebook</span>
-                            </button>
-                        </div> -->
-            <div class="text-center mt-3 fw-medium">
-              Dont have an account?
-              <router-link to="/pages/authentication/sign-up/basic" class="text-primary">Register Here</router-link>
+              <div class="d-grid mt-2">
+                <button class="btn btn-primary btn-lg" @click="login" :disabled="isLoading">
+                  <span v-if="!isLoading">Sign In</span>
+                  <span v-else>
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    Signing in...
+                  </span>
+                </button>
+              </div>
+              <!-- <div class="text-center my-3 authentication-barrier">
+                              <span class="op-4 fs-13">OR</span>
+                          </div> -->
+              <!-- <div class="d-grid mb-3">
+                              <button class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill mb-3">
+                                  <span class="avatar avatar-xs">
+                                      <img src="/images/media/apps/google.png" alt="">
+                                  </span>
+                                  <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Google</span>
+                              </button>
+                              <button class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill">
+                                  <span class="avatar avatar-xs">
+                                      <img src="/images/media/apps/facebook.png" alt="">
+                                  </span>
+                                  <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Facebook</span>
+                              </button>
+                          </div> -->
+              <div class="text-center mt-3 fw-medium">
+                Dont have an account?
+                <router-link to="/pages/authentication/sign-up/basic" class="text-primary">Register Here</router-link>
+              </div>
             </div>
           </div>
         </div>
@@ -160,3 +186,7 @@ export default defineComponent({
     </div>
   </div>
 </template>
+
+<style scoped lang="scss">
+@import './login.scss';
+</style>

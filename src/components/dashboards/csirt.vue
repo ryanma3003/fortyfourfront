@@ -129,7 +129,14 @@ export default {
 <Pageheader :propData="dataToPass" />
 <div class="row">
     <div class="col-xl-12">
-        <div class="card">
+        <div class="card custom-card gradient-header-card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+          <div class="d-flex align-items-center">
+            <i class="ri-building-2-line me-2 fs-18" style="color: white !important;"></i>
+            <div class="card-title mb-0" style="color: white !important;">{{ currentCsirt?.nama || 'CSIRT' }}</div>
+          </div>
+        </div>
             <div class="card-body">
                 <div v-if="!currentCsirt" class="alert alert-warning">
                     Data CSIRT tidak ditemukan

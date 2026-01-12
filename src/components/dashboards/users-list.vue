@@ -1,9 +1,9 @@
 <script lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import users from "../../utils/users.json";
 import { useAuthStore } from "../../stores/auth";
 import { useProfileStore } from "../../stores/profile";
+import { useUsersStore } from "../../stores/users";
 
 interface User {
   id: number;
@@ -34,8 +34,8 @@ export default {
   setup() {
     const authStore = useAuthStore();
     const profileStore = useProfileStore();
+    const usersStore = useUsersStore();
 
-    const items = ref<User[]>([]);
     const loading = ref(false);
     const searchQuery = ref("");
     const sortField = ref<"name" | "role">("name");
@@ -53,23 +53,17 @@ export default {
     const toastType = ref<"success" | "error">("success");
 
     // Form state for editing role
-    const formData = ref<{ role: string; jabatan: string }>({
+    const formData = ref<{ role: string }>({
       role: "",
-      jabatan: "",
     });
 
-    const loadUsers = async () => {
-      loading.value = true;
-      await new Promise((r) => setTimeout(r, 500));
-
-      // Load profile data from storage with proper user switching
-      profileStore.switchUser();
-
+    // Computed items from users store
+    const items = computed(() => {
       // Get current logged-in user info
       const currentUser = authStore.currentUser;
-
+      
       // Map users and merge dynamic data for current user
-      items.value = users.map((u: User) => {
+      return usersStore.allUsers.map((u: User) => {
         // If this is the current logged-in user and profile has been customized
         if (
           currentUser &&
@@ -85,6 +79,17 @@ export default {
         }
         return { ...u };
       });
+    });
+
+    const loadUsers = async () => {
+      loading.value = true;
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Initialize users store
+      usersStore.initialize();
+
+      // Load profile data from storage with proper user switching
+      profileStore.switchUser();
 
       loading.value = false;
     };
@@ -140,24 +145,23 @@ export default {
     // EDIT ROLE
     const openEditModal = (item: User) => {
       currentEditItem.value = item;
-      formData.value = { role: item.role, jabatan: item.jabatan };
+      formData.value = { role: item.role };
       showEditModal.value = true;
     };
 
     const updateUser = () => {
       if (!currentEditItem.value) return;
 
-      const index = items.value.findIndex(
-        (i) => i.id === currentEditItem.value!.id
-      );
-      if (index !== -1) {
-        items.value[index] = {
-          ...items.value[index],
-          role: formData.value.role,
-          jabatan: formData.value.jabatan,
-        };
+      // Update in usersStore (persists to localStorage)
+      const success = usersStore.updateUserById(currentEditItem.value.id, {
+        role: formData.value.role,
+      });
+
+      if (success) {
         showEditModal.value = false;
-        showNotification("User berhasil diperbarui!", "success");
+        showNotification("Role berhasil diperbarui!", "success");
+      } else {
+        showNotification("Gagal memperbarui role!", "error");
       }
     };
 
@@ -170,11 +174,8 @@ export default {
     const deleteUser = () => {
       if (!currentDeleteItem.value) return;
 
-      const index = items.value.findIndex(
-        (i) => i.id === currentDeleteItem.value!.id
-      );
-      if (index !== -1) {
-        items.value.splice(index, 1);
+      const success = usersStore.deleteUserById(currentDeleteItem.value.id);
+      if (success) {
         showDeleteModal.value = false;
         showNotification("User berhasil dihapus!", "success");
       }
@@ -192,6 +193,7 @@ export default {
     onMounted(loadUsers);
 
     return {
+      authStore,
       items,
       loading,
       searchQuery,
@@ -406,7 +408,19 @@ export default {
                           <i class="ri-eye-line"></i>
                         </router-link>
                         <button 
-                          @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Delete">
+                          v-if="authStore.currentUser?.id !== item.id"
+                          @click="openEditModal(item)" 
+                          class="btn btn-sm btn-icon btn-wave btn-warning-light" 
+                          title="Edit Role"
+                        >
+                          <i class="ri-pencil-line"></i>
+                        </button>
+                        <button 
+                          v-if="authStore.currentUser?.id !== item.id"
+                          @click="openDeleteModal(item)" 
+                          class="btn btn-sm btn-icon btn-wave btn-danger-light" 
+                          title="Delete"
+                        >
                           <i class="ri-delete-bin-line"></i>
                         </button>
                       </div>
@@ -450,33 +464,37 @@ export default {
     </div>
   </div>
 
-  <!-- Edit Modal -->
-  <!-- <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered">
+  <!-- Edit Role Modal -->
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Edit User</h5>
+          <h5 class="modal-title">
+            <i class="ri-shield-user-line me-2"></i>Edit Role
+          </h5>
           <button type="button" class="btn-close" @click="showEditModal = false"></button>
         </div>
         <div class="modal-body" v-if="currentEditItem">
-          <div class="mb-3">
-            <label class="form-label">Nama</label>
-            <input type="text" class="form-control" :value="currentEditItem.name" disabled />
+          <!-- User Info (Readonly) -->
+          <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded">
+            <span class="avatar avatar-md avatar-rounded bg-primary-transparent overflow-hidden">
+              <img v-if="currentEditItem.photo" :src="currentEditItem.photo" :alt="currentEditItem.name" />
+              <span v-else class="text-primary fw-semibold">{{ currentEditItem.name.charAt(0).toUpperCase() }}</span>
+            </span>
+            <div>
+              <h6 class="mb-0 fw-semibold">{{ currentEditItem.name }}</h6>
+              <span class="text-muted fs-13">{{ currentEditItem.username }}</span>
+            </div>
           </div>
+          
+          <!-- Role Selection -->
           <div class="mb-3">
-            <label class="form-label">Email</label>
-            <input type="text" class="form-control" :value="currentEditItem.username" disabled />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Jabatan <span class="text-danger">*</span></label>
-            <input v-model="formData.jabatan" type="text" class="form-control" placeholder="Masukkan jabatan" />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Role <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
             <select v-model="formData.role" class="form-select">
               <option value="Admin">Admin</option>
               <option value="User">User</option>
             </select>
+            <small class="text-muted">Pilih role untuk user ini.</small>
           </div>
         </div>
         <div class="modal-footer">
@@ -487,7 +505,7 @@ export default {
         </div>
       </div>
     </div>
-  </div> -->
+  </div>
 
   <!-- Delete Modal -->
   <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
@@ -538,6 +556,19 @@ export default {
 
 .modal.show { display: block; }
 .modal.show .modal-dialog { margin: 0 auto; max-width: 600px; }
+.modal.show .modal-dialog.custom-modal { 
+  margin: 0 auto !important; 
+  max-width: 800px !important;
+  width: 800px !important;
+  position: fixed;
+  top: 50%;
+  left: calc(50% + 125px);
+  transform: translate(-50%, -50%);
+}
+.modal.show .modal-dialog.custom-modal .modal-content {
+  width: 100% !important;
+}
+
 .toast { min-width: 250px; }
 
 .empty-state { padding: 2rem 1rem; }
