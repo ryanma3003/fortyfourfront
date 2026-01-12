@@ -713,8 +713,8 @@ export default {
   </div>
 
   <!-- Create Modal -->
-  <div v-if="showCreateModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
+  <div v-if="showCreateModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click.self="showCreateModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
           <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
@@ -891,8 +891,8 @@ export default {
   </div>
 
   <!-- Edit Modal -->
-  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click.self="showEditModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
           <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
@@ -1074,8 +1074,8 @@ export default {
   </div>
 
   <!-- Delete Confirmation Modal -->
-  <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered">
+  <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click.self="showDeleteModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Konfirmasi Hapus</h5>
@@ -1122,7 +1122,10 @@ export default {
 .sort-arrows i.active { color: #3b82f6; }
 
 .modal.show { display: block; }
-.modal.show .modal-dialog { margin: 0 auto; max-width: 800px; }
+.modal.show .modal-dialog:not(.custom-modal) { margin: 0 auto; max-width: 800px; }
+.modal.show .modal-dialog.custom-modal { margin: 0 auto; max-width: 800px; width: 800px; }
+.modal.show .modal-dialog.modal-xxl { max-width: 95%; width: 95%; }
+.modal.show .modal-dialog.custom-modal .modal-content { width: 100% !important; max-width: none !important; }
 .toast { min-width: 250px; }
 
 .empty-state { padding: 2rem 1rem; }
@@ -1200,7 +1203,7 @@ html.dark .email-link:hover .email-text {
 /* Global style untuk modal - tidak scoped agar bisa override */
 @media (min-width: 992px) {
   .modal.fade.show.d-block .modal-dialog {
-    margin-left: calc(250px + ((100% - 250px - 800px) / 2)) !important;
+    margin-left: calc(250px + ((100% - 250px - 1000px) / 2)) !important;
     margin-right: auto !important;
   }
 }

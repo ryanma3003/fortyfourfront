@@ -465,8 +465,8 @@ export default {
   </div>
 
   <!-- Edit Role Modal -->
-  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered">
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">
@@ -556,6 +556,19 @@ export default {
 
 .modal.show { display: block; }
 .modal.show .modal-dialog { margin: 0 auto; max-width: 600px; }
+.modal.show .modal-dialog.custom-modal { 
+  margin: 0 auto !important; 
+  max-width: 800px !important;
+  width: 800px !important;
+  position: fixed;
+  top: 50%;
+  left: calc(50% + 125px);
+  transform: translate(-50%, -50%);
+}
+.modal.show .modal-dialog.custom-modal .modal-content {
+  width: 100% !important;
+}
+
 .toast { min-width: 250px; }
 
 .empty-state { padding: 2rem 1rem; }

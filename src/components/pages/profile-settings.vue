@@ -5,6 +5,7 @@ import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
 import { useUsersStore, type User } from "../../stores/users";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
+import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 
 // Constants
 const DEFAULT_AVATAR = "/images/faces/9.jpg";
@@ -89,6 +90,37 @@ const showNewPassword = ref(false);
 const showConfirmPassword = ref(false);
 const passwordLength = ref(12);
 
+// Phone input state
+const selectedCountryCode = ref("+62");
+const phoneNumber = ref("");
+
+// Format phone number
+const formatPhoneNumber = (value: string) => {
+  const numbers = value.replace(/\D/g, "");
+  if (selectedCountryCode.value === "+62") {
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+  } else {
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 6) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+  }
+};
+
+const handlePhoneInput = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const numbers = input.value.replace(/\D/g, "").slice(0, 11);
+  phoneNumber.value = formatPhoneNumber(numbers);
+  formData.value.phone = selectedCountryCode.value + " " + phoneNumber.value;
+};
+
+const handleCountryCodeChange = () => {
+  if (phoneNumber.value) {
+    formData.value.phone = selectedCountryCode.value + " " + phoneNumber.value;
+  }
+};
+
 // Password Validation - Simplified with array
 const passwordRules = computed(() => [
   { label: 'Minimal 8 karakter', valid: passwordData.value.newPassword.length >= 8 },
@@ -157,6 +189,16 @@ const resetForm = () => {
     location: profileStore.location, email: profileStore.displayEmail, phone: profileStore.phone,
     website: profileStore.website, bio: profileStore.bio, address: profileStore.address,
   };
+  // Parse existing phone number
+  if (formData.value.phone) {
+    const match = formData.value.phone.match(/^(\+\d+)\s*(.+)$/);
+    if (match) {
+      selectedCountryCode.value = match[1];
+      phoneNumber.value = match[2];
+    } else {
+      phoneNumber.value = formData.value.phone;
+    }
+  }
   avatarPreview.value = profileStore.avatarUrl;
   bannerPreview.value = profileStore.bannerUrl;
   bannerPosition.value = { x: profileStore.bannerPositionX ?? 50, y: profileStore.bannerPositionY ?? 50 };
@@ -411,7 +453,26 @@ const roleOptions = ['Admin', 'User'];
               <!-- Phone (readonly in admin mode) -->
               <div class="col-xl-6 col-lg-6 col-md-6">
                 <label class="form-label fw-medium"><i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon</label>
-                <input type="tel" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.phone" placeholder="Masukkan nomor telepon" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+                <div v-if="isAdminEditMode" class="input-group">
+                  <input type="tel" class="form-control bg-light" v-model="formData.phone" placeholder="Masukkan nomor telepon" readonly disabled />
+                </div>
+                <div v-else class="input-group">
+                  <CountryCodeDropdown 
+                    v-model="selectedCountryCode" 
+                    @update:modelValue="handleCountryCodeChange"
+                  />
+                  <input 
+                    type="tel" 
+                    class="form-control" 
+                    v-model="phoneNumber"
+                    @input="handlePhoneInput"
+                    inputmode="numeric" 
+                    placeholder="813 8282 8282"
+                  />
+                </div>
+                <div class="form-text text-muted mt-1">
+                  <i class="ri-information-line"></i> Format: {{ selectedCountryCode }} 813 8282 8282
+                </div>
               </div>
               <!-- Location (readonly in admin mode) -->
               <div class="col-xl-6 col-lg-6 col-md-6">
@@ -552,9 +613,9 @@ const roleOptions = ['Admin', 'User'];
 </template>
 
 <style scoped>
-.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important; overflow: hidden !important; }
-.gradient-header-card .card-header { border: none !important; border-bottom: none !important; border-block-end: none !important; border-radius: 0 !important; margin: 0 !important; }
-.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
+.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important; overflow: visible !important; }
+.gradient-header-card .card-header { border: none !important; border-bottom: none !important; border-block-end: none !important; border-radius: 0 !important; margin: 0 !important; overflow: hidden; }
+.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; overflow: visible !important; }
 .gradient-header-card .card-footer { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
 .draggable { user-select: none; -webkit-user-select: none; }
 .draggable:hover { cursor: grab; }

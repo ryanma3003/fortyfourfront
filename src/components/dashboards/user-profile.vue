@@ -390,8 +390,8 @@ const saveRole = () => {
   </div>
 
   <!-- Edit Role Modal -->
-  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered">
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">
@@ -524,5 +524,20 @@ html[data-theme-mode="dark"] .role-card-editable:hover,
 html.dark .role-card-editable:hover {
   background: rgba(99, 102, 241, 0.15) !important;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+/* Modal Centering */
+.modal.show { display: block; }
+.modal.show .modal-dialog.custom-modal { 
+  margin: 0 auto !important; 
+  max-width: 800px !important;
+  width: 800px !important;
+  position: fixed;
+  top: 50%;
+  left: calc(50% + 125px);
+  transform: translate(-50%, -50%);
+}
+.modal.show .modal-dialog.custom-modal .modal-content {
+  width: 100% !important;
 }
 </style>

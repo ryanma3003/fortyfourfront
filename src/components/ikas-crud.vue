@@ -167,13 +167,17 @@ const cancel = () => {
     <Pageheader :propData="pageData" />
     <div class="row">
         <div class="col-12">
-            <div class="card custom-card">
-                <div class="card-header justify-content-between">
-                    <div class="card-title">
-                        Input Nilai Kematangan Keamanan Siber
-                        <span v-if="currentStakeholder" class="text-muted fs-14 ms-2">
-                            - {{ currentStakeholder.nama_perusahaan }}
-                        </span>
+            <div class="card custom-card gradient-header-card">
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
+                    style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
+                    <div class="d-flex align-items-center">
+                        <i class="ri-shield-check-line me-2 fs-18" style="color: white !important;"></i>
+                        <div class="card-title mb-0" style="color: white !important;">
+                            Input Nilai Kematangan Keamanan Siber
+                            <span v-if="currentStakeholder" class="ms-2" style="color: rgba(255,255,255,0.8) !important;">
+                                - {{ currentStakeholder.nama_perusahaan }}
+                            </span>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body">
