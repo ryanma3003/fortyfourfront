@@ -813,11 +813,11 @@ watchEffect(() => {
     setMenuUsingUrl(currentPath);
     previousUrl.value = currentPath;
     // Close sidebar when navigating to widgets or dashboards (including sub-paths) to prevent overlap
-    if (
-      currentPath.startsWith("/widgets") ||
-      currentPath.startsWith("/dashboards")
+   if (
+      (currentPath.startsWith("/dashboards") || currentPath.startsWith("/widgets")) &&
+      window.innerWidth < 768
     ) {
-      document.documentElement.setAttribute("data-toggled", "close");
+      document.documentElement.setAttribute("data-toggled", "close")
     }
   }
 });
