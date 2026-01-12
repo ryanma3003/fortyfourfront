@@ -5,6 +5,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useProfileStore } from "../../stores/profile";
 import { useUsersStore } from "../../stores/users";
 
+
 interface User {
   id: number;
   slug: string;
@@ -465,7 +466,7 @@ export default {
   </div>
 
   <!-- Edit Role Modal -->
-  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
+  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
         <div class="modal-header">
