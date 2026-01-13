@@ -425,7 +425,7 @@ td {
     <div class="col-12">
       <div class="card">
         <div class="card-body">
-          <RadarChartIkas />
+          <RadarChartIkas :stakeholder-slug="currentSlug" />
         </div>
       </div>
     </div>

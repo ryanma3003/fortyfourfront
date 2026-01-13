@@ -8,10 +8,49 @@ import { useIkasStore } from '../../../../stores/ikas';
 
 const ChartCards = defineAsyncComponent(() => import('../../../../shared/components/@spk/chart-cards.vue'));
 
+const props = defineProps({
+    stakeholderSlug: {
+        type: String,
+        default: null
+    }
+})
 const store = useIkasStore();
 store.initialize();
 
 const calculatedSeries = computed(() => {
+    if (props.stakeholderSlug) {
+        const data = store.getIkasData(props.stakeholderSlug);
+        return [
+            {
+                name: "Target Nilai Kematangan",
+                data: Array(19).fill(2.51)
+            },
+            {
+                name: "Nilai Kematangan",
+                data: [
+                    data.total_rata_rata,
+                    data.identifikasi.nilai_subdomain1,
+                    data.identifikasi.nilai_subdomain2,
+                    data.identifikasi.nilai_subdomain3,
+                    data.identifikasi.nilai_subdomain4,
+                    data.identifikasi.nilai_subdomain5,
+                    data.proteksi.nilai_subdomain1,
+                    data.proteksi.nilai_subdomain2,
+                    data.proteksi.nilai_subdomain3,
+                    data.proteksi.nilai_subdomain4,
+                    data.proteksi.nilai_subdomain5,
+                    data.proteksi.nilai_subdomain6,
+                    data.deteksi.nilai_subdomain1,
+                    data.deteksi.nilai_subdomain2,
+                    data.deteksi.nilai_subdomain3,
+                    data.gulih.nilai_subdomain1,
+                    data.gulih.nilai_subdomain2,
+                    data.gulih.nilai_subdomain3,
+                    data.gulih.nilai_subdomain4
+                ]
+            }
+        ];
+    }
     const allData = Object.values(store.ikasDataMap);
     const count = allData.length;
     
@@ -67,7 +106,29 @@ const calculatedSeries = computed(() => {
     ];
 });
 
+
+
 const calculatedSeriesDomain = computed(() => {
+    // Jika ada slug, ambil data stakeholder tersebut saja
+    if (props.stakeholderSlug) {
+        const data = store.getIkasData(props.stakeholderSlug);
+        return [
+            {
+                name: "Target Nilai Kematangan",
+                data: Array(4).fill(2.51)
+            },
+            {
+                name: "Nilai Kematangan",
+                data: [
+                    data.identifikasi.nilai_identifikasi,
+                    data.proteksi.nilai_proteksi,
+                    data.deteksi.nilai_deteksi,
+                    data.gulih.nilai_gulih
+                ]
+            }
+        ];
+    }
+
     const allData = Object.values(store.ikasDataMap);
     const count = allData.length;
     
