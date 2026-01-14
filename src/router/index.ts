@@ -871,11 +871,11 @@ const routes: RouteRecordRaw[] = [
         },
 
         // widgets
-        {
-          path: 'widgets',
-          name: 'Widgets',
-          component: () => import("../components/widgets.vue"),
-        },
+        // {
+        //   path: 'widgets',
+        //   name: 'Widgets',
+        //   component: () => import("../components/widgets.vue"),
+        // },
 
         //maps
         // {
