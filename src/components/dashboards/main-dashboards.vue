@@ -150,7 +150,7 @@ date.value = [startDate, endDate];
             <div class="card custom-card">
                 <div class="card-body p-0">
                     <iframe
-                        src="http://localhost:3000/public/dashboard/1f17ae54-78b7-4bf8-9333-1febfdf5d4ed"
+                        src="https://metabase.kssindustri.site/public/dashboard/cf811c85-dbdc-4aa2-a0dc-72d45c364ccb"
                         frameborder="0"
                         width="100%"
                         height="800"
