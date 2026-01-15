@@ -60,11 +60,12 @@ export default {
     const selectedCountryCode = ref("+62");
     const phoneNumber = ref("");
     
-    const formatPhoneNumber = (value: string) => {
-      const numbers = value.replace(/\D/g, "");
-      if (numbers.length <= 3) return numbers;
-      if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
-      return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
+// Phone formatting - format: XXX-XXXX-XXXX
+    const formatPhoneNumber = (value: string): string => {
+      const nums = value.replace(/\D/g, "");
+      if (nums.length <= 3) return nums;
+      if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`;
+      return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 12)}`;
     };
     
     const handlePhoneInput = (event: Event) => {
@@ -839,7 +840,7 @@ export default {
                       v-model="phoneNumber"
                       @input="handlePhoneInput"
                       inputmode="numeric" 
-                      placeholder="813 8282 8282"
+                      placeholder="813-8282-8282"
                       :class="{ 'is-invalid': formErrors.telepon }"
                     />
                   </div>
