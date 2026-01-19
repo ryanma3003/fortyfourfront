@@ -154,7 +154,7 @@ onUnmounted(() => {
     <ParticlesJs />
     <div class="container">
       <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
-        <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-8 col-sm-10 col-12">
+        <div class="col-xxl-5 col-xl-6 col-lg-7 col-md-8 col-sm-10 col-12">
           <div class="card custom-card auth-card border-0 my-4">
             <div class="card-header-accent"></div>
             <div class="card-body p-4 p-md-5">
@@ -174,7 +174,7 @@ onUnmounted(() => {
               <div class="row gy-3">
                 <!-- Current Password -->
                 <div class="col-12">
-                  <label for="current-password" class="form-label"><i class="ri-lock-line me-1 text-primary"></i>Current Password</label>
+                  <label for="current-password" class="form-label">Current Password</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
                     <input :type="showCurrentPassword ? 'text' : 'password'" class="form-control form-control-lg" id="current-password" v-model="currentPassword" placeholder="Enter current password" @keyup.enter="resetPassword"/>
@@ -186,7 +186,7 @@ onUnmounted(() => {
 
                 <!-- New Password -->
                 <div class="col-12">
-                  <label for="new-password" class="form-label"><i class="ri-lock-line me-1 text-primary"></i>New Password</label>
+                  <label for="new-password" class="form-label">New Password</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-lock-2-line"></i></span>
                     <input :type="showNewPassword ? 'text' : 'password'" class="form-control form-control-lg" id="new-password" v-model="newPassword" placeholder="Create a strong password" @focus="showHint = true" @blur="hideHint" @keyup.enter="resetPassword"/>
@@ -226,9 +226,9 @@ onUnmounted(() => {
 
                 <!-- Confirm Password -->
                 <div class="col-12">
-                  <label for="confirm-password" class="form-label"><i class="ri-lock-line me-1 text-primary"></i>Confirm Password</label>
+                  <label for="confirm-password" class="form-label">Confirm Password</label>
                   <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-lock-check-line"></i></span>
+                    <span class="input-group-text"><i class="ri-lock-2-line"></i></span>
                     <input :type="showConfirmPassword ? 'text' : 'password'" class="form-control form-control-lg" id="confirm-password" v-model="confirmPassword" placeholder="Repeat new password" @keyup.enter="resetPassword"/>
                     <button @click="showConfirmPassword = !showConfirmPassword" class="btn btn-toggle-password" type="button">
                       <i :class="showConfirmPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>

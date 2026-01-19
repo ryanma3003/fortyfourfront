@@ -215,7 +215,7 @@ onUnmounted(() => {
               <div class="row gy-3">
                 <!-- Full Name -->
                 <div class="col-12">
-                  <label for="signup-name" class="form-label"><i class="ri-user-line me-1 text-primary"></i>Full Name</label>
+                  <label for="signup-name" class="form-label">Full Name</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-user-3-line"></i></span>
                     <input type="text" class="form-control form-control-lg" id="signup-name" v-model="fullName" placeholder="Enter your full name" @keyup.enter="signUp" />
@@ -224,7 +224,7 @@ onUnmounted(() => {
 
                 <!-- Email -->
                 <div class="col-12">
-                  <label for="signup-email" class="form-label"><i class="ri-mail-line me-1 text-primary"></i>Email</label>
+                  <label for="signup-email" class="form-label">Email</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-at-line"></i></span>
                     <input type="email" class="form-control form-control-lg" id="signup-email" v-model="email" placeholder="contoh@email.com" @keyup.enter="signUp" />
@@ -233,7 +233,7 @@ onUnmounted(() => {
 
                 <!-- Password -->
                 <div class="col-12">
-                  <label for="signup-password" class="form-label"><i class="ri-lock-line me-1 text-primary"></i>Password</label>
+                  <label for="signup-password" class="form-label">Password</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
                     <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-password" v-model="password" placeholder="Create a strong password" @focus="showHint = true" @blur="hideHint" @keyup.enter="signUp" />
@@ -273,7 +273,7 @@ onUnmounted(() => {
 
                 <!-- Confirm Password -->
                 <div class="col-12">
-                  <label for="signup-confirm-password" class="form-label"><i class="ri-lock-line me-1 text-primary"></i>Confirm Password</label>
+                  <label for="signup-confirm-password" class="form-label">Confirm Password</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-lock-2-line"></i></span>
                     <input :type="showConfirmPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-confirm-password" v-model="confirmPassword" placeholder="Repeat password" @keyup.enter="signUp" />

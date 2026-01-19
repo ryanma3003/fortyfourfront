@@ -72,7 +72,7 @@ onUnmounted(() => {
     <ParticlesJs />
     <div class="container">
       <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
-        <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-8 col-sm-10 col-12">
+        <div class="col-xxl-5 col-xl-6 col-lg-7 col-md-8 col-sm-10 col-12">
           <div class="card custom-card auth-card border-0 my-4">
             <div class="card-header-accent"></div>
             <div class="card-body p-4 p-md-5">
@@ -92,7 +92,7 @@ onUnmounted(() => {
               <div class="row gy-3">
                 <!-- Email -->
                 <div class="col-12">
-                  <label for="signin-email" class="form-label"><i class="ri-mail-line me-1 text-primary"></i>Email</label>
+                  <label for="signin-email" class="form-label">Email</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-at-line"></i></span>
                     <input type="text" class="form-control form-control-lg" id="signin-email" v-model="user.username" placeholder="Enter your email" @keyup.enter="login"/>
@@ -101,7 +101,7 @@ onUnmounted(() => {
 
                 <!-- Password -->
                 <div class="col-12">
-                  <label for="signin-password" class="form-label"><i class="ri-lock-line me-1 text-primary"></i>Password</label>
+                  <label for="signin-password" class="form-label">Password</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
                     <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Enter your password" @keyup.enter="login"/>
