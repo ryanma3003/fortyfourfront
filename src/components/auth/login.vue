@@ -1,111 +1,69 @@
-<script lang="ts">
-import { defineComponent, onMounted, ref } from "vue";
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
 import ParticlesJs from "../../shared/components/@spk/reuseble-plugin/particles-js.vue";
-import PasswordInput from "../../shared/UI/passwordInput.vue";
 import { useAuthStore } from "../../stores/auth";
 
-export default defineComponent({
-  components: {
-    PasswordInput, // Uncomment and import if needed
-    ParticlesJs,
-  },
-  setup() {
-    const { authenticateUser } = useAuthStore(); // use authenticateUser action from  auth store
+const router = useRouter();
+const { authenticateUser } = useAuthStore();
 
-    const user: any = ref({
-      username: "",
-      password: "",
-    });
+// State
+const user = ref({ username: "", password: "" });
+const showPassword = ref(false);
+const isLoading = ref(false);
 
-    const showPassword = ref(false);
-    const isLoading = ref(false);
+// Toast helper
+const showToast = (type: "success" | "error", message: string) => {
+  toast[type](message, {
+    theme: "auto",
+    icon: true,
+    hideProgressBar: true,
+    autoClose: true,
+    position: "top-right",
+  });
+};
 
-    const router = useRouter();
+// Login handler
+const login = async () => {
+  if (isLoading.value) return;
+  isLoading.value = true;
 
-    const login = async () => {
-      if (isLoading.value) return;
-      isLoading.value = true;
-      
-      let data = await authenticateUser(user.value);
-      
-      if (data.authenticated) {
-        toast.success("Logged In", {
-          theme: "auto",
-          icon: true,
-          hideProgressBar: true,
-          autoClose: true,
-          position: "top-right",
-        });
-        
-        // Kasih jeda 1 detik supaya toast notification keliatan
-        setTimeout(() => {
-          isLoading.value = false;
-          router.push("/dashboards");
-        }, 1000);
-      } else {
-        isLoading.value = false;
-        toast.error("Invalid credentials", {
-          theme: "auto",
-          icon: true,
-          hideProgressBar: true,
-          autoClose: true,
-          position: "top-right",
-        });
-      }
-    };
+  const result = await authenticateUser(user.value);
 
-    const handleEnter = (event: KeyboardEvent) => {
-      if (event.key === 'Enter') {
-        login();
-      }
-    };
+  if (result.authenticated) {
+    showToast("success", "Logged In");
+    setTimeout(() => {
+      isLoading.value = false;
+      router.push("/dashboards");
+    }, 1000);
+  } else {
+    isLoading.value = false;
+    showToast("error", "Invalid credentials");
+  }
+};
 
-    const setBodyClass = (action: string) => {
-      if (action === "add") {
-        document.body.classList.add("authentication-background");
-      } else {
-        document.body.classList.remove("authentication-background");
-      }
-    };
+// Body class management
+const setBodyClass = (add: boolean) => {
+  document.body.classList[add ? "add" : "remove"]("authentication-background");
+};
 
-    onMounted(() => {
-      if (localStorage.getItem("visited") === "true") {
-        setBodyClass("add");
-      } else {
-        setBodyClass("add");
-        localStorage.setItem("visited", "true");
-      }
+const cleanup = () => {
+  setBodyClass(false);
+  localStorage.removeItem("visited");
+};
 
-      router.beforeEach(() => {
-        setBodyClass("remove");
-      });
+onMounted(() => {
+  setBodyClass(true);
+  localStorage.setItem("visited", "true");
+  router.beforeEach(() => setBodyClass(false));
+  window.addEventListener("beforeunload", cleanup, { passive: true });
+});
 
-      const handleBeforeUnload = () => {
-        setBodyClass("remove");
-        localStorage.removeItem("visited");
-      };
-
-      window.addEventListener("beforeunload", handleBeforeUnload, {
-        passive: true,
-      });
-
-      return () => {
-        window.removeEventListener("beforeunload", handleBeforeUnload);
-        setBodyClass("remove");
-      };
-    });
-
-    return {
-      user,
-      login,
-      showPassword,
-      isLoading,
-      handleEnter,
-    };
-  },
+onUnmounted(() => {
+  window.removeEventListener("beforeunload", cleanup);
+  setBodyClass(false);
 });
 </script>
 
@@ -114,70 +72,69 @@ export default defineComponent({
     <ParticlesJs />
     <div class="container">
       <div class="row justify-content-center align-items-center authentication authentication-basic h-100">
-        <div class="col-xxl-4 col-xl-5 col-lg-6 col-md-6 col-sm-8 col-12">
-          <div class="card custom-card border-0 my-4">
-            <div class="card-body p-5">
-              <div class="mb-4 align-items-center d-flex justify-content-center">
-                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px; width: auto"/>
-                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px; width: auto"/>
+        <div class="col-xxl-5 col-xl-6 col-lg-7 col-md-8 col-sm-10 col-12">
+          <div class="card custom-card auth-card border-0 my-4">
+            <div class="card-header-accent"></div>
+            <div class="card-body p-4 p-md-5">
+              <!-- Logo -->
+              <div class="mb-4 d-flex justify-content-center">
+                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px"/>
+                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px"/>
               </div>
-              <div>
-                <h4 class="mb-1 fw-semibold">Hi,Welcome back!</h4>
-                <p class="mb-4 text-muted fw-normal">
-                  Please enter your credentials
-                </p>
+
+              <!-- Header -->
+              <div class="text-center mb-4">
+                <h4 class="mb-2 fw-bold login-title">Welcome Back</h4>
+                <p class="text-muted fw-normal fs-14">Sign in to access your dashboard</p>
               </div>
+
+              <!-- Form -->
               <div class="row gy-3">
-                <div class="col-xl-12">
-                  <label for="signin-email" class="form-label text-default">Email</label>
-                  <input type="text" class="form-control form-control-lg" id="signin-email" v-model="user.username" placeholder="Enter Email" @keyup.enter="login"/>
-                </div>
-                <div class="col-xl-12 mb-2">
-                  <label for="signin-password" class="form-label text-default d-block">Password</label>
-                  <div class="position-relative">
-                    <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Password" @keyup.enter="login"/>
-                    <a href="javascript:void(0);" @click="showPassword = !showPassword" class="show-password-button text-muted">
-                      <i class="align-middle" :class="showPassword ? 'ri-eye-line' : 'ri-eye-off-line'"></i>
-                    </a>
+                <!-- Email -->
+                <div class="col-12">
+                  <label for="signin-email" class="form-label">Email</label>
+                  <div class="input-group input-group-modern">
+                    <span class="input-group-text"><i class="ri-at-line"></i></span>
+                    <input type="text" class="form-control form-control-lg" id="signin-email" v-model="user.username" placeholder="Enter your email" @keyup.enter="login"/>
                   </div>
-                  <div class="mt-3">
-                    <div class="form-check custom-login">
-                      <input class="form-check-input" type="checkbox" value="" id="defaultCheck1" checked/>
-                      <label class="form-check-label" for="defaultCheck1">Remember me</label>
-                      <router-link to="/pages/authentication/reset-password/basic" class="float-end link-danger fw-medium fs-12">Forget password ?</router-link>
+                </div>
+
+                <!-- Password -->
+                <div class="col-12">
+                  <label for="signin-password" class="form-label">Password</label>
+                  <div class="input-group input-group-modern">
+                    <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
+                    <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Enter your password" @keyup.enter="login"/>
+                    <button @click="showPassword = !showPassword" class="btn btn-toggle-password" type="button">
+                      <i :class="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Remember & Forgot -->
+                <div class="col-12">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="rememberMe" checked/>
+                      <label class="form-check-label" for="rememberMe">Remember me</label>
                     </div>
+                    <router-link to="/pages/authentication/reset-password/basic" class="auth-link fs-12">Forgot password?</router-link>
                   </div>
                 </div>
               </div>
-              <div class="d-grid mt-2">
-                <button class="btn btn-primary btn-lg" @click="login" :disabled="isLoading">
-                  <span v-if="!isLoading">Sign In</span>
-                  <span v-else>
-                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    Signing in...
-                  </span>
+
+              <!-- Submit Button -->
+              <div class="d-grid mt-4">
+                <button class="btn btn-auth-submit btn-lg" @click="login" :disabled="isLoading">
+                  <span v-if="!isLoading"><i class="ri-login-box-line me-2"></i>Sign In</span>
+                  <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Signing in...</span>
                 </button>
               </div>
-              <!-- <div class="text-center my-3 authentication-barrier">
-                              <span class="op-4 fs-13">OR</span>
-                          </div> -->
-              <!-- <div class="d-grid mb-3">
-                              <button class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill mb-3">
-                                  <span class="avatar avatar-xs">
-                                      <img src="/images/media/apps/google.png" alt="">
-                                  </span>
-                                  <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Google</span>
-                              </button>
-                              <button class="btn btn-white btn-w-lg border d-flex align-items-center justify-content-center flex-fill">
-                                  <span class="avatar avatar-xs">
-                                      <img src="/images/media/apps/facebook.png" alt="">
-                                  </span>
-                                  <span class="lh-1 ms-2 fs-13 text-default fw-medium">Signup with Facebook</span>
-                              </button>
-                          </div> -->
-              <div class="text-center mt-3 fw-medium">
-                Dont have an account?
-                <router-link to="/pages/authentication/sign-up/basic" class="text-primary">Register Here</router-link>
+
+              <!-- Register Link -->
+              <div class="text-center mt-4">
+                <span class="text-muted">Don't have an account?</span>
+                <router-link to="/pages/authentication/sign-up/basic" class="auth-link ms-1"><i class="ri-user-add-line me-1"></i>Register</router-link>
               </div>
             </div>
           </div>
@@ -189,4 +146,17 @@ export default defineComponent({
 
 <style scoped lang="scss">
 @import './login.scss';
+
+/* Title - black in light mode, white in dark mode */
+.login-title {
+  color: #111827;
+}
+
+/* Dark mode overrides */
+[data-theme-mode="dark"],
+.dark-mode {
+  .login-title {
+    color: #ffffff;
+  }
+}
 </style>

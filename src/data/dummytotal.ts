@@ -14,6 +14,14 @@ export interface PerusahaanType {
   cardClass: string;
   priceColor: string;
   svgIcon: string;
+  // Chart props
+  chartSeries?: any;
+  chartOptions?: any;
+  type?: string;
+  height?: string;
+  width?: string;
+  id?: string;
+
 }
 
 export interface MonthlyDataType {
@@ -276,6 +284,19 @@ function getLastMonthValue(
 
 // =====================================================
 // GENERATE CARD
+function getColor(colorName: string): string {
+  switch (colorName) {
+    case 'primary': return '#845adf';
+    case 'secondary': return '#23b7e5';
+    case 'warning': return '#f5b849';
+    case 'info': return '#26bf94';
+    case 'success': return '#26bf94';
+    case 'danger': return '#e6533c';
+    case 'purple': return '#8c57ff';
+    default: return '#845adf';
+  }
+}
+
 // =====================================================
 
 export function generatePerusahaanCard(dateRange: DateRange | null = null): PerusahaanType[] {
@@ -301,10 +322,59 @@ export function generatePerusahaanCard(dateRange: DateRange | null = null): Peru
       iconColor: "success fw-medium",
       cardClass: `dashboard-main-card overflow-hidden ${cat.color}`,
       priceColor: cat.color,
-      svgIcon: (cat as any).svgIcon || `<svg></svg>`
+      svgIcon: (cat as any).svgIcon || `<svg></svg>`,
+
+      // Chart Data
+      id: `chart-${cat.key}`,
+      type: 'area',
+      height: '50',
+      width: '100', // or '100%'
+      chartSeries: [{
+        name: cat.title,
+        data: data.slice(-12).map(d => d.value)
+      }],
+      chartOptions: {
+        chart: {
+          type: 'area',
+          sparkline: {
+            enabled: true
+          }
+        },
+        stroke: {
+          curve: 'smooth',
+          width: 2
+        },
+        fill: {
+          opacity: 0.3,
+        },
+        colors: [getColor(cat.color)],
+        tooltip: {
+          fixed: {
+            enabled: false
+          },
+          x: {
+            show: false
+          },
+          y: {
+            title: {
+              formatter: function (seriesName: any) {
+                return ''
+              }
+            }
+          },
+          marker: {
+            show: false
+          }
+        }
+      }
     };
   });
 }
+
+// Helper for colors (duplicate or move up)
+// Since I can't easily move the helper up without reading whole file again or risking placement, I'll rely on it being defined or just redefine/inline it if needed, 
+// actually I defined `getColor` below `generatePerusahaanCard` so it is hoisted or available.
+// But `generatePerusahaanCard2` also needs it.
 
 export function generatePerusahaanCard2(dateRange: DateRange | null = null): PerusahaanType[] {
   const categories = [
@@ -329,7 +399,51 @@ export function generatePerusahaanCard2(dateRange: DateRange | null = null): Per
       iconColor: "success fw-medium",
       cardClass: `dashboard-main-card overflow-hidden ${cat.color}`,
       priceColor: cat.color,
-      svgIcon: (cat as any).svgIcon || `<svg></svg>`
+      svgIcon: (cat as any).svgIcon || `<svg></svg>`,
+
+      // Chart Data
+      id: `chart-${cat.key}`,
+      type: 'area', // or line
+      height: '50',
+      width: '100', // or '100%'
+      chartSeries: [{
+        name: cat.title,
+        data: data.slice(-12).map(d => d.value)
+      }],
+      chartOptions: {
+        chart: {
+          type: 'area',
+          sparkline: {
+            enabled: true
+          }
+        },
+        stroke: {
+          curve: 'smooth',
+          width: 2
+        },
+        fill: {
+          opacity: 0.3,
+        },
+        colors: [getColor(cat.color)],
+        tooltip: {
+          fixed: {
+            enabled: false
+          },
+          x: {
+            show: false
+          },
+          y: {
+            title: {
+              formatter: function (seriesName: any) {
+                return ''
+              }
+            }
+          },
+          marker: {
+            show: false
+          }
+        }
+      }
     };
   });
 }

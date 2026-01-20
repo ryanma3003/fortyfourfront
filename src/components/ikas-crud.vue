@@ -138,10 +138,24 @@ const save = () => {
     }
 
     // Update each subdomain in store
+    // Update each subdomain in store
     domains.forEach(domain => {
         domain.items.forEach(item => {
-            const value = formData[domain.key][item.key];
-            ikasStore.updateSubdomain(currentSlug.value, domain.key, item.key, Number(value) || 0);
+            const rawValue = formData[domain.key][item.key];
+            // If explicit null (from checkbox), keep it null.
+            // basic check: if strict null, keep null.
+            // If empty string, treat as 0 or null? Use null if we want to be strict, but commonly 0 in this app context unless checked as N/A.
+            // However, previous code was Number(value) || 0. 
+            // If checkbox is checked, rawValue is null. Number(null) is 0, which is WRONG here.
+            
+            let valueToSave;
+            if (rawValue === null) {
+                valueToSave = null;
+            } else {
+                valueToSave = Number(rawValue) || 0;
+            }
+
+            ikasStore.updateSubdomain(currentSlug.value, domain.key, item.key, valueToSave);
         });
     });
 
@@ -189,16 +203,43 @@ const cancel = () => {
                         <div v-for="domain in domains" :key="domain.key" class="mb-4">
                             <h6 class="fw-bold mb-3 border-bottom pb-2">{{ domain.name }}</h6>
                             <div class="row g-3">
-                                <div v-for="item in domain.items" :key="item.key" class="col-md-6 col-lg-4">
-                                    <label class="form-label fs-12">{{ item.label }}</label>
-                                    <input 
-                                        type="number" 
-                                        step="0.01" 
-                                        max="5"
-                                        min="0"
-                                        class="form-control" 
-                                        v-model.number="formData[domain.key][item.key]"
+                                <div
+                                    v-for="item in domain.items"
+                                    :key="item.key"
+                                    class="col-md-6 col-lg-4"
                                     >
+                                    <label class="form-label fs-12">
+                                        {{ item.label }}
+                                    </label>
+
+                                    <div class="d-flex align-items-center gap-2">
+                                        <!-- Input angka -->
+                                        <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        max="5"
+                                        class="form-control"
+                                        :disabled="formData[domain.key][item.key] === null"
+                                        v-model.number="formData[domain.key][item.key]"
+                                        />
+
+                                        <!-- Checkbox NA -->
+                                        <div class="form-check">
+                                        <input
+                                            class="form-check-input"
+                                            type="checkbox"
+                                            :checked="formData[domain.key][item.key] === null"
+                                            @change="
+                                            formData[domain.key][item.key] =
+                                                $event.target.checked ? null : 0
+                                            "
+                                        />
+                                        <label class="form-check-label fs-12">
+                                            N/A
+                                        </label>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

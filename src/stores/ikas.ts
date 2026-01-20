@@ -5,39 +5,39 @@ import { defineStore } from 'pinia';
 export interface IkasIdentifikasi {
   nilai_identifikasi: number;
   kategori_identifikasi: string;
-  nilai_subdomain1: number;
-  nilai_subdomain2: number;
-  nilai_subdomain3: number;
-  nilai_subdomain4: number;
-  nilai_subdomain5: number;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
+  nilai_subdomain4: number | null;
+  nilai_subdomain5: number | null;
 }
 
 export interface IkasProteksi {
   nilai_proteksi: number;
   kategori_proteksi: string;
-  nilai_subdomain1: number;
-  nilai_subdomain2: number;
-  nilai_subdomain3: number;
-  nilai_subdomain4: number;
-  nilai_subdomain5: number;
-  nilai_subdomain6: number;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
+  nilai_subdomain4: number | null;
+  nilai_subdomain5: number | null;
+  nilai_subdomain6: number | null;
 }
 
 export interface IkasDeteksi {
   nilai_deteksi: number;
   kategori_deteksi: string;
-  nilai_subdomain1: number;
-  nilai_subdomain2: number;
-  nilai_subdomain3: number;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
 }
 
 export interface IkasGulih {
   nilai_gulih: number;
   kategori_gulih: string;
-  nilai_subdomain1: number;
-  nilai_subdomain2: number;
-  nilai_subdomain3: number;
-  nilai_subdomain4: number;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
+  nilai_subdomain4: number | null;
 }
 
 export interface IkasData {
@@ -151,10 +151,10 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     // Update subdomain value dan recalculate
-    updateSubdomain(slug: string, domain: string, subdomain: string, value: number) {
+    updateSubdomain(slug: string, domain: string, subdomain: string, value: number | null) {
       this.ensureStakeholderData(slug);
       const data = this.ikasDataMap[slug];
-      
+
       // Update nilai subdomain
       if (data[domain as keyof IkasData] && typeof data[domain as keyof IkasData] === 'object') {
         (data[domain as keyof IkasData] as any)[subdomain] = value;
@@ -177,55 +177,69 @@ export const useIkasStore = defineStore('ikas', {
       const data = this.ikasDataMap[slug];
       if (!data) return;
 
+      // Helper for calculating average ignoring nulls
+      const calculateAverage = (values: (number | null)[]): number => {
+        const validValues = values.filter((v): v is number => v !== null);
+        if (validValues.length === 0) return 0;
+        const sum = validValues.reduce((a, b) => a + b, 0);
+        return Number((sum / validValues.length).toFixed(2));
+      };
+
       // Identifikasi
       const iden = data.identifikasi;
-      iden.nilai_identifikasi = Number(((
-        iden.nilai_subdomain1 + 
-        iden.nilai_subdomain2 + 
-        iden.nilai_subdomain3 + 
-        iden.nilai_subdomain4 + 
+      const idenValues = [
+        iden.nilai_subdomain1,
+        iden.nilai_subdomain2,
+        iden.nilai_subdomain3,
+        iden.nilai_subdomain4,
         iden.nilai_subdomain5
-      ) / 5).toFixed(2));
+      ];
+      iden.nilai_identifikasi = calculateAverage(idenValues);
       iden.kategori_identifikasi = getMaturityLabel(iden.nilai_identifikasi);
 
       // Proteksi
       const prot = data.proteksi;
-      prot.nilai_proteksi = Number(((
-        prot.nilai_subdomain1 + 
-        prot.nilai_subdomain2 + 
-        prot.nilai_subdomain3 + 
-        prot.nilai_subdomain4 + 
-        prot.nilai_subdomain5 + 
+      const protValues = [
+        prot.nilai_subdomain1,
+        prot.nilai_subdomain2,
+        prot.nilai_subdomain3,
+        prot.nilai_subdomain4,
+        prot.nilai_subdomain5,
         prot.nilai_subdomain6
-      ) / 6).toFixed(2));
+      ];
+      prot.nilai_proteksi = calculateAverage(protValues);
       prot.kategori_proteksi = getMaturityLabel(prot.nilai_proteksi);
 
       // Deteksi
       const det = data.deteksi;
-      det.nilai_deteksi = Number(((
-        det.nilai_subdomain1 + 
-        det.nilai_subdomain2 + 
+      const detValues = [
+        det.nilai_subdomain1,
+        det.nilai_subdomain2,
         det.nilai_subdomain3
-      ) / 3).toFixed(2));
+      ];
+      det.nilai_deteksi = calculateAverage(detValues);
       det.kategori_deteksi = getMaturityLabel(det.nilai_deteksi);
 
       // Gulih
       const gul = data.gulih;
-      gul.nilai_gulih = Number(((
-        gul.nilai_subdomain1 + 
-        gul.nilai_subdomain2 + 
-        gul.nilai_subdomain3 + 
+      const gulValues = [
+        gul.nilai_subdomain1,
+        gul.nilai_subdomain2,
+        gul.nilai_subdomain3,
         gul.nilai_subdomain4
-      ) / 4).toFixed(2));
+      ];
+      gul.nilai_gulih = calculateAverage(gulValues);
       gul.kategori_gulih = getMaturityLabel(gul.nilai_gulih);
 
       // Total
-      data.total_rata_rata = Number(((
-        iden.nilai_identifikasi + 
-        prot.nilai_proteksi + 
-        det.nilai_deteksi + 
+      const totalValues = [
+        iden.nilai_identifikasi,
+        prot.nilai_proteksi,
+        det.nilai_deteksi,
         gul.nilai_gulih
-      ) / 4).toFixed(2));
+      ];
+      // Note: We use simple average of domain scores here regardless of how many subdomains they have
+      data.total_rata_rata = Number((totalValues.reduce((a, b) => a + b, 0) / 4).toFixed(2));
       data.total_kategori = getMaturityLabel(data.total_rata_rata);
     },
 

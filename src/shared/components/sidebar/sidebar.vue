@@ -177,7 +177,13 @@ const filterMenuByRole = (items) => {
     .filter((item) => {
       // If item has requiredRole, check if user has that role
       if (item.requiredRole) {
-        return authStore.currentUser?.role === item.requiredRole;
+        if (authStore.currentUser?.role !== item.requiredRole) {
+          return false;
+        }
+      }
+      // Check if item is hidden
+      if (item.hidden) {
+        return false;
       }
       return true;
     })

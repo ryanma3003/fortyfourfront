@@ -41,64 +41,6 @@ const defaultCountryCodes: CountryCode[] = [
   { code: "+82", country: "South Korea", flag: "🇰🇷", priority: true },
   { code: "+91", country: "India", flag: "🇮🇳", priority: true },
   { code: "+61", country: "Australia", flag: "🇦🇺", priority: true },
-  // Europe
-  { code: "+49", country: "Germany", flag: "🇩🇪" },
-  { code: "+33", country: "France", flag: "🇫🇷" },
-  { code: "+39", country: "Italy", flag: "🇮🇹" },
-  { code: "+34", country: "Spain", flag: "🇪🇸" },
-  { code: "+31", country: "Netherlands", flag: "🇳🇱" },
-  { code: "+32", country: "Belgium", flag: "🇧🇪" },
-  { code: "+41", country: "Switzerland", flag: "🇨🇭" },
-  { code: "+43", country: "Austria", flag: "🇦🇹" },
-  { code: "+46", country: "Sweden", flag: "🇸🇪" },
-  { code: "+47", country: "Norway", flag: "🇳🇴" },
-  { code: "+45", country: "Denmark", flag: "🇩🇰" },
-  { code: "+358", country: "Finland", flag: "🇫🇮" },
-  { code: "+48", country: "Poland", flag: "🇵🇱" },
-  { code: "+351", country: "Portugal", flag: "🇵🇹" },
-  { code: "+353", country: "Ireland", flag: "🇮🇪" },
-  { code: "+30", country: "Greece", flag: "🇬🇷" },
-  { code: "+7", country: "Russia", flag: "🇷🇺" },
-  { code: "+380", country: "Ukraine", flag: "🇺🇦" },
-  { code: "+420", country: "Czech Republic", flag: "🇨🇿" },
-  { code: "+36", country: "Hungary", flag: "🇭🇺" },
-  { code: "+40", country: "Romania", flag: "🇷🇴" },
-  // Americas
-  { code: "+1", country: "Canada", flag: "🇨🇦" },
-  { code: "+52", country: "Mexico", flag: "🇲🇽" },
-  { code: "+55", country: "Brazil", flag: "🇧🇷" },
-  { code: "+54", country: "Argentina", flag: "🇦🇷" },
-  { code: "+56", country: "Chile", flag: "🇨🇱" },
-  { code: "+57", country: "Colombia", flag: "🇨🇴" },
-  { code: "+51", country: "Peru", flag: "🇵🇪" },
-  // Middle East
-  { code: "+971", country: "UAE", flag: "🇦🇪" },
-  { code: "+966", country: "Saudi Arabia", flag: "🇸🇦" },
-  { code: "+974", country: "Qatar", flag: "🇶🇦" },
-  { code: "+973", country: "Bahrain", flag: "🇧🇭" },
-  { code: "+965", country: "Kuwait", flag: "🇰🇼" },
-  { code: "+968", country: "Oman", flag: "🇴🇲" },
-  { code: "+972", country: "Israel", flag: "🇮🇱" },
-  { code: "+90", country: "Turkey", flag: "🇹🇷" },
-  { code: "+98", country: "Iran", flag: "🇮🇷" },
-  { code: "+962", country: "Jordan", flag: "🇯🇴" },
-  { code: "+961", country: "Lebanon", flag: "🇱🇧" },
-  // Africa
-  { code: "+27", country: "South Africa", flag: "🇿🇦" },
-  { code: "+20", country: "Egypt", flag: "🇪🇬" },
-  { code: "+234", country: "Nigeria", flag: "🇳🇬" },
-  { code: "+254", country: "Kenya", flag: "🇰🇪" },
-  { code: "+212", country: "Morocco", flag: "🇲🇦" },
-  // South Asia
-  { code: "+92", country: "Pakistan", flag: "🇵🇰" },
-  { code: "+880", country: "Bangladesh", flag: "🇧🇩" },
-  { code: "+94", country: "Sri Lanka", flag: "🇱🇰" },
-  { code: "+977", country: "Nepal", flag: "🇳🇵" },
-  // East Asia & Pacific
-  { code: "+852", country: "Hong Kong", flag: "🇭🇰" },
-  { code: "+853", country: "Macau", flag: "🇲🇴" },
-  { code: "+886", country: "Taiwan", flag: "🇹🇼" },
-  { code: "+64", country: "New Zealand", flag: "🇳🇿" },
 ];
 
 const countryCodes = ref<CountryCode[]>(defaultCountryCodes);
@@ -182,10 +124,9 @@ onUnmounted(() => {
   <div class="country-code-dropdown position-relative" ref="dropdownRef">
     <button 
       type="button"
-      class="btn btn-light border d-flex align-items-center justify-content-between"
+      class="btn btn-light border d-flex align-items-center justify-content-between country-code-btn"
       :class="{ 'border-danger': error }"
       @click.stop="showDropdown = !showDropdown"
-      style="min-width: 110px; border-top-right-radius: 0; border-bottom-right-radius: 0; height: 38px;"
     >
       <span v-if="isLoading" class="spinner-border spinner-border-sm"></span>
       <span v-else>{{ selectedDisplay }}</span>
@@ -256,6 +197,15 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.country-code-btn {
+  min-width: 110px;
+  height: calc(2.5rem + 2px); /* Match form-control height */
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
+  padding: 0.375rem 0.75rem;
+}
+
 .country-item { cursor: pointer; transition: background-color 0.15s ease; }
 .country-item:hover { background-color: rgba(var(--primary-rgb), 0.08) !important; }
 .country-item.selected { background-color: rgba(var(--success-rgb), 0.1) !important; }

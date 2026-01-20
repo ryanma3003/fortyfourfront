@@ -354,6 +354,23 @@ export default {
       ALLOWED_EXTENSIONS,
       MAX_FILE_SIZE_MB,
       ALLOWED_FORMATS,
+      getSektorBadgeClass: (sektor: string) => {
+        const sektorColors: Record<string, string> = {
+          'Hasil hutan & perkebunan': 'bg-success-transparent text-success',
+          'Pangan & perikanan': 'bg-teal-transparent text-teal',
+          'Minuman, tembakau & bahan penyegar': 'bg-warning-transparent text-warning',
+          'Kemurgi, oleokimia & pakan': 'bg-orange-transparent text-orange',
+          'Kimia hulu': 'bg-info-transparent text-info',
+          'Kimia hilir & farmasi': 'bg-danger-transparent text-danger',
+          'Semen, keramik & nonlogam': 'bg-secondary-transparent text-secondary',
+          'Tekstil, kulit & alas kaki': 'bg-primary-transparent text-primary',
+          'Logam': 'bg-indigo-transparent text-indigo',
+          'Permesinan & alat pertanian': 'bg-secondary-transparent text-secondary',
+          'Transportasi, maritim & pertahanan': 'bg-info-transparent text-info',
+          'Elektronika & telematika': 'bg-primary-transparent text-primary',
+        };
+        return sektorColors[sektor] || 'bg-light text-muted';
+      },
     };
   },
 };
@@ -546,7 +563,7 @@ export default {
                     <td>{{ (currentPage - 1) * itemsPerPage + i + 1 }}</td>
                     <td class="fw-semibold">{{ item.nama_perusahaan }}</td>
                     <td>
-                      <span class="badge bg-info-transparent fs-13">{{
+                      <span class="badge fs-13" :class="getSektorBadgeClass(item.sektor)">{{
                         item.sektor
                       }}</span>
                     </td>
@@ -692,13 +709,25 @@ export default {
                 <label class="form-label"
                   >Sektor <span class="text-danger">*</span></label
                 >
-                <input
+                <select
                   v-model="formData.sektor"
-                  type="text"
-                  class="form-control"
+                  class="form-select"
                   :class="{ 'is-invalid': formErrors.sektor }"
-                  placeholder="Masukkan sektor"
-                />
+                >
+                    <option value="" disabled>-- Pilih Sektor --</option>
+                    <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
+                    <option value="Pangan & perikanan">Pangan & perikanan</option>
+                    <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
+                    <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
+                    <option value="Kimia hulu">Kimia hulu</option>
+                    <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
+                    <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
+                    <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
+                    <option value="Logam">Logam</option>
+                    <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
+                    <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
+                    <option value="Elektronika & telematika">Elektronika & telematika</option>
+                </select>
                 <div v-if="formErrors.sektor" class="invalid-feedback">
                   {{ formErrors.sektor }}
                 </div>
@@ -902,19 +931,18 @@ export default {
                     :class="{ 'is-invalid': formErrors.sektor }"
                   >
                     <option value="" disabled>-- Pilih Sektor --</option>
-                    <option value="Teknologi Informasi">
-                      Teknologi Informasi
-                    </option>
-                    <option value="Perdagangan Umum">Perdagangan Umum</option>
-                    <option value="Software Development">
-                      Software Development
-                    </option>
-                    <option value="Konstruksi">Konstruksi</option>
-                    <option value="Teknologi">Teknologi</option>
-                    <option value="Keuangan">Keuangan</option>
-                    <option value="Kesehatan">Kesehatan</option>
-                    <option value="Pendidikan">Pendidikan</option>
-                    <option value="Manufaktur">Manufaktur</option>
+                    <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
+                    <option value="Pangan & perikanan">Pangan & perikanan</option>
+                    <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
+                    <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
+                    <option value="Kimia hulu">Kimia hulu</option>
+                    <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
+                    <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
+                    <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
+                    <option value="Logam">Logam</option>
+                    <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
+                    <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
+                    <option value="Elektronika & telematika">Elektronika & telematika</option>
                   </select>
                   <div v-if="formErrors.sektor" class="invalid-feedback">
                     {{ formErrors.sektor }}

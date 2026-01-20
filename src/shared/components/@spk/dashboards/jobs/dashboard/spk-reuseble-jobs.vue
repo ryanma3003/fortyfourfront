@@ -21,42 +21,40 @@ export default {
 <template>
 <div :class="`custom-card ${cardClass}`">
     <div :class="`card-body ${bodyClass}`">
-        <div :class="`d-flex align-items-center gap-3 flex-wrap ${list.flexClass}`">
-            <div class="flex-fill">
-                <span :class="titleClass" class="fs-15 fw-bold">{{ list.title }}</span>
-                <div class="pb-0 mt-0">
-                    <!-- listCard content -->
-                    <div v-if="listCard">
-                        <span class="fs-15 fw-bold">{{ list.titles }}</span>
-                        <div :class="`d-flex align-items-center gap-2 my-2  ${list.ValueClass1}`">
-                            <h4 :class="`fw-medium mb-0 custom-dashboard ${list.ValueClass}`">
-                                <span class="count-up" v-if="NoCountUp">{{ list.count }}</span>
-                                <span class="count-up" v-if="CountUp"><count-up :end-val="list.count" /></span>{{ list.countK ? 'K' :'' }}
-                            </h4>
-                            <span :class="`badge bg-${list.priceColor}`">
-                                {{ list.price }}
-                            </span>
-                        </div>
-                        <p :class="`text-muted fs-12 mb-0 lh-1 ${list.smallText}`">
-                            <span :class="`text-${list.iconColor} me-1 d-inline-block ${list.percentColor}`">
-                                <i :class="list.icon"></i>
-                                {{ list.percent }}
-                            </span>
-                            <span class="monthly-percent">this month</span>
-                        </p>
-                    </div>
+        <!-- Top Row: Icon Left, Title Right (or justified between) -->
+        <div class="d-flex justify-content-between">
+            <div class="mb-2">
+                <span :class="`avatar avatar-md bg-${list.priceColor}-transparent svg-${list.priceColor}`" v-html="list.svgIcon">
+                </span>
+            </div>
+            <span class="fs-16 fw-bold">{{ list.title }}</span>
+        </div>
 
-                    <!-- jobsCard content -->
-                    <div v-if="jobsCard" class="d-flex align-items-center gap-2">
-                        <h3 class="fw-semibold mb-0">{{ list.count }}</h3>
-                        <span :class="`text-${list.iconColor}`">
-                            <i :class="list.icon"></i>{{ list.percent }}
-                        </span>
-                    </div>
-                </div>
+        <!-- Bottom Row: Stats Left, Chart Right -->
+        <div class="d-flex align-items-center justify-content-between">
+            <div>
+                <!-- Count value -->
+                <span class="fs-20 fw-medium mb-0 d-flex align-items-center">
+                     <span class="count-up" v-if="NoCountUp">{{ list.count }}</span>
+                     <span class="count-up" v-if="CountUp"><count-up :end-val="list.count" /></span>{{ list.countK ? 'K' :'' }}
+                </span>
+                
+                <!-- Percentage / Small text -->
+                <span :class="`fs-13 text-muted ${list.smallText}`">
+                     <!-- We can reuse the existing icon/percent logic or simplify if user just wants text. 
+                          The snippet had sales.inc. I will try to rebuild the existing percent block here visually. -->
+                     <span :class="`text-${list.iconColor} me-1 d-inline-block ${list.percentColor}`">
+                        <i :class="list.icon"></i>
+                        {{ list.percent }}
+                     </span>
+                     <span class="monthly-percent">this month</span>
+                </span>
             </div>
             
-            <div :class="`avatar avatar-md ${list.avatarClass} bg-${list.priceColor}-transparent svg-${list.priceColor} `" v-html="list.svgIcon"></div>
+            <!-- Chart ID container -->
+            <div v-if="list.chartOptions && list.chartSeries" :id="list.id">
+                <apexchart :height="`${list.height}px`" :width="`${list.width}px`" :type="list.type" :options="list.chartOptions" :series="list.chartSeries" />
+            </div>
         </div>
     </div>
 </div>
