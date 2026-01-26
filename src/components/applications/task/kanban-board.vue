@@ -49,7 +49,7 @@ export default defineComponent({
             simpleItems1Value: null,
             simpleItems1: ['Angelina May', 'Hercules Jhon', 'Kairar Advin', 'Mayour Kim', ],
             Option3Value: null,
-            Option3: ["Select Tag", "UI/UX", "Marketing", "Finance", "Designing", "Admin", "Authentication", "Product", "Development", ],
+            Option3: ["Select Tag", "UI/UX", "Marketing", "Finance", "Designing", "admin", "Authentication", "Product", "Development", ],
             OptionsValue: 'Sort By',
             Options: ['Sort By', 'Newest', 'Date Added', 'Type', 'A - Z', ],
             myFiles: [],

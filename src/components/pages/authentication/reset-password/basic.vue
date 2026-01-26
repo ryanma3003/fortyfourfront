@@ -118,7 +118,7 @@ const resetPassword = async () => {
     showToast("success", "Password reset successfully");
     setTimeout(() => {
       isLoading.value = false;
-      router.push("/auth/login");
+      router.push("/");
     }, 1000);
   } catch {
     isLoading.value = false;
@@ -254,7 +254,7 @@ onUnmounted(() => {
               <!-- Back to Login -->
               <div class="text-center mt-4">
                 <span class="text-muted">Remember your password?</span>
-                <router-link to="/auth/login" class="auth-link ms-1"><i class="ri-login-box-line me-1"></i>Sign In</router-link>
+                <router-link to="/" class="auth-link ms-1"><i class="ri-login-box-line me-1"></i>Sign In</router-link>
               </div>
             </div>
           </div>
@@ -265,7 +265,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
-@import '../../../auth/login.scss';
+@use '../../../auth/login.scss';
 
 /* Title - black in light mode, white in dark mode */
 .reset-title {

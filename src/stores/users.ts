@@ -1,29 +1,14 @@
 // stores/users.ts
 import { defineStore } from 'pinia';
-import usersData from '../utils/users.json';
-
-export interface User {
-  id: number;
-  slug: string;
-  username: string;
-  password: string;
-  name: string;
-  jabatan: string;
-  role: string;
-  phone: string;
-  location: string;
-  joined: string;
-  token: string;
-  photo?: string;
-  banner?: string;
-}
-
-const STORAGE_KEY = 'app_users_data';
+import { usersService } from '@/services/users.service';
+import type { User, CreateUserPayload, UpdateUserPayload } from '@/types/user.types';
 
 export const useUsersStore = defineStore('users', {
   state: () => ({
     users: [] as User[],
     initialized: false,
+    loading: false,
+    error: null as string | null,
   }),
 
   getters: {
@@ -38,104 +23,150 @@ export const useUsersStore = defineStore('users', {
     },
 
     // Get user by id
-    getUserById(): (id: number) => User | undefined {
-      return (id: number) => this.users.find(u => u.id === id);
+    getUserById(): (id: string) => User | undefined {
+      return (id: string) => this.users.find(u => u.id === id);
     },
   },
 
   actions: {
-    // Initialize users from JSON or localStorage
-    initialize() {
+    /**
+     * Initialize users from backend API
+     */
+    async initialize() {
       if (this.initialized) return;
 
-      // Get default data from JSON file
-      const defaultUsers = usersData.map((u: User) => ({ ...u }));
+      this.loading = true;
+      this.error = null;
 
-      // Try to load from localStorage
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        try {
-          const storedUsers = JSON.parse(stored) as User[];
-          
-          // Merge stored data with defaults to ensure all fields exist
-          this.users = defaultUsers.map(defaultUser => {
-            const storedUser = storedUsers.find(su => su.id === defaultUser.id);
-            if (storedUser) {
-              // Merge: stored data takes priority, but fall back to defaults for missing fields
-              return {
-                ...defaultUser,   // Default values (includes photo, banner from users.json)
-                ...storedUser,    // Stored values override defaults
-                // Ensure photo and banner have fallbacks if stored values are empty
-                photo: storedUser.photo || defaultUser.photo,
-                banner: storedUser.banner || defaultUser.banner,
-              };
-            }
-            return defaultUser;
-          });
-          
-          // Add any new users from stored that aren't in defaults
-          storedUsers.forEach(su => {
-            if (!this.users.find(u => u.id === su.id)) {
-              this.users.push(su);
-            }
-          });
-          
-          this.initialized = true;
-          this.saveToStorage(); // Save merged data
-          return;
-        } catch (e) {
-          console.error('Failed to parse stored users:', e);
+      try {
+        const rawUsers = await usersService.getAll();
+        this.users = (rawUsers as any[]).map(u => ({
+          ...u,
+          id: u.id?.toString() || '',
+          name: u.name || u.username || 'Unknown',
+          username: u.username || u.email || 'unknown',
+          role: u.role || u.role_name || 'user',
+          slug: u.slug || u.username || u.id?.toString() || '',
+          jabatan: u.jabatan || u.id_jabatan || '',
+          joined: u.joined || u.created_at || ''
+        })) as User[];
+        this.initialized = true;
+        this.loading = false;
+      } catch (error: any) {
+        console.error('Failed to load users:', error);
+        this.error = error.message || 'Failed to load users';
+        this.loading = false;
+        this.users = [];
+      }
+    },
+
+    /**
+     * Refresh users list from backend
+     */
+    async refresh() {
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const rawUsers = await usersService.getAll();
+        this.users = (rawUsers as any[]).map(u => ({
+          ...u,
+          id: u.id?.toString() || '',
+          name: u.name || u.username || 'Unknown',
+          username: u.username || u.email || 'unknown',
+          role: u.role || u.role_name || 'user',
+          slug: u.slug || u.username || u.id?.toString() || '',
+          jabatan: u.jabatan || u.id_jabatan || '',
+          joined: u.joined || u.created_at || ''
+        })) as User[];
+        this.loading = false;
+      } catch (error: any) {
+        console.error('Failed to refresh users:', error);
+        this.error = error.message || 'Failed to refresh users';
+        this.loading = false;
+      }
+    },
+
+    /**
+     * Create a new user
+     */
+    async createUser(payload: CreateUserPayload) {
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const newUser = await usersService.create(payload);
+        this.users.push(newUser);
+        this.loading = false;
+        return { success: true, user: newUser };
+      } catch (error: any) {
+        console.error('Failed to create user:', error);
+        this.error = error.message || 'Failed to create user';
+        this.loading = false;
+        return { success: false, error: this.error };
+      }
+    },
+
+    /**
+     * Update a user by slug
+     */
+    async updateUserBySlug(slug: string, updates: UpdateUserPayload) {
+      const user = this.getUserBySlug(slug);
+      if (!user) {
+        return { success: false, error: 'User not found' };
+      }
+
+      return this.updateUserById(user.id, updates);
+    },
+
+    /**
+     * Update a user by id
+     */
+    async updateUserById(id: string, updates: UpdateUserPayload) {
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const updatedUser = await usersService.update(id, updates);
+
+        const index = this.users.findIndex(u => u.id === id);
+        if (index !== -1) {
+          this.users[index] = updatedUser;
         }
+
+        this.loading = false;
+        return { success: true, user: updatedUser };
+      } catch (error: any) {
+        console.error('Failed to update user:', error);
+        this.error = error.message || 'Failed to update user';
+        this.loading = false;
+        return { success: false, error: this.error };
       }
-
-      // Load from JSON file (first time)
-      this.users = defaultUsers;
-      this.initialized = true;
-      this.saveToStorage();
     },
 
-    // Save users to localStorage
-    saveToStorage() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.users));
-    },
+    /**
+     * Delete a user by id
+     */
+    async deleteUserById(id: string) {
+      this.loading = true;
+      this.error = null;
 
-    // Update a user by slug
-    updateUserBySlug(slug: string, updates: Partial<User>) {
-      const index = this.users.findIndex(u => u.slug === slug);
-      if (index !== -1) {
-        this.users[index] = { ...this.users[index], ...updates };
-        this.saveToStorage();
-        return true;
+      try {
+        await usersService.delete(id);
+
+        const index = this.users.findIndex(u => u.id === id);
+        if (index !== -1) {
+          this.users.splice(index, 1);
+        }
+
+        this.loading = false;
+        return { success: true };
+      } catch (error: any) {
+        console.error('Failed to delete user:', error);
+        this.error = error.message || 'Failed to delete user';
+        this.loading = false;
+        return { success: false, error: this.error };
       }
-      return false;
-    },
-
-    // Update a user by id
-    updateUserById(id: number, updates: Partial<User>) {
-      const index = this.users.findIndex(u => u.id === id);
-      if (index !== -1) {
-        this.users[index] = { ...this.users[index], ...updates };
-        this.saveToStorage();
-        return true;
-      }
-      return false;
-    },
-
-    // Delete a user by id
-    deleteUserById(id: number) {
-      const index = this.users.findIndex(u => u.id === id);
-      if (index !== -1) {
-        this.users.splice(index, 1);
-        this.saveToStorage();
-        return true;
-      }
-      return false;
-    },
-
-    // Reset to original data from JSON
-    resetToDefault() {
-      this.users = usersData.map((u: User) => ({ ...u }));
-      this.saveToStorage();
     },
   },
 });

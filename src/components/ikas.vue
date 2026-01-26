@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { stakeholdersData } from '../data/dummydata';
+import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
 import { useIkasStore } from '../stores/ikas';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
@@ -10,10 +10,14 @@ import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 const router = useRouter();
 const route = useRoute();
 const ikasStore = useIkasStore();
+const stakeholdersStore = useStakeholdersStore();
 
 // Initialize store
-onMounted(() => {
+onMounted(async () => {
     ikasStore.initialize();
+    if (!stakeholdersStore.initialized) {
+        await stakeholdersStore.initialize();
+    }
 });
 
 // Get current stakeholder slug and source
@@ -51,8 +55,8 @@ const dataToPass = computed(() => {
             };
         }
 
-        if (slug && stakeholdersData && Array.isArray(stakeholdersData)) {
-            const stakeholder = stakeholdersData.find(s => s.slug === String(slug));
+        if (slug) {
+            const stakeholder = stakeholdersStore.getStakeholderBySlug(String(slug));
             console.log("IKAS Debug: Found stakeholder:", stakeholder);
 
             if (stakeholder) {
@@ -77,8 +81,8 @@ const dataToPass = computed(() => {
 // Computed property untuk mendapatkan stakeholder berdasarkan slug
 const currentStakeholder = computed(() => {
     const slug = route.query.slug;
-    if (slug && stakeholdersData && Array.isArray(stakeholdersData)) {
-        return stakeholdersData.find(s => s.slug === String(slug));
+    if (slug) {
+        return stakeholdersStore.getStakeholderBySlug(String(slug));
     }
     return null;
 });

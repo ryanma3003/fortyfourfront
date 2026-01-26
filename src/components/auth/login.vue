@@ -10,7 +10,7 @@ const router = useRouter();
 const { authenticateUser } = useAuthStore();
 
 // State
-const user = ref({ username: "", password: "" });
+const user = ref({ email: "", password: "" });
 const showPassword = ref(false);
 const isLoading = ref(false);
 
@@ -30,17 +30,23 @@ const login = async () => {
   if (isLoading.value) return;
   isLoading.value = true;
 
-  const result = await authenticateUser(user.value);
+  try {
+      const result = await authenticateUser(user.value);
+      console.log('Login result in login.vue:', result);
 
-  if (result.authenticated) {
-    showToast("success", "Logged In");
-    setTimeout(() => {
+      if (result.authenticated) {
+        showToast("success", "Logged In");
+        console.log('Authenticated! Redirecting to /dashboards...');
+        await router.push("/dashboards");
+        console.log('Router push called.');
+      } else {
+        showToast("error", "Invalid credentials" + (result.error ? `: ${result.error}` : ''));
+      }
+  } catch (error) {
+      console.error("Login error:", error);
+      showToast("error", "An error occurred");
+  } finally {
       isLoading.value = false;
-      router.push("/dashboards");
-    }, 1000);
-  } else {
-    isLoading.value = false;
-    showToast("error", "Invalid credentials");
   }
 };
 
@@ -95,7 +101,7 @@ onUnmounted(() => {
                   <label for="signin-email" class="form-label"><i class="ri-mail-line me-1 text-primary"></i>Email</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-at-line"></i></span>
-                    <input type="text" class="form-control form-control-lg" id="signin-email" v-model="user.username" placeholder="Enter your email" @keyup.enter="login"/>
+                    <input type="email" class="form-control form-control-lg" id="signin-email" v-model="user.email" placeholder="Enter your email" @keyup.enter="login"/>
                   </div>
                 </div>
 
@@ -145,7 +151,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
-@import './login.scss';
+@use './login.scss';
 
 /* Title - black in light mode, white in dark mode */
 .login-title {

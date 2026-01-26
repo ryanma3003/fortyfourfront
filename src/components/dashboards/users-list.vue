@@ -7,18 +7,14 @@ import { useUsersStore } from "../../stores/users";
 
 
 interface User {
-  id: number;
+  id: string;
   slug: string;
   username: string;
-  password: string;
   name: string;
   jabatan: string;
   role: string;
-  phone: string;
-  location: string;
-  joined: string;
-  token: string;
   photo?: string;
+  joined?: string;
 }
 
 export default {
@@ -64,21 +60,32 @@ export default {
       const currentUser = authStore.currentUser;
       
       // Map users and merge dynamic data for current user
-      return usersStore.allUsers.map((u: User) => {
+      return (usersStore.allUsers as any[]).map(u => {
+        const userObj: User = {
+          id: u.id?.toString() || '',
+          slug: u.slug || u.username || u.id?.toString() || '',
+          username: u.username || u.email || '',
+          name: u.name || u.username || 'Unknown',
+          jabatan: u.jabatan || '',
+          role: u.role || 'user',
+          photo: u.photo,
+          joined: u.joined
+        };
+
         // If this is the current logged-in user and profile has been customized
         if (
           currentUser &&
-          u.id === currentUser.id &&
+          userObj.id === currentUser.id &&
           profileStore.isCustomized
         ) {
           return {
-            ...u,
-            jabatan: profileStore.jabatan || u.jabatan,
-            name: profileStore.name || u.name,
-            photo: profileStore.avatarUrl || u.photo,
+            ...userObj,
+            jabatan: profileStore.jabatan || userObj.jabatan,
+            name: profileStore.name || userObj.name,
+            photo: profileStore.avatarUrl || userObj.photo,
           };
         }
-        return { ...u };
+        return userObj;
       });
     });
 
@@ -109,7 +116,9 @@ export default {
       }
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
-        return a[sortField.value].localeCompare(b[sortField.value]) * mod;
+        const valA = (a[sortField.value] || "").toString();
+        const valB = (b[sortField.value] || "").toString();
+        return valA.localeCompare(valB) * mod;
       });
     });
 
@@ -150,15 +159,15 @@ export default {
       showEditModal.value = true;
     };
 
-    const updateUser = () => {
+    const updateUser = async () => {
       if (!currentEditItem.value) return;
 
       // Update in usersStore (persists to localStorage)
-      const success = usersStore.updateUserById(currentEditItem.value.id, {
+      const result = await usersStore.updateUserById(currentEditItem.value.id, {
         role: formData.value.role,
       });
 
-      if (success) {
+      if (result.success) {
         showEditModal.value = false;
         showNotification("Role berhasil diperbarui!", "success");
       } else {
@@ -172,19 +181,21 @@ export default {
       showDeleteModal.value = true;
     };
 
-    const deleteUser = () => {
+    const deleteUser = async () => {
       if (!currentDeleteItem.value) return;
 
-      const success = usersStore.deleteUserById(currentDeleteItem.value.id);
-      if (success) {
+      const result = await usersStore.deleteUserById(currentDeleteItem.value.id);
+      if (result.success) {
         showDeleteModal.value = false;
         showNotification("User berhasil dihapus!", "success");
+      } else {
+        showNotification("Gagal menghapus user!", "error");
       }
     };
 
     // Get status badge class
     const getStatusClass = (role: string) => {
-      return role === "Admin"
+      return role === "admin"
         ? "bg-danger-transparent"
         : "bg-info-transparent";
     };
@@ -399,7 +410,7 @@ export default {
                     </td>
                     <td class="align-middle">
                       <span :class="['badge rounded-pill px-3 py-2 fs-12', getStatusClass(item.role)]">
-                        <i :class="item.role === 'Admin' ? 'ri-shield-star-line me-1' : 'ri-user-line me-1'"></i>
+                        <i :class="item.role === 'admin' ? 'ri-shield-star-line me-1' : 'ri-user-line me-1'"></i>
                         {{ item.role }}
                       </span>
                     </td>
@@ -492,7 +503,7 @@ export default {
           <div class="mb-3">
             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
             <select v-model="formData.role" class="form-select">
-              <option value="Admin">Admin</option>
+              <option value="admin">Admin</option>
               <option value="User">User</option>
             </select>
             <small class="text-muted">Pilih role untuk user ini.</small>

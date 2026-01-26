@@ -10,8 +10,8 @@ export const usersData: User[] = [
     {
         name: "John Doe",
         email: "john.doe@example.com",
-        role: "Admin",
-        jabatan: "Admin",
+        role: "admin",
+        jabatan: "admin",
         status: "Active",
     }
 ]
