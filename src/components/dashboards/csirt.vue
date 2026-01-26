@@ -6,7 +6,7 @@ import { sdmCsirtData, type sdmCsirt, seCsirtData, type seCsirt } from "../../da
 import { csirtMembersData, type csirtMember } from "../../data/pages/csirt";
 import { useRoute } from "vue-router";
 import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
-import { stakeholdersData } from "../../data/dummydata";
+import { useStakeholdersStore } from "../../stores/stakeholders";
 
 export default {
     data() {   
@@ -23,6 +23,7 @@ export default {
         TableComponent
     },
     setup() {
+        const stakeholdersStore = useStakeholdersStore();
         const headers = [
             { text: "Nama Personel" },
             { text: "Jabatan" },
@@ -78,8 +79,11 @@ export default {
         };
 
         // Load data saat component mounted
-        onMounted(() => {
+        onMounted(async () => {
             loadCSIRTs();
+            if (!stakeholdersStore.initialized) {
+                await stakeholdersStore.initialize();
+            }
         });
 
         // Watch for route changes
@@ -89,7 +93,7 @@ export default {
 
         const dataToPass = computed(() => {
             const parent = currentCsirt.value 
-                ? stakeholdersData.find(s => s.id === currentCsirt.value?.id_perusahaan) 
+                ? stakeholdersStore.stakeholders.find(s => Number(s.id) === currentCsirt.value?.id_perusahaan || (s.id as any) === currentCsirt.value?.id_perusahaan) 
                 : null;
             
             return {

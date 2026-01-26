@@ -2,8 +2,8 @@
 // Import Vue FilePond
 import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
-import { stakeholdersData } from "../../data/dummydata.ts";
-import type { Stakeholder } from "../../data/dummydata.ts";
+import { useStakeholdersStore } from "../../stores/stakeholders";
+import type { Stakeholder } from "../../types/stakeholders.types";
 import type { Penilaian } from "../../data/dashboards/dummyDataPercentage";
 import { stakeholderPenilaian } from "../../data/dashboards/dummyDataPercentage";
 import { computed, ref, onMounted } from "vue";
@@ -28,6 +28,8 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import SpkReusableAnlyticsCard from "../../shared/components/@spk/dashboards/spk-reusable-anlyticsStakeholder.vue";
 
 const router = useRouter();
+const stakeholdersStore = useStakeholdersStore();
+
 // Create component
 const FilePond = vueFilePond(
   FilePondPluginFileValidateType,
@@ -57,7 +59,13 @@ const stakeholderSlug = computed(() => route.params.slug as string);
 
 // Cari stakeholder berdasarkan slug
 const currentStakeholder = computed<Stakeholder | undefined>(() => {
-  return stakeholdersData.find((sh) => sh.slug === stakeholderSlug.value);
+  return stakeholdersStore.getStakeholderBySlug(stakeholderSlug.value);
+});
+
+onMounted(async () => {
+    if (!stakeholdersStore.initialized) {
+        await stakeholdersStore.initialize();
+    }
 });
 
 // Cari penilaian berdasarkan slug
@@ -71,7 +79,7 @@ const penilaian = computed<Penilaian[]>(() => {
 const relatedCsirtId = computed(() => {
   if (!currentStakeholder.value) return null;
   const csirt = csirtMembersData.find(
-    (c) => c.id_perusahaan === currentStakeholder.value?.id
+    (c) => c.id_perusahaan === Number(currentStakeholder.value?.id) || c.id_perusahaan === (currentStakeholder.value?.id as any)
   );
   return csirt ? csirt.id : null;
 });

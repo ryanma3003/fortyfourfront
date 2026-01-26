@@ -328,7 +328,7 @@ const isDraggingBanner = computed(() => dragState.value.type === 'banner');
 const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
 
 // Role options for admin edit mode
-const roleOptions = ['Admin', 'User'];
+const roleOptions = ['admin', 'User'];
 </script>
 
 <template>

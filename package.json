@@ -73,6 +73,7 @@
     "vuetify": "^3.8.12"
   },
   "devDependencies": {
+    "@types/node": "^25.0.10",
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/tsconfig": "^0.7.0",
     "typescript": "~5.8.3",

@@ -416,7 +416,7 @@ const saveRole = () => {
           <div class="mb-3">
             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
             <select v-model="selectedRole" class="form-select">
-              <option value="Admin">Admin</option>
+              <option value="admin">Admin</option>
               <option value="User">User</option>
             </select>
             <small class="text-muted">Pilih role untuk user ini.</small>

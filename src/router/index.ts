@@ -1193,7 +1193,7 @@ const router = createRouter({
 // Navigation guard for authentication
 router.beforeEach((to, from, next) => {
   // Check if user is authenticated from localStorage
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('auth_token');
   const isAuthenticated = !!token;
 
   // List of public routes that don't require authentication
@@ -1214,7 +1214,7 @@ router.beforeEach((to, from, next) => {
     // Check admin role for admin-only routes
     const storedUser = localStorage.getItem('currentUser');
     const currentUser = storedUser ? JSON.parse(storedUser) : null;
-    if (currentUser?.role !== 'Admin') {
+    if (currentUser?.role !== 'admin') {
       // Redirect non-admin users to dashboards
       next('/dashboards');
     } else {

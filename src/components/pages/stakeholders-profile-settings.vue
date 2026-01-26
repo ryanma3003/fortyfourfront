@@ -3,8 +3,8 @@ import { ref, onMounted, reactive, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 import { useRouter, useRoute } from "vue-router";
-import { stakeholdersData } from "../../data/dummydata";
-import type { Stakeholder } from "../../data/dummydata";
+import { useStakeholdersStore } from "../../stores/stakeholders";
+import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
 
 // Phone input state
 const selectedCountryCode = ref("+62");
@@ -39,6 +39,7 @@ const handleCountryCodeChange = () => {
 
 const router = useRouter();
 const route = useRoute();
+const stakeholdersStore = useStakeholdersStore();
 
 const handleCancel = () => {
   router.back();
@@ -55,6 +56,7 @@ const form = reactive<Partial<Stakeholder>>({
 });
 
 const currentSlug = ref("");
+const currentId = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
 
 // Image validation constants
@@ -101,15 +103,6 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
 };
 
 const stopDrag = () => {
-  if (dragState.value.isDragging) {
-    // Autosave position to stakeholder data
-    const foundIndex = stakeholdersData.findIndex((s) => s.slug === currentSlug.value);
-    if (foundIndex !== -1) {
-      // Save photo position to stakeholder (extend as needed)
-      (stakeholdersData[foundIndex] as any).photoPositionX = photoPosition.value.x;
-      (stakeholdersData[foundIndex] as any).photoPositionY = photoPosition.value.y;
-    }
-  }
   dragState.value.isDragging = false;
   document.removeEventListener('mousemove', onDrag);
   document.removeEventListener('mouseup', stopDrag);
@@ -117,15 +110,23 @@ const stopDrag = () => {
   document.removeEventListener('touchend', stopDrag);
 };
 
-onMounted(() => {
+onMounted(async () => {
   const slug = route.query.slug as string;
   if (slug) {
     currentSlug.value = slug;
-    const found = stakeholdersData.find((s) => s.slug === slug);
+    
+    // Ensure store is initialized
+    if (!stakeholdersStore.initialized) {
+      await stakeholdersStore.initialize();
+    }
+    
+    const found = stakeholdersStore.getStakeholderBySlug(slug);
     if (found) {
+      currentId.value = found.id;
       form.nama_perusahaan = found.nama_perusahaan;
       form.email = found.email;
       form.telepon = found.telepon;
+      
       // Parse existing phone number
       if (found.telepon) {
         const match = found.telepon.match(/^(\+\d+)\s*(.+)$/);
@@ -136,6 +137,7 @@ onMounted(() => {
           phoneNumber.value = found.telepon;
         }
       }
+      
       form.sektor = found.sektor;
       form.website = found.website;
       form.alamat = found.alamat;
@@ -198,31 +200,39 @@ const removeImage = () => {
 };
 
 const saveChanges = async () => {
+  if (!currentId.value) return;
+  
   isSaving.value = true;
 
   try {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    const payload: Partial<CreateStakeholderPayload> = {
+      nama_perusahaan: form.nama_perusahaan!,
+      sektor: form.sektor!,
+      email: form.email!,
+      alamat: form.alamat!,
+      telepon: form.telepon!,
+      website: form.website!,
+      photo: form.photo,
+    };
 
-    const foundIndex = stakeholdersData.findIndex(
-      (s) => s.slug === currentSlug.value
-    );
-    if (foundIndex !== -1) {
-      // Save form data along with photo position
-      Object.assign(stakeholdersData[foundIndex], form, {
-        photoPositionX: photoPosition.value.x,
-        photoPositionY: photoPosition.value.y
-      });
+    // Include photo position in payload if needed by backend (optional, but keep for local state)
+    (payload as any).photoPositionX = photoPosition.value.x;
+    (payload as any).photoPositionY = photoPosition.value.y;
+
+    const result = await stakeholdersStore.updateStakeholderById(currentId.value, payload);
+
+    if (result.success) {
       showSuccessAlert.value = true;
-
       // Redirect after short delay
       setTimeout(() => {
         router.push(`/profile-stakeholders/${currentSlug.value}`);
       }, 1000);
+    } else {
+      throw new Error(result.error || "Gagal menyimpan perubahan");
     }
-  } catch (error) {
+  } catch (error: any) {
     showErrorAlert.value = true;
-    errorMessage.value = "Terjadi kesalahan. Silakan coba lagi.";
+    errorMessage.value = error.message || "Terjadi kesalahan. Silakan coba lagi.";
     setTimeout(() => {
       showErrorAlert.value = false;
     }, 3000);
@@ -350,15 +360,18 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
               </label>
               <select class="form-select" v-model="form.sektor">
                 <option value="" disabled>-- Pilih Sektor --</option>
-                <option value="Teknologi Informasi">Teknologi Informasi</option>
-                <option value="Perdagangan Umum">Perdagangan Umum</option>
-                <option value="Software Development">Software Development</option>
-                <option value="Konstruksi">Konstruksi</option>
-                <option value="teknologi">Teknologi</option>
-                <option value="keuangan">Keuangan</option>
-                <option value="kesehatan">Kesehatan</option>
-                <option value="pendidikan">Pendidikan</option>
-                <option value="manufaktur">Manufaktur</option>
+                <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
+                <option value="Pangan & perikanan">Pangan & perikanan</option>
+                <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
+                <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
+                <option value="Kimia hulu">Kimia hulu</option>
+                <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
+                <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
+                <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
+                <option value="Logam">Logam</option>
+                <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
+                <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
+                <option value="Elektronika & telematika">Elektronika & telematika</option>
               </select>
             </div>
 

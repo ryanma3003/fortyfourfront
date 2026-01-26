@@ -2,12 +2,13 @@
 import { ref, computed, onMounted, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useIkasStore } from '../stores/ikas';
-import { stakeholdersData } from '../data/dummydata';
+import { useStakeholdersStore } from '../stores/stakeholders';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 
 const router = useRouter();
 const route = useRoute();
 const ikasStore = useIkasStore();
+const stakeholdersStore = useStakeholdersStore();
 
 // Get current stakeholder slug and source from route query
 const currentSlug = computed(() => String(route.query.slug || ''));
@@ -15,8 +16,8 @@ const currentSource = computed(() => String(route.query.source || ''));
 
 // Get current stakeholder info
 const currentStakeholder = computed(() => {
-    if (currentSlug.value && stakeholdersData && Array.isArray(stakeholdersData)) {
-        return stakeholdersData.find(s => s.slug === currentSlug.value);
+    if (currentSlug.value) {
+        return stakeholdersStore.getStakeholderBySlug(currentSlug.value);
     }
     return null;
 });
@@ -52,8 +53,12 @@ const formData = reactive({
 });
 
 // Initialize: load data from store
-onMounted(() => {
+onMounted(async () => {
     ikasStore.initialize();
+    
+    if (!stakeholdersStore.initialized) {
+        await stakeholdersStore.initialize();
+    }
     
     if (currentSlug.value) {
         const storeData = ikasStore.getIkasData(currentSlug.value);
