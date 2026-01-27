@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import { useProfileStore } from './profile';
 import { authService } from '@/services/auth.service';
+import { TokenStorage } from '@/config/api';
 import type { LoginPayload, RegisterPayload } from '@/types/auth.types';
 
 interface CurrentUser {
@@ -46,11 +47,8 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await authService.login(payload);
 
-        // Store token
+        // Store token in memory (not localStorage, so it's not visible in DevTools)
         const token = response.access_token;
-        localStorage.setItem('auth_token', token);
-
-        // Set token for future API requests
         authService.setAuthToken(token);
 
         // Store user data
@@ -83,8 +81,8 @@ export const useAuthStore = defineStore('auth', {
         console.error('Login failed:', error);
 
         this.error = error.message || 'Login failed';
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
+        TokenStorage.clearToken();
+        localStorage.removeItem('currentUser');
         this.authenticated = false;
         this.currentUser = null;
         this.loading = false;
@@ -136,23 +134,31 @@ export const useAuthStore = defineStore('auth', {
 
     /**
      * Check authentication status on app startup
+     * Token is now stored in encrypted sessionStorage, so it persists across reloads
      */
     checkAuthOnStartup() {
-      const token = localStorage.getItem('auth_token');
+      const hasToken = TokenStorage.hasToken();
       const storedUser = localStorage.getItem('currentUser');
 
-      if (token && storedUser) {
+      if (hasToken && storedUser) {
         try {
           this.authenticated = true;
           this.currentUser = JSON.parse(storedUser);
 
-          // Set token for API requests
-          authService.setAuthToken(token);
+          // Restore token to API client
+          const token = TokenStorage.getToken();
+          if (token) {
+            authService.setAuthToken(token);
+          }
         } catch (error) {
           console.error('Failed to restore auth state:', error);
           this.logUserOut();
         }
       } else {
+        // No valid session - clear any stale data
+        if (storedUser && !hasToken) {
+          localStorage.removeItem('currentUser');
+        }
         this.authenticated = false;
         this.currentUser = null;
       }

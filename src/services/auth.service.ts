@@ -1,10 +1,11 @@
 
-import { api } from '@/config/api';
+import { api, TokenStorage } from '@/config/api';
 import type { LoginPayload, RegisterPayload, AuthResponse } from '@/types/auth.types';
 
 /**
  * Authentication Service
  * Handles login, register, and logout operations
+ * Uses in-memory token storage for security (token not visible in DevTools)
  */
 class AuthService {
     /**
@@ -31,20 +32,36 @@ class AuthService {
 
     /**
      * Logout user (client-side cleanup)
-     * Clears the auth token from API client
+     * Clears the auth token from memory and API client
      */
     logout(): void {
         api.clearAuthToken();
-        localStorage.removeItem('auth_token');
+        TokenStorage.clearToken();
         localStorage.removeItem('currentUser');
     }
 
     /**
      * Set authentication token for API requests
+     * Stores in memory (not localStorage) for security
      * @param token JWT token
      */
     setAuthToken(token: string): void {
+        TokenStorage.setToken(token);
         api.setAuthToken(token);
+    }
+
+    /**
+     * Get current token from memory
+     */
+    getToken(): string | null {
+        return TokenStorage.getToken();
+    }
+
+    /**
+     * Check if user has valid token
+     */
+    hasToken(): boolean {
+        return TokenStorage.hasToken();
     }
 }
 

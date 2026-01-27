@@ -4,15 +4,17 @@ import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder } from "../../types/stakeholders.types";
-import type { Penilaian } from "../../data/dashboards/dummyDataPercentage";
-import { stakeholderPenilaian } from "../../data/dashboards/dummyDataPercentage";
 import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { FriendsList } from "../../data/pages/profiledata";
 import { csirtMembersData } from "../../data/pages/csirt";
 import { useAuthStore } from "../../stores/auth";
+import { useIkasStore } from "../../stores/ikas";
+import { useKseStore } from "../../stores/kse";
 
 const authStore = useAuthStore();
+const ikasStore = useIkasStore();
+const kseStore = useKseStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Import FilePond styles
@@ -66,14 +68,39 @@ onMounted(async () => {
     if (!stakeholdersStore.initialized) {
         await stakeholdersStore.initialize();
     }
+    // Initialize IKAS and KSE stores
+    ikasStore.initialize();
+    kseStore.initialize();
 });
 
-// Cari penilaian berdasarkan slug
-const penilaian = computed<Penilaian[]>(() => {
-  const found = stakeholderPenilaian.find(
-    (sp) => sp.slug === stakeholderSlug.value
-  );
-  return found ? found.penilaian : [];
+// Dynamic penilaian from IKAS and KSE stores
+const penilaian = computed(() => {
+  const slug = stakeholderSlug.value;
+  if (!slug) return [];
+
+  const ikasData = ikasStore.getIkasData(slug);
+  const kseData = kseStore.getKseData(slug);
+
+  return [
+    {
+      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" enableBackground="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><g><rect fill="none" height="24" width="24"></rect></g><g><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"></path></g></svg>`,
+      svgColor: "primary",
+      title: "IKAS",
+      value: ikasData.total_rata_rata > 0 ? ikasData.total_rata_rata.toFixed(2) : "Belum Diisi"
+    },
+    {
+      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,
+      svgColor: "secondary",
+      title: "KSE",
+      value: kseData.totalBobot > 0 ? kseData.totalBobot.toString() : "Belum Diisi"
+    },
+    {
+      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
+      svgColor: "success",
+      title: "CSIRT",
+      value: relatedCsirtId.value ? "Terdaftar" : "Belum Terdaftar"
+    }
+  ];
 });
 
 const relatedCsirtId = computed(() => {
@@ -373,7 +400,7 @@ html.dark .info-detail-item .fw-medium {
           <div class="col-xl-12">
             <div class="tab-content" id="profile-tabs">
               <div class="tab-pane show active p-0 border-0" id="profile-about-tab-pane" role="tabpanel" aria-labelledby="profile-about-tab" tabindex="0">
-                <div class="row">
+                <div class="row ">
                   <SpkReusableAnlyticsCard :analyticData="penilaian" :csirtId="relatedCsirtId" :stakeholderSlug="currentStakeholder.slug" />
                   <div class="col-xl-12">
                     <div class="card custom-card enhanced-card">

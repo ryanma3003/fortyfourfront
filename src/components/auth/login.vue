@@ -98,10 +98,10 @@ onUnmounted(() => {
               <div class="row gy-3">
                 <!-- Email -->
                 <div class="col-12">
-                  <label for="signin-email" class="form-label">Email</label>
+                  <label for="signin-username" class="form-label">Username</label>
                   <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-at-line"></i></span>
-                    <input type="email" class="form-control form-control-lg" id="signin-email" v-model="user.email" placeholder="Enter your email" @keyup.enter="login"/>
+                    <span class="input-group-text"><i class="ri-user-line"></i></span>
+                    <input type="text" class="form-control form-control-lg" id="signin-username" v-model="user.email" placeholder="Enter your username" @keyup.enter="login"/>
                   </div>
                 </div>
 

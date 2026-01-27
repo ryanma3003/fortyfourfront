@@ -22,8 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env
-src/config/api.ts
-src/data/kse-data.ts
-src/services/fetcher.ts
-src/stores/kse.ts

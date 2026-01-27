@@ -2,6 +2,56 @@ import { config } from './env';
 import type { ApiResponse, ApiError, HttpMethod } from '@/types/api.types';
 
 /**
+ * Secure Token Storage with obfuscation
+ * Token is stored encrypted in sessionStorage to:
+ * 1. Persist across page reloads (unlike pure memory storage)
+ * 2. Not be easily readable in DevTools (unlike plain localStorage)
+ * 3. Auto-clear when browser/tab is closed (sessionStorage behavior)
+ */
+const TokenStorage = (() => {
+    const STORAGE_KEY = '_ast'; // Obfuscated key name
+    
+    // Simple obfuscation (not cryptographic, but hides from casual viewing)
+    const obfuscate = (str: string): string => {
+        return btoa(str.split('').reverse().join(''));
+    };
+    
+    const deobfuscate = (str: string): string => {
+        try {
+            return atob(str).split('').reverse().join('');
+        } catch {
+            return '';
+        }
+    };
+
+    return {
+        setToken(token: string | null) {
+            if (token) {
+                sessionStorage.setItem(STORAGE_KEY, obfuscate(token));
+            } else {
+                sessionStorage.removeItem(STORAGE_KEY);
+            }
+        },
+        getToken(): string | null {
+            const stored = sessionStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                return deobfuscate(stored);
+            }
+            return null;
+        },
+        clearToken() {
+            sessionStorage.removeItem(STORAGE_KEY);
+        },
+        hasToken(): boolean {
+            return sessionStorage.getItem(STORAGE_KEY) !== null;
+        }
+    };
+})();
+
+// Export for use in other modules
+export { TokenStorage };
+
+/**
  * Custom Error class for API errors
  */
 export class ApiRequestError extends Error {
@@ -72,6 +122,7 @@ class ApiClient {
         const options: RequestInit = {
             method,
             headers,
+            credentials: 'include', // Enable HTTP-only cookie support
             body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
         };
 
