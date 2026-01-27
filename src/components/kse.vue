@@ -98,12 +98,11 @@ const getSelectedBobot = (questionNo) => {
   return answer.bobot;
 };
 
-// Get status label based on bobot
-const getStatusLabel = (bobot) => {
-  if (bobot >= 5) return 'Strategis';
-  if (bobot >= 3) return 'Tinggi';
-  if (bobot >= 1) return 'Rendah';
-  return '-';
+// Get status label based on selected option
+const getStatusLabel = (questionNo) => {
+  const option = getSelectedOption(questionNo);
+  if (!option) return '-';
+  return option; // Returns A, B, or C
 };
 
 // Calculate total questions per category
@@ -241,8 +240,8 @@ const saveAndExit = () => {
                       <!-- Status -->
                       <td class="center status-cell">
                         <span class="status-badge" 
-                          :class="getSelectedOption(question.no) ? `status-${getStatusLabel(getSelectedBobot(question.no)).toLowerCase()}` : 'status-empty'">
-                          {{ getStatusLabel(getSelectedBobot(question.no)) }}
+                          :class="getSelectedOption(question.no) ? `status-${getStatusLabel(question.no).toLowerCase()}` : 'status-empty'">
+                          {{ getStatusLabel(question.no) }}
                         </span>
                       </td>
 
@@ -261,7 +260,7 @@ const saveAndExit = () => {
 
                 <!-- Total Row -->
                 <tr class="total-row">
-                  <td colspan="4" class="total-label">Total Bobot Nilai</td>
+                  <td colspan="3" class="total-label">Total Bobot Nilai</td>
                   <td class="center total-value">{{ kseData?.totalBobot || 0 }}</td>
                   <td rowspan="2" class="kategori-final">
                     <div class="kategori-label">Kategori SE</div>
@@ -271,7 +270,7 @@ const saveAndExit = () => {
                   </td>
                 </tr>
                 <tr class="total-row">
-                  <td colspan="4" class="total-label">Nilai Maksimal</td>
+                  <td colspan="3" class="total-label">Kategorisasi Sistem Elektronik</td>
                   <td class="center total-value">{{ maxTotalBobot }}</td>
                 </tr>
               </tbody>
@@ -309,7 +308,7 @@ th, td {
 .main-title {
   font-weight: bold;
   text-align: center;
-  background: #fff;
+  background: #f8f9fa;
   color: #212529;
   font-size: 18px;
   padding: 14px 16px;
@@ -340,7 +339,7 @@ th, td {
 
 .info-label {
   font-weight: 600;
-  color: #6c757d;
+  color:  rgb(0, 0, 0);
   min-width: 140px;
 }
 
@@ -490,24 +489,24 @@ th, td {
   font-weight: 600;
 }
 
-.status-strategis {
+.status-a {
   background: linear-gradient(135deg, #e74c3c, #c0392b);
   color: white;
 }
 
-.status-tinggi {
+.status-b {
   background: linear-gradient(135deg, #f39c12, #e67e22);
   color: white;
 }
 
-.status-rendah {
+.status-c {
   background: linear-gradient(135deg, #2ecc71, #27ae60);
   color: white;
 }
 
 .status-empty {
   background: #e9ecef;
-  color: #6c757d;
+  color: #000000;
 }
 
 /* Bobot Cell */
@@ -520,24 +519,24 @@ th, td {
 /* Dukung Cell */
 .dukung-cell {
   font-size: 11px;
-  color: #6c757d;
+  color: #000000;
   line-height: 1.4;
 }
 
 /* Total Row */
 .total-row {
-  background: #444;
+  background: #000000;
 }
 
 .total-label {
-  background: #444;
-  color: white;
+  background: #f8f9fa;
+  color: rgb(0, 0, 0);
   font-weight: bold;
   text-align: right;
 }
 
 .total-value {
-  background: #fff;
+  background: #f8f9fa;
   font-size: 18px;
   font-weight: 700;
   color: #212529;
@@ -552,13 +551,14 @@ th, td {
 
 .kategori-label {
   font-size: 12px;
-  color: #6c757d;
+  color: #000000;
   margin-bottom: 8px;
 }
 
 .kategori-value {
   font-size: 24px;
   font-weight: 700;
+  color: #000000;
 }
 
 /* Gradient Header Card */

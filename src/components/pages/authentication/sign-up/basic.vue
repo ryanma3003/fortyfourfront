@@ -224,10 +224,10 @@ onUnmounted(() => {
               <div class="row gy-3">
                 <!-- Full Name -->
                 <div class="col-12">
-                  <label for="signup-name" class="form-label">Full Name</label>
+                  <label for="signup-name" class="form-label">Username</label>
                   <div class="input-group input-group-modern">
                     <span class="input-group-text"><i class="ri-user-3-line"></i></span>
-                    <input type="text" class="form-control form-control-lg" id="signup-name" v-model="fullName" placeholder="Enter your full name" @keyup.enter="signUp" />
+                    <input type="text" class="form-control form-control-lg" id="signup-name" v-model="fullName" placeholder="Enter your Username" @keyup.enter="signUp" />
                   </div>
                 </div>
 
