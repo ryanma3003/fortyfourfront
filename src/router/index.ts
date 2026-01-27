@@ -3,6 +3,7 @@ import Errorpagesinfo from "../shared/layouts/errorpagesinfo.vue";
 import Landingpage from "../shared/layouts/landingpage.vue";
 import Maindashboard from "../shared/layouts/maindashboard.vue";
 import Authlayout from "../shared/layouts/authlayout.vue";
+import { TokenStorage } from "@/config/api";
 
 
 const routes: RouteRecordRaw[] = [
@@ -1192,9 +1193,9 @@ const router = createRouter({
 
 // Navigation guard for authentication
 router.beforeEach((to, from, next) => {
-  // Check if user is authenticated from localStorage
-  const token = localStorage.getItem('token');
-  const isAuthenticated = !!token;
+  // Check if user is authenticated from in-memory token storage
+  const hasToken = TokenStorage.hasToken();
+  const isAuthenticated = hasToken;
 
   // List of public routes that don't require authentication
   const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover',
@@ -1214,7 +1215,7 @@ router.beforeEach((to, from, next) => {
     // Check admin role for admin-only routes
     const storedUser = localStorage.getItem('currentUser');
     const currentUser = storedUser ? JSON.parse(storedUser) : null;
-    if (currentUser?.role !== 'Admin') {
+    if (currentUser?.role !== 'admin') {
       // Redirect non-admin users to dashboards
       next('/dashboards');
     } else {

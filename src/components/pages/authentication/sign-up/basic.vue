@@ -4,9 +4,11 @@ import { useRouter } from "vue-router";
 import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
 import ParticlesJs from "../../../../shared/components/@spk/reuseble-plugin/particles-js.vue";
+import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
 
+const authStore = useAuthStore();
 // Form State
 const fullName = ref("");
 const email = ref("");
@@ -160,16 +162,23 @@ const signUp = async () => {
   if (!agreeToTerms.value) return showToast("error", "You must agree to the terms and conditions");
 
   isLoading.value = true;
-  try {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    showToast("success", "Account created successfully!");
+  isLoading.value = true;
+  
+  const result = await authStore.registerUser({
+    username: fullName.value,
+    email: email.value,
+    password: password.value
+  });
+
+  if (result.success) {
+    showToast("success", "Account created successfully! Please login.");
     setTimeout(() => {
-      isLoading.value = false;
-      router.push("/auth/login");
-    }, 1000);
-  } catch {
+        isLoading.value = false;
+        router.push("/");
+    }, 1500);
+  } else {
     isLoading.value = false;
-    showToast("error", "Failed to create account");
+    showToast("error", result.error || "Failed to create account");
   }
 };
 
@@ -352,7 +361,7 @@ onUnmounted(() => {
               <!-- Login Link -->
               <div class="text-center mt-4">
                 <span class="text-muted">Already have an account?</span>
-                <router-link to="/auth/login" class="auth-link ms-1"><i class="ri-login-box-line me-1"></i>Sign In</router-link>
+                <router-link to="/" class="auth-link ms-1"><i class="ri-login-box-line me-1"></i>Sign In</router-link>
               </div>
             </div>
           </div>
@@ -363,7 +372,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
-@import "../../../auth/login.scss";
+@use "../../../auth/login.scss";
 
 /* Note: Most auth form styles are now in src/assets/css/styles.css
    under "REUSABLE AUTHENTICATION FORM STYLES" section.

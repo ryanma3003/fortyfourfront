@@ -1,7 +1,8 @@
 <script lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { stakeholdersData, type Stakeholder } from "../../data/dummydata";
+import { useStakeholdersStore } from "../../stores/stakeholders";
+import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
 import { useAuthStore } from "../../stores/auth";
 
 export default {
@@ -17,9 +18,13 @@ export default {
   components: { Pageheader },
   setup() {
     const authStore = useAuthStore();
+    const stakeholdersStore = useStakeholdersStore();
     const isAdmin = computed(() => authStore.isAdmin);
-    const items = ref<Stakeholder[]>([]);
-    const loading = ref(false);
+    
+    // Derived from store
+    const items = computed(() => stakeholdersStore.stakeholders);
+    const loading = computed(() => stakeholdersStore.loading);
+    
     const searchQuery = ref("");
     const sortField = ref<"nama_perusahaan" | "sektor">("nama_perusahaan");
     const sortOrder = ref<"asc" | "desc">("asc");
@@ -57,10 +62,7 @@ export default {
     ];
 
     const loadStakeholders = async () => {
-      loading.value = true;
-      await new Promise((r) => setTimeout(r, 500));
-      items.value = stakeholdersData;
-      loading.value = false;
+      await stakeholdersStore.initialize();
     };
 
     const filteredData = computed(() => {
@@ -68,15 +70,17 @@ export default {
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
         data = data.filter(
-          (i) =>
+          (i: Stakeholder) =>
             i.nama_perusahaan.toLowerCase().includes(q) ||
             i.sektor.toLowerCase().includes(q) ||
             i.email.toLowerCase().includes(q)
         );
       }
-      return [...data].sort((a, b) => {
+      return [...data].sort((a: Stakeholder, b: Stakeholder) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
-        return a[sortField.value].localeCompare(b[sortField.value]) * mod;
+        const valA = a[sortField.value] || "";
+        const valB = b[sortField.value] || "";
+        return valA.localeCompare(valB) * mod;
       });
     });
 
@@ -96,14 +100,6 @@ export default {
       const end = Math.min(currentPage.value * itemsPerPage.value, total);
       return `${start} - ${end} dari ${total}`;
     });
-
-    // Generate slug from company name
-    const generateSlug = (name: string): string => {
-      return name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-    };
 
     // Form validation
     const validateForm = (): boolean => {
@@ -174,26 +170,26 @@ export default {
       showCreateModal.value = true;
     };
 
-    const createStakeholder = () => {
+    const createStakeholder = async () => {
       if (!validateForm()) return;
 
-      const newId = Math.max(...items.value.map((i) => i.id), 0) + 1;
-      const newStakeholder: Stakeholder = {
-        id: newId,
-        slug: generateSlug(formData.value.nama_perusahaan!),
+      const payload: CreateStakeholderPayload = {
         nama_perusahaan: formData.value.nama_perusahaan!,
         sektor: formData.value.sektor!,
         email: formData.value.email!,
         alamat: formData.value.alamat!,
         telepon: formData.value.telepon!,
         website: formData.value.website!,
-        photo: formData.value.photo || undefined,
+        photo: formData.value.photo || "",
       };
 
-      stakeholdersData.push(newStakeholder);
-      items.value = stakeholdersData;
-      showCreateModal.value = false;
-      showNotification("Stakeholder berhasil ditambahkan!", "success");
+      const result = await stakeholdersStore.createStakeholder(payload);
+      if (result.success) {
+        showCreateModal.value = false;
+        showNotification("Stakeholder berhasil ditambahkan!", "success");
+      } else {
+        showNotification("Gagal menambahkan stakeholder: " + result.error, "error");
+      }
     };
 
     // UPDATE
@@ -204,27 +200,25 @@ export default {
       showEditModal.value = true;
     };
 
-    const updateStakeholder = () => {
+    const updateStakeholder = async () => {
       if (!validateForm() || !currentEditItem.value) return;
 
-      const index = stakeholdersData.findIndex(
-        (i) => i.id === currentEditItem.value!.id
-      );
-      if (index !== -1) {
-        stakeholdersData[index] = {
-          ...stakeholdersData[index],
+      const payload: CreateStakeholderPayload = {
           nama_perusahaan: formData.value.nama_perusahaan!,
           sektor: formData.value.sektor!,
           email: formData.value.email!,
           alamat: formData.value.alamat!,
           telepon: formData.value.telepon!,
           website: formData.value.website!,
-          photo: formData.value.photo,
-          slug: generateSlug(formData.value.nama_perusahaan!),
-        };
-        items.value = stakeholdersData;
+          photo: formData.value.photo || "",
+      };
+
+      const result = await stakeholdersStore.updateStakeholderById(currentEditItem.value.id, payload);
+      if (result.success) {
         showEditModal.value = false;
         showNotification("Stakeholder berhasil diperbarui!", "success");
+      } else {
+        showNotification("Gagal memperbarui stakeholder: " + result.error, "error");
       }
     };
 
@@ -234,17 +228,15 @@ export default {
       showDeleteModal.value = true;
     };
 
-    const deleteStakeholder = () => {
+    const deleteStakeholder = async () => {
       if (!currentDeleteItem.value) return;
 
-      const index = stakeholdersData.findIndex(
-        (i) => i.id === currentDeleteItem.value!.id
-      );
-      if (index !== -1) {
-        stakeholdersData.splice(index, 1);
-        items.value = stakeholdersData;
+      const result = await stakeholdersStore.deleteStakeholderById(currentDeleteItem.value.id);
+      if (result.success) {
         showDeleteModal.value = false;
         showNotification("Stakeholder berhasil dihapus!", "success");
+      } else {
+        showNotification("Gagal menghapus stakeholder: " + result.error, "error");
       }
     };
 

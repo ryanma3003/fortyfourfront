@@ -96,7 +96,7 @@ export const KanbanCards: KanbanCardType[] = [
             id: 1,
             createdDate: "01 Jun",
             daysLeft: "10 days left",
-            tags: ["#SPK - 07", "Admin", "Authentication"],
+            tags: ["#SPK - 07", "admin", "Authentication"],
             title: "Adding Authentication Pages.",
             Content: true,
             description: "Lorem ipsum dolor sit amet consectetur adipisicing elit. Nulla soluta",
@@ -157,7 +157,7 @@ export const KanbanCards: KanbanCardType[] = [
                 face12
             ]
         },
-       
+
     ],
     kanbanCardsdanger: KanbanCardType[] = [
         {

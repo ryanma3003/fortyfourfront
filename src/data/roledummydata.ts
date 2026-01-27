@@ -50,7 +50,7 @@ export const permissionsDummy: Permission[] = [
 export const rolesDummy: Role[] = [
   {
     id: 1,
-    name: "Admin",
+    name: "admin",
     description: "Full access to all features",
     permissions: [],
     allAccess: true,
@@ -78,9 +78,9 @@ export const usersDummy: User[] = [
   {
     id: 1,
     name: "Super Admin",
-    role: "Admin",
-    permissions: getRoleByName("Admin")?.permissions ?? [],
-    allAccess: getRoleByName("Admin")?.allAccess ?? false,
+    role: "admin",
+    permissions: getRoleByName("admin")?.permissions ?? [],
+    allAccess: getRoleByName("admin")?.allAccess ?? false,
   },
   {
     id: 2,

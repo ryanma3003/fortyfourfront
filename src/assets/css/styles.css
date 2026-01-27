@@ -49262,17 +49262,16 @@ html.dark .gradient-header-blue .text-white {
 .btn-generator-toggle {
   display: flex;
   align-items: center;
-  background: var(--auth-light-bg);
-  border: 1.5px dashed #cbd5e1;
+  background: var(--auth-primary);
+  color: white;
   border-radius: 10px;
-  color: var(--auth-muted);
   padding: 0.75rem 1rem;
   font-weight: 500;
 }
 
 .btn-generator-toggle:hover {
-  border-color: var(--auth-primary);
-  color: var(--auth-primary);
+  color: white;
+  background: #0047AB;
 }
 
 /* Generator Panel */

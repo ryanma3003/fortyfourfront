@@ -29,13 +29,20 @@ const handleCsirt = () => {
     router.push("/csirt");
   }
 };
+const handleKse = () => {
+  if (props.stakeholderSlug) {
+    router.push({ path: "/kse", query: { slug: props.stakeholderSlug } });
+  } else {
+    router.push("/kse");
+  }
+};
 </script>
 
 <template>
   <div
     v-for="(item, index) in analyticData"
     :key="index"
-    class="col-xxl-3 col-lg-6"
+    class="col-xxl-4 col-lg-4 col-md-6"
   >
     <div class="card custom-card">
       <div class="card-body">
@@ -65,6 +72,13 @@ const handleCsirt = () => {
               v-if="item.title === 'CSIRT'"
               class="btn btn-sm btn-outline-primary ms-2"
               @click="handleCsirt"
+            >
+              Lihat Detail
+            </button>
+            <button
+              v-if="item.title === 'KSE'"
+              class="btn btn-sm btn-outline-primary ms-2"
+              @click="handleKse"
             >
               Lihat Detail
             </button>

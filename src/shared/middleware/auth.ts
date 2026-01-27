@@ -19,6 +19,6 @@ export default defineVueRouteMiddleware((to) => {
 
   // If not authenticated and trying to access a protected route
   if (!authenticated.value && to?.name !== 'auth-login') {
-    return navigateTo('/auth/login');
+    return navigateTo('/');
   }
 });
