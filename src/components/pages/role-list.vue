@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { Tooltip } from "bootstrap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { rolesDummy, type Role } from "../../data/roledummydata";
+import { roleService, type Role } from "../../services/role.service";
 
 const dataToPass = {
   title: { label: "Dashboards", path: "/dashboards" },
@@ -50,12 +50,18 @@ const displayData = computed(() => {
   return filteredData.value.slice(start, start + itemsPerPage.value);
 });
 
-// Load roles from dummy data
+// Load roles from API
 const loadRoles = async () => {
   loading.value = true;
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  items.value = rolesDummy.map((r) => ({ ...r }));
-  loading.value = false;
+  try {
+    const roles = await roleService.getAll();
+    items.value = roles;
+  } catch (error) {
+    console.error('Failed to load roles:', error);
+    items.value = [];
+  } finally {
+    loading.value = false;
+  }
 };
 
 const toggleSort = (field: "name") => {
@@ -192,8 +198,8 @@ onMounted(() => loadRoles());
                     </td>
                     <td class="align-middle py-3">
                       <div class="d-flex align-items-center gap-2">
-                        <span :class="['avatar avatar-sm avatar-rounded', role.allAccess ? 'bg-danger-transparent' : 'bg-info-transparent']">
-                          <i :class="role.allAccess ? 'ri-shield-star-line text-danger' : 'ri-user-line text-info'"></i>
+                        <span :class="['avatar avatar-sm avatar-rounded', role.name?.toLowerCase() === 'admin' ? 'bg-danger-transparent' : 'bg-info-transparent']">
+                          <i :class="role.name?.toLowerCase() === 'admin' ? 'ri-shield-star-line text-danger' : 'ri-user-line text-info'"></i>
                         </span>
                         <span class="fw-semibold">{{ role.name }}</span>
                       </div>

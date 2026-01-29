@@ -3,7 +3,9 @@ import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
-import { useUsersStore, type User } from "../../stores/users";
+import { usersService } from "../../services/users.service";
+import { roleService, type Role } from "../../services/role.service";
+import type { User } from "../../types/user.types";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 // User interface is imported from usersStore
@@ -12,12 +14,12 @@ const route = useRoute();
 const router = useRouter();
 const profileStore = useProfileStore();
 const authStore = useAuthStore();
-const usersStore = useUsersStore();
 
 // Reactive user data
 const user = ref<User | null>(null);
 const loading = ref(true);
 const isCurrentUser = ref(false);
+const rolesData = ref<Role[]>([]);
 
 // Check if current logged-in user is admin
 const isAdmin = computed(() => authStore.isAdmin);
@@ -25,35 +27,76 @@ const isAdmin = computed(() => authStore.isAdmin);
 // Get slug from route params
 const slug = computed(() => route.params.slug as string);
 
-// Load user data based on slug
-const loadUser = () => {
+// Format date to Indonesian locale
+const formatJoinedDate = (dateString: string | undefined): string => {
+  if (!dateString) return 'Tidak diketahui';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('id-ID', { 
+      day: 'numeric',
+      month: 'long', 
+      year: 'numeric' 
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+// Load user data based on slug from API
+const loadUser = async () => {
   loading.value = true;
 
-  // Initialize users store first
-  usersStore.initialize();
+  try {
+    // Fetch users and roles in parallel
+    const [users, roles] = await Promise.all([
+      usersService.getAll(),
+      roleService.getAll()
+    ]);
+    
+    rolesData.value = roles;
+    
+    const foundUser = users.find((u: any) => 
+      u.slug === slug.value || u.username === slug.value || u.id?.toString() === slug.value
+    );
 
-  // Find user from usersStore (which has synced data including photos)
-  const foundUser = usersStore.getUserBySlug(slug.value);
+    if (foundUser) {
+      // Map API response to User type
+      user.value = {
+        id: foundUser.id?.toString() || '',
+        slug: foundUser.slug || foundUser.username || '',
+        username: foundUser.username || '',
+        name: foundUser.name || foundUser.username || 'Unknown',
+        email: foundUser.email || '',
+        jabatan: foundUser.jabatan || foundUser.id_jabatan || '',
+        role: foundUser.role || foundUser.role_name || 'user',
+        phone: foundUser.phone || '',
+        location: foundUser.location || '',
+        joined: foundUser.joined || foundUser.created_at || '',
+        photo: foundUser.photo || '',
+        banner: foundUser.banner || '',
+      };
 
-  if (foundUser) {
-    user.value = foundUser;
-
-    // Check if this is the currently logged-in user
-    if (
-      authStore.currentUser &&
-      authStore.currentUser.username === foundUser.username
-    ) {
-      isCurrentUser.value = true;
-      // Load profile data from store for current user - use switchUser for proper initialization
-      profileStore.switchUser();
+      // Check if this is the currently logged-in user
+      if (
+        authStore.currentUser &&
+        authStore.currentUser.username === foundUser.username
+      ) {
+        isCurrentUser.value = true;
+        // Load profile data from store for current user
+        await profileStore.switchUser();
+      } else {
+        isCurrentUser.value = false;
+      }
     } else {
-      isCurrentUser.value = false;
+      // Redirect to users-list if user not found
+      router.push("/users-list");
     }
-  } else {
-    // Redirect to users-list if user not found
+  } catch (error) {
+    console.error('Failed to load user:', error);
     router.push("/users-list");
+  } finally {
+    loading.value = false;
   }
-  loading.value = false;
 };
 
 // Watch for slug changes
@@ -116,9 +159,10 @@ const displayLocation = computed(() => {
 
 const displayJoined = computed(() => {
   if (isCurrentUser.value) {
-    return profileStore.joined;
+    return profileStore.displayJoined;
   }
-  return user.value?.joined || "";
+  // Format the joined date for other users
+  return formatJoinedDate(user.value?.joined);
 });
 
 const displayAvatar = computed(() => {
@@ -159,26 +203,37 @@ const showNotification = (message: string, type: "success" | "error" = "success"
   setTimeout(() => { showToast.value = false; }, 3000);
 };
 
-const saveRole = () => {
+const saveRole = async () => {
   if (!user.value) return;
   
   isSaving.value = true;
   
-  // Update in usersStore
-  const success = usersStore.updateUserById(user.value.id, {
-    role: selectedRole.value,
-  });
-  
-  if (success) {
+  try {
+    // Find the role ID from the selected role name
+    const roleObj = rolesData.value.find(r => 
+      r.name.toLowerCase() === selectedRole.value.toLowerCase()
+    );
+    
+    if (roleObj) {
+      // Use role service to assign role
+      await roleService.assignToUser(user.value.id, roleObj.id);
+    } else {
+      // Fallback: update directly via users service
+      await usersService.update(user.value.id, {
+        role: selectedRole.value,
+      });
+    }
+    
     // Update local user data
     user.value = { ...user.value, role: selectedRole.value };
     showEditModal.value = false;
     showNotification("Role berhasil diperbarui!", "success");
-  } else {
+  } catch (error) {
+    console.error('Failed to update role:', error);
     showNotification("Gagal memperbarui role!", "error");
+  } finally {
+    isSaving.value = false;
   }
-  
-  isSaving.value = false;
 };
 </script>
 
@@ -391,7 +446,7 @@ const saveRole = () => {
 
   <!-- Edit Role Modal -->
   <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
+    <div class="modal-dialog modal-dialog-centered custom-modal" @click.stop>
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">
@@ -416,8 +471,9 @@ const saveRole = () => {
           <div class="mb-3">
             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
             <select v-model="selectedRole" class="form-select">
-              <option value="admin">Admin</option>
-              <option value="User">User</option>
+              <option v-for="role in rolesData" :key="role.id" :value="role.name">{{ role.name }}</option>
+              <option v-if="!rolesData.length" value="admin">Admin</option>
+              <option v-if="!rolesData.length" value="user">User</option>
             </select>
             <small class="text-muted">Pilih role untuk user ini.</small>
           </div>

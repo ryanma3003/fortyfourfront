@@ -3,7 +3,6 @@ import { ref, onMounted, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
-import { useUsersStore, type User } from "../../stores/users";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 
@@ -45,7 +44,6 @@ const router = useRouter();
 const route = useRoute();
 const profileStore = useProfileStore();
 const authStore = useAuthStore();
-const usersStore = useUsersStore();
 const imageError = ref("");
 const isSaving = ref(false);
 const showSuccessAlert = ref(false);
@@ -164,23 +162,20 @@ const useGeneratedPassword = () => {
 };
 
 // Load user data (self-edit mode only)
-const loadUserData = () => {
-  // Initialize users store
-  usersStore.initialize();
-  
-  // Self-edit mode: load from profileStore
-  profileStore.switchUser();
+const loadUserData = async () => {
+  // Load profile data from API
+  await profileStore.switchUser();
   resetForm();
 };
 
 // Form Management
-onMounted(() => { 
-  loadUserData();
+onMounted(async () => { 
+  await loadUserData();
 });
 
 // Watch for route changes
-watch(() => route.params.slug, () => {
-  loadUserData();
+watch(() => route.params.slug, async () => {
+  await loadUserData();
 });
 
 const resetForm = () => {
@@ -277,35 +272,29 @@ const removeBanner = () => { bannerPreview.value = DEFAULT_BANNER; };
 const saveProfile = async () => {
   isSaving.value = true;
   try {
-    await new Promise(r => setTimeout(r, 800));
-    
-    // Self-edit mode: update profile store
-    profileStore.updateProfile({
+    // Prepare profile data for API
+    const profileData = {
       ...formData.value,
-      avatarUrl: avatarPreview.value, bannerUrl: bannerPreview.value,
-      bannerPositionX: bannerPosition.value.x, bannerPositionY: bannerPosition.value.y,
-      avatarPositionX: avatarPosition.value.x, avatarPositionY: avatarPosition.value.y,
-    });
+      avatarUrl: avatarPreview.value, 
+      bannerUrl: bannerPreview.value,
+      bannerPositionX: bannerPosition.value.x, 
+      bannerPositionY: bannerPosition.value.y,
+      avatarPositionX: avatarPosition.value.x, 
+      avatarPositionY: avatarPosition.value.y,
+    };
     
-    // Sync profile data to usersStore so admin can see updated user data
-    const currentUser = authStore.currentUser;
-    if (currentUser) {
-      usersStore.initialize(); // Ensure usersStore is initialized
-      usersStore.updateUserById(currentUser.id, {
-        name: formData.value.name,
-        jabatan: formData.value.jabatan,
-        phone: formData.value.phone,
-        location: formData.value.location,
-        photo: avatarPreview.value, // Sync photo to usersStore
-        banner: bannerPreview.value, // Sync banner to usersStore
-      });
+    // Save to API
+    const result = await profileStore.saveToApi(profileData);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to save profile');
     }
     
     showSuccessAlert.value = true;
     setTimeout(() => router.push("/profile"), 1000);
-  } catch {
+  } catch (error: any) {
     showErrorAlert.value = true;
-    errorMessage.value = "Terjadi kesalahan. Silakan coba lagi.";
+    errorMessage.value = error.message || "Terjadi kesalahan. Silakan coba lagi.";
     setTimeout(() => showErrorAlert.value = false, 3000);
   } finally { isSaving.value = false; }
 };

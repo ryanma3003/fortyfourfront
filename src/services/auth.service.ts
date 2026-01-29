@@ -37,7 +37,7 @@ class AuthService {
     logout(): void {
         api.clearAuthToken();
         TokenStorage.clearToken();
-        localStorage.removeItem('currentUser');
+        // Note: sessionStorage cleanup is handled by auth store
     }
 
     /**

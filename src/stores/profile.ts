@@ -1,24 +1,8 @@
 // stores/profile.ts
 import { defineStore } from 'pinia';
 import { useAuthStore } from './auth';
-
-// Helper to get user-specific storage key
-const getStorageKey = (userId?: number): string => {
-  if (userId) {
-    return `userProfile_${userId}`;
-  }
-  // Fallback to check localStorage for current user
-  const storedUser = localStorage.getItem('currentUser');
-  if (storedUser) {
-    try {
-      const user = JSON.parse(storedUser);
-      return `userProfile_${user.id}`;
-    } catch {
-      return 'userProfile';
-    }
-  }
-  return 'userProfile';
-};
+import { usersService } from '@/services/users.service';
+import type { UpdateUserPayload } from '@/types/user.types';
 
 export interface ProfileData {
   name: string;
@@ -39,8 +23,8 @@ export interface ProfileData {
   bannerPositionY: number;
   avatarPositionX: number;
   avatarPositionY: number;
-  // Flag to track if profile has been customized
-  isCustomized: boolean;
+  // Loading state
+  isLoading: boolean;
   stats: {
     projects: string;
     followers: string;
@@ -58,7 +42,7 @@ export const useProfileStore = defineStore('profile', {
     phone: '+62 812-3456-7890',
     jabatan: 'Senior Product Designer',
     website: 'www.yourwebsite.com',
-    joined: 'Januari 2022',
+    joined: '',
     bio: 'Passionate about creating delightful user experiences and solving complex design challenges. Love to collaborate with teams to bring ideas to life.',
     address: 'Jl. Sudirman No. 123, Jakarta Pusat',
     avatarUrl: '/images/faces/9.jpg',
@@ -68,7 +52,7 @@ export const useProfileStore = defineStore('profile', {
     bannerPositionY: 50,
     avatarPositionX: 50,
     avatarPositionY: 50,
-    isCustomized: false,
+    isLoading: false,
     stats: {
       projects: '47',
       followers: '2.4K',
@@ -77,105 +61,145 @@ export const useProfileStore = defineStore('profile', {
   }),
 
   getters: {
-    // Get display name - prioritize profile store if customized
+    // Get display name
     displayName(): string {
       const authStore = useAuthStore();
-      // If profile has been customized and has a name, use it
-      if (this.isCustomized && this.name) {
-        return this.name;
-      }
-      return authStore.currentUser?.name || this.name || 'Alexandra Chen';
+      return this.name || authStore.currentUser?.name || 'User';
     },
     
-    // Get display email - prioritize profile store if customized
+    // Get display email
     displayEmail(): string {
       const authStore = useAuthStore();
-      if (this.isCustomized && this.email) {
-        return this.email;
-      }
-      return authStore.currentUser?.username || this.email || 'alexandra.chen@email.com';
+      return this.email || authStore.currentUser?.email || authStore.currentUser?.username || '';
     },
 
-    // Get display jabatan - prioritize profile store if customized
+    // Get display jabatan
     displayJabatan(): string {
-      const authStore = useAuthStore();
-      // If profile has been customized, always use profile jabatan
-      if (this.isCustomized) {
-        return this.jabatan;
-      }
-      return authStore.currentUser?.jabatan || this.jabatan || 'Senior Product Designer';
+      return this.jabatan || 'Belum diatur';
     },
     
     // Get display role - always from auth store (not editable by user)
     displayRole(): string {
       const authStore = useAuthStore();
-      // Role comes from auth system, not user-editable
       return authStore.currentUser?.role || 'User';
     },
     
-    // Get display phone - prioritize profile store if customized
+    // Get display phone
     displayPhone(): string {
-      const authStore = useAuthStore();
-      if (this.isCustomized && this.phone) {
-        return this.phone;
-      }
-      return authStore.currentUser?.phone || this.phone;
+      return this.phone || 'Belum diatur';
     },
     
-    // Get display location - prioritize profile store if customized
+    // Get display location
     displayLocation(): string {
+      return this.location || 'Belum diatur';
+    },
+
+    // Get formatted join date from auth store
+    displayJoined(): string {
       const authStore = useAuthStore();
-      if (this.isCustomized && this.location) {
-        return this.location;
-      }
-      return authStore.currentUser?.location || this.location;
+      return authStore.formattedJoinDate || this.joined || 'Tidak diketahui';
     },
   },
 
   actions: {
-    // Initialize profile with auth data (only if not customized)
-    initFromAuth() {
-      // If profile has been customized, don't overwrite with auth data
-      if (this.isCustomized) {
+    /**
+     * Fetch user profile data from API
+     */
+    async fetchFromApi() {
+      const authStore = useAuthStore();
+      if (!authStore.currentUser?.id) {
+        console.warn('fetchFromApi: No current user ID');
         return;
       }
-      
+
+      this.isLoading = true;
+      try {
+        const userData = await usersService.getById(authStore.currentUser.id);
+        
+        // Map API response to profile state
+        this.name = userData.name || '';
+        this.email = userData.email || '';
+        this.jabatan = userData.jabatan || '';
+        this.phone = userData.phone || '';
+        this.location = userData.location || '';
+        this.joined = userData.joined || '';
+        this.avatarUrl = userData.photo || '/images/faces/9.jpg';
+        this.bannerUrl = userData.banner || '/images/media/media-3.jpg';
+        
+        console.log('Profile fetched from API:', userData);
+      } catch (error) {
+        console.error('Failed to fetch profile from API:', error);
+        // Fallback to auth data if API fails
+        this.initFromAuth();
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    /**
+     * Save profile data to API
+     */
+    async saveToApi(data: Partial<ProfileData> | FormData): Promise<{ success: boolean; error?: string }> {
+      const authStore = useAuthStore();
+      if (!authStore.currentUser?.id) {
+        return { success: false, error: 'User not authenticated' };
+      }
+
+      this.isLoading = true;
+      try {
+        let payload: UpdateUserPayload | FormData;
+
+        if (data instanceof FormData) {
+            payload = data;
+        } else {
+            // Map profile data to API payload
+            payload = {
+            name: data.name || this.name,
+            email: data.email || this.email,
+            jabatan: data.jabatan || this.jabatan,
+            phone: data.phone || this.phone,
+            location: data.location || this.location,
+            photo: data.avatarUrl || this.avatarUrl,
+            banner: data.bannerUrl || this.bannerUrl,
+            };
+        }
+
+        await usersService.update(authStore.currentUser.id, payload);
+        
+        // Update local state if it's not FormData (or handle partial updates if needed, but for FormData typically we reload or assume success)
+        if (!(data instanceof FormData)) {
+             Object.assign(this, data);
+        } else {
+             // Ideally we should fetch the updated profile here to ensure sync, 
+             // but for now we rely on the component to update the preview or reload.
+             // We can also try to update local state from FormData entries if needed.
+             // For now, let's just re-fetch to be safe and ensure consistency.
+             await this.fetchFromApi(); 
+        }
+        
+        console.log('Profile saved to API');
+        return { success: true };
+      } catch (error: any) {
+        console.error('Failed to save profile to API:', error);
+        return { success: false, error: error.message || 'Failed to save profile' };
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // Initialize profile with auth data
+    initFromAuth() {
       const authStore = useAuthStore();
       if (authStore.currentUser) {
         this.name = authStore.currentUser.name || this.name;
-        this.email = authStore.currentUser.username || this.email;
-        this.jabatan = authStore.currentUser.jabatan || this.jabatan;
+        this.email = authStore.currentUser.email || authStore.currentUser.username || this.email;
         this.role = authStore.currentUser.role || this.role;
       }
     },
 
-    // Update profile data
+    // Update profile data locally (for preview before save)
     updateProfile(data: Partial<ProfileData>) {
-      console.log('updateProfile called with:', data);
       Object.assign(this, data);
-      // Mark profile as customized
-      this.isCustomized = true;
-      console.log('After update - jabatan:', this.jabatan, 'isCustomized:', this.isCustomized);
-      // Save to localStorage for persistence
-      this.saveToStorage();
-    },
-
-    // Save profile to localStorage (user-specific)
-    saveToStorage() {
-      const key = getStorageKey();
-      localStorage.setItem(key, JSON.stringify(this.$state));
-    },
-
-    // Load profile from localStorage (user-specific)
-    loadFromStorage() {
-      const key = getStorageKey();
-      const stored = localStorage.getItem(key);
-      console.log('loadFromStorage - key:', key, 'raw:', stored);
-      if (stored) {
-        const data = JSON.parse(stored);
-        console.log('loadFromStorage - parsed jabatan:', data.jabatan, 'isCustomized:', data.isCustomized);
-        Object.assign(this, data);
-      }
     },
 
     // Reset profile to defaults (call when switching users)
@@ -188,7 +212,7 @@ export const useProfileStore = defineStore('profile', {
       this.phone = '+62 812-3456-7890';
       this.jabatan = 'Senior Product Designer';
       this.website = 'www.yourwebsite.com';
-      this.joined = 'Januari 2022';
+      this.joined = '';
       this.bio = 'Passionate about creating delightful user experiences and solving complex design challenges. Love to collaborate with teams to bring ideas to life.';
       this.address = 'Jl. Sudirman No. 123, Jakarta Pusat';
       this.avatarUrl = '/images/faces/9.jpg';
@@ -197,7 +221,7 @@ export const useProfileStore = defineStore('profile', {
       this.bannerPositionY = 50;
       this.avatarPositionX = 50;
       this.avatarPositionY = 50;
-      this.isCustomized = false;
+      this.isLoading = false;
       this.stats = {
         projects: '47',
         followers: '2.4K',
@@ -206,37 +230,34 @@ export const useProfileStore = defineStore('profile', {
     },
 
     // Reinitialize profile for new user (call after login)
-    switchUser() {
+    async switchUser() {
       // Reset to defaults first
       this.resetToDefaults();
-      // Try to load user-specific data
-      this.loadFromStorage();
-      // Initialize from auth if not customized
-      this.initFromAuth();
+      // Fetch user data from API
+      await this.fetchFromApi();
     },
 
     // Update avatar
     updateAvatar(url: string) {
       this.avatarUrl = url;
-      this.saveToStorage();
     },
 
     // Reset avatar to default
     resetAvatar() {
       this.avatarUrl = '/images/faces/9.jpg';
-      this.saveToStorage();
     },
 
     // Update banner
     updateBanner(url: string) {
       this.bannerUrl = url;
-      this.saveToStorage();
     },
 
     // Reset banner to default
     resetBanner() {
       this.bannerUrl = '/images/media/media-3.jpg';
-      this.saveToStorage();
     },
   },
 });
+
+// Re-export User type for backward compatibility
+export type { User } from '@/types/user.types';

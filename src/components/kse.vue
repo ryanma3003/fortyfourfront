@@ -6,6 +6,8 @@ import { kseCategories, getKategoriSE, getMaxTotalBobot } from '../data/kse-data
 import { useKseStore } from '../stores/kse';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import Swal from 'sweetalert2';
+import { toast } from 'vue3-toastify';
+import 'vue3-toastify/dist/index.css';
 
 const router = useRouter();
 const route = useRoute();
@@ -125,28 +127,45 @@ const maxTotalBobot = getMaxTotalBobot();
 // Navigate to KSE CRUD
 // Save and Exit
 const saveAndExit = () => {
-  // Data is already saved in store on every click. 
-  // We just need to show success and navigate back.
-  
+  // Show confirmation dialog first
   Swal.fire({
-    title: 'Berhasil!',
-    text: 'Data KSE berhasil disimpan.',
-    icon: 'success',
-    confirmButtonText: 'OK',
+    title: 'Yakin simpan perubahan?',
+    text: 'Data KSE akan disimpan.',
+    showCancelButton: true,
+    confirmButtonText: 'Ya',
+    cancelButtonText: 'Tidak',
     confirmButtonColor: '#084696',
+    cancelButtonColor: '#6c757d',
+    reverseButtons: true,
+    customClass: {
+      popup: 'swal-custom-popup',
+      title: 'swal-custom-title',
+      confirmButton: 'swal-custom-confirm',
+      cancelButton: 'swal-custom-cancel',
+    }
   }).then((result) => {
     if (result.isConfirmed) {
-      // Navigate back to profile or list
-      if (currentSlug.value) {
-         // Check if we came from list or profile
-         if (currentSource.value === 'list') {
-             router.push('/stakeholders');
-         } else {
-             router.push(`/profile-stakeholders/${currentSlug.value}`);
-         }
-      } else {
-         router.push('/stakeholders');
-      }
+      // Show success toast notification
+      toast.success('Data KSE berhasil disimpan', {
+        theme: 'auto',
+        icon: true,
+        hideProgressBar: true,
+        autoClose: 2000,
+        position: 'top-right',
+      });
+      
+      // Navigate back after delay
+      setTimeout(() => {
+        if (currentSlug.value) {
+          if (currentSource.value === 'list') {
+            router.push('/stakeholders');
+          } else {
+            router.push(`/profile-stakeholders/${currentSlug.value}`);
+          }
+        } else {
+          router.push('/stakeholders');
+        }
+      }, 1500);
     }
   });
 };
@@ -652,5 +671,82 @@ th, td {
 .btn-save:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(8, 70, 150, 0.3);
+}
+</style>
+
+<style>
+/* SweetAlert2 Modal Fix - Make sure it appears centered on screen */
+.swal2-container {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.swal2-popup {
+  position: relative !important;
+  z-index: 100000 !important;
+}
+
+/* Custom SweetAlert2 Styling */
+.swal-custom-popup {
+  border-radius: 16px !important;
+  padding: 28px 32px !important;
+  box-shadow: 0 20px 60px rgba(8, 70, 150, 0.15) !important;
+  border: 2px solid #000000 !important;
+  background: linear-gradient(145deg, #ffffff 0%, #f8faff 100%) !important;
+}
+
+.swal-custom-title {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: #084696 !important;
+  margin-bottom: 8px !important;
+}
+
+.swal2-html-container {
+  color: #6c757d !important;
+  font-size: 14px !important;
+}
+
+.swal2-actions {
+  gap: 16px !important;
+  margin-top: 24px !important;
+}
+
+.swal-custom-confirm {
+  border-radius: 10px !important;
+  padding: 12px 32px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  background: linear-gradient(135deg, #084696 0%, #052c65 100%) !important;
+  border: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.swal-custom-confirm:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 15px rgba(8, 70, 150, 0.4) !important;
+}
+
+.swal-custom-cancel {
+  border-radius: 10px !important;
+  padding: 12px 32px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  background: #fff !important;
+  border: 2px solid #dee2e6 !important;
+  color: #6c757d !important;
+  transition: all 0.3s ease !important;
+}
+
+.swal-custom-cancel:hover {
+  background: #f8f9fa !important;
+  border-color: #adb5bd !important;
 }
 </style>
