@@ -10,7 +10,18 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Environment variables
+.env
+.env.*
+.env production
+!.env.example
 *.local
+
+# Sensitive files
+*.pem
+*.key
+.npmrc
+.yarnrc
 
 # Editor directories and files
 .vscode/*
@@ -22,5 +33,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env
-.env production

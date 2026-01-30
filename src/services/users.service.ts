@@ -38,7 +38,7 @@ class UsersService {
      * @param payload User update data
      * @returns Updated user object
      */
-    async update(id: string, payload: UpdateUserPayload): Promise<User> {
+    async update(id: string, payload: UpdateUserPayload | FormData): Promise<User> {
         return api.put<User>(`/api/users/${id}`, payload);
     }
 

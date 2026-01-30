@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useProfileStore } from "../../stores/profile";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
@@ -11,7 +11,6 @@ const profileStore = useProfileStore();
 const {
   location,
   phone,
-  joined,
   bio,
   stats,
   avatarUrl,
@@ -26,6 +25,7 @@ const {
   email,
   website,
   address,
+  isLoading,
 } = storeToRefs(profileStore);
 
 const dataToPass = {
@@ -35,8 +35,8 @@ const dataToPass = {
 };
 
 // Initialize profile data on mount
-onMounted(() => {
-  profileStore.switchUser();
+onMounted(async () => {
+  await profileStore.switchUser();
 });
 
 // Computed display values from store (these use getters so need computed)
@@ -46,6 +46,7 @@ const displayJabatan = computed(() => profileStore.displayJabatan);
 const displayRole = computed(() => profileStore.displayRole);
 const displayPhone = computed(() => profileStore.displayPhone);
 const displayLocation = computed(() => profileStore.displayLocation);
+const displayJoined = computed(() => profileStore.displayJoined);
 </script>
 
 <template>
@@ -217,7 +218,7 @@ const displayLocation = computed(() => profileStore.displayLocation);
                   </span>
                   <div class="flex-fill min-width-0">
                     <span class="text-muted fs-12 d-block">Bergabung Sejak</span>
-                    <span class="fw-medium text-truncate d-block">{{ joined }}</span>
+                    <span class="fw-medium text-truncate d-block">{{ displayJoined }}</span>
                   </div>
                 </div>
               </div>

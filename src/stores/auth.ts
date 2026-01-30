@@ -11,7 +11,11 @@ interface CurrentUser {
   name: string;
   email: string;
   role: string;
+  createdAt: string; // Tanggal akun dibuat dari API
 }
+
+// Session storage key for user data (more secure than localStorage)
+const USER_SESSION_KEY = 'auth_user_session';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -34,6 +38,20 @@ export const useAuthStore = defineStore('auth', {
     userEmail(): string {
       return this.currentUser?.email || '';
     },
+    // Format created_at untuk display "Bergabung Sejak"
+    formattedJoinDate(): string {
+      if (!this.currentUser?.createdAt) return '';
+      try {
+        const date = new Date(this.currentUser.createdAt);
+        return date.toLocaleDateString('id-ID', { 
+          day: 'numeric',
+          month: 'long', 
+          year: 'numeric' 
+        });
+      } catch {
+        return this.currentUser.createdAt;
+      }
+    },
   },
 
   actions: {
@@ -51,26 +69,27 @@ export const useAuthStore = defineStore('auth', {
         const token = response.access_token;
         authService.setAuthToken(token);
 
-        // Store user data
+        // Store user data with created_at from API response
         const userData: CurrentUser = {
           id: response.user.id,
           username: response.user.username,
           name: response.user.username, // Using username as name
           email: response.user.email,
           role: response.user.role_name || 'user',
+          createdAt: response.user.created_at, // Simpan created_at dari API
         };
 
-        // Standardize key to 'currentUser' as expected by router and other stores
-        localStorage.setItem('currentUser', JSON.stringify(userData));
+        // Store in sessionStorage (cleared when browser closes, more secure)
+        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
 
         this.authenticated = true;
         this.currentUser = userData;
         this.loading = false;
 
-        // Switch profile to new user (loads user-specific profile data)
+        // Switch profile to new user (loads user-specific profile data from API)
         const profileStore = useProfileStore();
         try {
-          profileStore.switchUser();
+          await profileStore.switchUser();
         } catch (e) {
           console.error('switchUser failed:', e);
         }
@@ -82,7 +101,7 @@ export const useAuthStore = defineStore('auth', {
 
         this.error = error.message || 'Login failed';
         TokenStorage.clearToken();
-        localStorage.removeItem('currentUser');
+        sessionStorage.removeItem(USER_SESSION_KEY);
         this.authenticated = false;
         this.currentUser = null;
         this.loading = false;
@@ -126,6 +145,7 @@ export const useAuthStore = defineStore('auth', {
 
       // Clear auth data
       authService.logout();
+      sessionStorage.removeItem(USER_SESSION_KEY);
 
       this.authenticated = false;
       this.currentUser = null;
@@ -138,7 +158,7 @@ export const useAuthStore = defineStore('auth', {
      */
     checkAuthOnStartup() {
       const hasToken = TokenStorage.hasToken();
-      const storedUser = localStorage.getItem('currentUser');
+      const storedUser = sessionStorage.getItem(USER_SESSION_KEY);
 
       if (hasToken && storedUser) {
         try {
@@ -157,7 +177,7 @@ export const useAuthStore = defineStore('auth', {
       } else {
         // No valid session - clear any stale data
         if (storedUser && !hasToken) {
-          localStorage.removeItem('currentUser');
+          sessionStorage.removeItem(USER_SESSION_KEY);
         }
         this.authenticated = false;
         this.currentUser = null;

@@ -37,8 +37,11 @@ const login = async () => {
       if (result.authenticated) {
         showToast("success", "Logged In");
         console.log('Authenticated! Redirecting to /dashboards...');
-        await router.push("/dashboards");
-        console.log('Router push called.');
+        // Delay before redirect so user can see the toast
+        setTimeout(async () => {
+          await router.push("/dashboards");
+          console.log('Router push called.');
+        }, 1500);
       } else {
         showToast("error", "Invalid credentials" + (result.error ? `: ${result.error}` : ''));
       }

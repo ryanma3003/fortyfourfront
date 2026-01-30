@@ -1213,7 +1213,7 @@ router.beforeEach((to, from, next) => {
     next('/dashboards');
   } else if (to.meta?.requiresAdmin) {
     // Check admin role for admin-only routes
-    const storedUser = localStorage.getItem('currentUser');
+    const storedUser = sessionStorage.getItem('auth_user_session');
     const currentUser = storedUser ? JSON.parse(storedUser) : null;
     if (currentUser?.role !== 'admin') {
       // Redirect non-admin users to dashboards

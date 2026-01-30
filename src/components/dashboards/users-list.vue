@@ -3,7 +3,8 @@ import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useAuthStore } from "../../stores/auth";
 import { useProfileStore } from "../../stores/profile";
-import { useUsersStore } from "../../stores/users";
+import { usersService } from "../../services/users.service";
+import { roleService, type Role } from "../../services/role.service";
 
 
 interface User {
@@ -31,7 +32,6 @@ export default {
   setup() {
     const authStore = useAuthStore();
     const profileStore = useProfileStore();
-    const usersStore = useUsersStore();
 
     const loading = ref(false);
     const searchQuery = ref("");
@@ -39,6 +39,10 @@ export default {
     const sortOrder = ref<"asc" | "desc">("asc");
     const currentPage = ref(1);
     const itemsPerPage = ref(10);
+
+    // Data from API
+    const usersData = ref<User[]>([]);
+    const rolesData = ref<Role[]>([]);
 
     // CRUD state
     const showEditModal = ref(false);
@@ -54,30 +58,26 @@ export default {
       role: "",
     });
 
-    // Computed items from users store
+    // Computed items from API data
     const items = computed(() => {
       // Get current logged-in user info
       const currentUser = authStore.currentUser;
       
-      // Map users and merge dynamic data for current user
-      return (usersStore.allUsers as any[]).map(u => {
+      // Map users from API
+      return usersData.value.map(u => {
         const userObj: User = {
-          id: u.id?.toString() || '',
-          slug: u.slug || u.username || u.id?.toString() || '',
-          username: u.username || u.email || '',
-          name: u.name || u.username || 'Unknown',
-          jabatan: u.jabatan || '',
-          role: u.role || 'user',
-          photo: u.photo,
-          joined: u.joined
+          id: (u as any).id?.toString() || '',
+          slug: (u as any).slug || (u as any).username || (u as any).id?.toString() || '',
+          username: (u as any).username || (u as any).email || '',
+          name: (u as any).name || (u as any).username || 'Unknown',
+          jabatan: (u as any).jabatan || '',
+          role: (u as any).role || (u as any).role_name || 'user',
+          photo: (u as any).photo,
+          joined: (u as any).joined || (u as any).created_at
         };
 
-        // If this is the current logged-in user and profile has been customized
-        if (
-          currentUser &&
-          userObj.id === currentUser.id &&
-          profileStore.isCustomized
-        ) {
+        // If this is the current logged-in user, use profile store data
+        if (currentUser && userObj.id === currentUser.id) {
           return {
             ...userObj,
             jabatan: profileStore.jabatan || userObj.jabatan,
@@ -91,15 +91,23 @@ export default {
 
     const loadUsers = async () => {
       loading.value = true;
-      await new Promise((r) => setTimeout(r, 500));
-
-      // Initialize users store
-      usersStore.initialize();
-
-      // Load profile data from storage with proper user switching
-      profileStore.switchUser();
-
-      loading.value = false;
+      try {
+        // Fetch users and roles from API in parallel
+        const [users, roles] = await Promise.all([
+          usersService.getAll(),
+          roleService.getAll()
+        ]);
+        
+        usersData.value = users as any;
+        rolesData.value = roles;
+        
+        // Load profile data
+        await profileStore.switchUser();
+      } catch (error) {
+        console.error('Failed to load data:', error);
+      } finally {
+        loading.value = false;
+      }
     };
 
     const filteredData = computed(() => {
@@ -162,15 +170,33 @@ export default {
     const updateUser = async () => {
       if (!currentEditItem.value) return;
 
-      // Update in usersStore (persists to localStorage)
-      const result = await usersStore.updateUserById(currentEditItem.value.id, {
-        role: formData.value.role,
-      });
-
-      if (result.success) {
+      try {
+        // Find the role ID from the selected role name
+        const selectedRoleName = formData.value.role;
+        const roleObj = rolesData.value.find(r => 
+          r.name.toLowerCase() === selectedRoleName.toLowerCase()
+        );
+        
+        if (roleObj) {
+          // Use role service to assign role
+          await roleService.assignToUser(currentEditItem.value.id, roleObj.id);
+        } else {
+          // Fallback: update directly via users service
+          await usersService.update(currentEditItem.value.id, {
+            role: selectedRoleName
+          });
+        }
+        
+        // Update local data
+        const index = usersData.value.findIndex((u: any) => u.id?.toString() === currentEditItem.value?.id);
+        if (index !== -1) {
+          (usersData.value[index] as any).role = selectedRoleName;
+        }
+        
         showEditModal.value = false;
         showNotification("Role berhasil diperbarui!", "success");
-      } else {
+      } catch (error) {
+        console.error('Failed to update role:', error);
         showNotification("Gagal memperbarui role!", "error");
       }
     };
@@ -184,11 +210,18 @@ export default {
     const deleteUser = async () => {
       if (!currentDeleteItem.value) return;
 
-      const result = await usersStore.deleteUserById(currentDeleteItem.value.id);
-      if (result.success) {
+      try {
+        await usersService.delete(currentDeleteItem.value.id);
+        
+        // Remove from local data
+        usersData.value = usersData.value.filter((u: any) => 
+          u.id?.toString() !== currentDeleteItem.value?.id
+        );
+        
         showDeleteModal.value = false;
         showNotification("User berhasil dihapus!", "success");
-      } else {
+      } catch (error) {
+        console.error('Failed to delete user:', error);
         showNotification("Gagal menghapus user!", "error");
       }
     };
@@ -224,6 +257,7 @@ export default {
       showToast,
       toastMessage,
       toastType,
+      rolesData,
       openEditModal,
       updateUser,
       openDeleteModal,
@@ -503,8 +537,9 @@ export default {
           <div class="mb-3">
             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
             <select v-model="formData.role" class="form-select">
-              <option value="admin">Admin</option>
-              <option value="User">User</option>
+              <option v-for="role in rolesData" :key="role.id" :value="role.name">{{ role.name }}</option>
+              <option v-if="!rolesData.length" value="admin">Admin</option>
+              <option v-if="!rolesData.length" value="user">User</option>
             </select>
             <small class="text-muted">Pilih role untuk user ini.</small>
           </div>

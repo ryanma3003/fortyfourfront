@@ -6,6 +6,8 @@ import { kseCategories, getKategoriSE, getMaxTotalBobot } from '../data/kse-data
 import { useKseStore } from '../stores/kse';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import Swal from 'sweetalert2';
+import { toast } from 'vue3-toastify';
+import 'vue3-toastify/dist/index.css';
 
 const router = useRouter();
 const route = useRoute();
@@ -98,12 +100,11 @@ const getSelectedBobot = (questionNo) => {
   return answer.bobot;
 };
 
-// Get status label based on bobot
-const getStatusLabel = (bobot) => {
-  if (bobot >= 5) return 'Strategis';
-  if (bobot >= 3) return 'Tinggi';
-  if (bobot >= 1) return 'Rendah';
-  return '-';
+// Get status label based on selected option
+const getStatusLabel = (questionNo) => {
+  const option = getSelectedOption(questionNo);
+  if (!option) return '-';
+  return option; // Returns A, B, or C
 };
 
 // Calculate total questions per category
@@ -126,28 +127,45 @@ const maxTotalBobot = getMaxTotalBobot();
 // Navigate to KSE CRUD
 // Save and Exit
 const saveAndExit = () => {
-  // Data is already saved in store on every click. 
-  // We just need to show success and navigate back.
-  
+  // Show confirmation dialog first
   Swal.fire({
-    title: 'Berhasil!',
-    text: 'Data KSE berhasil disimpan.',
-    icon: 'success',
-    confirmButtonText: 'OK',
+    title: 'Yakin simpan perubahan?',
+    text: 'Data KSE akan disimpan.',
+    showCancelButton: true,
+    confirmButtonText: 'Ya',
+    cancelButtonText: 'Tidak',
     confirmButtonColor: '#084696',
+    cancelButtonColor: '#6c757d',
+    reverseButtons: true,
+    customClass: {
+      popup: 'swal-custom-popup',
+      title: 'swal-custom-title',
+      confirmButton: 'swal-custom-confirm',
+      cancelButton: 'swal-custom-cancel',
+    }
   }).then((result) => {
     if (result.isConfirmed) {
-      // Navigate back to profile or list
-      if (currentSlug.value) {
-         // Check if we came from list or profile
-         if (currentSource.value === 'list') {
-             router.push('/stakeholders');
-         } else {
-             router.push(`/profile-stakeholders/${currentSlug.value}`);
-         }
-      } else {
-         router.push('/stakeholders');
-      }
+      // Show success toast notification
+      toast.success('Data KSE berhasil disimpan', {
+        theme: 'auto',
+        icon: true,
+        hideProgressBar: true,
+        autoClose: 2000,
+        position: 'top-right',
+      });
+      
+      // Navigate back after delay
+      setTimeout(() => {
+        if (currentSlug.value) {
+          if (currentSource.value === 'list') {
+            router.push('/stakeholders');
+          } else {
+            router.push(`/profile-stakeholders/${currentSlug.value}`);
+          }
+        } else {
+          router.push('/stakeholders');
+        }
+      }, 1500);
     }
   });
 };
@@ -241,8 +259,8 @@ const saveAndExit = () => {
                       <!-- Status -->
                       <td class="center status-cell">
                         <span class="status-badge" 
-                          :class="getSelectedOption(question.no) ? `status-${getStatusLabel(getSelectedBobot(question.no)).toLowerCase()}` : 'status-empty'">
-                          {{ getStatusLabel(getSelectedBobot(question.no)) }}
+                          :class="getSelectedOption(question.no) ? `status-${getStatusLabel(question.no).toLowerCase()}` : 'status-empty'">
+                          {{ getStatusLabel(question.no) }}
                         </span>
                       </td>
 
@@ -261,7 +279,7 @@ const saveAndExit = () => {
 
                 <!-- Total Row -->
                 <tr class="total-row">
-                  <td colspan="4" class="total-label">Total Bobot Nilai</td>
+                  <td colspan="3" class="total-label">Total Bobot Nilai</td>
                   <td class="center total-value">{{ kseData?.totalBobot || 0 }}</td>
                   <td rowspan="2" class="kategori-final">
                     <div class="kategori-label">Kategori SE</div>
@@ -271,7 +289,7 @@ const saveAndExit = () => {
                   </td>
                 </tr>
                 <tr class="total-row">
-                  <td colspan="4" class="total-label">Nilai Maksimal</td>
+                  <td colspan="3" class="total-label">Kategorisasi Sistem Elektronik</td>
                   <td class="center total-value">{{ maxTotalBobot }}</td>
                 </tr>
               </tbody>
@@ -309,7 +327,7 @@ th, td {
 .main-title {
   font-weight: bold;
   text-align: center;
-  background: #fff;
+  background: #f8f9fa;
   color: #212529;
   font-size: 18px;
   padding: 14px 16px;
@@ -340,7 +358,7 @@ th, td {
 
 .info-label {
   font-weight: 600;
-  color: #6c757d;
+  color:  rgb(0, 0, 0);
   min-width: 140px;
 }
 
@@ -490,24 +508,24 @@ th, td {
   font-weight: 600;
 }
 
-.status-strategis {
+.status-a {
   background: linear-gradient(135deg, #e74c3c, #c0392b);
   color: white;
 }
 
-.status-tinggi {
+.status-b {
   background: linear-gradient(135deg, #f39c12, #e67e22);
   color: white;
 }
 
-.status-rendah {
+.status-c {
   background: linear-gradient(135deg, #2ecc71, #27ae60);
   color: white;
 }
 
 .status-empty {
   background: #e9ecef;
-  color: #6c757d;
+  color: #000000;
 }
 
 /* Bobot Cell */
@@ -520,24 +538,24 @@ th, td {
 /* Dukung Cell */
 .dukung-cell {
   font-size: 11px;
-  color: #6c757d;
+  color: #000000;
   line-height: 1.4;
 }
 
 /* Total Row */
 .total-row {
-  background: #444;
+  background: #000000;
 }
 
 .total-label {
-  background: #444;
-  color: white;
+  background: #f8f9fa;
+  color: rgb(0, 0, 0);
   font-weight: bold;
   text-align: right;
 }
 
 .total-value {
-  background: #fff;
+  background: #f8f9fa;
   font-size: 18px;
   font-weight: 700;
   color: #212529;
@@ -552,13 +570,14 @@ th, td {
 
 .kategori-label {
   font-size: 12px;
-  color: #6c757d;
+  color: #000000;
   margin-bottom: 8px;
 }
 
 .kategori-value {
   font-size: 24px;
   font-weight: 700;
+  color: #000000;
 }
 
 /* Gradient Header Card */
@@ -652,5 +671,82 @@ th, td {
 .btn-save:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(8, 70, 150, 0.3);
+}
+</style>
+
+<style>
+/* SweetAlert2 Modal Fix - Make sure it appears centered on screen */
+.swal2-container {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.swal2-popup {
+  position: relative !important;
+  z-index: 100000 !important;
+}
+
+/* Custom SweetAlert2 Styling */
+.swal-custom-popup {
+  border-radius: 16px !important;
+  padding: 28px 32px !important;
+  box-shadow: 0 20px 60px rgba(8, 70, 150, 0.15) !important;
+  border: 2px solid #000000 !important;
+  background: linear-gradient(145deg, #ffffff 0%, #f8faff 100%) !important;
+}
+
+.swal-custom-title {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: #084696 !important;
+  margin-bottom: 8px !important;
+}
+
+.swal2-html-container {
+  color: #6c757d !important;
+  font-size: 14px !important;
+}
+
+.swal2-actions {
+  gap: 16px !important;
+  margin-top: 24px !important;
+}
+
+.swal-custom-confirm {
+  border-radius: 10px !important;
+  padding: 12px 32px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  background: linear-gradient(135deg, #084696 0%, #052c65 100%) !important;
+  border: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.swal-custom-confirm:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 15px rgba(8, 70, 150, 0.4) !important;
+}
+
+.swal-custom-cancel {
+  border-radius: 10px !important;
+  padding: 12px 32px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  background: #fff !important;
+  border: 2px solid #dee2e6 !important;
+  color: #6c757d !important;
+  transition: all 0.3s ease !important;
+}
+
+.swal-custom-cancel:hover {
+  background: #f8f9fa !important;
+  border-color: #adb5bd !important;
 }
 </style>
