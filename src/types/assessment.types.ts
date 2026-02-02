@@ -1,0 +1,119 @@
+// Assessment Type Definitions
+
+export type QuestionScope = 'Tata Kelola' | 'Sumber Daya Manusia' | 'Teknologi';
+
+export type AnswerIndex = 0 | 1 | 2 | 3 | 4 | 5 | 'NA';
+
+export interface IndexDescription {
+    0: string;
+    1: string;
+    2: string;
+    3: string;
+    4: string;
+    5: string;
+}
+
+export interface Question {
+    id: string;
+    categoryId: string;
+    subCategoryId: string;
+    text: string;
+    scope: QuestionScope;
+    indexDescriptions: IndexDescription;
+}
+
+export interface SubCategory {
+    id: string;
+    categoryId: string;
+    name: string;
+    questions: Question[];
+}
+
+export interface Category {
+    id: string;
+    domainId: string;
+    name: string;
+    subCategories: SubCategory[];
+}
+
+export interface Domain {
+    id: string;
+    name: string;
+    color: string; // For UI styling
+    categories: Category[];
+}
+
+export interface AssessmentData {
+    domains: Domain[];
+}
+
+// Answer storage
+export interface Answer {
+    questionId: string;
+    index: AnswerIndex;
+    updatedAt: number;
+}
+
+export interface AnswerMap {
+    [questionId: string]: Answer;
+}
+
+// Progress tracking
+export interface AssessmentProgress {
+    currentDomainId: string;
+    currentCategoryId: string;
+    currentSubCategoryId: string;
+    currentPage: number;
+    lastUpdated: number;
+}
+
+// Respondent Profile
+export interface RespondentProfile {
+    instansi: string;
+    namaSistem: string;
+    jenisSistem: 'IT' | 'OT' | 'IT & OT';
+    sektor: string;
+    alamat: string;
+    email: string;
+    nomorTelepon: string;
+    namaResponden: string;
+    jabatanResponden: string;
+    tahunPengukuran: string;
+    targetLevel: 1 | 2 | 3 | 4 | 5;
+    targetNilai: string;
+    acuanManajemenRisiko: string;
+    acuanKeamananSiber: string;
+    tanggalPengisian: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+// Calculation results (prepared for future use)
+export interface SubCategoryResult {
+    subCategoryId: string;
+    average: number | null; // null if all NA
+    totalQuestions: number;
+    answeredQuestions: number;
+    naCount: number;
+}
+
+export interface CategoryResult {
+    categoryId: string;
+    average: number | null;
+    subCategoryResults: SubCategoryResult[];
+}
+
+export interface DomainResult {
+    domainId: string;
+    average: number | null;
+    categoryResults: CategoryResult[];
+}
+
+export interface AssessmentResult {
+    overallAverage: number | null;
+    maturityLevel: string;
+    domainResults: DomainResult[];
+    totalQuestions: number;
+    answeredQuestions: number;
+    completionPercentage: number;
+}

@@ -1216,7 +1216,7 @@ router.beforeEach((to, from, next) => {
     const storedUser = sessionStorage.getItem('auth_user_session');
     const currentUser = storedUser ? JSON.parse(storedUser) : null;
     if (currentUser?.role !== 'admin') {
-      // Redirect non-admin users to dashboards
+      alert('Access denied. Admin access required.');
       next('/dashboards');
     } else {
       next();

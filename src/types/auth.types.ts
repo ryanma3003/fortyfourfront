@@ -5,7 +5,11 @@ export interface LoginPayload {
 
 export interface RegisterPayload {
     username: string;
+    email: string;
     password: string;
+    // Optional company fields
+    id_perusahaan?: string;
+    nama_perusahaan?: string;
 }
 
 export interface AuthResponse {
