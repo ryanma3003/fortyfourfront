@@ -17,9 +17,9 @@ const props = defineProps({
 const store = useIkasStore();
 store.initialize();
 
-// Helper to convert 'NA' or null values to 0 for chart display
+// Helper to convert null values to 0 for chart display
 const toChartValue = (val) => {
-    if (val === null || val === 'NA' || typeof val !== 'number') return 0;
+    if (val === null || typeof val !== 'number') return 0;
     return val;
 };
 

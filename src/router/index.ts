@@ -357,6 +357,11 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/ikas-crud.vue"),
         },
         {
+          path: `ikas-assessment`,
+          name: 'Ikas Assessment',
+          component: () => import("../views/assessment/AssessmentView.vue"),
+        },
+        {
           path: `kse`,
           name: 'Kse',
           component: () => import("../components/kse.vue"),

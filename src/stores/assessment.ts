@@ -3,8 +3,7 @@ import type {
     RespondentProfile,
     AnswerMap,
     Answer,
-    AssessmentProgress,
-    AnswerIndex
+    AssessmentProgress
 } from '@/types/assessment.types';
 import { assessmentData, getTotalQuestionCount } from '@/data/assessment/assessment-data';
 import { useIkasStore } from '@/stores/ikas';
@@ -256,7 +255,7 @@ export const useAssessmentStore = defineStore('assessment', {
         /**
          * Save or update an answer for current stakeholder
          */
-        saveAnswer(questionId: string, index: AnswerIndex) {
+        saveAnswer(questionId: string, index: number) {
             if (!this.currentStakeholderSlug) return;
 
             const answer: Answer = {

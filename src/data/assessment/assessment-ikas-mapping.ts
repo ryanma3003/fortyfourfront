@@ -188,39 +188,24 @@ export function getQuestionIdsForSubdomain(
  * Calculate average score from assessment answers for a specific subdomain
  * Returns:
  * - number: The average score
- * - 'NA': All questions are marked as Not Applicable
  * - null: No answers yet
  */
 export function calculateSubdomainScore(
     questionIds: string[],
-    answers: Record<string, { index: number | string }>
-): number | 'NA' | null {
+    answers: Record<string, { index: number }>
+): number | null {
     const scores: number[] = [];
-    let naCount = 0;
-    let answeredCount = 0;
     
     questionIds.forEach(qId => {
         const answer = answers[qId];
         if (answer && answer.index !== undefined) {
-            answeredCount++;
-            if (answer.index === 'NA') {
-                naCount++;
-            } else {
-                const indexNum = typeof answer.index === 'string' ? parseInt(answer.index, 10) : answer.index;
-                if (!isNaN(indexNum) && indexNum >= 0) {
-                    scores.push(indexNum);
-                }
+            const indexNum = answer.index;
+            if (indexNum >= 0) {
+                scores.push(indexNum);
             }
         }
     });
 
-    // No answers at all
-    if (answeredCount === 0) return null;
-    
-    // All answered questions are N/A
-    if (naCount === answeredCount && naCount > 0) return 'NA';
-    
-    // Some valid scores
     if (scores.length === 0) return null;
     
     const sum = scores.reduce((a, b) => a + b, 0);

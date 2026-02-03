@@ -2,15 +2,10 @@
 
 export type QuestionScope = 'Tata Kelola' | 'Sumber Daya Manusia' | 'Teknologi';
 
-export type AnswerIndex = 0 | 1 | 2 | 3 | 4 | 5 | 'NA';
+export type AnswerIndex = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface IndexDescription {
-    0: string;
-    1: string;
-    2: string;
-    3: string;
-    4: string;
-    5: string;
+    [key: number]: string;
 }
 
 export interface Question {
@@ -50,7 +45,7 @@ export interface AssessmentData {
 // Answer storage
 export interface Answer {
     questionId: string;
-    index: AnswerIndex;
+    index: number;
     updatedAt: number;
 }
 
@@ -91,10 +86,9 @@ export interface RespondentProfile {
 // Calculation results (prepared for future use)
 export interface SubCategoryResult {
     subCategoryId: string;
-    average: number | null; // null if all NA
+    average: number | null;
     totalQuestions: number;
     answeredQuestions: number;
-    naCount: number;
 }
 
 export interface CategoryResult {

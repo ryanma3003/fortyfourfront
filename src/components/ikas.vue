@@ -194,7 +194,6 @@ const uploadExcel = async () => {
 
 const formatValue = (value) => {
     if (value === null || value === 0) return '-';
-    if (value === 'NA') return 'Not Applicable';
     return value;
 };
 

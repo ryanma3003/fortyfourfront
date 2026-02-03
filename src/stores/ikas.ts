@@ -43,11 +43,11 @@ export const domainDetails: any = {
 export interface IkasIdentifikasi {
   nilai_identifikasi: number | 'NA' | null;
   kategori_identifikasi: string;
-  nilai_subdomain1: number | 'NA' | null;
-  nilai_subdomain2: number | 'NA' | null;
-  nilai_subdomain3: number | 'NA' | null;
-  nilai_subdomain4: number | 'NA' | null;
-  nilai_subdomain5: number | 'NA' | null;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
+  nilai_subdomain4: number | null;
+  nilai_subdomain5: number | null;
 }
 
 export interface DomainDetail {
@@ -59,29 +59,29 @@ export interface DomainDetail {
 export interface IkasProteksi {
   nilai_proteksi: number | 'NA' | null;
   kategori_proteksi: string;
-  nilai_subdomain1: number | 'NA' | null;
-  nilai_subdomain2: number | 'NA' | null;
-  nilai_subdomain3: number | 'NA' | null;
-  nilai_subdomain4: number | 'NA' | null;
-  nilai_subdomain5: number | 'NA' | null;
-  nilai_subdomain6: number | 'NA' | null;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
+  nilai_subdomain4: number | null;
+  nilai_subdomain5: number | null;
+  nilai_subdomain6: number | null;
 }
 
 export interface IkasDeteksi {
   nilai_deteksi: number | 'NA' | null;
   kategori_deteksi: string;
-  nilai_subdomain1: number | 'NA' | null;
-  nilai_subdomain2: number | 'NA' | null;
-  nilai_subdomain3: number | 'NA' | null;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
 }
 
 export interface IkasTanggulih {
   nilai_tanggulih: number | 'NA' | null;
   kategori_tanggulih: string;
-  nilai_subdomain1: number | 'NA' | null;
-  nilai_subdomain2: number | 'NA' | null;
-  nilai_subdomain3: number | 'NA' | null;
-  nilai_subdomain4: number | 'NA' | null;
+  nilai_subdomain1: number | null;
+  nilai_subdomain2: number | null;
+  nilai_subdomain3: number | null;
+  nilai_subdomain4: number | null;
 }
 
 export interface IkasData {
@@ -91,7 +91,7 @@ export interface IkasData {
   proteksi: IkasProteksi;
   deteksi: IkasDeteksi;
   tanggulih: IkasTanggulih;
-  details: Record<string, Record<string, Record<string, number>>>; // domain -> subdomain -> id -> value
+  details: Record<string, Record<string, Record<string, number>>>;
 }
 
 // Helper function untuk label maturity
@@ -413,7 +413,7 @@ export const useIkasStore = defineStore('ikas', {
       tang.kategori_tanggulih = getMaturityLabel(tang.nilai_tanggulih);
 
       // Total
-      const totalValues = [
+      const domainValues = [
         iden.nilai_identifikasi,
         prot.nilai_proteksi,
         det.nilai_deteksi,
@@ -443,7 +443,7 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     // Sync data from assessment answers to IKAS subdomain values
-    syncFromAssessment(slug: string, answers: Record<string, { index: number | string }>) {
+    syncFromAssessment(slug: string, answers: Record<string, { index: number }>) {
       this.ensureStakeholderData(slug);
       const data = this.ikasDataMap[slug];
 

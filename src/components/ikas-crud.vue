@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAssessmentStore } from '@/stores/assessment';
 import { useStakeholdersStore } from '@/stores/stakeholders';
-import { assessmentData } from '@/data/assessment/assessment-data';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 import RespondentForm from '@/views/assessment/RespondentForm.vue';
 import AssessmentView from '@/views/assessment/AssessmentView.vue';

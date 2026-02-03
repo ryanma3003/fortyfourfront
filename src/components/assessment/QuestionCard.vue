@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import type { Question, AnswerIndex } from '@/types/assessment.types';
+import type { Question } from '@/types/assessment.types';
 
 const props = defineProps<{
   question: Question;
   questionNumber: number;
-  selectedIndex?: AnswerIndex;
+  selectedIndex?: number;
 }>();
 
 const emit = defineEmits<{
-  (e: 'answer', questionId: string, index: AnswerIndex): void;
+  (e: 'answer', questionId: string, index: number): void;
 }>();
 
 // Local state for selected index
-const selectedAnswer = ref<AnswerIndex | undefined>(props.selectedIndex);
+const selectedAnswer = ref<number | undefined>(props.selectedIndex);
 
 // Watch for prop changes (when navigating between pages)
 watch(() => props.selectedIndex, (newValue) => {
@@ -25,27 +25,13 @@ const indexOptions = [0, 1, 2, 3, 4, 5];
 
 // Handle index selection
 const selectIndex = (index: number) => {
-  // Allow selecting index even if NA is currently selected (clears NA)
-  selectedAnswer.value = index as AnswerIndex;
-  emit('answer', props.question.id, index as AnswerIndex);
-};
-
-// Handle NA selection (toggle on/off)
-const selectNA = () => {
-  if (selectedAnswer.value === 'NA') {
-    // If already NA, deselect it (clear answer)
-    selectedAnswer.value = undefined;
-    emit('answer', props.question.id, 0); // Reset to index 0
-  } else {
-    // Select NA
-    selectedAnswer.value = 'NA';
-    emit('answer', props.question.id, 'NA');
-  }
+  selectedAnswer.value = index;
+  emit('answer', props.question.id, index);
 };
 
 // Get description for selected index
 const selectedDescription = computed(() => {
-  if (selectedAnswer.value === 'NA' || selectedAnswer.value === undefined) {
+  if (selectedAnswer.value === undefined) {
     return null;
   }
   return props.question.indexDescriptions[selectedAnswer.value];
@@ -94,39 +80,19 @@ const scopeColor = computed(() => {
             :key="index"
             type="button"
             class="btn btn-outline-primary index-btn"
-            :class="{ 'active': selectedAnswer === index, 'dimmed': selectedAnswer === 'NA' }"
+            :class="{ 'active': selectedAnswer === index }"
             @click="selectIndex(index)"
           >
             Index {{ index }}
           </button>
         </div>
       </div>
-
-      <!-- NA Option -->
-      <div class="na-option mb-3">
-        <button
-          type="button"
-          class="btn btn-outline-secondary"
-          :class="{ 'active': selectedAnswer === 'NA' }"
-          @click="selectNA"
-        >
-          <i class="ri-close-circle-line me-1"></i>
-          Not Applicable
-        </button>
-      </div>
-
       <!-- Description Display -->
       <div v-if="selectedDescription" class="description-box mt-3">
         <div class="alert alert-info mb-0">
           <strong>Index {{ selectedAnswer }} - Deskripsi:</strong>
           <p class="mb-0 mt-2">{{ selectedDescription }}</p>
         </div>
-      </div>
-
-      <!-- NA Message -->
-      <div v-if="selectedAnswer === 'NA'" class="alert alert-warning mb-0 mt-3">
-        <i class="ri-information-line me-1"></i>
-        Pertanyaan ini ditandai sebagai <strong>Not Applicable</strong> dan tidak akan diikutsertakan dalam perhitungan.
       </div>
     </div>
   </div>

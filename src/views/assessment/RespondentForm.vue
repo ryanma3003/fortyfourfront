@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useAssessmentStore } from '@/stores/assessment';
 import type { RespondentProfile } from '@/types/assessment.types';
 
@@ -101,12 +101,32 @@ const validateField = (field: string, value: any): string => {
   }
 };
 
+// List of required fields
+const requiredFields = [
+  'instansi',
+  'namaSistem',
+  'alamat',
+  'email',
+  'nomorTelepon',
+  'namaResponden',
+  'jabatanResponden',
+  'tahunPengukuran',
+  'targetNilai',
+  'acuanManajemenRisiko',
+  'acuanKeamananSiber'
+];
+
 // Validate all fields
 const validateForm = (): boolean => {
+  // Clear old errors first
+  Object.keys(errors).forEach(key => delete errors[key]);
+  
   const newErrors: Record<string, string> = {};
   
-  Object.keys(formData).forEach(key => {
-    const error = validateField(key, (formData as any)[key]);
+  // Only validate required fields
+  requiredFields.forEach(key => {
+    const value = (formData as any)[key] ?? '';
+    const error = validateField(key, String(value));
     if (error) {
       newErrors[key] = error;
     }
@@ -157,14 +177,7 @@ const saveFormData = () => {
   }, 3000);
 };
 
-// Check if form is valid
-const isFormValid = computed(() => {
-  return Object.keys(formData).every(key => {
-    const value = (formData as any)[key];
-    const error = validateField(key, value);
-    return error === '';
-  });
-});
+
 
 // Start assessment (emit submit event)
 const startAssessment = () => {
@@ -417,7 +430,6 @@ const startAssessment = () => {
               <button 
                 type="submit" 
                 class="btn btn-primary"
-                :disabled="!isFormValid"
               >
                 Lanjut ke Penilaian
                 <i class="ri-arrow-right-line ms-1"></i>

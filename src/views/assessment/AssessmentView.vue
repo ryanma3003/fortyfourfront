@@ -5,7 +5,6 @@ import { assessmentData } from '@/data/assessment/assessment-data';
 import QuestionCard from '@/components/assessment/QuestionCard.vue';
 import ProgressBar from '@/components/assessment/ProgressBar.vue';
 import PaginationControl from '@/components/assessment/PaginationControl.vue';
-import type { AnswerIndex } from '@/types/assessment.types';
 
 const assessmentStore = useAssessmentStore();
 
@@ -18,7 +17,7 @@ const emit = defineEmits<{
 const sidebarCollapsed = ref(false);
 
 // Handle answer change
-const handleAnswer = (questionId: string, index: AnswerIndex) => {
+const handleAnswer = (questionId: string, index: number) => {
   assessmentStore.saveAnswer(questionId, index);
 };
 
@@ -76,6 +75,11 @@ const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryI
          assessmentStore.progress.currentCategoryId === categoryId &&
          assessmentStore.progress.currentSubCategoryId === subCategoryId;
 };
+
+// Check if domain is current
+const isCurrentDomain = (domainId: string) => {
+  return assessmentStore.progress.currentDomainId === domainId;
+};
 </script>
 
 <template>
@@ -113,21 +117,25 @@ const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryI
               v-for="domain in assessmentData.domains" 
               :key="domain.id"
               class="accordion-item"
+              :class="{ 'domain-active': isCurrentDomain(domain.id) }"
             >
               <h2 class="accordion-header">
                 <button 
-                  class="accordion-button collapsed"
+                  class="accordion-button"
+                  :class="{ 'collapsed': !isCurrentDomain(domain.id) }"
                   type="button" 
                   data-bs-toggle="collapse" 
                   :data-bs-target="'#domain-' + domain.id"
                   :style="{ borderLeft: '4px solid ' + domain.color }"
                 >
-                  {{ domain.name }}
+                  <span class="me-2">{{ domain.name }}</span>
+                  <span v-if="isCurrentDomain(domain.id)" class="badge bg-primary-transparent ms-auto me-2">Aktif</span>
                 </button>
               </h2>
               <div 
                 :id="'domain-' + domain.id" 
                 class="accordion-collapse collapse"
+                :class="{ 'show': isCurrentDomain(domain.id) }"
                 data-bs-parent="#assessmentAccordion"
               >
                 <div class="accordion-body p-0">
@@ -248,8 +256,13 @@ const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryI
 }
 
 .accordion-button:not(.collapsed) {
-  background-color: var(--light);
-  color: var(--default-text-color);
+  background-color: var(--primary-01);
+  color: var(--primary-color);
+  box-shadow: none;
+}
+
+.accordion-item.domain-active .accordion-button {
+  background-color: var(--primary-01);
 }
 
 .category-section {
