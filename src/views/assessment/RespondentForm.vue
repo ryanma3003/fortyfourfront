@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { useAssessmentStore } from '@/stores/assessment';
 import type { RespondentProfile } from '@/types/assessment.types';
-import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 
-const router = useRouter();
 const assessmentStore = useAssessmentStore();
 
-// Page header data
-const pageheaderData = {
-  title: { label: 'IKAS Assessment', path: '/respondent' },
-  currentpage: 'Data Responden',
-  activepage: 'Data Responden'
-};
+const emit = defineEmits<{
+  (e: 'submit'): void;
+  (e: 'cancel'): void;
+}>();
 
 // Dropdown options
 const jenisSistemOptions = ['IT', 'OT', 'IT & OT'];
@@ -59,13 +54,10 @@ const formData = reactive<Partial<RespondentProfile>>({
 const errors = reactive<Record<string, string>>({});
 
 // Auto-save indicator
-const lastSaved = ref<Date | null>(null);
 const saveIndicator = ref('');
 
 // Initialize form from store
 onMounted(() => {
-  assessmentStore.initialize();
-  
   if (assessmentStore.respondentProfile) {
     Object.assign(formData, assessmentStore.respondentProfile);
   }
@@ -158,7 +150,6 @@ const saveFormData = () => {
   };
 
   assessmentStore.saveRespondentProfile(profile);
-  lastSaved.value = new Date();
   saveIndicator.value = '✓ Disimpan otomatis';
   
   setTimeout(() => {
@@ -175,18 +166,16 @@ const isFormValid = computed(() => {
   });
 });
 
-// Start assessment
+// Start assessment (emit submit event)
 const startAssessment = () => {
   if (validateForm()) {
     saveFormData();
-    router.push('/assessment');
+    emit('submit');
   }
 };
 </script>
 
 <template>
-  <Pageheader :propData="pageheaderData" />
-  
   <div class="row">
     <div class="col-12">
       <div class="card custom-card">
@@ -420,17 +409,18 @@ const startAssessment = () => {
               <button 
                 type="button" 
                 class="btn btn-light"
-                @click="router.push('/dashboards')"
+                @click="emit('cancel')"
               >
-                Batal
+                <i class="ri-arrow-left-line me-1"></i>
+                Kembali ke Ringkasan
               </button>
               <button 
                 type="submit" 
                 class="btn btn-primary"
                 :disabled="!isFormValid"
               >
-                <i class="ri-arrow-right-line me-1"></i>
-                Mulai Penilaian
+                Lanjut ke Penilaian
+                <i class="ri-arrow-right-line ms-1"></i>
               </button>
             </div>
           </form>

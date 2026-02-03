@@ -1,37 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed } from 'vue';
 import { useAssessmentStore } from '@/stores/assessment';
 import { assessmentData } from '@/data/assessment/assessment-data';
-import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 import QuestionCard from '@/components/assessment/QuestionCard.vue';
 import ProgressBar from '@/components/assessment/ProgressBar.vue';
 import PaginationControl from '@/components/assessment/PaginationControl.vue';
 import type { AnswerIndex } from '@/types/assessment.types';
 
-const router = useRouter();
 const assessmentStore = useAssessmentStore();
+
+const emit = defineEmits<{
+  (e: 'edit'): void;
+  (e: 'back'): void;
+}>();
 
 // Sidebar collapsed state
 const sidebarCollapsed = ref(false);
-
-// Initialize store
-onMounted(() => {
-  assessmentStore.initialize();
-  
-  // Redirect if no respondent profile
-  if (!assessmentStore.hasRespondentProfile) {
-    alert('Silakan lengkapi data responden terlebih dahulu.');
-    router.push('/respondent');
-  }
-});
-
-// Page header data
-const pageheaderData = computed(() => ({
-  title: { label: 'Data Responden', path: '/respondent' },
-  currentpage: 'Assessment',
-  activepage: assessmentStore.currentDomain?.name || 'Assessment'
-}));
 
 // Handle answer change
 const handleAnswer = (questionId: string, index: AnswerIndex) => {
@@ -95,8 +79,6 @@ const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryI
 </script>
 
 <template>
-  <Pageheader :propData="pageheaderData" />
-
   <div class="row">
     <div class="col-12">
       <!-- Progress Bar -->
@@ -184,7 +166,7 @@ const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryI
     <!-- Main Content -->
     <div :class="sidebarCollapsed ? 'col-md-11' : 'col-md-9'">
       <div class="card custom-card">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
           <!-- Breadcrumb -->
           <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
@@ -198,6 +180,26 @@ const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryI
               </li>
             </ol>
           </nav>
+
+          <!-- Action Buttons -->
+          <div class="d-flex gap-2">
+            <button 
+              @click="emit('edit')" 
+              class="btn btn-sm btn-light"
+              title="Edit Data Responden"
+            >
+              <i class="ri-edit-line me-1"></i>
+              Edit Data
+            </button>
+            <button 
+              @click="emit('back')" 
+              class="btn btn-sm btn-success-light"
+              title="Kembali ke Ringkasan IKAS"
+            >
+              <i class="ri-file-list-3-line me-1"></i>
+              Lihat Ringkasan
+            </button>
+          </div>
         </div>
         <div class="card-body">
           <!-- Questions -->

@@ -312,7 +312,7 @@ td {
                   <tr>
                     <th colspan="2" class="total">Total</th>
                     <th class="center bold">2.51</th>
-                    <th class="center bold">{{ ikasDataDynamic.total_rata_rata }}</th>
+                    <th class="center bold">{{ formatValue(ikasDataDynamic.total_rata_rata) }}</th>
                   </tr>
                 </thead>
 
@@ -323,7 +323,7 @@ td {
                     <td class="item">Mengidentifikasi Peran dan tanggung jawab organisasi</td>
                     <td class="center">{{ ikasDataStatic.identifikasi.peran_tanggung_jawab }}</td>
                     <td class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_subdomain1) }}</td>
-                    <td rowspan="5" class="center">{{ ikasDataDynamic.identifikasi.nilai_identifikasi }}</td>
+                    <td rowspan="5" class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_identifikasi) }}</td>
                     <td rowspan="5" class="center">{{ ikasDataDynamic.identifikasi.kategori_identifikasi }}</td>
                     <td rowspan="18" class="status-big">{{ ikasDataDynamic.total_kategori }}</td>
                   </tr>
@@ -354,7 +354,7 @@ td {
                     <td class="item">Mengelola identitas, autentikasi, dan kendali akses</td>
                     <td class="center">{{ ikasDataStatic.proteksi.identitas_autentikasi }}</td>
                     <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain1) }}</td>
-                    <td rowspan="6" class="center">{{ ikasDataDynamic.proteksi.nilai_proteksi }}</td>
+                    <td rowspan="6" class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_proteksi) }}</td>
                     <td rowspan="6" class="center">{{ ikasDataDynamic.proteksi.kategori_proteksi }}</td>
                   </tr>
                   <tr>
@@ -389,7 +389,7 @@ td {
                     <td class="item">Mengelola deteksi Peristiwa Siber</td>
                     <td class="center">{{ ikasDataStatic.deteksi.deteksi_peristiwa }}</td>
                     <td class="center">{{ formatValue(ikasDataDynamic.deteksi.nilai_subdomain1) }}</td>
-                    <td rowspan="3" class="center">{{ ikasDataDynamic.deteksi.nilai_deteksi }}</td>
+                    <td rowspan="3" class="center">{{ formatValue(ikasDataDynamic.deteksi.nilai_deteksi) }}</td>
                     <td rowspan="3" class="center">{{ ikasDataDynamic.deteksi.kategori_deteksi }}</td>
                   </tr>
                   <tr>
@@ -409,7 +409,7 @@ td {
                     <td class="item">Menyusun perencanaan penanggulangan dan pemulihan Insiden Siber</td>
                     <td class="center">{{ ikasDataStatic.tanggulih.perencanaan_pemulihan }}</td>
                     <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain1) }}</td>
-                    <td rowspan="4" class="center">{{ ikasDataDynamic.tanggulih.nilai_tanggulih }}</td>
+                    <td rowspan="4" class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_tanggulih) }}</td>
                     <td rowspan="4" class="center">{{ ikasDataDynamic.tanggulih.kategori_tanggulih }}</td>
                   </tr>
                   <tr>
