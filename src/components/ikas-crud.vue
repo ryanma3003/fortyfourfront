@@ -33,6 +33,11 @@ onMounted(async () => {
     await stakeholdersStore.initialize();
   }
 
+  // Set current stakeholder so data is stored per stakeholder
+  if (currentSlug.value) {
+    assessmentStore.setCurrentStakeholder(currentSlug.value);
+  }
+
   // Check if respondent profile exists, if yes skip to step 2
   if (assessmentStore.hasRespondentProfile) {
     currentStep.value = 2;
@@ -125,39 +130,61 @@ onMounted(() => {
   }
 });
 
+// List of required fields that need text input validation
+const requiredTextFields = [
+  'instansi',
+  'namaSistem',
+  'alamat',
+  'email',
+  'nomorTelepon',
+  'namaResponden',
+  'jabatanResponden',
+  'tahunPengukuran',
+  'targetNilai',
+  'acuanManajemenRisiko',
+  'acuanKeamananSiber'
+];
+
 // Validation rules
 const validateField = (field: string, value: any): string => {
+  // Skip validation for non-required fields
+  if (!requiredTextFields.includes(field)) {
+    return '';
+  }
+
+  const stringValue = String(value || '').trim();
+
   switch (field) {
     case 'instansi':
-      return value.trim() === '' ? 'Instansi wajib diisi' : '';
+      return stringValue === '' ? 'Instansi wajib diisi' : '';
     case 'namaSistem':
-      return value.trim() === '' ? 'Nama sistem wajib diisi' : '';
+      return stringValue === '' ? 'Nama sistem wajib diisi' : '';
     case 'alamat':
-      return value.trim() === '' ? 'Alamat wajib diisi' : '';
+      return stringValue === '' ? 'Alamat wajib diisi' : '';
     case 'email':
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (value.trim() === '') return 'Email wajib diisi';
-      if (!emailRegex.test(value)) return 'Format email tidak valid';
+      if (stringValue === '') return 'Email wajib diisi';
+      if (!emailRegex.test(stringValue)) return 'Format email tidak valid';
       return '';
     case 'nomorTelepon':
       const phoneRegex = /^[0-9+\-\s()]+$/;
-      if (value.trim() === '') return 'Nomor telepon wajib diisi';
-      if (!phoneRegex.test(value)) return 'Format nomor telepon tidak valid';
+      if (stringValue === '') return 'Nomor telepon wajib diisi';
+      if (!phoneRegex.test(stringValue)) return 'Format nomor telepon tidak valid';
       return '';
     case 'namaResponden':
-      return value.trim() === '' ? 'Nama responden wajib diisi' : '';
+      return stringValue === '' ? 'Nama responden wajib diisi' : '';
     case 'jabatanResponden':
-      return value.trim() === '' ? 'Jabatan responden wajib diisi' : '';
+      return stringValue === '' ? 'Jabatan responden wajib diisi' : '';
     case 'tahunPengukuran':
-      const year = parseInt(value);
+      const year = parseInt(stringValue);
       if (isNaN(year) || year < 2000 || year > 2100) return 'Tahun tidak valid';
       return '';
     case 'targetNilai':
-      return value.trim() === '' ? 'Target nilai wajib diisi' : '';
+      return stringValue === '' ? 'Target nilai wajib diisi' : '';
     case 'acuanManajemenRisiko':
-      return value.trim() === '' ? 'Acuan manajemen risiko wajib diisi' : '';
+      return stringValue === '' ? 'Acuan manajemen risiko wajib diisi' : '';
     case 'acuanKeamananSiber':
-      return value.trim() === '' ? 'Acuan keamanan siber wajib diisi' : '';
+      return stringValue === '' ? 'Acuan keamanan siber wajib diisi' : '';
     default:
       return '';
   }
@@ -167,13 +194,16 @@ const validateField = (field: string, value: any): string => {
 const validateForm = (): boolean => {
   const newErrors: Record<string, string> = {};
   
-  Object.keys(formData).forEach(key => {
+  // Only validate required text fields
+  requiredTextFields.forEach(key => {
     const error = validateField(key, (formData as any)[key]);
     if (error) {
       newErrors[key] = error;
     }
   });
 
+  // Clear old errors and assign new ones
+  Object.keys(errors).forEach(key => delete errors[key]);
   Object.assign(errors, newErrors);
   return Object.keys(newErrors).length === 0;
 };
@@ -218,15 +248,6 @@ const saveFormData = () => {
     saveIndicator.value = '';
   }, 3000);
 };
-
-// Check if form is valid
-const isFormValid = computed(() => {
-  return Object.keys(formData).every(key => {
-    const value = (formData as any)[key];
-    const error = validateField(key, value);
-    return error === '';
-  });
-});
 
 // Start assessment (move to step 2)
 const startAssessment = () => {
@@ -607,7 +628,6 @@ const backToIkas = () => {
                 <button 
                   type="submit" 
                   class="btn btn-primary"
-                  :disabled="!isFormValid"
                 >
                   Lanjut ke Penilaian
                   <i class="ri-arrow-right-line ms-1"></i>

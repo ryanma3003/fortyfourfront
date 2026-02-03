@@ -7,32 +7,67 @@ import type {
     AnswerIndex
 } from '@/types/assessment.types';
 import { assessmentData, getTotalQuestionCount } from '@/data/assessment/assessment-data';
+import { useIkasStore } from '@/stores/ikas';
 
 const STORAGE_KEYS = {
-    RESPONDENT_PROFILE: 'respondent_profile',
-    ASSESSMENT_ANSWERS: 'assessment_answers',
-    ASSESSMENT_PROGRESS: 'assessment_progress'
+    RESPONDENT_PROFILES: 'respondent_profiles_map', // Map: slug -> profile
+    ASSESSMENT_ANSWERS: 'assessment_answers_map', // Map: slug -> answers
+    ASSESSMENT_PROGRESS: 'assessment_progress_map' // Map: slug -> progress
 };
+
+// Default progress state
+const createDefaultProgress = (): AssessmentProgress => ({
+    currentDomainId: 'identifikasi',
+    currentCategoryId: 'peran-tanggung-jawab',
+    currentSubCategoryId: 'peran-keamanan',
+    currentPage: 1,
+    lastUpdated: Date.now()
+});
 
 export const useAssessmentStore = defineStore('assessment', {
     state: () => ({
-        respondentProfile: null as RespondentProfile | null,
-        answers: {} as AnswerMap,
-        progress: {
-            currentDomainId: 'identifikasi',
-            currentCategoryId: 'governance-risk-mgmt',
-            currentSubCategoryId: 'security-policies',
-            currentPage: 1,
-            lastUpdated: Date.now()
-        } as AssessmentProgress,
+        // Current active stakeholder slug
+        currentStakeholderSlug: '' as string,
+        // Map: stakeholder slug -> RespondentProfile
+        respondentProfilesMap: {} as Record<string, RespondentProfile>,
+        // Map: stakeholder slug -> AnswerMap
+        answersMap: {} as Record<string, AnswerMap>,
+        // Map: stakeholder slug -> AssessmentProgress
+        progressMap: {} as Record<string, AssessmentProgress>,
         initialized: false
     }),
 
     getters: {
         /**
-         * Check if respondent form is completed
+         * Get current respondent profile for active stakeholder
          */
-        hasRespondentProfile: (state) => state.respondentProfile !== null,
+        respondentProfile(): RespondentProfile | null {
+            if (!this.currentStakeholderSlug) return null;
+            return this.respondentProfilesMap[this.currentStakeholderSlug] || null;
+        },
+
+        /**
+         * Get current answers for active stakeholder
+         */
+        answers(): AnswerMap {
+            if (!this.currentStakeholderSlug) return {};
+            return this.answersMap[this.currentStakeholderSlug] || {};
+        },
+
+        /**
+         * Get current progress for active stakeholder
+         */
+        progress(): AssessmentProgress {
+            if (!this.currentStakeholderSlug) return createDefaultProgress();
+            return this.progressMap[this.currentStakeholderSlug] || createDefaultProgress();
+        },
+
+        /**
+         * Check if respondent form is completed for current stakeholder
+         */
+        hasRespondentProfile(): boolean {
+            return this.respondentProfile !== null;
+        },
 
         /**
          * Get total number of questions
@@ -42,8 +77,8 @@ export const useAssessmentStore = defineStore('assessment', {
         /**
          * Get number of answered questions (excluding NA)
          */
-        answeredQuestions: (state) => {
-            return Object.values(state.answers).length;
+        answeredQuestions(): number {
+            return Object.values(this.answers).length;
         },
 
         /**
@@ -58,39 +93,39 @@ export const useAssessmentStore = defineStore('assessment', {
         /**
          * Get current domain
          */
-        currentDomain: (state) => {
-            return assessmentData.domains.find(d => d.id === state.progress.currentDomainId);
+        currentDomain() {
+            return assessmentData.domains.find(d => d.id === this.progress.currentDomainId);
         },
 
         /**
          * Get current category
          */
-        currentCategory: (state) => {
-            const domain = assessmentData.domains.find(d => d.id === state.progress.currentDomainId);
-            return domain?.categories.find(c => c.id === state.progress.currentCategoryId);
+        currentCategory() {
+            const domain = assessmentData.domains.find(d => d.id === this.progress.currentDomainId);
+            return domain?.categories.find(c => c.id === this.progress.currentCategoryId);
         },
 
         /**
          * Get current sub-category
          */
-        currentSubCategory: (state) => {
-            const domain = assessmentData.domains.find(d => d.id === state.progress.currentDomainId);
-            const category = domain?.categories.find(c => c.id === state.progress.currentCategoryId);
-            return category?.subCategories.find(sc => sc.id === state.progress.currentSubCategoryId);
+        currentSubCategory() {
+            const domain = assessmentData.domains.find(d => d.id === this.progress.currentDomainId);
+            const category = domain?.categories.find(c => c.id === this.progress.currentCategoryId);
+            return category?.subCategories.find(sc => sc.id === this.progress.currentSubCategoryId);
         },
 
         /**
          * Get questions for current page (max 5 per page)
          */
-        currentPageQuestions: (state) => {
-            const domain = assessmentData.domains.find(d => d.id === state.progress.currentDomainId);
-            const category = domain?.categories.find(c => c.id === state.progress.currentCategoryId);
-            const subCategory = category?.subCategories.find(sc => sc.id === state.progress.currentSubCategoryId);
+        currentPageQuestions() {
+            const domain = assessmentData.domains.find(d => d.id === this.progress.currentDomainId);
+            const category = domain?.categories.find(c => c.id === this.progress.currentCategoryId);
+            const subCategory = category?.subCategories.find(sc => sc.id === this.progress.currentSubCategoryId);
 
             if (!subCategory) return [];
 
             const questionsPerPage = 5;
-            const startIndex = (state.progress.currentPage - 1) * questionsPerPage;
+            const startIndex = (this.progress.currentPage - 1) * questionsPerPage;
             const endIndex = startIndex + questionsPerPage;
 
             return subCategory.questions.slice(startIndex, endIndex);
@@ -99,10 +134,10 @@ export const useAssessmentStore = defineStore('assessment', {
         /**
          * Get total pages for current sub-category
          */
-        totalPagesInSubCategory: (state) => {
-            const domain = assessmentData.domains.find(d => d.id === state.progress.currentDomainId);
-            const category = domain?.categories.find(c => c.id === state.progress.currentCategoryId);
-            const subCategory = category?.subCategories.find(sc => sc.id === state.progress.currentSubCategoryId);
+        totalPagesInSubCategory() {
+            const domain = assessmentData.domains.find(d => d.id === this.progress.currentDomainId);
+            const category = domain?.categories.find(c => c.id === this.progress.currentCategoryId);
+            const subCategory = category?.subCategories.find(sc => sc.id === this.progress.currentSubCategoryId);
 
             if (!subCategory) return 0;
 
@@ -113,8 +148,10 @@ export const useAssessmentStore = defineStore('assessment', {
         /**
          * Get answer for a specific question
          */
-        getAnswer: (state) => (questionId: string): Answer | undefined => {
-            return state.answers[questionId];
+        getAnswer() {
+            return (questionId: string): Answer | undefined => {
+                return this.answers[questionId];
+            };
         },
 
         /**
@@ -136,36 +173,61 @@ export const useAssessmentStore = defineStore('assessment', {
 
     actions: {
         /**
+         * Set current stakeholder slug and load their data
+         */
+        setCurrentStakeholder(slug: string) {
+            this.currentStakeholderSlug = slug;
+            
+            // Initialize data for this stakeholder if not exists
+            if (!this.answersMap[slug]) {
+                this.answersMap[slug] = {};
+            }
+            if (!this.progressMap[slug]) {
+                this.progressMap[slug] = createDefaultProgress();
+            }
+        },
+
+        /**
          * Initialize store from localStorage
          */
         initialize() {
             if (this.initialized) return;
 
-            // Load respondent profile
-            const profileData = localStorage.getItem(STORAGE_KEYS.RESPONDENT_PROFILE);
-            if (profileData) {
+            // Clear old global storage keys (from previous implementation)
+            // This ensures clean slate for per-stakeholder storage
+            const oldKeys = ['respondent_profile', 'assessment_answers', 'assessment_progress'];
+            oldKeys.forEach(key => {
+                if (localStorage.getItem(key)) {
+                    console.log(`Migrating: removing old global key '${key}'`);
+                    localStorage.removeItem(key);
+                }
+            });
+
+            // Load respondent profiles map
+            const profilesData = localStorage.getItem(STORAGE_KEYS.RESPONDENT_PROFILES);
+            if (profilesData) {
                 try {
-                    this.respondentProfile = JSON.parse(profileData);
+                    this.respondentProfilesMap = JSON.parse(profilesData);
                 } catch (error) {
-                    console.error('Error parsing respondent profile:', error);
+                    console.error('Error parsing respondent profiles:', error);
                 }
             }
 
-            // Load answers
+            // Load answers map
             const answersData = localStorage.getItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
             if (answersData) {
                 try {
-                    this.answers = JSON.parse(answersData);
+                    this.answersMap = JSON.parse(answersData);
                 } catch (error) {
                     console.error('Error parsing answers:', error);
                 }
             }
 
-            // Load progress
+            // Load progress map
             const progressData = localStorage.getItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
             if (progressData) {
                 try {
-                    this.progress = JSON.parse(progressData);
+                    this.progressMap = JSON.parse(progressData);
                 } catch (error) {
                     console.error('Error parsing progress:', error);
                 }
@@ -175,9 +237,11 @@ export const useAssessmentStore = defineStore('assessment', {
         },
 
         /**
-         * Save respondent profile
+         * Save respondent profile for current stakeholder
          */
         saveRespondentProfile(profile: RespondentProfile) {
+            if (!this.currentStakeholderSlug) return;
+
             const now = Date.now();
             const profileWithTimestamp = {
                 ...profile,
@@ -185,29 +249,50 @@ export const useAssessmentStore = defineStore('assessment', {
                 createdAt: profile.createdAt || now
             };
 
-            this.respondentProfile = profileWithTimestamp;
-            localStorage.setItem(STORAGE_KEYS.RESPONDENT_PROFILE, JSON.stringify(profileWithTimestamp));
+            this.respondentProfilesMap[this.currentStakeholderSlug] = profileWithTimestamp;
+            localStorage.setItem(STORAGE_KEYS.RESPONDENT_PROFILES, JSON.stringify(this.respondentProfilesMap));
         },
 
         /**
-         * Save or update an answer
+         * Save or update an answer for current stakeholder
          */
         saveAnswer(questionId: string, index: AnswerIndex) {
+            if (!this.currentStakeholderSlug) return;
+
             const answer: Answer = {
                 questionId,
                 index,
                 updatedAt: Date.now()
             };
 
-            this.answers[questionId] = answer;
-            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_ANSWERS, JSON.stringify(this.answers));
+            // Ensure answers map exists for this stakeholder
+            if (!this.answersMap[this.currentStakeholderSlug]) {
+                this.answersMap[this.currentStakeholderSlug] = {};
+            }
+
+            this.answersMap[this.currentStakeholderSlug][questionId] = answer;
+            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_ANSWERS, JSON.stringify(this.answersMap));
+
+            // Auto-sync to IKAS store so the summary page reflects the latest data
+            this.syncToIkas(this.currentStakeholderSlug);
         },
 
         /**
-         * Update current progress position
+         * Sync all assessment answers to IKAS store for current stakeholder
+         */
+        syncToIkas(stakeholderSlug: string) {
+            const answers = this.answersMap[stakeholderSlug] || {};
+            const ikasStore = useIkasStore();
+            ikasStore.syncFromAssessment(stakeholderSlug, answers);
+        },
+
+        /**
+         * Update current progress position for current stakeholder
          */
         updateProgress(domainId: string, categoryId: string, subCategoryId: string, page: number) {
-            this.progress = {
+            if (!this.currentStakeholderSlug) return;
+
+            this.progressMap[this.currentStakeholderSlug] = {
                 currentDomainId: domainId,
                 currentCategoryId: categoryId,
                 currentSubCategoryId: subCategoryId,
@@ -215,7 +300,7 @@ export const useAssessmentStore = defineStore('assessment', {
                 lastUpdated: Date.now()
             };
 
-            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progress));
+            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
         },
 
         /**
@@ -348,20 +433,30 @@ export const useAssessmentStore = defineStore('assessment', {
         },
 
         /**
-         * Clear all data (for testing/reset)
+         * Clear all data for current stakeholder
+         */
+        clearCurrentStakeholder() {
+            if (!this.currentStakeholderSlug) return;
+
+            delete this.respondentProfilesMap[this.currentStakeholderSlug];
+            delete this.answersMap[this.currentStakeholderSlug];
+            delete this.progressMap[this.currentStakeholderSlug];
+
+            localStorage.setItem(STORAGE_KEYS.RESPONDENT_PROFILES, JSON.stringify(this.respondentProfilesMap));
+            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_ANSWERS, JSON.stringify(this.answersMap));
+            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
+        },
+
+        /**
+         * Clear all data for all stakeholders
          */
         clearAll() {
-            this.respondentProfile = null;
-            this.answers = {};
-            this.progress = {
-                currentDomainId: 'identifikasi',
-                currentCategoryId: 'governance-risk-mgmt',
-                currentSubCategoryId: 'security-policies',
-                currentPage: 1,
-                lastUpdated: Date.now()
-            };
+            this.respondentProfilesMap = {};
+            this.answersMap = {};
+            this.progressMap = {};
+            this.currentStakeholderSlug = '';
 
-            localStorage.removeItem(STORAGE_KEYS.RESPONDENT_PROFILE);
+            localStorage.removeItem(STORAGE_KEYS.RESPONDENT_PROFILES);
             localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
             localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
         }

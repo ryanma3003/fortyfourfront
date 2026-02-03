@@ -22,7 +22,7 @@ export const ikasDataStatic = reactive({
         anomali_peristiwa: 2.51,
         pemantauan_berkelanjutan: 2.51,
     },
-    gulih: {
+    tanggulih: {
         perencanaan_pemulihan: 2.51,
         analisis_pelaporan: 2.51,
         pelaksanaan_pemulihan: 2.51,

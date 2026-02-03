@@ -2,136 +2,238 @@ import type { AssessmentData } from '@/types/assessment.types';
 
 /**
  * IKAS Assessment Data Structure
- * Based on Excel format: Domain → Category → Sub-Category → Questions
- * Each domain has max 10 questions for demo purposes
+ * Based on BSSN IKAS Framework
+ * 4 Domains: IDENTIFIKASI, PROTEKSI, DETEKSI, PENANGGULANGAN & PEMULIHAN
+ * Minimum 2 questions per subcategory
  */
 
 export const assessmentData: AssessmentData = {
     domains: [
+        // ==================== DOMAIN 1: IDENTIFIKASI ====================
         {
             id: 'identifikasi',
             name: 'IDENTIFIKASI',
             color: '#00a2e8', // Blue
             categories: [
+                // Category 1: Peran dan Tanggung Jawab
                 {
-                    id: 'governance-risk-mgmt',
+                    id: 'peran-tanggung-jawab',
                     domainId: 'identifikasi',
-                    name: 'Governance & Risk Management',
+                    name: 'Peran dan Tanggung Jawab Organisasi',
                     subCategories: [
                         {
-                            id: 'security-policies',
-                            categoryId: 'governance-risk-mgmt',
-                            name: 'Security Policies',
+                            id: 'peran-keamanan',
+                            categoryId: 'peran-tanggung-jawab',
+                            name: 'Peran Keamanan Siber',
                             questions: [
                                 {
-                                    id: 'ID-GR-SP-001',
-                                    categoryId: 'governance-risk-mgmt',
-                                    subCategoryId: 'security-policies',
-                                    text: 'Apakah organisasi memiliki strategi keamanan informasi yang terdokumentasi dan selaras dengan tujuan bisnis?',
+                                    id: 'ID-PTJ-PK-001',
+                                    categoryId: 'peran-tanggung-jawab',
+                                    subCategoryId: 'peran-keamanan',
+                                    text: 'Apakah organisasi telah menetapkan peran dan tanggung jawab keamanan siber secara formal?',
                                     scope: 'Tata Kelola',
                                     indexDescriptions: {
-                                        0: 'Tidak ada strategi keamanan informasi',
-                                        1: 'Strategi keamanan informasi informal dan tidak terdokumentasi',
-                                        2: 'Strategi keamanan informasi terdokumentasi namun belum selaras dengan tujuan bisnis',
-                                        3: 'Strategi keamanan informasi terdokumentasi dan selaras dengan tujuan bisnis',
-                                        4: 'Strategi keamanan informasi dikelola secara aktif dan ditinjau secara berkala',
-                                        5: 'Strategi keamanan informasi terintegrasi penuh dan secara proaktif disesuaikan dengan perubahan lingkungan bisnis'
+                                        0: 'Belum ada penetapan peran keamanan siber',
+                                        1: 'Peran keamanan siber informal dan tidak terdokumentasi',
+                                        2: 'Peran keamanan siber ada namun belum jelas pembagiannya',
+                                        3: 'Peran dan tanggung jawab keamanan siber terdokumentasi dan dikomunikasikan',
+                                        4: 'Peran keamanan siber dikelola aktif dengan evaluasi berkala',
+                                        5: 'Peran keamanan siber terintegrasi dengan struktur organisasi dan best practice industri'
                                     }
                                 },
                                 {
-                                    id: 'ID-GR-SP-002',
-                                    categoryId: 'governance-risk-mgmt',
-                                    subCategoryId: 'security-policies',
-                                    text: 'Apakah kebijakan keamanan informasi telah didokumentasikan, disetujui, dan dikomunikasikan secara formal?',
+                                    id: 'ID-PTJ-PK-002',
+                                    categoryId: 'peran-tanggung-jawab',
+                                    subCategoryId: 'peran-keamanan',
+                                    text: 'Apakah terdapat pimpinan yang bertanggung jawab langsung atas keamanan siber (CISO/Security Officer)?',
                                     scope: 'Tata Kelola',
                                     indexDescriptions: {
-                                        0: 'Tidak ada kebijakan keamanan informasi',
-                                        1: 'Kebijakan keamanan informasi informal tanpa dokumentasi',
-                                        2: 'Kebijakan keamanan informasi terdokumentasi namun belum disetujui secara formal',
-                                        3: 'Kebijakan keamanan informasi terdokumentasi, disetujui, dan dikomunikasikan',
-                                        4: 'Kebijakan keamanan informasi dikelola dan ditinjau secara berkala',
-                                        5: 'Kebijakan keamanan informasi terintegrasi dengan kebijakan organisasi dan diperbarui secara proaktif'
-                                    }
-                                }
-                            ]
-                        },
-                        {
-                            id: 'risk-assessment',
-                            categoryId: 'governance-risk-mgmt',
-                            name: 'Risk Assessment',
-                            questions: [
-                                {
-                                    id: 'ID-GR-RA-001',
-                                    categoryId: 'governance-risk-mgmt',
-                                    subCategoryId: 'risk-assessment',
-                                    text: 'Apakah organisasi melakukan penilaian risiko keamanan siber secara berkala?',
-                                    scope: 'Tata Kelola',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada penilaian risiko keamanan siber',
-                                        1: 'Penilaian risiko dilakukan secara ad-hoc tanpa metodologi formal',
-                                        2: 'Penilaian risiko dilakukan dengan metodologi formal namun tidak berkala',
-                                        3: 'Penilaian risiko dilakukan secara berkala dengan metodologi yang terdefinisi',
-                                        4: 'Penilaian risiko terintegrasi dengan manajemen risiko organisasi dan ditinjau secara berkala',
-                                        5: 'Penilaian risiko dilakukan secara berkelanjutan dengan pendekatan proaktif dan prediktif'
-                                    }
-                                },
-                                {
-                                    id: 'ID-GR-RA-002',
-                                    categoryId: 'governance-risk-mgmt',
-                                    subCategoryId: 'risk-assessment',
-                                    text: 'Apakah hasil penilaian risiko didokumentasikan dan dikomunikasikan kepada pemangku kepentingan?',
-                                    scope: 'Tata Kelola',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada dokumentasi penilaian risiko',
-                                        1: 'Hasil penilaian risiko didokumentasikan secara informal',
-                                        2: 'Hasil penilaian risiko didokumentasikan namun komunikasi terbatas',
-                                        3: 'Hasil penilaian risiko didokumentasikan dan dikomunikasikan kepada pemangku kepentingan terkait',
-                                        4: 'Hasil penilaian risiko dikelola dengan baik dan ditindaklanjuti secara teratur',
-                                        5: 'Hasil penilaian risiko terintegrasi dengan sistem manajemen risiko organisasi dan mendorong inovasi keamanan'
+                                        0: 'Tidak ada pimpinan keamanan siber',
+                                        1: 'Keamanan siber ditangani secara ad-hoc oleh IT',
+                                        2: 'Ada penunjukan informal untuk keamanan siber',
+                                        3: 'Security Officer ditunjuk secara formal dengan job description jelas',
+                                        4: 'CISO/Security Officer memiliki akses langsung ke pimpinan tertinggi',
+                                        5: 'CISO/Security Officer terintegrasi dalam keputusan strategis organisasi'
                                     }
                                 }
                             ]
                         }
                     ]
                 },
+                // Category 2: Strategi dan Kebijakan
                 {
-                    id: 'asset-management',
+                    id: 'strategi-kebijakan',
                     domainId: 'identifikasi',
-                    name: 'Asset Management',
+                    name: 'Strategi, Kebijakan, dan Prosedur Keamanan Siber',
                     subCategories: [
                         {
-                            id: 'asset-inventory',
-                            categoryId: 'asset-management',
-                            name: 'Asset Inventory',
+                            id: 'kebijakan-keamanan',
+                            categoryId: 'strategi-kebijakan',
+                            name: 'Kebijakan Keamanan',
                             questions: [
                                 {
-                                    id: 'ID-AM-AI-001',
-                                    categoryId: 'asset-management',
-                                    subCategoryId: 'asset-inventory',
+                                    id: 'ID-SK-KK-001',
+                                    categoryId: 'strategi-kebijakan',
+                                    subCategoryId: 'kebijakan-keamanan',
+                                    text: 'Apakah organisasi memiliki kebijakan keamanan informasi yang terdokumentasi dan disetujui pimpinan?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada kebijakan keamanan informasi',
+                                        1: 'Kebijakan informal tanpa dokumentasi resmi',
+                                        2: 'Kebijakan ada namun belum disetujui pimpinan',
+                                        3: 'Kebijakan terdokumentasi, disetujui, dan dikomunikasikan',
+                                        4: 'Kebijakan ditinjau dan diperbarui secara berkala',
+                                        5: 'Kebijakan terintegrasi dengan standar internasional (ISO 27001, NIST)'
+                                    }
+                                },
+                                {
+                                    id: 'ID-SK-KK-002',
+                                    categoryId: 'strategi-kebijakan',
+                                    subCategoryId: 'kebijakan-keamanan',
+                                    text: 'Apakah prosedur keamanan siber telah didokumentasikan dan disosialisasikan ke seluruh pegawai?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada prosedur keamanan siber',
+                                        1: 'Prosedur informal tidak tertulis',
+                                        2: 'Prosedur terdokumentasi namun belum disosialisasikan',
+                                        3: 'Prosedur terdokumentasi dan disosialisasikan ke seluruh pegawai',
+                                        4: 'Prosedur diaudit dan diperbaharui secara berkala',
+                                        5: 'Prosedur terintegrasi dengan sistem manajemen mutu organisasi'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 3: Aset Informasi
+                {
+                    id: 'aset-informasi',
+                    domainId: 'identifikasi',
+                    name: 'Pengelolaan Aset Informasi',
+                    subCategories: [
+                        {
+                            id: 'inventaris-aset',
+                            categoryId: 'aset-informasi',
+                            name: 'Inventaris Aset',
+                            questions: [
+                                {
+                                    id: 'ID-AI-IA-001',
+                                    categoryId: 'aset-informasi',
+                                    subCategoryId: 'inventaris-aset',
                                     text: 'Apakah organisasi memiliki inventaris aset informasi yang lengkap dan terkini?',
                                     scope: 'Teknologi',
                                     indexDescriptions: {
                                         0: 'Tidak ada inventaris aset informasi',
-                                        1: 'Inventaris aset informasi tidak lengkap dan tidak terpelihara',
-                                        2: 'Inventaris aset informasi ada namun tidak lengkap atau tidak terkini',
-                                        3: 'Inventaris aset informasi lengkap dan diperbarui secara berkala',
-                                        4: 'Inventaris aset informasi dikelola secara aktif dengan sistem otomatis',
-                                        5: 'Inventaris aset informasi terintegrasi penuh dengan sistem manajemen aset organisasi dan real-time'
+                                        1: 'Inventaris aset tidak lengkap dan tidak terpelihara',
+                                        2: 'Inventaris ada namun tidak lengkap atau tidak terkini',
+                                        3: 'Inventaris aset lengkap dan diperbarui secara berkala',
+                                        4: 'Inventaris dikelola dengan sistem otomatis',
+                                        5: 'Inventaris terintegrasi dengan CMDB dan manajemen aset organisasi'
                                     }
                                 },
                                 {
-                                    id: 'ID-AM-AI-002',
-                                    categoryId: 'asset-management',
-                                    subCategoryId: 'asset-inventory',
-                                    text: 'Apakah setiap aset informasi memiliki pemilik yang bertanggung jawab?',
+                                    id: 'ID-AI-IA-002',
+                                    categoryId: 'aset-informasi',
+                                    subCategoryId: 'inventaris-aset',
+                                    text: 'Apakah setiap aset informasi telah diklasifikasikan berdasarkan tingkat kritikalitasnya?',
                                     scope: 'Tata Kelola',
                                     indexDescriptions: {
-                                        0: 'Tidak ada penugasan kepemilikan aset',
-                                        1: 'Kepemilikan aset tidak jelas atau informal',
-                                        2: 'Kepemilikan aset ditentukan namun tidak terdokumentasi dengan baik',
-                                        3: 'Setiap aset memiliki pemilik yang jelas dan terdokumentasi',
-                                        4: 'Kepemilikan aset dikelola dengan baik dan ditinjau secara berkala',
-                                        5: 'Kepemilikan aset terintegrasi dengan framework tata kelola organisasi'
+                                        0: 'Tidak ada klasifikasi aset',
+                                        1: 'Klasifikasi informal tanpa standar',
+                                        2: 'Klasifikasi ada namun tidak konsisten diterapkan',
+                                        3: 'Klasifikasi terdokumentasi dan diterapkan konsisten',
+                                        4: 'Klasifikasi ditinjau berkala sesuai perubahan risiko',
+                                        5: 'Klasifikasi terintegrasi dengan framework keamanan nasional'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 4: Risiko Keamanan Siber
+                {
+                    id: 'risiko-keamanan',
+                    domainId: 'identifikasi',
+                    name: 'Penilaian dan Pengelolaan Risiko Keamanan Siber',
+                    subCategories: [
+                        {
+                            id: 'penilaian-risiko',
+                            categoryId: 'risiko-keamanan',
+                            name: 'Penilaian Risiko',
+                            questions: [
+                                {
+                                    id: 'ID-RK-PR-001',
+                                    categoryId: 'risiko-keamanan',
+                                    subCategoryId: 'penilaian-risiko',
+                                    text: 'Apakah organisasi melakukan penilaian risiko keamanan siber secara berkala?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada penilaian risiko',
+                                        1: 'Penilaian risiko ad-hoc tanpa metodologi',
+                                        2: 'Penilaian risiko dengan metodologi namun tidak berkala',
+                                        3: 'Penilaian risiko berkala dengan metodologi formal',
+                                        4: 'Risiko dikelola dengan tools dan dashboard monitoring',
+                                        5: 'Manajemen risiko terintegrasi dengan ERM organisasi'
+                                    }
+                                },
+                                {
+                                    id: 'ID-RK-PR-002',
+                                    categoryId: 'risiko-keamanan',
+                                    subCategoryId: 'penilaian-risiko',
+                                    text: 'Apakah terdapat rencana mitigasi risiko yang terdokumentasi untuk setiap risiko yang teridentifikasi?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada rencana mitigasi risiko',
+                                        1: 'Mitigasi risiko dilakukan secara ad-hoc',
+                                        2: 'Rencana mitigasi ada untuk sebagian risiko',
+                                        3: 'Rencana mitigasi terdokumentasi untuk semua risiko utama',
+                                        4: 'Mitigasi risiko dipantau dan dievaluasi berkala',
+                                        5: 'Mitigasi risiko terintegrasi dengan kontrol keamanan otomatis'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 5: Risiko Rantai Pasok
+                {
+                    id: 'risiko-rantai-pasok',
+                    domainId: 'identifikasi',
+                    name: 'Pengelolaan Risiko Rantai Pasok',
+                    subCategories: [
+                        {
+                            id: 'vendor-management',
+                            categoryId: 'risiko-rantai-pasok',
+                            name: 'Manajemen Vendor',
+                            questions: [
+                                {
+                                    id: 'ID-RR-VM-001',
+                                    categoryId: 'risiko-rantai-pasok',
+                                    subCategoryId: 'vendor-management',
+                                    text: 'Apakah organisasi menerapkan evaluasi keamanan siber terhadap vendor/pihak ketiga?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada evaluasi keamanan vendor',
+                                        1: 'Evaluasi informal tanpa kriteria jelas',
+                                        2: 'Evaluasi ada namun tidak komprehensif',
+                                        3: 'Evaluasi keamanan vendor terdokumentasi dan konsisten',
+                                        4: 'Monitoring keamanan vendor secara berkala',
+                                        5: 'Supply chain security terintegrasi dengan framework organisasi'
+                                    }
+                                },
+                                {
+                                    id: 'ID-RR-VM-002',
+                                    categoryId: 'risiko-rantai-pasok',
+                                    subCategoryId: 'vendor-management',
+                                    text: 'Apakah kontrak dengan vendor mencakup persyaratan keamanan siber yang jelas?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada persyaratan keamanan dalam kontrak',
+                                        1: 'Persyaratan keamanan minimal dan tidak standar',
+                                        2: 'Persyaratan keamanan ada namun tidak lengkap',
+                                        3: 'Persyaratan keamanan standar dalam semua kontrak vendor',
+                                        4: 'SLA keamanan dengan audit hak dan penalti',
+                                        5: 'Kontrak terintegrasi dengan compliance framework (ISO, SOC2)'
                                     }
                                 }
                             ]
@@ -140,290 +242,610 @@ export const assessmentData: AssessmentData = {
                 }
             ]
         },
+
+        // ==================== DOMAIN 2: PROTEKSI ====================
         {
             id: 'proteksi',
             name: 'PROTEKSI',
-            color: '#8e44ad', // Purple
+            color: '#8e44ad', // Purple/Ungu
             categories: [
+                // Category 1: Identitas dan Akses
                 {
-                    id: 'access-control',
+                    id: 'identitas-akses',
                     domainId: 'proteksi',
-                    name: 'Identity & Access Management',
+                    name: 'Pengelolaan Identitas, Autentikasi, dan Kendali Akses',
                     subCategories: [
                         {
-                            id: 'authentication',
-                            categoryId: 'access-control',
-                            name: 'Authentication',
+                            id: 'autentikasi',
+                            categoryId: 'identitas-akses',
+                            name: 'Autentikasi',
                             questions: [
                                 {
-                                    id: 'PR-AC-AU-001',
-                                    categoryId: 'access-control',
-                                    subCategoryId: 'authentication',
+                                    id: 'PR-IA-AU-001',
+                                    categoryId: 'identitas-akses',
+                                    subCategoryId: 'autentikasi',
                                     text: 'Apakah organisasi menerapkan mekanisme autentikasi yang kuat untuk akses sistem?',
                                     scope: 'Teknologi',
                                     indexDescriptions: {
                                         0: 'Tidak ada mekanisme autentikasi',
-                                        1: 'Autentikasi sederhana dengan password lemah',
-                                        2: 'Autentikasi dengan password yang memenuhi standar minimum',
-                                        3: 'Autentikasi multi-faktor untuk sistem kritis',
-                                        4: 'Autentikasi multi-faktor untuk semua sistem dengan monitoring aktif',
-                                        5: 'Autentikasi adaptif berbasis risiko dengan teknologi terkini (biometrik, zero-trust)'
+                                        1: 'Autentikasi password sederhana',
+                                        2: 'Autentikasi password dengan standar minimum',
+                                        3: 'Multi-factor authentication untuk sistem kritis',
+                                        4: 'MFA untuk seluruh sistem dengan monitoring aktif',
+                                        5: 'Autentikasi adaptif berbasis risiko (zero-trust)'
                                     }
                                 },
                                 {
-                                    id: 'PR-AC-AU-002',
-                                    categoryId: 'access-control',
-                                    subCategoryId: 'authentication',
-                                    text: 'Apakah terdapat proses manajemen identitas pengguna yang terdokumentasi?',
+                                    id: 'PR-IA-AU-002',
+                                    categoryId: 'identitas-akses',
+                                    subCategoryId: 'autentikasi',
+                                    text: 'Apakah terdapat kebijakan pengelolaan akses berbasis prinsip least privilege?',
                                     scope: 'Tata Kelola',
                                     indexDescriptions: {
-                                        0: 'Tidak ada proses manajemen identitas',
-                                        1: 'Proses manajemen identitas informal dan ad-hoc',
-                                        2: 'Proses manajemen identitas terdokumentasi namun tidak konsisten',
-                                        3: 'Proses manajemen identitas terdokumentasi dan diterapkan secara konsisten',
-                                        4: 'Proses manajemen identitas terotomasi dan ditinjau secara berkala',
-                                        5: 'Proses manajemen identitas terintegrasi penuh dengan HR dan sistem lainnya secara otomatis'
-                                    }
-                                }
-                            ]
-                        },
-                        {
-                            id: 'authorization',
-                            categoryId: 'access-control',
-                            name: 'Authorization',
-                            questions: [
-                                {
-                                    id: 'PR-AC-AZ-001',
-                                    categoryId: 'access-control',
-                                    subCategoryId: 'authorization',
-                                    text: 'Apakah akses ke sistem dan data dibatasi berdasarkan prinsip least privilege?',
-                                    scope: 'Teknologi',
-                                    indexDescriptions: {
                                         0: 'Tidak ada pembatasan akses',
-                                        1: 'Pembatasan akses minimal dan tidak terkelola',
-                                        2: 'Pembatasan akses diterapkan namun tidak konsisten',
-                                        3: 'Prinsip least privilege diterapkan secara konsisten',
-                                        4: 'Least privilege diterapkan dengan review akses berkala dan otomatis',
-                                        5: 'Least privilege terintegrasi dengan zero-trust architecture dan monitoring real-time'
+                                        1: 'Pembatasan akses minimal',
+                                        2: 'Prinsip least privilege diterapkan sebagian',
+                                        3: 'Least privilege diterapkan konsisten',
+                                        4: 'Review akses berkala dengan sistem otomatis',
+                                        5: 'Zero-trust architecture terimplementasi penuh'
                                     }
                                 }
                             ]
                         }
                     ]
                 },
+                // Category 2: Aset Fisik
                 {
-                    id: 'data-protection',
+                    id: 'aset-fisik',
                     domainId: 'proteksi',
-                    name: 'Data Protection',
+                    name: 'Perlindungan Aset Fisik',
                     subCategories: [
                         {
-                            id: 'data-encryption',
-                            categoryId: 'data-protection',
-                            name: 'Data Encryption',
+                            id: 'keamanan-fisik',
+                            categoryId: 'aset-fisik',
+                            name: 'Keamanan Fisik',
                             questions: [
                                 {
-                                    id: 'PR-DP-DE-001',
-                                    categoryId: 'data-protection',
-                                    subCategoryId: 'data-encryption',
-                                    text: 'Apakah data sensitif dienkripsi saat transit dan saat disimpan?',
+                                    id: 'PR-AF-KF-001',
+                                    categoryId: 'aset-fisik',
+                                    subCategoryId: 'keamanan-fisik',
+                                    text: 'Apakah data center dan ruang server dilindungi dengan kontrol akses fisik?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada kontrol akses fisik',
+                                        1: 'Kontrol akses fisik minimal (kunci biasa)',
+                                        2: 'Kontrol akses dengan kartu akses',
+                                        3: 'Kontrol akses biometrik dan CCTV',
+                                        4: 'Kontrol akses terintegrasi dengan monitoring 24/7',
+                                        5: 'Physical security terintegrasi dengan SOC'
+                                    }
+                                },
+                                {
+                                    id: 'PR-AF-KF-002',
+                                    categoryId: 'aset-fisik',
+                                    subCategoryId: 'keamanan-fisik',
+                                    text: 'Apakah terdapat prosedur pengelolaan pengunjung dan akses tamu ke area sensitif?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada prosedur pengelolaan pengunjung',
+                                        1: 'Pengelolaan pengunjung informal',
+                                        2: 'Prosedur registrasi pengunjung dasar',
+                                        3: 'Prosedur pengunjung dengan pendampingan wajib',
+                                        4: 'Sistem visitor management terintegrasi',
+                                        5: 'Visitor management dengan background check dan NDA'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 3: Data
+                {
+                    id: 'perlindungan-data',
+                    domainId: 'proteksi',
+                    name: 'Perlindungan Data',
+                    subCategories: [
+                        {
+                            id: 'enkripsi-data',
+                            categoryId: 'perlindungan-data',
+                            name: 'Enkripsi Data',
+                            questions: [
+                                {
+                                    id: 'PR-PD-ED-001',
+                                    categoryId: 'perlindungan-data',
+                                    subCategoryId: 'enkripsi-data',
+                                    text: 'Apakah data sensitif dienkripsi saat penyimpanan (at rest) dan transmisi (in transit)?',
                                     scope: 'Teknologi',
                                     indexDescriptions: {
                                         0: 'Tidak ada enkripsi data',
-                                        1: 'Enkripsi diterapkan secara terbatas dan tidak konsisten',
-                                        2: 'Enkripsi diterapkan untuk sebagian data sensitif',
-                                        3: 'Enkripsi diterapkan untuk semua data sensitif at rest dan in transit',
-                                        4: 'Enkripsi dikelola dengan baik menggunakan key management system',
-                                        5: 'Enkripsi end-to-end dengan hardware security modules dan quantum-safe algorithms'
+                                        1: 'Enkripsi diterapkan sebagian',
+                                        2: 'Enkripsi untuk data sensitif tertentu',
+                                        3: 'Enkripsi at rest dan in transit untuk semua data sensitif',
+                                        4: 'Enkripsi dengan key management system',
+                                        5: 'End-to-end encryption dengan HSM'
                                     }
                                 },
                                 {
-                                    id: 'PR-DP-DE-002',
-                                    categoryId: 'data-protection',
-                                    subCategoryId: 'data-encryption',
-                                    text: 'Apakah terdapat kebijakan dan prosedur pengelolaan kunci enkripsi?',
-                                    scope: 'Tata Kelola',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada pengelolaan kunci enkripsi',
-                                        1: 'Pengelolaan kunci enkripsi informal tanpa dokumentasi',
-                                        2: 'Kebijakan pengelolaan kunci ada namun tidak lengkap',
-                                        3: 'Kebijakan dan prosedur pengelolaan kunci terdokumentasi dan diterapkan',
-                                        4: 'Pengelolaan kunci menggunakan sistem otomatis dengan audit trail',
-                                        5: 'Pengelolaan kunci terintegrasi dengan HSM dan compliance framework'
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'deteksi',
-            name: 'DETEKSI',
-            color: '#f39c12', // Orange
-            categories: [
-                {
-                    id: 'continuous-monitoring',
-                    domainId: 'deteksi',
-                    name: 'Continuous Monitoring',
-                    subCategories: [
-                        {
-                            id: 'security-monitoring',
-                            categoryId: 'continuous-monitoring',
-                            name: 'Security Monitoring',
-                            questions: [
-                                {
-                                    id: 'DE-CM-SM-001',
-                                    categoryId: 'continuous-monitoring',
-                                    subCategoryId: 'security-monitoring',
-                                    text: 'Apakah organisasi memiliki sistem monitoring keamanan yang beroperasi secara berkelanjutan?',
-                                    scope: 'Teknologi',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada sistem monitoring keamanan',
-                                        1: 'Monitoring keamanan dilakukan secara manual dan tidak teratur',
-                                        2: 'Sistem monitoring dasar tersedia namun tidak komprehensif',
-                                        3: 'Sistem monitoring keamanan komprehensif beroperasi 24/7',
-                                        4: 'Monitoring keamanan terintegrasi dengan SIEM dan response automation',
-                                        5: 'Monitoring keamanan menggunakan AI/ML untuk deteksi anomali dan threat intelligence'
-                                    }
-                                },
-                                {
-                                    id: 'DE-CM-SM-002',
-                                    categoryId: 'continuous-monitoring',
-                                    subCategoryId: 'security-monitoring',
-                                    text: 'Apakah log keamanan dikumpulkan, dianalisis, dan dipertahankan sesuai kebijakan?',
-                                    scope: 'Teknologi',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada pengumpulan log keamanan',
-                                        1: 'Log keamanan dikumpulkan namun tidak dianalisis',
-                                        2: 'Log keamanan dikumpulkan dan dianalisis secara ad-hoc',
-                                        3: 'Log keamanan dikumpulkan, dianalisis, dan dipertahankan sesuai kebijakan',
-                                        4: 'Log management terotomasi dengan retention policy dan analisis berkala',
-                                        5: 'Log management terintegrasi penuh dengan SIEM, threat hunting, dan forensik digital'
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    id: 'incident-detection',
-                    domainId: 'deteksi',
-                    name: 'Incident Detection',
-                    subCategories: [
-                        {
-                            id: 'anomaly-detection',
-                            categoryId: 'incident-detection',
-                            name: 'Anomaly Detection',
-                            questions: [
-                                {
-                                    id: 'DE-ID-AD-001',
-                                    categoryId: 'incident-detection',
-                                    subCategoryId: 'anomaly-detection',
-                                    text: 'Apakah organisasi memiliki kemampuan untuk mendeteksi anomali dan peristiwa keamanan?',
-                                    scope: 'Teknologi',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada kemampuan deteksi anomali',
-                                        1: 'Deteksi anomali manual dan tidak sistematis',
-                                        2: 'Kemampuan deteksi anomali dasar dengan false positive tinggi',
-                                        3: 'Kemampuan deteksi anomali yang efektif dengan false positive terkendali',
-                                        4: 'Deteksi anomali otomatis dengan machine learning dan tuning berkala',
-                                        5: 'Deteksi anomali proaktif menggunakan behavioral analytics dan threat intelligence'
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'pulih',
-            name: 'PENANGGULANGAN & PEMULIHAN',
-            color: '#2ecc71', // Green
-            categories: [
-                {
-                    id: 'incident-response',
-                    domainId: 'pulih',
-                    name: 'Incident Response',
-                    subCategories: [
-                        {
-                            id: 'response-planning',
-                            categoryId: 'incident-response',
-                            name: 'Response Planning',
-                            questions: [
-                                {
-                                    id: 'RS-IR-RP-001',
-                                    categoryId: 'incident-response',
-                                    subCategoryId: 'response-planning',
-                                    text: 'Apakah organisasi memiliki rencana respons insiden siber yang terdokumentasi?',
-                                    scope: 'Tata Kelola',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada rencana respons insiden',
-                                        1: 'Rencana respons insiden informal tanpa dokumentasi',
-                                        2: 'Rencana respons insiden terdokumentasi namun tidak lengkap',
-                                        3: 'Rencana respons insiden komprehensif, terdokumentasi, dan dikomunikasikan',
-                                        4: 'Rencana respons insiden diuji secara berkala dan diperbaharui',
-                                        5: 'Rencana respons insiden terintegrasi dengan business continuity dan dilatih secara rutin'
-                                    }
-                                },
-                                {
-                                    id: 'RS-IR-RP-002',
-                                    categoryId: 'incident-response',
-                                    subCategoryId: 'response-planning',
-                                    text: 'Apakah tim respons insiden telah dibentuk dengan peran dan tanggung jawab yang jelas?',
-                                    scope: 'Sumber Daya Manusia',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada tim respons insiden',
-                                        1: 'Tim respons insiden informal tanpa peran yang jelas',
-                                        2: 'Tim respons insiden dibentuk namun peran tidak terdefinisi dengan baik',
-                                        3: 'Tim respons insiden dengan peran dan tanggung jawab yang jelas',
-                                        4: 'Tim respons insiden terlatih dengan prosedur eskalasi yang terdefinisi',
-                                        5: 'Tim respons insiden tersertifikasi dengan koordinasi eksternal (CSIRT, law enforcement)'
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    id: 'recovery',
-                    domainId: 'pulih',
-                    name: 'Recovery',
-                    subCategories: [
-                        {
-                            id: 'business-continuity',
-                            categoryId: 'recovery',
-                            name: 'Business Continuity',
-                            questions: [
-                                {
-                                    id: 'RS-RC-BC-001',
-                                    categoryId: 'recovery',
-                                    subCategoryId: 'business-continuity',
-                                    text: 'Apakah organisasi memiliki rencana pemulihan bencana (disaster recovery plan)?',
-                                    scope: 'Tata Kelola',
-                                    indexDescriptions: {
-                                        0: 'Tidak ada rencana pemulihan bencana',
-                                        1: 'Rencana pemulihan bencana informal tanpa dokumentasi',
-                                        2: 'Rencana pemulihan bencana terdokumentasi namun tidak diuji',
-                                        3: 'Rencana pemulihan bencana terdokumentasi dan diuji secara berkala',
-                                        4: 'Disaster recovery terotomasi dengan RTO/RPO yang terdefinisi',
-                                        5: 'Disaster recovery terintegrasi penuh dengan high availability dan geo-redundancy'
-                                    }
-                                },
-                                {
-                                    id: 'RS-RC-BC-002',
-                                    categoryId: 'recovery',
-                                    subCategoryId: 'business-continuity',
-                                    text: 'Apakah backup data dilakukan secara berkala dan diuji pemulihan nya?',
+                                    id: 'PR-PD-ED-002',
+                                    categoryId: 'perlindungan-data',
+                                    subCategoryId: 'enkripsi-data',
+                                    text: 'Apakah terdapat prosedur backup dan recovery data yang terdokumentasi?',
                                     scope: 'Teknologi',
                                     indexDescriptions: {
                                         0: 'Tidak ada backup data',
-                                        1: 'Backup data dilakukan ad-hoc tanpa jadwal',
-                                        2: 'Backup data terjadwal namun belum pernah diuji',
-                                        3: 'Backup data terjadwal dan diuji pemulihan nya secara berkala',
-                                        4: 'Backup otomatis dengan monitoring dan verifikasi integritas',
-                                        5: 'Backup terotomasi penuh dengan immutable storage dan disaster recovery testing rutin'
+                                        1: 'Backup ad-hoc tanpa jadwal',
+                                        2: 'Backup terjadwal namun belum diuji',
+                                        3: 'Backup terjadwal dengan pengujian recovery berkala',
+                                        4: 'Backup otomatis dengan monitoring integritas',
+                                        5: 'Backup dengan geo-redundancy dan DR testing rutin'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 4: Aplikasi
+                {
+                    id: 'perlindungan-aplikasi',
+                    domainId: 'proteksi',
+                    name: 'Perlindungan Aplikasi',
+                    subCategories: [
+                        {
+                            id: 'keamanan-aplikasi',
+                            categoryId: 'perlindungan-aplikasi',
+                            name: 'Keamanan Aplikasi',
+                            questions: [
+                                {
+                                    id: 'PR-PA-KA-001',
+                                    categoryId: 'perlindungan-aplikasi',
+                                    subCategoryId: 'keamanan-aplikasi',
+                                    text: 'Apakah aplikasi menjalani pengujian keamanan (security testing) sebelum deployment?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada pengujian keamanan',
+                                        1: 'Pengujian keamanan ad-hoc',
+                                        2: 'Pengujian keamanan untuk aplikasi kritis',
+                                        3: 'Security testing terintegrasi dalam SDLC',
+                                        4: 'SAST dan DAST otomatis dalam CI/CD pipeline',
+                                        5: 'DevSecOps dengan continuous security monitoring'
+                                    }
+                                },
+                                {
+                                    id: 'PR-PA-KA-002',
+                                    categoryId: 'perlindungan-aplikasi',
+                                    subCategoryId: 'keamanan-aplikasi',
+                                    text: 'Apakah terdapat proses patch management untuk aplikasi dan sistem operasi?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada patch management',
+                                        1: 'Patching dilakukan secara ad-hoc',
+                                        2: 'Patching terjadwal namun tidak konsisten',
+                                        3: 'Patch management terdokumentasi dengan prioritas',
+                                        4: 'Automated patch management dengan testing',
+                                        5: 'Zero-day response dengan virtual patching'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 5: Jaringan
+                {
+                    id: 'perlindungan-jaringan',
+                    domainId: 'proteksi',
+                    name: 'Perlindungan Jaringan',
+                    subCategories: [
+                        {
+                            id: 'keamanan-jaringan',
+                            categoryId: 'perlindungan-jaringan',
+                            name: 'Keamanan Jaringan',
+                            questions: [
+                                {
+                                    id: 'PR-PJ-KJ-001',
+                                    categoryId: 'perlindungan-jaringan',
+                                    subCategoryId: 'keamanan-jaringan',
+                                    text: 'Apakah jaringan dilindungi dengan firewall dan sistem deteksi intrusi (IDS/IPS)?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada proteksi jaringan',
+                                        1: 'Firewall dasar tanpa konfigurasi optimal',
+                                        2: 'Firewall dengan rule yang terdefinisi',
+                                        3: 'Firewall dan IDS/IPS terimplementasi',
+                                        4: 'Next-gen firewall dengan threat intelligence',
+                                        5: 'Network security terintegrasi dengan SOC dan SIEM'
+                                    }
+                                },
+                                {
+                                    id: 'PR-PJ-KJ-002',
+                                    categoryId: 'perlindungan-jaringan',
+                                    subCategoryId: 'keamanan-jaringan',
+                                    text: 'Apakah jaringan disegmentasi untuk memisahkan zona keamanan yang berbeda?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada segmentasi jaringan',
+                                        1: 'Segmentasi minimal (DMZ saja)',
+                                        2: 'Segmentasi dasar antar departemen',
+                                        3: 'Segmentasi berdasarkan klasifikasi data',
+                                        4: 'Micro-segmentation untuk sistem kritis',
+                                        5: 'Software-defined segmentation dengan zero-trust'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 6: SDM
+                {
+                    id: 'sdm-keamanan',
+                    domainId: 'proteksi',
+                    name: 'Perlindungan Sumber Daya Manusia',
+                    subCategories: [
+                        {
+                            id: 'awareness-training',
+                            categoryId: 'sdm-keamanan',
+                            name: 'Awareness dan Training',
+                            questions: [
+                                {
+                                    id: 'PR-SDM-AT-001',
+                                    categoryId: 'sdm-keamanan',
+                                    subCategoryId: 'awareness-training',
+                                    text: 'Apakah organisasi menyelenggarakan program awareness keamanan siber untuk seluruh pegawai?',
+                                    scope: 'Sumber Daya Manusia',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada program awareness',
+                                        1: 'Awareness informal dan tidak terstruktur',
+                                        2: 'Awareness dilakukan sesekali',
+                                        3: 'Program awareness tahunan untuk seluruh pegawai',
+                                        4: 'Awareness berkala dengan simulasi (phishing test)',
+                                        5: 'Security culture program terintegrasi dengan HR'
+                                    }
+                                },
+                                {
+                                    id: 'PR-SDM-AT-002',
+                                    categoryId: 'sdm-keamanan',
+                                    subCategoryId: 'awareness-training',
+                                    text: 'Apakah tim IT dan keamanan mendapatkan pelatihan keamanan siber secara berkala?',
+                                    scope: 'Sumber Daya Manusia',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada pelatihan keamanan',
+                                        1: 'Pelatihan ad-hoc tanpa kurikulum',
+                                        2: 'Pelatihan dasar untuk tim IT',
+                                        3: 'Pelatihan reguler dengan sertifikasi',
+                                        4: 'Program pengembangan berkelanjutan',
+                                        5: 'Pelatihan advanced dengan CTF dan red team exercise'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+
+        // ==================== DOMAIN 3: DETEKSI ====================
+        {
+            id: 'deteksi',
+            name: 'DETEKSI',
+            color: '#f1c40f', // Yellow
+            categories: [
+                // Category 1: Deteksi Peristiwa
+                {
+                    id: 'deteksi-peristiwa',
+                    domainId: 'deteksi',
+                    name: 'Pengelolaan Deteksi Peristiwa Siber',
+                    subCategories: [
+                        {
+                            id: 'sistem-deteksi',
+                            categoryId: 'deteksi-peristiwa',
+                            name: 'Sistem Deteksi',
+                            questions: [
+                                {
+                                    id: 'DE-DP-SD-001',
+                                    categoryId: 'deteksi-peristiwa',
+                                    subCategoryId: 'sistem-deteksi',
+                                    text: 'Apakah organisasi memiliki sistem untuk mendeteksi peristiwa keamanan siber?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada sistem deteksi',
+                                        1: 'Deteksi manual melalui log review',
+                                        2: 'Sistem deteksi dasar (antivirus, firewall log)',
+                                        3: 'SIEM terimplementasi untuk korelasi event',
+                                        4: 'SIEM dengan use case dan alerting otomatis',
+                                        5: 'SOC 24/7 dengan threat intelligence integration'
+                                    }
+                                },
+                                {
+                                    id: 'DE-DP-SD-002',
+                                    categoryId: 'deteksi-peristiwa',
+                                    subCategoryId: 'sistem-deteksi',
+                                    text: 'Apakah terdapat prosedur eskalasi ketika terdeteksi peristiwa keamanan?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada prosedur eskalasi',
+                                        1: 'Eskalasi informal tanpa dokumentasi',
+                                        2: 'Prosedur eskalasi ada namun tidak lengkap',
+                                        3: 'Prosedur eskalasi terdokumentasi dan dikomunikasikan',
+                                        4: 'Eskalasi otomatis dengan integrasi ticketing',
+                                        5: 'Playbook eskalasi terintegrasi dengan SOAR'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 2: Analisis Anomali
+                {
+                    id: 'analisis-anomali',
+                    domainId: 'deteksi',
+                    name: 'Analisis Anomali dan Peristiwa Siber',
+                    subCategories: [
+                        {
+                            id: 'analisis-peristiwa',
+                            categoryId: 'analisis-anomali',
+                            name: 'Analisis Peristiwa',
+                            questions: [
+                                {
+                                    id: 'DE-AA-AP-001',
+                                    categoryId: 'analisis-anomali',
+                                    subCategoryId: 'analisis-peristiwa',
+                                    text: 'Apakah organisasi memiliki kemampuan untuk menganalisis anomali dan mengidentifikasi potensi ancaman?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada kemampuan analisis',
+                                        1: 'Analisis manual dan reaktif',
+                                        2: 'Analisis dasar dengan rule-based detection',
+                                        3: 'Analisis dengan behavioral analytics',
+                                        4: 'Machine learning untuk deteksi anomali',
+                                        5: 'AI-driven threat detection dengan predictive analytics'
+                                    }
+                                },
+                                {
+                                    id: 'DE-AA-AP-002',
+                                    categoryId: 'analisis-anomali',
+                                    subCategoryId: 'analisis-peristiwa',
+                                    text: 'Apakah terdapat proses triase dan prioritisasi insiden berdasarkan tingkat keparahan?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada proses triase',
+                                        1: 'Triase informal tanpa kriteria',
+                                        2: 'Kriteria prioritas ada namun tidak konsisten',
+                                        3: 'Proses triase dengan severity classification',
+                                        4: 'Triase otomatis dengan scoring system',
+                                        5: 'AI-assisted triage dengan threat intelligence'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 3: Pemantauan Berkelanjutan
+                {
+                    id: 'pemantauan-berkelanjutan',
+                    domainId: 'deteksi',
+                    name: 'Pemantauan Peristiwa Siber Berkelanjutan',
+                    subCategories: [
+                        {
+                            id: 'monitoring-kontinyu',
+                            categoryId: 'pemantauan-berkelanjutan',
+                            name: 'Monitoring Berkelanjutan',
+                            questions: [
+                                {
+                                    id: 'DE-PB-MK-001',
+                                    categoryId: 'pemantauan-berkelanjutan',
+                                    subCategoryId: 'monitoring-kontinyu',
+                                    text: 'Apakah monitoring keamanan dilakukan secara berkelanjutan (24/7)?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada monitoring',
+                                        1: 'Monitoring hanya jam kerja',
+                                        2: 'Monitoring dengan cakupan terbatas',
+                                        3: 'Monitoring 24/7 untuk sistem kritis',
+                                        4: 'Monitoring 24/7 untuk seluruh sistem',
+                                        5: 'SOC 24/7 dengan dedicated security team'
+                                    }
+                                },
+                                {
+                                    id: 'DE-PB-MK-002',
+                                    categoryId: 'pemantauan-berkelanjutan',
+                                    subCategoryId: 'monitoring-kontinyu',
+                                    text: 'Apakah log keamanan dikumpulkan dan diarsipkan sesuai kebijakan retensi?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada pengumpulan log',
+                                        1: 'Log dikumpulkan namun tidak dikelola',
+                                        2: 'Log dikumpulkan dengan retensi tidak konsisten',
+                                        3: 'Log dikumpulkan dengan kebijakan retensi jelas',
+                                        4: 'Log management terpusat dengan analisis otomatis',
+                                        5: 'Log terintegrasi dengan SIEM dan forensik readiness'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+
+        // ==================== DOMAIN 4: PENANGGULANGAN & PEMULIHAN ====================
+        {
+            id: 'tanggulih',
+            name: 'PENANGGULANGAN & PEMULIHAN',
+            color: '#27ae60', // Green
+            categories: [
+                // Category 1: Perencanaan
+                {
+                    id: 'perencanaan-tanggulih',
+                    domainId: 'tanggulih',
+                    name: 'Perencanaan Penanggulangan dan Pemulihan Insiden Siber',
+                    subCategories: [
+                        {
+                            id: 'rencana-response',
+                            categoryId: 'perencanaan-tanggulih',
+                            name: 'Rencana Response',
+                            questions: [
+                                {
+                                    id: 'TP-PT-RR-001',
+                                    categoryId: 'perencanaan-tanggulih',
+                                    subCategoryId: 'rencana-response',
+                                    text: 'Apakah organisasi memiliki Incident Response Plan (IRP) yang terdokumentasi?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada IRP',
+                                        1: 'IRP informal tanpa dokumentasi',
+                                        2: 'IRP ada namun tidak lengkap',
+                                        3: 'IRP komprehensif dan dikomunikasikan',
+                                        4: 'IRP diuji melalui tabletop exercise berkala',
+                                        5: 'IRP terintegrasi dengan BCP/DRP dan dilatih rutin'
+                                    }
+                                },
+                                {
+                                    id: 'TP-PT-RR-002',
+                                    categoryId: 'perencanaan-tanggulih',
+                                    subCategoryId: 'rencana-response',
+                                    text: 'Apakah terdapat Tim Response Insiden (CSIRT/IRT) yang dibentuk secara formal?',
+                                    scope: 'Sumber Daya Manusia',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada tim response',
+                                        1: 'Tim response informal',
+                                        2: 'Tim response ada namun peran tidak jelas',
+                                        3: 'CSIRT formal dengan peran dan prosedur jelas',
+                                        4: 'CSIRT terlatih dengan koordinasi eksternal',
+                                        5: 'CSIRT tersertifikasi dengan integrasi BSSN/ID-SIRTII'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 2: Analisis dan Pelaporan
+                {
+                    id: 'analisis-pelaporan',
+                    domainId: 'tanggulih',
+                    name: 'Analisis dan Pelaporan Insiden Siber',
+                    subCategories: [
+                        {
+                            id: 'pelaporan-insiden',
+                            categoryId: 'analisis-pelaporan',
+                            name: 'Pelaporan Insiden',
+                            questions: [
+                                {
+                                    id: 'TP-AP-PI-001',
+                                    categoryId: 'analisis-pelaporan',
+                                    subCategoryId: 'pelaporan-insiden',
+                                    text: 'Apakah terdapat prosedur pelaporan insiden keamanan siber yang terdokumentasi?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada prosedur pelaporan',
+                                        1: 'Pelaporan informal',
+                                        2: 'Prosedur pelaporan ada namun tidak konsisten',
+                                        3: 'Prosedur pelaporan terdokumentasi dan diterapkan',
+                                        4: 'Pelaporan otomatis dengan sistem ticketing',
+                                        5: 'Pelaporan terintegrasi dengan regulasi (BSSN, OJK, BI)'
+                                    }
+                                },
+                                {
+                                    id: 'TP-AP-PI-002',
+                                    categoryId: 'analisis-pelaporan',
+                                    subCategoryId: 'pelaporan-insiden',
+                                    text: 'Apakah dilakukan analisis forensik untuk insiden keamanan yang signifikan?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada kemampuan forensik',
+                                        1: 'Analisis forensik ad-hoc tanpa tools',
+                                        2: 'Forensik dasar dengan tools gratis',
+                                        3: 'Tim forensik dengan tools profesional',
+                                        4: 'Forensik terintegrasi dengan chain of custody',
+                                        5: 'Digital forensics lab dengan akreditasi'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 3: Pelaksanaan
+                {
+                    id: 'pelaksanaan-tanggulih',
+                    domainId: 'tanggulih',
+                    name: 'Pelaksanaan Penanggulangan dan Pemulihan Insiden Siber',
+                    subCategories: [
+                        {
+                            id: 'containment-recovery',
+                            categoryId: 'pelaksanaan-tanggulih',
+                            name: 'Containment dan Recovery',
+                            questions: [
+                                {
+                                    id: 'TP-PL-CR-001',
+                                    categoryId: 'pelaksanaan-tanggulih',
+                                    subCategoryId: 'containment-recovery',
+                                    text: 'Apakah organisasi memiliki kemampuan untuk melakukan containment dan eradikasi insiden?',
+                                    scope: 'Teknologi',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada kemampuan containment',
+                                        1: 'Containment manual dan reaktif',
+                                        2: 'Kemampuan containment dasar',
+                                        3: 'Prosedur containment dan eradikasi terdefinisi',
+                                        4: 'Containment otomatis dengan playbook',
+                                        5: 'SOAR terimplementasi dengan automated response'
+                                    }
+                                },
+                                {
+                                    id: 'TP-PL-CR-002',
+                                    categoryId: 'pelaksanaan-tanggulih',
+                                    subCategoryId: 'containment-recovery',
+                                    text: 'Apakah organisasi memiliki Disaster Recovery Plan (DRP) yang teruji?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada DRP',
+                                        1: 'DRP informal tanpa dokumentasi',
+                                        2: 'DRP terdokumentasi namun belum diuji',
+                                        3: 'DRP terdokumentasi dan diuji berkala',
+                                        4: 'DRP dengan RTO/RPO terdefinisi dan teruji',
+                                        5: 'DRP terintegrasi dengan high availability dan geo-redundancy'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                // Category 4: Peningkatan
+                {
+                    id: 'peningkatan-keamanan',
+                    domainId: 'tanggulih',
+                    name: 'Peningkatan Keamanan Setelah Insiden Siber',
+                    subCategories: [
+                        {
+                            id: 'lesson-learned',
+                            categoryId: 'peningkatan-keamanan',
+                            name: 'Lesson Learned',
+                            questions: [
+                                {
+                                    id: 'TP-PK-LL-001',
+                                    categoryId: 'peningkatan-keamanan',
+                                    subCategoryId: 'lesson-learned',
+                                    text: 'Apakah organisasi melakukan analisis post-incident dan lesson learned setelah insiden?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada analisis post-incident',
+                                        1: 'Analisis informal tanpa dokumentasi',
+                                        2: 'Analisis post-incident untuk insiden besar saja',
+                                        3: 'Analisis post-incident dan lesson learned terdokumentasi',
+                                        4: 'Lesson learned diintegrasikan ke perbaikan kontrol',
+                                        5: 'Continuous improvement berdasarkan threat intelligence'
+                                    }
+                                },
+                                {
+                                    id: 'TP-PK-LL-002',
+                                    categoryId: 'peningkatan-keamanan',
+                                    subCategoryId: 'lesson-learned',
+                                    text: 'Apakah hasil lesson learned digunakan untuk memperbarui kebijakan dan prosedur keamanan?',
+                                    scope: 'Tata Kelola',
+                                    indexDescriptions: {
+                                        0: 'Tidak ada pembaruan berdasarkan lesson learned',
+                                        1: 'Pembaruan informal dan tidak terstruktur',
+                                        2: 'Pembaruan dilakukan sesekali',
+                                        3: 'Pembaruan terdokumentasi dan dikomunikasikan',
+                                        4: 'Siklus improvement terintegrasi dengan ISMS',
+                                        5: 'Continuous improvement dengan metrik dan KPI'
                                     }
                                 }
                             ]

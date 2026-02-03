@@ -4,19 +4,30 @@ import { useRoute, useRouter } from 'vue-router';
 import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
 import { useIkasStore } from '../stores/ikas';
+import { useAssessmentStore } from '../stores/assessment';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 
 const router = useRouter();
 const route = useRoute();
 const ikasStore = useIkasStore();
+const assessmentStore = useAssessmentStore();
 const stakeholdersStore = useStakeholdersStore();
 
 // Initialize store
 onMounted(async () => {
     ikasStore.initialize();
+    assessmentStore.initialize();
+    
     if (!stakeholdersStore.initialized) {
         await stakeholdersStore.initialize();
+    }
+
+    // Sync assessment answers to IKAS store for current stakeholder
+    const slug = String(route.query.slug || '');
+    if (slug) {
+        assessmentStore.setCurrentStakeholder(slug);
+        assessmentStore.syncToIkas(slug);
     }
 });
 
@@ -36,7 +47,7 @@ const ikasDataDynamic = computed(() => {
         identifikasi: { nilai_identifikasi: 0, kategori_identifikasi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0, nilai_subdomain5: 0 },
         proteksi: { nilai_proteksi: 0, kategori_proteksi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0, nilai_subdomain5: 0, nilai_subdomain6: 0 },
         deteksi: { nilai_deteksi: 0, kategori_deteksi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0 },
-        gulih: { nilai_gulih: 0, kategori_gulih: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0 },
+        tanggulih: { nilai_tanggulih: 0, kategori_tanggulih: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0 },
     };
 });
 
@@ -182,7 +193,9 @@ const uploadExcel = async () => {
 };
 
 const formatValue = (value) => {
-    return value === null ? 'N/A' : value;
+    if (value === null || value === 0) return '-';
+    if (value === 'NA') return 'Not Applicable';
+    return value;
 };
 
 </script>
@@ -394,25 +407,25 @@ td {
                   <tr>
                     <td rowspan="4" class="domain green">PENANGGULANGAN & PEMULIHAN</td>
                     <td class="item">Menyusun perencanaan penanggulangan dan pemulihan Insiden Siber</td>
-                    <td class="center">{{ ikasDataStatic.gulih.perencanaan_pemulihan }}</td>
-                    <td class="center">{{ formatValue(ikasDataDynamic.gulih.nilai_subdomain1) }}</td>
-                    <td rowspan="4" class="center">{{ ikasDataDynamic.gulih.nilai_gulih }}</td>
-                    <td rowspan="4" class="center">{{ ikasDataDynamic.gulih.kategori_gulih }}</td>
+                    <td class="center">{{ ikasDataStatic.tanggulih.perencanaan_pemulihan }}</td>
+                    <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain1) }}</td>
+                    <td rowspan="4" class="center">{{ ikasDataDynamic.tanggulih.nilai_tanggulih }}</td>
+                    <td rowspan="4" class="center">{{ ikasDataDynamic.tanggulih.kategori_tanggulih }}</td>
                   </tr>
                   <tr>
                     <td class="item">Menganalisis dan melaporkan Insiden Siber</td>
-                    <td class="center">{{ ikasDataStatic.gulih.analisis_pelaporan }}</td>
-                    <td class="center">{{ formatValue(ikasDataDynamic.gulih.nilai_subdomain2) }}</td>
+                    <td class="center">{{ ikasDataStatic.tanggulih.analisis_pelaporan }}</td>
+                    <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain2) }}</td>
                   </tr>
                   <tr>
                     <td class="item">Melaksanakan penanggulangan dan pemulihan Insiden Siber</td>
-                    <td class="center">{{ ikasDataStatic.gulih.pelaksanaan_pemulihan }}</td>
-                    <td class="center">{{ formatValue(ikasDataDynamic.gulih.nilai_subdomain3) }}</td>
+                    <td class="center">{{ ikasDataStatic.tanggulih.pelaksanaan_pemulihan }}</td>
+                    <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain3) }}</td>
                   </tr>
                   <tr>
                     <td class="item">Meningkatkan keamanan setelah terjadinya Insiden Siber</td>
-                    <td class="center">{{ ikasDataStatic.gulih.peningkatan_keamanan }}</td>
-                    <td class="center">{{ formatValue(ikasDataDynamic.gulih.nilai_subdomain4) }}</td>
+                    <td class="center">{{ ikasDataStatic.tanggulih.peningkatan_keamanan }}</td>
+                    <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain4) }}</td>
                   </tr>
                 </tbody>
               </table>
