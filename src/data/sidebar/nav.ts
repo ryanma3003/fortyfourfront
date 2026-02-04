@@ -41,15 +41,22 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/dashboards", icon: Svgicons.Dashboardicon, title: "Dashboards", type: "link", active: true, dirchange: false, selected: false
 
   },
+
   {
-    path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false
+    path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
     path: "/users-list", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
-  // {
-  //   path: "/kse", icon: Svgicons.Dashboardicon, title: "Kse", type: "link", active: true, dirchange: false, selected: false
-  // },
+  {
+    path: "/ikas", icon: Svgicons.Analyticsicon, title: "IKAS", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
+  },
+  {
+    path: "/kse", icon: Svgicons.Todoicon, title: "Kategorisasi SE", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
+  },
+  {
+    path: "/csirt", icon: Svgicons.Taskicon, title: "CSIRT", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
+  },
   {
     path: "/role-list", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
