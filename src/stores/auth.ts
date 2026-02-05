@@ -1,9 +1,8 @@
 // stores/auth.ts
-import { defineStore } from 'pinia';
-import { useProfileStore } from './profile';
-import { authService } from '@/services/auth.service';
-import { TokenStorage } from '@/config/api';
-import type { LoginPayload, RegisterPayload } from '@/types/auth.types';
+import { defineStore } from "pinia";
+import { useProfileStore } from "./profile";
+import { authService } from "@/services/auth.service";
+import type { LoginPayload, RegisterPayload } from "@/types/auth.types";
 
 interface CurrentUser {
   id: string;
@@ -11,13 +10,30 @@ interface CurrentUser {
   name: string;
   email: string;
   role: string;
-  createdAt: string; // Tanggal akun dibuat dari API
+  createdAt: string;
 }
 
-// Session storage key for user data (more secure than localStorage)
-const USER_SESSION_KEY = 'auth_user_session';
+// Session storage key ONLY for user info (NOT token)
+const USER_SESSION_KEY = "auth_user_session";
 
-export const useAuthStore = defineStore('auth', {
+// ================================
+// TOKEN MEMORY ONLY (NOT STORAGE)
+// ================================
+let accessToken: string | null = null;
+
+function setToken(token: string) {
+  accessToken = token;
+}
+
+function clearToken() {
+  accessToken = null;
+}
+
+function getToken() {
+  return accessToken;
+}
+
+export const useAuthStore = defineStore("auth", {
   state: () => ({
     authenticated: false,
     loading: false,
@@ -27,26 +43,30 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAdmin(): boolean {
-      return this.currentUser?.role === 'admin';
+      return this.currentUser?.role === "admin";
     },
+
     userRole(): string {
-      return this.currentUser?.role || '';
+      return this.currentUser?.role || "";
     },
+
     userName(): string {
-      return this.currentUser?.name || '';
+      return this.currentUser?.name || "";
     },
+
     userEmail(): string {
-      return this.currentUser?.email || '';
+      return this.currentUser?.email || "";
     },
-    // Format created_at untuk display "Bergabung Sejak"
+
     formattedJoinDate(): string {
-      if (!this.currentUser?.createdAt) return '';
+      if (!this.currentUser?.createdAt) return "";
+
       try {
         const date = new Date(this.currentUser.createdAt);
-        return date.toLocaleDateString('id-ID', { 
-          day: 'numeric',
-          month: 'long', 
-          year: 'numeric' 
+        return date.toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
         });
       } catch {
         return this.currentUser.createdAt;
@@ -55,9 +75,9 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
-    /**
-     * Authenticate user with backend API
-     */
+    // ================================
+    // LOGIN
+    // ================================
     async authenticateUser(payload: LoginPayload) {
       this.loading = true;
       this.error = null;
@@ -65,54 +85,53 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await authService.login(payload);
 
-        // Store token in memory (not localStorage, so it's not visible in DevTools)
-        const token = response.access_token;
-        authService.setAuthToken(token);
+        // ================================
+        // TOKEN ONLY IN MEMORY
+        // ================================
+        setToken(response.access_token);
 
-        // Store user data with created_at from API response
+        // Attach token to axios/fetch client
+        authService.setAuthToken(response.access_token);
+
+        // User info safe to store
         const userData: CurrentUser = {
           id: response.user.id,
           username: response.user.username,
-          name: response.user.username, // Using username as name
+          name: response.user.username,
           email: response.user.email,
-          role: response.user.role_name || 'user',
-          createdAt: response.user.created_at, // Simpan created_at dari API
+          role: response.user.role_name || "user",
+          createdAt: response.user.created_at,
         };
 
-        // Store in sessionStorage (cleared when browser closes, more secure)
+        // Store ONLY user info (no token)
         sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
 
         this.authenticated = true;
         this.currentUser = userData;
-        this.loading = false;
 
-        // Switch profile to new user (loads user-specific profile data from API)
+        // Load profile
         const profileStore = useProfileStore();
-        try {
-          await profileStore.switchUser();
-        } catch (e) {
-          console.error('switchUser failed:', e);
-        }
+        await profileStore.switchUser();
 
-        console.log('authenticateUser success, returning true');
         return { authenticated: true };
       } catch (error: any) {
-        console.error('Login failed:', error);
+        this.error = error.message || "Login failed";
 
-        this.error = error.message || 'Login failed';
-        TokenStorage.clearToken();
+        clearToken();
         sessionStorage.removeItem(USER_SESSION_KEY);
+
         this.authenticated = false;
         this.currentUser = null;
-        this.loading = false;
 
         return { authenticated: false, error: this.error };
+      } finally {
+        this.loading = false;
       }
     },
 
-    /**
-     * Register new user with backend API
-     */
+    // ================================
+    // REGISTER
+    // ================================
     async registerUser(payload: RegisterPayload) {
       this.loading = true;
       this.error = null;
@@ -120,31 +139,30 @@ export const useAuthStore = defineStore('auth', {
       try {
         await authService.register(payload);
 
-        this.loading = false;
-
-        // Registration successful, but don't auto-login
-        // User should login with their credentials
         return { success: true };
       } catch (error: any) {
-        console.error('Registration failed:', error);
-
-        this.error = error.message || 'Registration failed';
-        this.loading = false;
+        this.error = error.message || "Registration failed";
 
         return { success: false, error: this.error };
+      } finally {
+        this.loading = false;
       }
     },
 
-    /**
-     * Logout user
-     */
+    // ================================
+    // LOGOUT
+    // ================================
     logUserOut() {
-      // Reset profile before clearing user data
       const profileStore = useProfileStore();
       profileStore.resetToDefaults();
 
-      // Clear auth data
+      // Clear memory token
+      clearToken();
+
+      // Clear API header
       authService.logout();
+
+      // Clear user info
       sessionStorage.removeItem(USER_SESSION_KEY);
 
       this.authenticated = false;
@@ -152,36 +170,36 @@ export const useAuthStore = defineStore('auth', {
       this.error = null;
     },
 
-    /**
-     * Check authentication status on app startup
-     * Token is now stored in encrypted sessionStorage, so it persists across reloads
-     */
+    // ================================
+    // CHECK AUTH ON STARTUP
+    // ================================
     checkAuthOnStartup() {
-      const hasToken = TokenStorage.hasToken();
       const storedUser = sessionStorage.getItem(USER_SESSION_KEY);
 
-      if (hasToken && storedUser) {
-        try {
-          this.authenticated = true;
-          this.currentUser = JSON.parse(storedUser);
-
-          // Restore token to API client
-          const token = TokenStorage.getToken();
-          if (token) {
-            authService.setAuthToken(token);
-          }
-        } catch (error) {
-          console.error('Failed to restore auth state:', error);
-          this.logUserOut();
-        }
-      } else {
-        // No valid session - clear any stale data
-        if (storedUser && !hasToken) {
-          sessionStorage.removeItem(USER_SESSION_KEY);
-        }
+      if (!storedUser) {
         this.authenticated = false;
         this.currentUser = null;
+        return;
       }
-    }
-  }
+
+      try {
+        // Restore user info
+        this.currentUser = JSON.parse(storedUser);
+        this.authenticated = true;
+
+        // Token cannot be restored because it's memory-only
+        // User must login again after reload
+        console.warn("Token is memory-only, please login again after refresh.");
+      } catch (err) {
+        this.logUserOut();
+      }
+    },
+
+    // ================================
+    // OPTIONAL: GET TOKEN (INTERNAL)
+    // ================================
+    getAccessToken() {
+      return getToken();
+    },
+  },
 });

@@ -281,12 +281,7 @@ const saveAndExit = () => {
                 <tr class="total-row">
                   <td colspan="3" class="total-label">Total Bobot Nilai</td>
                   <td class="center total-value">{{ kseData?.totalBobot || 0 }}</td>
-                  <td rowspan="2" class="kategori-final">
-                    <div class="kategori-label">Kategori SE</div>
-                    <div class="kategori-value" :style="{ color: kseData?.kategoriColor || '#6c757d' }">
-                      {{ kseData?.kategoriSE || 'Belum Dikategorikan' }}
-                    </div>
-                  </td>
+
                 </tr>
                 <tr class="total-row">
                   <td colspan="3" class="total-label">Kategorisasi Sistem Elektronik</td>
@@ -485,9 +480,9 @@ th, td {
   flex-shrink: 0;
 }
 
-.key-a { background: #e74c3c; }
-.key-b { background: #f39c12; }
-.key-c { background: #2ecc71; }
+.key-c { background: rgb(0, 201, 167) ;opacity: 0.8; }
+.key-b { background: rgb(253, 175, 34) ;opacity: 0.8; }
+.key-a { background: rgb(255, 103, 87) ;opacity: 0.; }
 
 .option-label {
   font-size: 12px;
@@ -509,17 +504,17 @@ th, td {
 }
 
 .status-a {
-  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  background:  rgb(255, 103, 87);
   color: white;
 }
 
 .status-b {
-  background: linear-gradient(135deg, #f39c12, #e67e22);
+  background:  rgb(253, 175, 34);
   color: white;
 }
 
 .status-c {
-  background: linear-gradient(135deg, #2ecc71, #27ae60);
+  background:  rgb(0, 201, 167);
   color: white;
 }
 

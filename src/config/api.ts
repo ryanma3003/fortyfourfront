@@ -1,5 +1,5 @@
 import { config } from './env';
-import type { ApiResponse, ApiError, HttpMethod } from '@/types/api.types';
+import type { HttpMethod } from '@/types/api.types';
 
 /**
  * Secure Token Storage with obfuscation
@@ -10,12 +10,12 @@ import type { ApiResponse, ApiError, HttpMethod } from '@/types/api.types';
  */
 const TokenStorage = (() => {
     const STORAGE_KEY = '_ast'; // Obfuscated key name
-    
+
     // Simple obfuscation (not cryptographic, but hides from casual viewing)
     const obfuscate = (str: string): string => {
         return btoa(str.split('').reverse().join(''));
     };
-    
+
     const deobfuscate = (str: string): string => {
         try {
             return atob(str).split('').reverse().join('');
