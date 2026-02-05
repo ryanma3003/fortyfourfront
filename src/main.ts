@@ -69,8 +69,6 @@ app.use(router);
 // Vuetify UI
 app.use(vuetify);
 
-app.use(SmartTable)
-
 // Register global components
 app.component('apexchart', VueApexCharts);
 app.component('Datepicker', Datepicker);
