@@ -20,6 +20,7 @@ const createDefaultProgress = (): AssessmentProgress => ({
     currentCategoryId: 'peran-tanggung-jawab',
     currentSubCategoryId: 'peran-keamanan',
     currentPage: 1,
+    status: 'IN_PROGRESS',
     lastUpdated: Date.now()
 });
 
@@ -167,6 +168,20 @@ export const useAssessmentStore = defineStore('assessment', {
             if (subCategory) path.push(subCategory.name);
 
             return path;
+        },
+
+        /**
+         * Check if assessment is completed
+         */
+        isCompleted(): boolean {
+            return this.progress.status === 'COMPLETED';
+        },
+
+        /**
+         * Check if assessment is locked (read-only)
+         */
+        isLocked(): boolean {
+            return this.isCompleted;
         }
     },
 
@@ -264,6 +279,10 @@ export const useAssessmentStore = defineStore('assessment', {
                 updatedAt: Date.now()
             };
 
+            // Recursively remove readonly check if it exists implicitly, 
+            // but explicit check is better:
+            if (this.isLocked) return;
+
             // Ensure answers map exists for this stakeholder
             if (!this.answersMap[this.currentStakeholderSlug]) {
                 this.answersMap[this.currentStakeholderSlug] = {};
@@ -296,9 +315,40 @@ export const useAssessmentStore = defineStore('assessment', {
                 currentCategoryId: categoryId,
                 currentSubCategoryId: subCategoryId,
                 currentPage: page,
+                status: this.progressMap[this.currentStakeholderSlug]?.status || 'IN_PROGRESS',
                 lastUpdated: Date.now()
             };
 
+            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
+        },
+
+        /**
+         * Mark assessment as completed
+         */
+        completeAssessment() {
+            if (!this.currentStakeholderSlug) return;
+            
+            this.progressMap[this.currentStakeholderSlug] = {
+                ...this.progress,
+                status: 'COMPLETED',
+                lastUpdated: Date.now()
+            };
+            
+            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
+        },
+
+         /**
+         * Unlock assessment for editing
+         */
+        unlockAssessment() {
+            if (!this.currentStakeholderSlug) return;
+
+             this.progressMap[this.currentStakeholderSlug] = {
+                ...this.progress,
+                status: 'IN_PROGRESS',
+                lastUpdated: Date.now()
+            };
+            
             localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
         },
 

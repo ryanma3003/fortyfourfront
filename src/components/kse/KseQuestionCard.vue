@@ -5,6 +5,7 @@ import type { KseQuestion } from '@/data/kse-data';
 const props = defineProps<{
   question: KseQuestion;
   selectedOption?: 'A' | 'B' | 'C' | null;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -12,8 +13,11 @@ const emit = defineEmits<{
 }>();
 
 const handleSelect = (key: 'A' | 'B' | 'C', bobot: number) => {
+  if (props.readonly) return;
   emit('answer', props.question.no, key, bobot);
 };
+
+
 
 const getOptionColorClass = (key: string) => {
   switch (key) {
@@ -55,7 +59,10 @@ const getOptionColorClass = (key: string) => {
           v-for="(option, key) in question.options" 
           :key="key"
           class="option-item"
-          :class="{ 'selected': selectedOption === key }"
+          :class="{ 
+            'selected': selectedOption === key,
+            'readonly': readonly
+          }"
           @click="handleSelect(key as 'A' | 'B' | 'C', option.bobot)"
         >
           <div class="d-flex align-items-center gap-3 w-100">
@@ -114,6 +121,24 @@ const getOptionColorClass = (key: string) => {
 .option-item.selected {
   border-color: var(--primary-color);
   background: rgba(8, 70, 150, 0.05);
+}
+
+.option-item.readonly {
+  cursor: default;
+}
+
+.option-item.readonly:not(.selected) {
+  opacity: 0.6;
+}
+
+.option-item.readonly:hover {
+  border-color: #e9ecef; /* Keep default border on hover */
+  background: white; /* Keep default background */
+}
+
+.option-item.readonly.selected:hover {
+  border-color: var(--primary-color);
+  background: rgba(8, 70, 150, 0.05); 
 }
 
 .option-key {

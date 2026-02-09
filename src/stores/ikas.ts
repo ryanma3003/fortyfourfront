@@ -420,8 +420,8 @@ export const useIkasStore = defineStore('ikas', {
         tang.nilai_tanggulih
       ];
       // Calculate total average, excluding 'NA' values
-      const validTotalValues = totalValues.filter((v): v is number => v !== null && v !== 'NA' && typeof v === 'number');
-      const naTotalValues = totalValues.filter(v => v === 'NA');
+      const validTotalValues = domainValues.filter((v): v is number => v !== null && v !== 'NA' && typeof v === 'number');
+      const naTotalValues = domainValues.filter(v => v === 'NA');
 
       // If all domains are 'NA', total should be 'NA'
       if (naTotalValues.length > 0 && validTotalValues.length === 0) {

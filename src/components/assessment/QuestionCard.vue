@@ -6,6 +6,7 @@ const props = defineProps<{
   question: Question;
   questionNumber: number;
   selectedIndex?: number;
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -25,6 +26,7 @@ const indexOptions = [0, 1, 2, 3, 4, 5];
 
 // Handle index selection
 const selectIndex = (index: number) => {
+  if (props.readOnly) return;
   selectedAnswer.value = index;
   emit('answer', props.question.id, index);
 };
@@ -80,7 +82,11 @@ const scopeColor = computed(() => {
             :key="index"
             type="button"
             class="btn btn-outline-primary index-btn"
-            :class="{ 'active': selectedAnswer === index }"
+            :class="{ 
+              'active': selectedAnswer === index,
+              'disabled': readOnly
+            }"
+            :disabled="readOnly"
             @click="selectIndex(index)"
           >
             Index {{ index }}

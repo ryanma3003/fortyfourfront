@@ -16,6 +16,7 @@ export interface KseStakeholderData {
   kategoriSE: string;
   kategoriColor: string;
   lastUpdated: string;
+  isSubmitted: boolean;
 }
 
 const STORAGE_KEY = 'app_kse_data';
@@ -43,6 +44,7 @@ const createDefaultKseData = (): KseStakeholderData => ({
   kategoriSE: 'Belum Dikategorikan',
   kategoriColor: '#6c757d',
   lastUpdated: '',
+  isSubmitted: false,
 });
 
 export const useKseStore = defineStore('kse', {
@@ -109,6 +111,9 @@ export const useKseStore = defineStore('kse', {
     ) {
       this.ensureStakeholderData(slug);
       const data = this.kseDataMap[slug];
+      
+      // Prevent update if submitted
+      if (data.isSubmitted) return;
 
       data.answers[questionNo] = {
         questionNo,
@@ -163,6 +168,20 @@ export const useKseStore = defineStore('kse', {
     // Reset data for a stakeholder
     resetStakeholderData(slug: string) {
       this.kseDataMap[slug] = createDefaultKseData();
+      this.saveToStorage();
+    },
+    
+    // Submit data (Lock)
+    submitData(slug: string) {
+      this.ensureStakeholderData(slug);
+      this.kseDataMap[slug].isSubmitted = true;
+      this.saveToStorage();
+    },
+    
+    // Unlock data (Edit)
+    unlockData(slug: string) {
+      this.ensureStakeholderData(slug);
+      this.kseDataMap[slug].isSubmitted = false;
       this.saveToStorage();
     },
   },

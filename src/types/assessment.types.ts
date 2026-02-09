@@ -59,6 +59,7 @@ export interface AssessmentProgress {
     currentCategoryId: string;
     currentSubCategoryId: string;
     currentPage: number;
+    status: 'IN_PROGRESS' | 'COMPLETED';
     lastUpdated: number;
 }
 

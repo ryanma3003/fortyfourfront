@@ -182,8 +182,14 @@ const canGoNext = computed(() => {
 
 
 
+// Lock state
+const isLocked = computed(() => !!kseData.value?.isSubmitted);
+
 // Save and Exit
 const saveAndExit = () => {
+    const slug = currentSlug.value || 'default';
+    kseStore.submitData(slug); // Lock the data
+
   // Show success toast notification
   toast.success('Data KSE berhasil disimpan', {
     theme: 'auto',
@@ -205,6 +211,16 @@ const saveAndExit = () => {
       router.push('/stakeholders');
     }
   }, 1500);
+};
+
+// Edit Data
+const editData = () => {
+    const slug = currentSlug.value || 'default';
+    kseStore.unlockData(slug); // Unlock the data
+    toast.info('Mode edit aktif. Silakan ubah data.', {
+        autoClose: 2000,
+        position: 'top-right'
+    });
 };
 </script>
 
@@ -228,6 +244,26 @@ const saveAndExit = () => {
     <!-- Sidebar -->
     <div class="col-md-3">
       <div class="sticky-sidebar">
+        <!-- Action Card -->
+        <div class="card custom-card mb-3">
+            <div class="card-body p-3">
+              <button 
+                  v-if="!isLocked"
+                  @click="saveAndExit" 
+                  class="btn btn-success btn-wave w-100 fw-bold"
+                >
+                  <i class="ri-save-line me-1"></i> Simpan & Selesai
+                </button>
+                <button 
+                  v-else
+                  @click="editData" 
+                  class="btn btn-warning btn-wave w-100 fw-bold text-white"
+                >
+                  <i class="ri-edit-line me-1"></i> Edit Data
+                </button>
+            </div>
+        </div>
+
         <!-- Score Card -->
         <div class="card custom-card bg-primary-transparent border-primary mb-3">
             <div class="card-body p-3">
@@ -243,16 +279,37 @@ const saveAndExit = () => {
             </div>
         </div>
 
-        <!-- Action Card -->
+        <!-- Criteria Table Card -->
         <div class="card custom-card">
-            <div class="card-body p-3">
-              <button 
-                  @click="saveAndExit" 
-                  class="btn btn-success btn-wave w-100 fw-bold"
-                >
-                  <i class="ri-save-line me-1"></i> Simpan & Selesai
-                </button>
+          <div class="card-header p-3 border-bottom-0 pb-0">
+             <h6 class="card-title fw-semibold">Ketentuan Penilaian:</h6>
+          </div>
+          <div class="card-body p-3">
+            <div class="table-responsive">
+              <table class="table table-bordered text-center table-sm mb-0 fs-12">
+                <thead class="bg-light">
+                  <tr>
+                    <th>Kategori</th>
+                    <th>Nilai</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="text-start">Strategis</td>
+                    <td>35 - 50</td>
+                  </tr>
+                  <tr>
+                    <td class="text-start">Tinggi</td>
+                    <td>16 - 34</td>
+                  </tr>
+                   <tr>
+                    <td class="text-start">Rendah</td>
+                    <td>10 - 15</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
+          </div>
         </div>
       </div>
     </div>
@@ -274,6 +331,7 @@ const saveAndExit = () => {
                 :key="question.no"
                 :question="question"
                 :selectedOption="kseData?.answers?.[question.no]?.selectedOption"
+                :readonly="isLocked"
                 @answer="handleAnswer"
              />
 
