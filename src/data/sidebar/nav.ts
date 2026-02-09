@@ -38,8 +38,10 @@ type MenuItem = LinkMenuItem | SubMenuItem;
 export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
 
   {
-    path: "/dashboards", icon: Svgicons.Dashboardicon, title: "Dashboards", type: "link", active: true, dirchange: false, selected: false
-
+    path: "/admin", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+  },
+  {
+    path: "/dashboard", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
 
   {

@@ -36,11 +36,14 @@ const login = async () => {
 
       if (result.authenticated) {
         showToast("success", "Logged In");
-        console.log('Authenticated! Redirecting to /dashboards...');
+        console.log('Authenticated! Redirecting based on role...');
         // Delay before redirect so user can see the toast
         setTimeout(async () => {
-          await router.push("/dashboards");
-          console.log('Router push called.');
+          // Redirect based on user role
+          const userRole = useAuthStore().userRole;
+          const redirectPath = userRole === 'admin' ? '/admin' : '/dashboards';
+          await router.push(redirectPath);
+          console.log(`Router push called to ${redirectPath}`);
         }, 1500);
       } else {
         showToast("error", "Invalid credentials" + (result.error ? `: ${result.error}` : ''));

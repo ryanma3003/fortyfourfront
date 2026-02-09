@@ -4,7 +4,7 @@
   <aside class="app-sidebar sticky" id="sidebar">
     <!-- Start::main-sidebar-header -->
     <div class="main-sidebar-header">
-      <router-link to="/dashboards" class="header-logo">
+      <router-link :to="dashboardRoute" class="header-logo">
         <img
           src="/images/brand-logos/logoLight.svg"
           alt="logo"
@@ -217,6 +217,11 @@ const router = useRouter();
 const route = useRoute();
 
 const isChatOpen = ref(false);
+
+// Computed property for dynamic dashboard route based on user role
+const dashboardRoute = computed(() => {
+  return authStore.userRole === 'admin' ? '/admin' : '/dashboard';
+});
 
 const toggleChat = () => {
   isChatOpen.value = !isChatOpen.value;

@@ -1,0 +1,117 @@
+<script setup>
+import { ref, computed, defineAsyncComponent } from "vue";
+import * as dummytotal from "@/data/dummytotal";
+import SpkReusebleJobs from "@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
+import RadarChartIkas from '@/shared/components/@spk/charts/ikas-charts.vue';
+
+const picked = ref(new Date());
+const picked2 = ref(new Date());
+const date = ref();
+const showMetabase = ref(false);
+
+const toggleMetabase = () => {
+    showMetabase.value = !showMetabase.value;
+};
+
+const dateRange = computed(() => {
+    if (!date.value || !Array.isArray(date.value) || date.value.length < 2) {
+        return null;
+    }
+    return {
+        start: date.value[0],
+        end: date.value[1]
+    };
+});
+
+const PerusahaanCard1Filtered = computed(() => {
+    return dummytotal.generatePerusahaanCard(dateRange.value);
+});
+
+const PerusahaanCard2Filtered = computed(() => {
+    return dummytotal.generatePerusahaanCard2(dateRange.value);
+});
+
+// Initialize date range
+const startDate = new Date();
+const endDate = new Date(new Date().setDate(startDate.getDate() + 7));
+date.value = [startDate, endDate];
+</script>
+
+<template>
+    <!-- HEADER -->
+    <div class="d-flex align-items-center justify-content-between mb-3 page-header-breadcrumb flex-wrap gap-2">
+        <div>
+            <h1 class="page-title fw-medium fs-20 mb-0">Dashboard</h1>
+        </div>
+
+        <div class="d-flex align-items-center flex-wrap">
+            <div class="form-group">
+                <Datepicker placeholder="Search By Date Range"
+                    class="form-control breadcrumb-input border-0 bg-white custom-date-input"
+                    autoApply v-model="date" range />
+            </div>
+            <div class="ms-2">
+                <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" @click="toggleMetabase">
+                    <i class="ri-refresh-line"></i>
+                    <span>Dashboard Metabase</span>
+                </button>
+                <button v-if="showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" @click="toggleMetabase">
+                    <i class="ri-refresh-line"></i>
+                    <span>Dashboard Utama</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="!showMetabase">
+        <!-- ROW 1 - Card dengan 3 kolom -->
+        <div class="row g-3">
+            <div class="col-md-4" 
+                v-for="(idx, index) in PerusahaanCard1Filtered" 
+                :key="index">
+                <SpkReusebleJobs
+                    titleClass="fs-13 fw-medium mb-0"
+                    :listCard="true"
+                    :cardClass="`card ${idx.cardClass}`"
+                    :list="idx"
+                    :NoCountUp="true"
+                />
+            </div>
+        </div>
+
+        <!-- ROW 2 - Card dengan 2 kolom -->
+        <div class="row g-3">
+            <div class="col-md-4" 
+                v-for="(idx, index) in PerusahaanCard2Filtered" 
+                :key="index">
+                <SpkReusebleJobs 
+                    titleClass="fs-13 fw-medium mb-0" 
+                    :listCard="true"
+                    :cardClass="`card ${idx.cardClass}`" 
+                    :list="idx" 
+                    :NoCountUp="true" 
+                />
+            </div>
+        </div>
+
+    <!-- RADAR CHARTS -->
+        <RadarChartIkas />
+    </div>
+
+    <!-- METABASE EMBED -->
+    <div v-else class="row">
+        <div class="col-12">
+            <div class="card custom-card">
+                <div class="card-body p-0">
+                    <iframe
+                        src="https://metabase.kssindustri.site/public/dashboard/6322d724-0de2-4a91-92d9-94ac85aa7f83"
+                        frameborder="0"
+                        width="100%"
+                        height="800"
+                        allowtransparency
+                    ></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
