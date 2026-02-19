@@ -450,7 +450,7 @@ export default {
                     </td>
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
-                        <router-link :to="`/profile-user/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
+                        <router-link :to="`/admin/users/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
                           <i class="ri-eye-line"></i>
                         </router-link>
                         <button 

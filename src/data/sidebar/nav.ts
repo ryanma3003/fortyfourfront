@@ -38,17 +38,17 @@ type MenuItem = LinkMenuItem | SubMenuItem;
 export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
 
   {
-    path: "/admin", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/admin/dashboard", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
-    path: "/dashboard", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
+    path: "/dashboards", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
 
   {
-    path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/admin/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
-    path: "/users-list", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/admin/users", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
     path: "/ikas", icon: Svgicons.Analyticsicon, title: "IKAS", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
@@ -60,7 +60,7 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/csirt", icon: Svgicons.Taskicon, title: "CSIRT", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
   {
-    path: "/role-list", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/admin/roles", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
 ]
 

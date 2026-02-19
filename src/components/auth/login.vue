@@ -41,7 +41,7 @@ const login = async () => {
         setTimeout(async () => {
           // Redirect based on user role
           const userRole = useAuthStore().userRole;
-          const redirectPath = userRole === 'admin' ? '/admin' : '/dashboards';
+          const redirectPath = userRole === 'admin' ? '/admin/dashboard' : '/dashboards';
           await router.push(redirectPath);
           console.log(`Router push called to ${redirectPath}`);
         }, 1500);

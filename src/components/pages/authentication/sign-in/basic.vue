@@ -28,7 +28,7 @@ const handleLogin = async () => {
         try {
             // Redirect based on user role
             const userRole = authStore.userRole;
-            const redirectPath = userRole === 'admin' ? '/admin' : '/dashboard';
+            const redirectPath = userRole === 'admin' ? '/admin/dashboard' : '/dashboard';
             await router.push(redirectPath);
             console.log(`Redirect called to ${redirectPath}`);
         } catch (e) {

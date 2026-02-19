@@ -5,7 +5,7 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { roleService, type Role } from "../../services/role.service";
 
 const dataToPass = {
-  title: { label: "Dashboards", path: "/dashboards" },
+  title: { label: "Dashboards", path: "/admin/dashboard" },
   currentpage: "Role List",
   activepage: "Role List",
 };

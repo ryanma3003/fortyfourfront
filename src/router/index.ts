@@ -29,17 +29,7 @@ const routes: RouteRecordRaw[] = [
         //   redirect: '/dashboards/sales',
         // },
         //Dashboard
-        {
-          path: `profile-stakeholders/:slug`,
-          name: 'Profile Stakeholders',
-          component: () => import("../components/dashboards/profile-stakeholders.vue"),
-        },
-        {
-          path: `profile-user/:slug`,
-          name: 'Profile User',
-          component: () => import("../components/dashboards/user-profile.vue"),
-          meta: { requiresAdmin: true },
-        },
+        //Dashboard
         {
           path: 'profile',
           name: "Profile",
@@ -61,27 +51,69 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/pages/pic-add.vue"),
         },
         {
-          path: 'users-list',
-          name: "Users List",
-          component: () => import("../components/dashboards/users-list.vue"),
-          meta: { requiresAdmin: true },
-        },
-        {
-          path: 'role-list',
-          name: "Role List",
-          component: () => import("../components/pages/role-list.vue"),
-        },
-        {
           path: 'dashboards',
           name: 'User Dashboard',
           component: () => import("../views/user/Dashboard.vue"),
         },
+        // Admin Routes
         {
           path: 'admin',
-          name: 'Admin Dashboard',
-          component: () => import("../views/admin/Dashboard.vue"),
-          meta: { requiresAdmin: true }
+          component: () => import("../shared/layouts/simple-router-view.vue"),
+          meta: { requiresAdmin: true },
+          children: [
+            {
+              path: 'dashboard',
+              name: 'Admin Dashboard',
+              component: () => import("../views/admin/Dashboard.vue"),
+            },
+            {
+              path: 'users',
+              name: "Users List",
+              component: () => import("../components/dashboards/users-list.vue"),
+            },
+            {
+              path: 'users/:slug',
+              name: 'Profile User',
+              component: () => import("../components/dashboards/user-profile.vue"),
+            },
+            {
+              path: 'roles',
+              name: "Role List",
+              component: () => import("../components/pages/role-list.vue"),
+            },
+            {
+              path: 'stakeholders',
+              name: 'Stakeholders',
+              component: () => import("../components/dashboards/stakeholders.vue"),
+            },
+            {
+              path: 'stakeholders/:slug',
+              name: 'Profile Stakeholders',
+              component: () => import("../components/dashboards/profile-stakeholders.vue"),
+            },
+          ]
         },
+        {
+          path: `ikas`,
+          name: 'Ikas',
+          component: () => import("../components/ikas.vue"),
+        },
+        {
+          path: `ikas-crud`,
+          name: 'Ikas Crud',
+          component: () => import("../components/ikas-crud.vue"),
+        },
+        {
+          path: `kse`,
+          name: 'Kse',
+          component: () => import("../components/kse.vue"),
+        },
+        {
+          path: `csirt/:id?`,
+          name: 'Csirt',
+          component: () => import("../components/dashboards/csirt.vue"),
+        },
+
         //children: [
         //   {
         //     path: 'sales',
@@ -345,31 +377,7 @@ const routes: RouteRecordRaw[] = [
         //   component: () => import("../components/dashboards/pos-system.vue"),
         // },
 
-        {
-          path: `stakeholders`,
-          name: 'Stakeholders',
-          component: () => import("../components/dashboards/stakeholders.vue"),
-        },
-        {
-          path: `ikas`,
-          name: 'Ikas',
-          component: () => import("../components/ikas.vue"),
-        },
-        {
-          path: `ikas-crud`,
-          name: 'Ikas Crud',
-          component: () => import("../components/ikas-crud.vue"),
-        },
-        {
-          path: `kse`,
-          name: 'Kse',
-          component: () => import("../components/kse.vue"),
-        },
-        {
-          path: `csirt/:id?`,
-          name: 'Csirt',
-          component: () => import("../components/dashboards/csirt.vue"),
-        },
+
 
         //applications
         {
@@ -1217,7 +1225,7 @@ router.beforeEach((to, from, next) => {
     const storedUser = sessionStorage.getItem('auth_user_session');
     const currentUser = storedUser ? JSON.parse(storedUser) : null;
     if (currentUser?.role === 'admin') {
-      next('/admin');
+      next('/admin/dashboard');
     } else {
       next('/dashboards');
     }

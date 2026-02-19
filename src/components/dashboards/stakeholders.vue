@@ -627,7 +627,7 @@ export default {
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
                         <router-link
-                          :to="`/profile-stakeholders/${item.slug}`"
+                          :to="`/admin/stakeholders/${item.slug}`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light"
                           title="Lihat Profil">
                           <i class="ri-eye-line"></i>

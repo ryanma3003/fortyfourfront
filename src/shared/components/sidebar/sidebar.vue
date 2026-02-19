@@ -220,7 +220,7 @@ const isChatOpen = ref(false);
 
 // Computed property for dynamic dashboard route based on user role
 const dashboardRoute = computed(() => {
-  return authStore.userRole === 'admin' ? '/admin' : '/dashboards';
+  return authStore.userRole === 'admin' ? '/admin/dashboard' : '/dashboards';
 });
 
 const toggleChat = () => {

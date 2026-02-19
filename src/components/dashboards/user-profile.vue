@@ -89,11 +89,11 @@ const loadUser = async () => {
       }
     } else {
       // Redirect to users-list if user not found
-      router.push("/users-list");
+      router.push("/admin/users");
     }
   } catch (error) {
     console.error('Failed to load user:', error);
-    router.push("/users-list");
+    router.push("/admin/users");
   } finally {
     loading.value = false;
   }
@@ -109,7 +109,7 @@ onMounted(() => {
 });
 
 const dataToPass = computed(() => ({
-  title: { label: "Users", path: "/users-list" },
+  title: { label: "Users", path: "/admin/users" },
   currentpage: displayName.value || "User Profile",
   activepage: "User Profile",
 }));
@@ -278,7 +278,7 @@ const saveRole = async () => {
             "
           ></div>
           <div class="position-absolute top-0 end-0 p-3 p-md-4 d-flex gap-2">
-            <router-link to="/users-list" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
+            <router-link to="/admin/users" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-2">
               <i class="ri-arrow-left-line"></i>
               <span class="d-none d-sm-inline">Kembali</span>
             </router-link>
