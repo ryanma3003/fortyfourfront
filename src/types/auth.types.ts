@@ -12,18 +12,25 @@ export interface RegisterPayload {
     nama_perusahaan?: string;
 }
 
+/**
+ * Login response from backend.
+ * Token is sent via HTTP-only cookie (NOT in response body).
+ * Body contains message + user info only.
+ */
 export interface AuthResponse {
-    access_token: string;
-    expires_at: string;
-    refresh_token: string;
-    user: {
+    message?: string;
+    user?: {
         id: string;
         username: string;
         email: string;
-        id_jabatan: string;
-        role_id: string;
-        role_name: string;
-        created_at: string;
-        updated_at: string;
+        name?: string;
+        id_jabatan?: string;
+        role_id?: string;
+        role_name?: string;
+        role?: string;
+        created_at?: string;
+        updated_at?: string;
     };
+    // Allow additional properties from backend
+    [key: string]: any;
 }

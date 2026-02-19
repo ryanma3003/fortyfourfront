@@ -13,24 +13,23 @@ interface CurrentUser {
   createdAt: string;
 }
 
-// Session storage key ONLY for user info (NOT token)
+// Session storage key for user info (UI display only, no token)
 const USER_SESSION_KEY = "auth_user_session";
 
-// ================================
-// TOKEN MEMORY ONLY (NOT STORAGE)
-// ================================
-let accessToken: string | null = null;
-
-function setToken(token: string) {
-  accessToken = token;
-}
-
-function clearToken() {
-  accessToken = null;
-}
-
-function getToken() {
-  return accessToken;
+/**
+ * Helper: map a /api/me (or login) response to CurrentUser.
+ * Handles both flat `{ id, username, ... }` and nested `{ user: { ... } }` shapes.
+ */
+function mapToCurrentUser(data: any): CurrentUser {
+  const u = data?.user ?? data;
+  return {
+    id: u.id,
+    username: u.username,
+    name: u.name || u.username,
+    email: u.email,
+    role: u.role || u.role_name || "user",
+    createdAt: u.created_at || u.createdAt || "",
+  };
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -45,22 +44,17 @@ export const useAuthStore = defineStore("auth", {
     isAdmin(): boolean {
       return this.currentUser?.role === "admin";
     },
-
     userRole(): string {
       return this.currentUser?.role || "";
     },
-
     userName(): string {
       return this.currentUser?.name || "";
     },
-
     userEmail(): string {
       return this.currentUser?.email || "";
     },
-
     formattedJoinDate(): string {
       if (!this.currentUser?.createdAt) return "";
-
       try {
         const date = new Date(this.currentUser.createdAt);
         return date.toLocaleDateString("id-ID", {
@@ -76,53 +70,35 @@ export const useAuthStore = defineStore("auth", {
 
   actions: {
     // ================================
-    // LOGIN
+    // LOGIN — Full Cookie Auth
     // ================================
     async authenticateUser(payload: LoginPayload) {
       this.loading = true;
       this.error = null;
 
       try {
+        // 1. Login — backend sets HTTP-only cookie + returns user info in body
         const response = await authService.login(payload);
 
-        // ================================
-        // TOKEN ONLY IN MEMORY
-        // ================================
-        setToken(response.access_token);
+        // 2. Build user data from login response (no separate /api/me call needed)
+        const userData = mapToCurrentUser(response);
 
-        // Attach token to axios/fetch client
-        authService.setAuthToken(response.access_token);
-
-        // User info safe to store
-        const userData: CurrentUser = {
-          id: response.user.id,
-          username: response.user.username,
-          name: response.user.username,
-          email: response.user.email,
-          role: response.user.role_name || "user",
-          createdAt: response.user.created_at,
-        };
-
-        // Store ONLY user info (no token)
+        // Store user info in sessionStorage for UI (no token!)
         sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
 
         this.authenticated = true;
         this.currentUser = userData;
 
-        // Load profile
+        // 3. Load profile data
         const profileStore = useProfileStore();
         await profileStore.switchUser();
 
         return { authenticated: true };
       } catch (error: any) {
         this.error = error.message || "Login failed";
-
-        clearToken();
         sessionStorage.removeItem(USER_SESSION_KEY);
-
         this.authenticated = false;
         this.currentUser = null;
-
         return { authenticated: false, error: this.error };
       } finally {
         this.loading = false;
@@ -135,14 +111,11 @@ export const useAuthStore = defineStore("auth", {
     async registerUser(payload: RegisterPayload) {
       this.loading = true;
       this.error = null;
-
       try {
         await authService.register(payload);
-
         return { success: true };
       } catch (error: any) {
         this.error = error.message || "Registration failed";
-
         return { success: false, error: this.error };
       } finally {
         this.loading = false;
@@ -150,28 +123,24 @@ export const useAuthStore = defineStore("auth", {
     },
 
     // ================================
-    // LOGOUT
+    // LOGOUT — backend clears cookie
     // ================================
-    logUserOut() {
+    async logUserOut() {
       const profileStore = useProfileStore();
       profileStore.resetToDefaults();
 
-      // Clear memory token
-      clearToken();
+      await authService.logout();
 
-      // Clear API header
-      authService.logout();
-
-      // Clear user info
       sessionStorage.removeItem(USER_SESSION_KEY);
-
       this.authenticated = false;
       this.currentUser = null;
       this.error = null;
     },
 
     // ================================
-    // CHECK AUTH ON STARTUP
+    // CHECK AUTH ON STARTUP / REFRESH
+    // Restore user data from sessionStorage (no backend call needed).
+    // The HTTP-only cookie handles actual API auth automatically.
     // ================================
     checkAuthOnStartup() {
       const storedUser = sessionStorage.getItem(USER_SESSION_KEY);
@@ -183,23 +152,13 @@ export const useAuthStore = defineStore("auth", {
       }
 
       try {
-        // Restore user info
         this.currentUser = JSON.parse(storedUser);
         this.authenticated = true;
-
-        // Token cannot be restored because it's memory-only
-        // User must login again after reload
-        console.warn("Token is memory-only, please login again after refresh.");
-      } catch (err) {
-        this.logUserOut();
+      } catch {
+        sessionStorage.removeItem(USER_SESSION_KEY);
+        this.authenticated = false;
+        this.currentUser = null;
       }
-    },
-
-    // ================================
-    // OPTIONAL: GET TOKEN (INTERNAL)
-    // ================================
-    getAccessToken() {
-      return getToken();
     },
   },
 });

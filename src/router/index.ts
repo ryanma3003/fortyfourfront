@@ -3,7 +3,6 @@ import Errorpagesinfo from "../shared/layouts/errorpagesinfo.vue";
 import Landingpage from "../shared/layouts/landingpage.vue";
 import Maindashboard from "../shared/layouts/maindashboard.vue";
 import Authlayout from "../shared/layouts/authlayout.vue";
-import { TokenStorage } from "@/config/api";
 
 
 const routes: RouteRecordRaw[] = [
@@ -1198,9 +1197,9 @@ const router = createRouter({
 
 // Navigation guard for authentication
 router.beforeEach((to, from, next) => {
-  // Check if user is authenticated from in-memory token storage
-  const hasToken = TokenStorage.hasToken();
-  const isAuthenticated = hasToken;
+  // Cookie auth — check if we have a verified session in sessionStorage
+  const storedSession = sessionStorage.getItem('auth_user_session');
+  const isAuthenticated = !!storedSession;
 
   // List of public routes that don't require authentication
   const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover',

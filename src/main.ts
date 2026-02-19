@@ -93,7 +93,7 @@ app.use(Particles, {
   }
 });
 
-// Initialize auth state from localStorage
+// Initialize auth state from sessionStorage (instant, no API call)
 import { useAuthStore } from './stores/auth';
 const authStore = useAuthStore();
 authStore.checkAuthOnStartup();

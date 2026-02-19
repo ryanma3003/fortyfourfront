@@ -2,56 +2,6 @@ import { config } from './env';
 import type { HttpMethod } from '@/types/api.types';
 
 /**
- * Secure Token Storage with obfuscation
- * Token is stored encrypted in sessionStorage to:
- * 1. Persist across page reloads (unlike pure memory storage)
- * 2. Not be easily readable in DevTools (unlike plain localStorage)
- * 3. Auto-clear when browser/tab is closed (sessionStorage behavior)
- */
-const TokenStorage = (() => {
-    const STORAGE_KEY = '_ast'; // Obfuscated key name
-
-    // Simple obfuscation (not cryptographic, but hides from casual viewing)
-    const obfuscate = (str: string): string => {
-        return btoa(str.split('').reverse().join(''));
-    };
-
-    const deobfuscate = (str: string): string => {
-        try {
-            return atob(str).split('').reverse().join('');
-        } catch {
-            return '';
-        }
-    };
-
-    return {
-        setToken(token: string | null) {
-            if (token) {
-                sessionStorage.setItem(STORAGE_KEY, obfuscate(token));
-            } else {
-                sessionStorage.removeItem(STORAGE_KEY);
-            }
-        },
-        getToken(): string | null {
-            const stored = sessionStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                return deobfuscate(stored);
-            }
-            return null;
-        },
-        clearToken() {
-            sessionStorage.removeItem(STORAGE_KEY);
-        },
-        hasToken(): boolean {
-            return sessionStorage.getItem(STORAGE_KEY) !== null;
-        }
-    };
-})();
-
-// Export for use in other modules
-export { TokenStorage };
-
-/**
  * Custom Error class for API errors
  */
 export class ApiRequestError extends Error {
@@ -67,11 +17,14 @@ export class ApiRequestError extends Error {
 }
 
 /**
- * Base API Client using native fetch
+ * Base API Client using native fetch.
+ * Authentication is handled entirely via HTTP-only cookies.
+ * Every request includes `credentials: 'include'` so the browser
+ * sends the cookie automatically — no Authorization header needed.
  */
 class ApiClient {
     private baseUrl: string;
-    private defaultHeaders: HeadersInit;
+    private defaultHeaders: Record<string, string>;
 
     constructor(baseUrl: string) {
         this.baseUrl = baseUrl;
@@ -79,25 +32,6 @@ class ApiClient {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         };
-    }
-
-    /**
-     * Set authentication token for future requests
-     * @param token JWT token
-     */
-    public setAuthToken(token: string) {
-        this.defaultHeaders = {
-            ...this.defaultHeaders,
-            'Authorization': `Bearer ${token}`,
-        };
-    }
-
-    /**
-     * Clear authentication token
-     */
-    public clearAuthToken() {
-        const { 'Authorization': _, ...headers } = this.defaultHeaders as Record<string, string>;
-        this.defaultHeaders = headers;
     }
 
     /**
@@ -110,7 +44,7 @@ class ApiClient {
 
         const isFormData = body instanceof FormData;
         const headers: Record<string, string> = {
-            ...this.defaultHeaders as Record<string, string>,
+            ...this.defaultHeaders,
             ...customHeaders as Record<string, string>,
         };
 

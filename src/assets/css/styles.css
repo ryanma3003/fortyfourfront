@@ -98,11 +98,11 @@ typography
   --default-text-color: #011a42;
   --default-border: #e2e8ee;
   --default-background: #f9f7fc;
-  --menu-bg: #fff;
-  --menu-prime-color: #302d36;
-  --menu-icon-color: #6c7e96;
+  --menu-bg: #124faa;
+  --menu-prime-color: rgba(255, 255, 255, 0.85);
+  --menu-icon-color: rgba(255, 255, 255, 0.6);
   --header-icon-color: #6c7e96;
-  --menu-border-color: #e2e8ee;
+  --menu-border-color: rgba(255, 255, 255, 0.1);
   --header-bg: #fff;
   --header-prime-color: #302d36;
   --header-border-color: #e2e8ee;
@@ -857,7 +857,7 @@ typography
 }
 
 [data-menu-styles=dark] .side-menu__label1 {
-  border-block-end: 0px solid rgba(255, 255, 255, 0.1) !important;
+  border-block-end: 0px solid rgba(0, 0, 0, 0.1) !important;
 }
 
 [data-menu-styles=dark] .app-sidebar .side-menu__item.active .side-menu__icon,
@@ -1285,12 +1285,17 @@ typography
   }
 }
 
+/* ini warna nav sidebar */
+
 [data-menu-styles=transparent] {
-  --menu-bg: var(--default-body-bg-color);
+  --menu-bg: linear-gradient(180deg, #42a5f5 0%, #0a1628 100%);
+  --menu-prime-color: rgba(255, 255, 255, 0.85);
+  --menu-icon-color: rgba(255, 255, 255, 0.6);
+  --menu-border-color: rgba(255, 255, 255, 0.1);
 }
 
-[data-menu-styles=transparent][data-theme-mode=light] {
-  --menu-border-color: rgba(0, 0, 0, 0.07);
+[data-menu-styles=transparent] .app-sidebar .main-sidebar-header {
+  background: transparent !important;
 }
 
 [data-menu-styles=transparent][data-nav-layout=vertical][data-theme-mode=dark] .app-sidebar .main-sidebar-header .header-logo .desktop-dark {
@@ -1381,9 +1386,19 @@ typography
   display: none;
 }
 
-[data-menu-styles=transparent] .app-sidebar .side-menu__item.active,
+[data-menu-styles=transparent] .app-sidebar .side-menu__item.active,  
 [data-menu-styles=transparent] .app-sidebar .side-menu__item:hover {
-  background-color: var(--primary01);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-menu-styles=transparent] .app-sidebar .side-menu__item.active .side-menu__icon,
+[data-menu-styles=transparent] .app-sidebar .side-menu__item.active .side-menu__label,
+[data-menu-styles=transparent] .app-sidebar .side-menu__item.active .side-menu__angle,
+[data-menu-styles=transparent] .app-sidebar .side-menu__item:hover .side-menu__icon,
+[data-menu-styles=transparent] .app-sidebar .side-menu__item:hover .side-menu__label,
+[data-menu-styles=transparent] .app-sidebar .side-menu__item:hover .side-menu__angle {
+  color: #ffffff !important;
+  fill: #fff !important;
 }
 
 [data-menu-styles=transparent] .app-sidebar .main-sidebar {
@@ -1391,19 +1406,19 @@ typography
 }
 
 [data-menu-styles=transparent][data-theme-mode=dark] {
-  --menu-prime-color: rgba(255, 255, 255, 0.7);
-  --menu-icon-color: rgba(255, 255, 255, 0.7);
+  --menu-prime-color: rgba(255, 255, 255, 0.85);
+  --menu-icon-color: rgba(255, 255, 255, 0.85);
   --menu-border-color: rgba(255, 255, 255, 0.1);
-  --menu-bg: rgb(var(--body-bg-rgb2));
+  --menu-bg: linear-gradient(180deg, #003973 0%, #050a14 100%);
 }
 
 [data-menu-styles=transparent][data-theme-mode=dark][icon-overlay=open] {
-  --menu-bg: rgb(var(--body-bg-rgb2));
+  --menu-bg: linear-gradient(180deg, #003973 0%, #050a14 100%);
 }
 
 [data-menu-styles=transparent][data-theme-mode=dark] .app-sidebar .side-menu__item.active,
 [data-menu-styles=transparent][data-theme-mode=dark] .app-sidebar .side-menu__item:hover {
-  background-color: rgb(255, 255, 255);
+  background-color: rgba(255, 255, 255, 0.1);
   transform: scale(1.02);
 }
 
@@ -40609,9 +40624,9 @@ html[data-toggled="icon-click-closed"] .sub-slide-menu {
   }
 
   [data-nav-layout=horizontal] .app-sidebar .side-menu__icon {
-    font-size: 0.9rem;
-    width: 0.9rem;
-    height: 0.9rem;
+    font-size: 10.9rem;
+    width: 10.9rem;
+    height: 10.9rem;
   }
 
   [data-nav-layout=horizontal] .sidemenu-layout-styles {

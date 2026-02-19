@@ -174,6 +174,7 @@ const handleEditData = () => {
         :currentPage="assessmentStore.progress.currentPage"
         :totalPages="assessmentStore.totalPagesInSubCategory"
         :questionsPerPage="5"
+        title="IKAS"
       />
     </div>
   </div>

@@ -620,8 +620,8 @@ const colorthemeFn = (value: string) => {
   switcher.colorthemeFn(value);
 };
 
-const handleLogout = () => {
-  logUserOut();
+const handleLogout = async () => {
+  await logUserOut();
   router.push("/");
 };
 
