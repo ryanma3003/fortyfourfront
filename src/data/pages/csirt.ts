@@ -147,7 +147,7 @@ export const seCsirtData: seCsirt[] = [
         as_number_se: "AS12345",
         pengelola_se: "PT Maju Jaya",
         fitur_se: "Firewall, Intrusion Detection",
-        kategori_se: "Network Security",
+        kategori_se: "Tinggi",
     },
     {
         id: 2,
@@ -157,7 +157,7 @@ export const seCsirtData: seCsirt[] = [
         as_number_se: "AS67890",
         pengelola_se: "CV Berkah Sejahtera",
         fitur_se: "Intrusion Detection, Log Management",
-        kategori_se: "Network Security",
+        kategori_se: "Strategis",
     },
     {
         id: 3,
@@ -167,7 +167,7 @@ export const seCsirtData: seCsirt[] = [
         as_number_se: "AS54321",
         pengelola_se: "PT Lestari",
         fitur_se: "Endpoint Detection, Malware Protection",
-        kategori_se: "Endpoint Security",
+        kategori_se: "Tinggi",
     },
     {
         id: 4,
@@ -177,6 +177,6 @@ export const seCsirtData: seCsirt[] = [
         as_number_se: "AS67890",
         pengelola_se: "PT Indo Digital Solutions",
         fitur_se: "Intrusion Detection, Log Management",
-        kategori_se: "Network Security",
+        kategori_se: "Rendah",
     }
 ];
