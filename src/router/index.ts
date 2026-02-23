@@ -91,6 +91,11 @@ const routes: RouteRecordRaw[] = [
               name: 'Profile Stakeholders',
               component: () => import("../components/dashboards/profile-stakeholders.vue"),
             },
+            {
+              path: 'csirt',
+              name: 'Csirt Admin',
+              component: () => import("../components/dashboards/csirt-admin.vue"),
+            },
           ]
         },
         {
