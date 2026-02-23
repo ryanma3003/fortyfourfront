@@ -46,94 +46,7 @@ function animateValue(start: number, end: number) {
 
 onMounted(() => {
   displayPercentage.value = percentage.value;
-  generateShapes();
-  generateLines();
 });
-
-const backgroundShapes = ref<{ id: number; icon: string; variantClass: string; style: any }[]>([]);
-
-function generateShapes() {
-  const shapes = [];
-  const icons = ['ri-key-2-line', 'ri-shield-keyhole-line', 'ri-lock-password-line', 'ri-fingerprint-line', 'ri-bug-line'];
-  
-  for (let i = 0; i < 12; i++) {
-    // Randomize Icon
-    const icon = icons[Math.floor(Math.random() * icons.length)];
-    
-    // Randomize Style
-    const top = Math.floor(Math.random() * 100); // 0% to 100%
-    const duration = 25 + Math.random() * 35; // Slow & smooth
-    const delay = -(Math.random() * 20); 
-    
-    // Randomize Size
-    const isLarge = Math.random() > 0.8; 
-    const size = isLarge ? (3 + Math.random() * 15) : (18 + Math.random() * 10);
-
-    // Randomize Color Variant (Sky Blue, Deep Blue, Slate)
-    const variantRand = Math.random();
-    let variantClass = '';
-    
-    if (variantRand > 0.6) {
-        // Sky Blue (Original)
-        variantClass = 'shape-sky';
-    } else if (variantRand > 0.3) {
-        // Deep Blue (New) - darker, richer
-        variantClass = 'shape-deep';
-    } else {
-        // Slate/Black (Original)
-        variantClass = 'shape-slate';
-    }
-      
-    // Random Drift
-    const driftY = Math.floor(Math.random() * 60 - 30); 
-
-    shapes.push({
-      id: i,
-      icon,
-      variantClass, // Pass class instead of inline color matching
-      style: {
-        top: `${top}%`,
-        left: '-10%',
-        fontSize: `${size}px`,
-        animationDuration: `${duration}s`,
-        animationDelay: `${delay}s`,
-        '--drift-y': `${driftY}px`
-      }
-    });
-  }
-  backgroundShapes.value = shapes;
-}
-const movingLines = ref<{ id: number; style: any }[]>([]);
-
-function generateLines() {
-  const lines = [];
-  for (let i = 0; i < 18; i++) {
-    const top = Math.random() * 100;
-    const width = 30 + Math.random() * 80; // thin lines of varying width
-    const height = 0.5 + Math.random() * 1.2; // very thin
-    const duration = 12 + Math.random() * 25;
-    const delay = -(Math.random() * 20);
-    const opacity = 0.04 + Math.random() * 0.1;
-    const angle = -2 + Math.random() * 4; // slight tilt
-    const isBlue = Math.random() > 0.5;
-    lines.push({
-      id: i,
-      style: {
-        top: `${top}%`,
-        width: `${width}px`,
-        height: `${height}px`,
-        animationDuration: `${duration}s`,
-        animationDelay: `${delay}s`,
-        opacity,
-        transform: `rotate(${angle}deg)`,
-        background: isBlue
-          ? 'linear-gradient(90deg, transparent, #3b82f6, transparent)' // blue
-          : 'linear-gradient(90deg, transparent, #f97316, transparent)', // orange
-      }
-    });
-  }
-  movingLines.value = lines;
-}
 </script>
 
 <template>
@@ -153,31 +66,14 @@ function generateLines() {
           <path id="gentle-wave" d="M-160 44c30 0 58-12 88-12s 58 12 88 12 58-12 88-12 58 12 88 12 v44h-352z" />
         </defs>
         <g class="parallax-waves">
-          <use xlink:href="#gentle-wave" x="48" y="5" fill="rgba(59,130,246,0.1)" />
-          <use xlink:href="#gentle-wave" x="48" y="8" fill="rgba(249,115,22,0.1)" />
-          <use xlink:href="#gentle-wave" x="48" y="10" fill="rgba(59,130,246,0.08)" />
-          <use xlink:href="#gentle-wave" x="48" y="15" fill="rgba(249,115,22,0.05)" />
+          <use xlink:href="#gentle-wave" x="48" y="3" fill="rgba(59,130,246,0.18)" />
+          <use xlink:href="#gentle-wave" x="48" y="7" fill="rgba(99,102,241,0.14)" />
+          <use xlink:href="#gentle-wave" x="48" y="11" fill="rgba(6,182,212,0.11)" />
+          <use xlink:href="#gentle-wave" x="48" y="16" fill="rgba(59,130,246,0.07)" />
         </g>
       </svg>
 
-      <!-- MOVING LINES -->
-      <div 
-        v-for="line in movingLines" 
-        :key="'line-'+line.id" 
-        class="moving-line"
-        :style="line.style"
-      />
 
-      <!-- EXISTING MOVING SHAPES -->
-      <div 
-        v-for="shape in backgroundShapes" 
-        :key="shape.id" 
-        class="moving-shape" 
-        :class="shape.variantClass"
-        :style="shape.style"
-      >
-        <i :class="shape.icon"></i>
-      </div>
     </div>
 
     <div class="pb-content-layer">
@@ -371,90 +267,7 @@ function generateLines() {
   background: rgba(255, 255, 255, 0.85); /* White semi-transparent */
 }
 
-/* PREMIUM ICON STYLES */
-.moving-shape {
-  position: absolute;
-  width: auto;
-  height: auto;
-  /* Top, Left, Duration, Delay are now inline */
-  
-  background: transparent;
-  border: none;
-  backdrop-filter: none;
-  
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  will-change: transform, opacity;
-  
-  /* Apply animation name here, duration/delay are inline */
-  animation-name: floatRotate;
-  animation-timing-function: linear; /* Smoother continuous flow */
-  animation-iteration-count: infinite;
-  
-  /* Base Premium Style */
-  opacity: 0.5;
-  filter: drop-shadow(0 2px 4px rgba(148, 163, 184, 0.05)); /* Subtle shadow */
-}
 
-/* Gradient Text Effect for Icons */
-.moving-shape i {
-  display: block;
-  transform: rotate(15deg);
-  background: linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%); /* Default / Slate */
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-weight: 300; /* Thinner stroke */
-}
-
-/* Blue Variant (Sky) */
-.moving-shape.shape-sky i {
-  background: linear-gradient(135deg, #081a81 0%, #051686 100%); /* Sky Blue Gradient */
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Dark Variant (Deep Tech) */
-.moving-shape.shape-slate i {
-  background: linear-gradient(135deg, #475569 0%, #1e293b 100%); /* Slate Gradient */
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Deep Blue Variant (Rich) */
-.moving-shape.shape-deep i {
-  background: linear-gradient(135deg, #1e40af 0%, #172554 100%); /* Deep Blue Gradient */
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-@keyframes floatRotate {
-  0% { transform: translate(0, 0) rotate(0deg) scale(0.9); opacity: 0; }
-  10% { opacity: 0.6; transform: translate(10vw, calc(var(--drift-y) * 0.2)) rotate(45deg) scale(1); }
-  90% { opacity: 0.6; transform: translate(90vw, calc(var(--drift-y) * 0.8)) rotate(315deg) scale(1); }
-  100% { transform: translate(100vw, var(--drift-y)) rotate(360deg) scale(0.9); opacity: 0; }
-}
-
-/* ========== MOVING LINES ========== */
-@keyframes lineSlide {
-  0%   { left: -15%; opacity: 0; }
-  10%  { opacity: var(--line-opacity, 0.07); }
-  90%  { opacity: var(--line-opacity, 0.07); }
-  100% { left: 110%; opacity: 0; }
-}
-
-.moving-line {
-  position: absolute;
-  border-radius: 2px;
-  will-change: left, opacity;
-  animation: lineSlide linear infinite;
-  pointer-events: none;
-  --line-opacity: 0.07;
-}
 
 /* ========== WAVE / RIPPLE EFFECT (SVG) ========== */
 .waves-container {
@@ -462,7 +275,7 @@ function generateLines() {
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 120px; /* Adjust height as needed */
+  height: 80px;
   z-index: 1;
   pointer-events: none;
 }
@@ -498,12 +311,6 @@ function generateLines() {
 
 /* Dark Mode Adaptation */
 [data-theme-mode="dark"] .pb-rotating-bg { background: #0f172a; }
-[data-theme-mode="dark"] .moving-shape i {
-  background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  opacity: 0.5;
-}
 
 /* CONTENT LAYER (Sits on top of fluid) */
 .pb-content-layer {
@@ -983,8 +790,5 @@ function generateLines() {
 [data-theme-mode="dark"] .parallax-waves > use:nth-child(3) { fill: rgba(148,163,184,0.05); }
 [data-theme-mode="dark"] .parallax-waves > use:nth-child(4) { fill: rgba(96,165,250,0.04); }
 
-/* Dark mode moving lines */
-[data-theme-mode="dark"] .moving-line {
-  --line-opacity: 0.12;
-}
+
 </style>

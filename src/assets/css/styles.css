@@ -98,12 +98,12 @@ typography
   --default-text-color: #011a42;
   --default-border: #e2e8ee;
   --default-background: #f9f7fc;
-  --menu-bg: #124faa;
+  --menu-bg: linear-gradient(180deg, #0750ac 0%, #053d8c 35%, #021f44 75%, #010e20 100%);
   --menu-prime-color: rgba(255, 255, 255, 0.85);
   --menu-icon-color: rgba(255, 255, 255, 0.6);
   --header-icon-color: #6c7e96;
   --menu-border-color: rgba(255, 255, 255, 0.1);
-  --header-bg: #fff;
+  --header-bg: #ffffff;
   --header-prime-color: #302d36;
   --header-border-color: #e2e8ee;
   --custom-white: #fff;
@@ -1288,7 +1288,7 @@ typography
 /* ini warna nav sidebar */
 
 [data-menu-styles=transparent] {
-  --menu-bg: linear-gradient(180deg, #42a5f5 0%, #0a1628 100%);
+  --menu-bg: linear-gradient(180deg, #0750ac 0%, #053d8c 35%, #021f44 75%, #010e20 100%);
   --menu-prime-color: rgba(255, 255, 255, 0.85);
   --menu-icon-color: rgba(255, 255, 255, 0.6);
   --menu-border-color: rgba(255, 255, 255, 0.1);
@@ -1757,6 +1757,11 @@ typography
 [data-header-styles=transparent][data-theme-mode=light] {
   --header-border-color: rgba(0, 0, 0, 0.07);
   --header-bg: var(--default-body-bg-color);
+}
+
+[data-header-styles=transparent][data-theme-mode=light] .app-header {
+  --default-body-bg-color: rgba(0, 0, 0, 0.05);
+  --default-background: rgba(0, 0, 0, 0.05);
 }
 
 [data-header-styles=transparent][data-theme-mode=light] .app-header {
@@ -49580,3 +49585,154 @@ html.dark .gradient-header-blue .text-white {
   border-color: rgba(248, 113, 113, 0.4);
   color: #f87171;
 }
+
+/* ===========================================
+   GLOBAL DESIGN IMPROVEMENTS (Blue Theme)
+=========================================== */
+
+/* --- Cards --- */
+.custom-card {
+  border: 1px solid var(--default-border) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 2px 16px rgba(21, 101, 192, 0.07), 0 1px 4px rgba(0,0,0,0.05) !important;
+  transition: box-shadow 0.2s ease;
+}
+.custom-card:hover {
+  box-shadow: 0 4px 24px rgba(21, 101, 192, 0.12), 0 1px 6px rgba(0,0,0,0.07) !important;
+}
+.custom-card .card-header {
+  border-bottom: 1px solid var(--default-border);
+  background: transparent;
+  padding: 1rem 1.25rem;
+}
+.custom-card .card-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--default-text-color);
+  letter-spacing: 0.01em;
+}
+.custom-card .card-body {
+  padding: 1.25rem;
+}
+
+/* --- Tables --- */
+.table > thead > tr > th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #2c4a7c;
+  background: linear-gradient(135deg, #edf3fc 0%, #e4edf9 100%);
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e0e7f0 !important;
+}
+.table > tbody > tr > td {
+  padding: 0.8rem 1rem;
+  font-size: 13.5px;
+  color: var(--default-text-color);
+  border-bottom: 1px solid #eef3fb;
+  vertical-align: middle;
+}
+.table > tbody > tr:last-child > td {
+  border-bottom: none;
+}
+.table-hover > tbody > tr:hover > td {
+  background-color: #f5f9ff !important;
+}
+
+/* --- Buttons --- */
+.btn {
+  border-radius: 0.625rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em;
+  transition: all 0.18s ease !important;
+}
+.btn:not(.btn-link):hover {
+  transform: translateY(-1px);
+}
+
+/* --- Form Controls --- */
+.form-control,
+.form-select {
+  border-color: var(--default-border) !important;
+  border-radius: 0.625rem !important;
+  color: var(--default-text-color) !important;
+  background: var(--form-control-bg) !important;
+  font-size: 13.5px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: rgba(21, 101, 192, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.1) !important;
+}
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c4a7c;
+  margin-bottom: 0.4rem;
+}
+
+/* --- Badges --- */
+.badge {
+  border-radius: 0.5rem !important;
+  font-weight: 600 !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.02em;
+}
+.badge.rounded-pill { border-radius: 2rem !important; }
+
+/* --- Page header breadcrumb --- */
+.page-header-breadcrumb .breadcrumb-item,
+.page-header-breadcrumb .breadcrumb-item a {
+  font-size: 13px;
+}
+
+/* --- Pagination --- */
+.pagination .page-link {
+  border-radius: 50% !important;
+  width: 34px; height: 34px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 !important;
+  border-color: var(--default-border) !important;
+  color: var(--default-text-color) !important;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+.pagination .page-item.active .page-link {
+  background: rgb(21, 101, 192) !important;
+  border-color: rgb(21, 101, 192) !important;
+  color: #fff !important;
+  box-shadow: 0 3px 10px rgba(21, 101, 192, 0.35);
+}
+.pagination .page-link:hover {
+  background: #edf3fc !important;
+  color: rgb(21, 101, 192) !important;
+}
+
+/* --- Modal --- */
+.modal-content {
+  border-radius: 1rem !important;
+  border: none !important;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.18) !important;
+}
+.modal-header {
+  border-bottom: 1px solid var(--default-border);
+  padding: 1.1rem 1.5rem;
+}
+.modal-footer {
+  border-top: 1px solid var(--default-border);
+  padding: 0.875rem 1.5rem;
+}
+
+/* --- App sidebar menu text tweak --- */
+.main-menu .slide-menu li a,
+.main-menu .side-menu__item .side-menu__label {
+  font-size: 13.5px;
+}
+
+/* --- Scrollbar refinement --- */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(21,101,192,0.2); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(21,101,192,0.4); }

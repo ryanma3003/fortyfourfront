@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from "vue";
-import { Tooltip } from "bootstrap";
+import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { roleService, type Role } from "../../services/role.service";
 
@@ -11,53 +10,64 @@ const dataToPass = {
 };
 
 // State
-const items = ref<Role[]>([]);
-const loading = ref(false);
+const items       = ref<Role[]>([]);
+const loading     = ref(false);
 const searchQuery = ref("");
-const sortField = ref<"name">("name");
-const sortOrder = ref<"asc" | "desc">("asc");
+const sortField   = ref<"name">("name");
+const sortOrder   = ref<"asc" | "desc">("asc");
 const currentPage = ref(1);
 const itemsPerPage = ref(10);
 
-// Filtered and sorted data
+// Filtered + sorted
 const filteredData = computed(() => {
   let data = items.value;
-
-  // Filter by search query
   if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase().trim();
-    data = data.filter((role) => 
-      role.name.toLowerCase().includes(query) ||
-      (role.description?.toLowerCase().includes(query) ?? false)
+    const q = searchQuery.value.toLowerCase();
+    data = data.filter(r =>
+      r.name.toLowerCase().includes(q) ||
+      (r.description?.toLowerCase().includes(q) ?? false)
     );
   }
-
-  // Sort data
   return [...data].sort((a, b) => {
-    const modifier = sortOrder.value === "asc" ? 1 : -1;
-    const valA = a[sortField.value].toString().toLowerCase();
-    const valB = b[sortField.value].toString().toLowerCase();
-    return valA < valB ? -1 * modifier : valA > valB ? 1 * modifier : 0;
+    const mod = sortOrder.value === "asc" ? 1 : -1;
+    return a[sortField.value].localeCompare(b[sortField.value]) * mod;
   });
 });
 
-const totalPages = computed(() =>
-  Math.ceil(filteredData.value.length / itemsPerPage.value)
-);
+const totalPages = computed(() => Math.ceil(filteredData.value.length / itemsPerPage.value));
 
 const displayData = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
   return filteredData.value.slice(start, start + itemsPerPage.value);
 });
 
-// Load roles from API
+const paginationInfo = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value + 1;
+  const end   = Math.min(currentPage.value * itemsPerPage.value, filteredData.value.length);
+  return `${start} - ${end} dari ${filteredData.value.length} role`;
+});
+
+const getRoleColor = (name: string) => {
+  const n = name?.toLowerCase();
+  if (n === "admin")  return "avatar-red";
+  if (n === "staff")  return "avatar-blue";
+  if (n === "user")   return "avatar-teal";
+  return "avatar-violet";
+};
+
+const getRoleIcon = (name: string) => {
+  const n = name?.toLowerCase();
+  if (n === "admin")  return "ri-shield-star-line";
+  if (n === "staff")  return "ri-briefcase-line";
+  return "ri-user-line";
+};
+
 const loadRoles = async () => {
   loading.value = true;
   try {
-    const roles = await roleService.getAll();
-    items.value = roles;
-  } catch (error) {
-    console.error('Failed to load roles:', error);
+    items.value = await roleService.getAll();
+  } catch (e) {
+    console.error("Failed to load roles:", e);
     items.value = [];
   } finally {
     loading.value = false;
@@ -65,31 +75,14 @@ const loadRoles = async () => {
 };
 
 const toggleSort = (field: "name") => {
-  if (sortField.value === field) {
-    sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
-  } else {
-    sortField.value = field;
-    sortOrder.value = "asc";
-  }
+  if (sortField.value === field) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
+  else { sortField.value = field; sortOrder.value = "asc"; }
 };
 
-const clearSearch = () => {
-  searchQuery.value = "";
-  currentPage.value = 1;
-};
-
-const initTooltips = () => {
-  const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-  tooltipTriggerList.forEach((el) => new Tooltip(el));
-};
+const clearSearch = () => { searchQuery.value = ""; currentPage.value = 1; };
 
 watch([searchQuery, itemsPerPage], () => (currentPage.value = 1));
-
-watch(displayData, () => {
-  nextTick(() => initTooltips());
-});
-
-onMounted(() => loadRoles());
+onMounted(loadRoles);
 </script>
 
 <template>
@@ -98,73 +91,90 @@ onMounted(() => loadRoles());
   <div class="row">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
-        <!-- Card Header -->
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
-            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
-          <div class="d-flex align-items-center">
-            <i class="ri-shield-user-line me-2 fs-18" style="color: white !important;"></i>
-            <div class="card-title mb-0" style="color: white !important;">Daftar Role</div>
-          </div>
-          <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-container position-relative" style="min-width: 300px">
-              <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
-                placeholder="Cari role..." 
-                style="background: #fff; color: #333; border: none; padding-right: 60px;" />
-              <i class="ri-search-line search-icon" style="color: #666; right: 35px;"></i>
-              <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" style="color: #666;">
-                <i class="ri-close-line"></i>
-              </button>
+
+        <!-- Header -->
+        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+          <div class="d-flex align-items-center gap-3">
+            <div class="header-icon-box">
+              <i class="ri-shield-keyhole-line"></i>
             </div>
+            <div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">Daftar Role</div>
+              <div class="header-subtitle mt-1">Manajemen role &amp; hak akses sistem</div>
+            </div>
+          </div>
+          <div class="search-container position-relative">
+            <i class="ri-search-line header-search-icon"></i>
+            <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input"
+              placeholder="Cari nama atau deskripsi role..." />
+            <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
+              <i class="ri-close-circle-fill"></i>
+            </button>
           </div>
         </div>
 
-        <!-- Card Body -->
-        <div class="card-body p-3">
-          <!-- Loading State -->
-          <div v-if="loading" class="text-center p-5">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Loading...</span>
+        <div class="card-body p-4">
+
+          <!-- Skeleton -->
+          <div v-if="loading" class="skeleton-loading p-4">
+            <div class="skeleton-row" v-for="n in 5" :key="n">
+              <div class="skel skel-no"></div>
+              <div class="skel skel-avatar"></div>
+              <div class="skel skel-name"></div>
+              <div class="skel skel-email"></div>
             </div>
-            <p class="text-muted mt-2 mb-0">Memuat data...</p>
           </div>
 
           <template v-else>
-            <!-- Controls Bar -->
-            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom gap-2">
-              <div class="d-flex align-items-center gap-2">
-                <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
-                  <i class="ri-list-ordered me-2 text-primary"></i>
-                  <span class="text-muted fs-13 me-2">Tampilkan</span>
-                  <select v-model="itemsPerPage" class="form-select form-select-sm border-0 bg-transparent" style="width: 70px">
-                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                  </select>
+            <!-- Stats Strip -->
+            <div class="stats-strip mb-4">
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-blue"><i class="ri-shield-keyhole-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ items.length }}</div>
+                  <div class="stat-label">Total Role</div>
                 </div>
-                <span class="badge bg-primary-transparent text-primary px-3 py-2">
-                  <i class="ri-database-2-line me-1"></i>{{ displayData.length }} role
-                </span>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-violet"><i class="ri-shield-star-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ items.filter(r => r.name?.toLowerCase() === 'admin').length }}</div>
+                  <div class="stat-label">Admin</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-teal"><i class="ri-user-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ items.filter(r => r.name?.toLowerCase() !== 'admin').length }}</div>
+                  <div class="stat-label">Non-Admin</div>
+                </div>
               </div>
             </div>
 
-            <!-- Data Table -->
-            <div class="table-responsive rounded-3 border">
-              <table class="table table-hover text-nowrap mb-0">
-                <thead class="table-light">
+            <!-- Controls Bar -->
+            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <span class="text-muted fs-13">Tampilkan</span>
+                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                </select>
+                <span class="text-muted fs-13">per halaman</span>
+              </div>
+            </div>
+
+            <!-- Table -->
+            <div class="table-responsive users-table-wrap">
+              <table class="table users-table text-nowrap mb-0">
+                <thead class="users-thead">
                   <tr>
-                    <th class="fw-semibold text-muted" style="width: 70px">No</th>
-                    <!-- Role Name Column (Sortable) -->
-                    <th class="sortable fw-semibold" style="width: 200px">
+                    <th class="th-no">No</th>
+                    <th class="sortable fw-semibold">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-shield-star-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('name')" title="Click to toggle sort">Nama Role</span>
+                        <span class="column-label" @click="toggleSort('name')">Nama Role</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{ active: sortField === 'name' && sortOrder === 'asc' }" 
-                            @click.stop="sortField = 'name'; sortOrder = 'asc';" 
-                            title="Sort A-Z"></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{ active: sortField === 'name' && sortOrder === 'desc' }"
-                            @click.stop="sortField = 'name'; sortOrder = 'desc';"
-                            title="Sort Z-A"></i>
+                          <i class="ri-arrow-up-s-line"   :class="{ active: sortField === 'name' && sortOrder === 'asc'  }" @click.stop="sortField='name'; sortOrder='asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'name' && sortOrder === 'desc' }" @click.stop="sortField='name'; sortOrder='desc';"></i>
                         </div>
                       </div>
                     </th>
@@ -176,36 +186,42 @@ onMounted(() => loadRoles());
                     </th>
                   </tr>
                 </thead>
-
                 <tbody>
-                  <!-- Empty State -->
+                  <!-- Empty state -->
                   <tr v-if="!displayData.length">
                     <td colspan="3" class="text-center py-5">
                       <div class="empty-state">
-                        <div class="empty-icon mb-3">
-                          <i class="ri-shield-keyhole-line"></i>
+                        <div class="empty-icon-ring mb-3">
+                          <div class="empty-icon-inner">
+                            <i class="ri-shield-keyhole-line"></i>
+                          </div>
                         </div>
-                        <h6 class="text-muted mb-1">No Roles Found</h6>
-                        <p class="text-muted fs-13 mb-0">Try adjusting your search criteria</p>
+                        <h6 class="fw-semibold mb-1 empty-state-title">Tidak Ada Role</h6>
+                        <p class="text-muted fs-13 mb-3">Coba ubah kata kunci pencarian Anda</p>
+                        <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                          <i class="ri-refresh-line me-1"></i>Reset Pencarian
+                        </button>
                       </div>
                     </td>
                   </tr>
 
-                  <!-- Role Rows -->
-                  <tr v-for="(role, index) in displayData" :key="role.id">
-                    <td class="align-middle py-3">
-                      <span class="text-muted fw-medium">{{ (currentPage - 1) * itemsPerPage + index + 1 }}</span>
+                  <!-- Rows -->
+                  <tr v-for="(role, i) in displayData" :key="role.id" class="users-row">
+                    <td class="align-middle text-center">
+                      <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
-                    <td class="align-middle py-3">
-                      <div class="d-flex align-items-center gap-2">
-                        <span :class="['avatar avatar-sm avatar-rounded', role.name?.toLowerCase() === 'admin' ? 'bg-danger-transparent' : 'bg-info-transparent']">
-                          <i :class="role.name?.toLowerCase() === 'admin' ? 'ri-shield-star-line text-danger' : 'ri-user-line text-info'"></i>
-                        </span>
-                        <span class="fw-semibold">{{ role.name }}</span>
+                    <td class="align-middle">
+                      <div class="d-flex align-items-center gap-3">
+                        <div class="company-avatar" :class="getRoleColor(role.name)">
+                          <span class="company-avatar-letter">
+                            <i :class="getRoleIcon(role.name)" style="font-size:1rem;"></i>
+                          </span>
+                        </div>
+                        <span class="company-name">{{ role.name }}</span>
                       </div>
                     </td>
-                    <td class="align-middle py-3">
-                      <span class="text-muted">{{ role.description || '-' }}</span>
+                    <td class="align-middle">
+                      <span class="text-muted fs-13">{{ role.description || '-' }}</span>
                     </td>
                   </tr>
                 </tbody>
@@ -213,40 +229,34 @@ onMounted(() => loadRoles());
             </div>
 
             <!-- Pagination -->
-            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-2 pt-2 border-top gap-2">
-              <span class="text-muted fs-13">
-                Halaman {{ currentPage }} dari {{ totalPages }}
-              </span>
+            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-muted px-3 py-2">
+                  <i class="ri-file-list-3-line me-1"></i>{{ paginationInfo }}
+                </span>
+              </div>
               <nav>
-                <ul class="pagination pagination-sm mb-0">
+                <ul class="pagination pagination-sm mb-0 gap-1">
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link" href="#" @click.prevent="currentPage = 1">
-                      <i class="ri-skip-back-mini-line"></i>
-                    </a>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1"><i class="ri-skip-back-mini-line"></i></a>
                   </li>
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link" href="#" @click.prevent="currentPage--">
-                      <i class="ri-arrow-left-s-line"></i>
-                    </a>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--"><i class="ri-arrow-left-s-line"></i></a>
                   </li>
                   <template v-for="p in totalPages" :key="p">
                     <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)"
                       class="page-item" :class="{ active: p === currentPage }">
-                      <a class="page-link" href="#" @click.prevent="currentPage = p">{{ p }}</a>
+                      <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
                     </li>
                     <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">
-                      <span class="page-link">...</span>
+                      <span class="page-link border-0 bg-transparent">...</span>
                     </li>
                   </template>
                   <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link" href="#" @click.prevent="currentPage++">
-                      <i class="ri-arrow-right-s-line"></i>
-                    </a>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a>
                   </li>
                   <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link" href="#" @click.prevent="currentPage = totalPages">
-                      <i class="ri-skip-forward-mini-line"></i>
-                    </a>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages"><i class="ri-skip-forward-mini-line"></i></a>
                   </li>
                 </ul>
               </nav>
@@ -258,58 +268,4 @@ onMounted(() => loadRoles());
   </div>
 </template>
 
-<style scoped>
-.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075) !important; overflow: hidden !important; }
-.gradient-header-card .card-header { border: none !important; border-radius: 0 !important; margin: 0 !important; }
-.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
-
-.search-container { position: relative; }
-.search-container input { padding-right: 35px !important; }
-.search-container input::placeholder { color: #999; }
-.search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
-.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
-.clear-btn:hover { color: #333; }
-
-.sortable, .column-label { cursor: pointer; user-select: none; }
-.sort-arrows { display: flex; flex-direction: column; line-height: 0.5; }
-.sort-arrows i { font-size: 1rem; color: #d1d5db; cursor: pointer; transition: color 0.2s; }
-.sort-arrows i:hover { color: #6b7280; }
-.sort-arrows i.active { color: #3b82f6; }
-
-.empty-state { padding: 2rem 1rem; }
-.empty-state .empty-icon { width: 80px; height: 80px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--secondary-rgb),0.1)); border-radius: 50%; }
-.empty-state .empty-icon i { font-size: 2.5rem; color: var(--primary-color); opacity: 0.7; }
-
-/* Dark Mode Specific Styles */
-html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
-html[data-theme-mode="dark"] .card-header[style*="gradient"] i,
-html.dark .card-header[style*="gradient"] .card-title,
-html.dark .card-header[style*="gradient"] i {
-  color: rgb(0, 0, 0) !important;
-}
-html[data-theme-mode="dark"] .search-container input::placeholder,
-html.dark .search-container input::placeholder {
-  color: #000000 !important;
-}
-
-html[data-theme-mode="dark"] .table thead th,
-html.dark .table thead th {
-  color: #e2e8f0 !important;
-}
-
-html[data-theme-mode="dark"] .table tbody .text-dark,
-html.dark .table tbody .text-dark {
-  color: #cbd5e0 !important;
-}
-
-html[data-theme-mode="dark"] .table tbody .text-muted,
-html.dark .table tbody .text-muted {
-  color: #a0aec0 !important;
-}
-
-html[data-theme-mode="dark"] .badge.bg-light,
-html.dark .badge.bg-light {
-  background-color: #374151 !important;
-  color: #d1d5db !important;
-}
-</style>
+<style src="../../assets/css/style2.css"></style>
