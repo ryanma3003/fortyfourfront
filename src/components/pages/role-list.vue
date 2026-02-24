@@ -104,7 +104,7 @@ onMounted(loadRoles);
             </div>
           </div>
           <div class="search-container position-relative">
-            <i class="ri-search-line header-search-icon"></i>
+            <i class="ri-search-line card-search-icon"></i>
             <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input"
               placeholder="Cari nama atau deskripsi role..." />
             <button v-if="searchQuery" @click="clearSearch" class="clear-btn">

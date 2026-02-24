@@ -6,7 +6,7 @@
     <div class="main-sidebar-header">
       <router-link :to="dashboardRoute" class="header-logo">
         <img
-          src="/images/brand-logos/logoLight.svg"
+          src="/images/brand-logos/logoDark.svg"
           alt="logo"
           id="logo-desktop"
           style="height: 50px; width: auto"

@@ -1,40 +1,39 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useAssessmentStore } from '@/stores/assessment';
+import { useKseStore } from '@/stores/kse';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
-import RespondentForm from '@/views/assessment/RespondentForm.vue';
-import AssessmentView from '@/views/assessment/AssessmentView.vue';
+import RespondentFormKse from '@/views/assessment/RespondentFormKse.vue';
+import KseView from '@/components/kse.vue';
 
 const router = useRouter();
-const route = useRoute();
-const assessmentStore = useAssessmentStore();
+const route  = useRoute();
+const kseStore          = useKseStore();
 const stakeholdersStore = useStakeholdersStore();
 
-// Get current stakeholder slug and source from route query
-const currentSlug = computed(() => String(route.query.slug || ''));
+// ── Query params ──────────────────────────────────────────────
+const currentSlug   = computed(() => String(route.query.slug   || ''));
 const currentSource = computed(() => String(route.query.source || ''));
 
-// Step management: 1 = Respondent Form, 2 = Assessment
+// ── Step: 1 = Data Responden, 2 = Penilaian KSE ─────────────
 const currentStep = ref(1);
 
-// Initialize stores
+// ── Init ──────────────────────────────────────────────────────
 onMounted(async () => {
-  assessmentStore.initialize();
-  
+  kseStore.initialize();
   if (!stakeholdersStore.initialized) {
     await stakeholdersStore.initialize();
   }
 
-  // Check if respondent profile exists, if yes skip to step 2
-  // But also check if form is newly requested via edit
-  if (assessmentStore.hasRespondentProfile) {
+  // Skip respondent form if profile already saved for this slug
+  const profileKey = `kse_respondent_${currentSlug.value}`;
+  if (localStorage.getItem(profileKey)) {
     currentStep.value = 2;
   }
 });
 
-// Get current stakeholder info
+// ── Stakeholder info ──────────────────────────────────────────
 const currentStakeholder = computed(() => {
   if (currentSlug.value) {
     return stakeholdersStore.getStakeholderBySlug(currentSlug.value);
@@ -42,23 +41,22 @@ const currentStakeholder = computed(() => {
   return null;
 });
 
-// Dynamic page data based on stakeholder and source
-const pageData = computed(() => {
-  return {
-    title: { 
-      label: currentStakeholder.value 
-        ? `IKAS ${currentStakeholder.value.nama_perusahaan}` 
-        : "IKAS Dashboard", 
-      path: currentSlug.value ? `/admin/stakeholders/${currentSlug.value}` : '/stakeholders'
-    },
-    currentpage: currentStep.value === 1 ? "Data Responden" : "Input Data",
-    activepage: currentStep.value === 1 ? "Data Responden" : (assessmentStore.currentDomain?.name || 'Input Data'),
-  };
-});
+// ── Page header ───────────────────────────────────────────────
+const pageData = computed(() => ({
+  title: {
+    label: currentStakeholder.value
+      ? `KSE ${currentStakeholder.value.nama_perusahaan}`
+      : 'KSE',
+    path: currentSlug.value
+      ? `/admin/stakeholders/${currentSlug.value}`
+      : '/stakeholders',
+  },
+  currentpage : currentStep.value === 1 ? 'Data Responden' : 'Input Data',
+  activepage  : currentStep.value === 1 ? 'Data Responden' : 'Penilaian KSE',
+}));
 
-// Navigation Handlers
+// ── Navigation handlers ───────────────────────────────────────
 const handleFormSubmit = () => {
-  // Form is already saved to store by the component
   currentStep.value = 2;
 };
 
@@ -66,7 +64,7 @@ const handleEditData = () => {
   currentStep.value = 1;
 };
 
-const backToIkas = () => {
+const backToKse = () => {
   if (currentSlug.value) {
     router.push(`/admin/stakeholders/${currentSlug.value}`);
   } else {
@@ -78,7 +76,7 @@ const backToIkas = () => {
 <template>
   <Pageheader :propData="pageData" />
 
-  <!-- Show warning if no stakeholder -->
+  <!-- No slug warning -->
   <div v-if="!currentSlug" class="row">
     <div class="col-12">
       <div class="alert alert-warning">
@@ -88,14 +86,14 @@ const backToIkas = () => {
     </div>
   </div>
 
-  <!-- Two-Step Wizard -->
   <template v-else>
-    <!-- Step Indicator -->
+    <!-- ── Step Indicator ── -->
     <div class="row mb-4">
       <div class="col-12">
         <div class="card custom-card step-card">
           <div class="card-body py-4">
             <div class="d-flex align-items-center justify-content-center gap-3">
+
               <!-- Step 1 -->
               <div class="step-item" :class="{ active: currentStep === 1, completed: currentStep > 1 }">
                 <div class="step-indicator">
@@ -113,41 +111,42 @@ const backToIkas = () => {
                 <div class="step-indicator">
                   <span class="fs-18">2</span>
                 </div>
-                <span class="step-label">Penilaian IKAS</span>
+                <span class="step-label">Penilaian KSE</span>
               </div>
+
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Step 1: Respondent Form -->
+    <!-- ── Step 1: Respondent Form ── -->
     <template v-if="currentStep === 1">
-      <RespondentForm 
+      <RespondentFormKse
+        :slug="currentSlug"
         @submit="handleFormSubmit"
-        @cancel="backToIkas"
+        @cancel="backToKse"
       />
     </template>
 
-    <!-- Step 2: Assessment View -->
+    <!-- ── Step 2: KSE Assessment ── -->
     <template v-else-if="currentStep === 2">
-      <AssessmentView 
+      <KseView
         :embedded="true"
+        :slug="currentSlug"
+        @back="backToKse"
         @edit="handleEditData"
-        @back="backToIkas"
       />
     </template>
   </template>
 </template>
 
 <style scoped>
-/* Step Card Styling */
 .step-card {
   border: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* Step Item Container */
 .step-item {
   display: flex;
   flex-direction: column;
@@ -177,7 +176,6 @@ const backToIkas = () => {
   font-weight: 600;
 }
 
-/* Step Indicator Badge */
 .step-indicator {
   width: 50px;
   height: 50px;
@@ -192,7 +190,6 @@ const backToIkas = () => {
   transition: all 0.3s ease;
 }
 
-/* Step Label */
 .step-label {
   font-size: 0.9rem;
   font-weight: 600;
@@ -201,7 +198,6 @@ const backToIkas = () => {
   transition: all 0.3s ease;
 }
 
-/* Divider Line */
 .step-divider {
   width: 60px;
   height: 2px;

@@ -18,7 +18,12 @@ const router = useRouter();
 const route = useRoute();
 const kseStore = useKseStore();
 
-const currentSlug = computed(() => String(route.query.slug || ''));
+// When used inside kse-crud.vue stepper, embedded=true hides the Pageheader
+// and uses emit events instead of router.push for navigation
+const props = withDefaults(defineProps<{ embedded?: boolean; slug?: string }>(), { embedded: false, slug: '' });
+const emit = defineEmits<{ (e: 'back'): void; (e: 'edit'): void; }>();
+
+const currentSlug = computed(() => props.slug || String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
 
 // Navigation state
@@ -219,7 +224,8 @@ const canGoNext = computed(() => {
 
 
 // Lock state
-const isLocked = computed(() => !!kseData.value?.isSubmitted);
+const viewOnly  = computed(() => route.query.mode === 'view');
+const isLocked  = computed(() => viewOnly.value || !!kseData.value?.isSubmitted);
 
 // Save and Exit
 const saveAndExit = () => {
@@ -252,12 +258,12 @@ const saveAndExit = () => {
   
   // Navigate back after delay
   setTimeout(() => {
+    if (props.embedded) {
+      emit('back');
+      return;
+    }
     if (currentSlug.value) {
-      if (currentSource.value === 'list') {
-        router.push('/stakeholders');
-      } else {
-        router.push(`/profile-stakeholders/${currentSlug.value}`);
-      }
+      router.push(`/admin/stakeholders/${currentSlug.value}`);
     } else {
       router.push('/stakeholders');
     }
@@ -272,12 +278,15 @@ const editData = () => {
         autoClose: 2000,
         position: 'top-right'
     });
+    if (props.embedded) {
+        emit('edit');
+    }
 };
 </script>
 
 <template>
   <div class="kse-container">
-    <Pageheader :propData="dataToPass" />
+    <Pageheader v-if="!embedded" :propData="dataToPass" />
 
     <!-- Progress Bar -->
     <div class="row sticky-progress-row">
@@ -326,25 +335,50 @@ const editData = () => {
 
           <!-- Action Card -->
           <div class="sidebar-card action-card">
-            <button 
-              v-if="!isLocked"
-              @click="saveAndExit" 
-              class="action-btn"
-              :class="isAllAnswered ? 'action-btn-success' : 'action-btn-warning'"
-            >
-              <i :class="isAllAnswered ? 'ri-checkbox-circle-line' : 'ri-save-3-line'"></i> 
-              <span>{{ isAllAnswered ? 'Simpan &amp; Selesai' : 'Simpan Sementara' }}</span>
-            </button>
-            <button 
-              v-else
-              @click="editData" 
-              class="action-btn action-btn-edit"
-            >
-              <i class="ri-edit-2-line"></i>
-              <span>Edit Data</span>
-            </button>
-          </div>
+            <!-- Non-Embedded Mode -->
+            <template v-if="!embedded">
+              <button 
+                v-if="!isLocked"
+                @click="saveAndExit" 
+                class="action-btn"
+                :class="isAllAnswered ? 'action-btn-success' : 'action-btn-warning'"
+              >
+                <i :class="isAllAnswered ? 'ri-checkbox-circle-line' : 'ri-save-3-line'"></i> 
+                <span>{{ isAllAnswered ? 'Simpan &amp; Selesai' : 'Simpan Sementara' }}</span>
+              </button>
+              <button 
+                v-else-if="!viewOnly"
+                @click="editData" 
+                class="action-btn action-btn-edit"
+              >
+                <i class="ri-edit-2-line"></i>
+                <span>Edit Data</span>
+              </button>
+              <div v-else class="action-btn action-btn-info" style="justify-content:center;cursor:default;">
+                <i class="ri-eye-line"></i>
+                <span>Mode Lihat Saja</span>
+              </div>
+            </template>
 
+            <!-- Embedded Mode: Show Both Buttons -->
+            <template v-else>
+              <button 
+                @click="saveAndExit" 
+                class="action-btn mb-3"
+                :class="isAllAnswered ? 'action-btn-success' : 'action-btn-warning'"
+              >
+                <i :class="isAllAnswered ? 'ri-checkbox-circle-line' : 'ri-save-3-line'"></i> 
+                <span>{{ isAllAnswered ? 'Simpan &amp; Selesai' : 'Simpan Sementara' }}</span>
+              </button>
+              <button 
+                @click="editData" 
+                class="action-btn action-btn-edit bg-primary"
+              >
+                <i class="ri-edit-2-line"></i>
+                <span>Edit Data Responden</span>
+              </button>
+            </template>
+          </div> 
           <!-- Criteria Card -->
           <div class="sidebar-card criteria-card">
             <div class="criteria-header">
@@ -586,6 +620,7 @@ const editData = () => {
   justify-content: center;
   gap: 8px;
   padding: 12px 16px;
+  min-height: 48px;
   border-radius: 14px;
   border: none;
   font-weight: 700;
@@ -629,7 +664,6 @@ const editData = () => {
 .action-btn-edit {
   background: white;
   color: #f59e0b;
-  border: 1.5px solid #fbbf24;
   box-shadow: 0 2px 8px rgba(251, 191, 36, 0.12);
 }
 

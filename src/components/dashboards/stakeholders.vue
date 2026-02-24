@@ -475,7 +475,7 @@ export default {
           </div>
           <div class="d-flex gap-2 align-items-center flex-wrap header-inner">
             <div class="search-container position-relative">
-              <i class="ri-search-line header-search-icon"></i>
+              <i class="ri-search-line card-search-icon"></i>
               <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
                 placeholder="Cari perusahaan, sektor, atau email..." />
               <button v-if="searchQuery" @click="clearSearch" class="clear-btn">

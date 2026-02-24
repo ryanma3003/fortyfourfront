@@ -12,6 +12,8 @@ import 'vue3-toastify/dist/index.css';
 
 const assessmentStore = useAssessmentStore();
 
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false });
+
 const emit = defineEmits<{
   (e: 'edit'): void;
   (e: 'back'): void;
@@ -196,31 +198,53 @@ const handleEditData = () => {
         
         <!-- Save Action Block (Above Accordion) -->
         <div v-if="!sidebarCollapsed" class="p-3 border-bottom bg-light">
-             <button 
-                v-if="!assessmentStore.isLocked"
-                class="btn w-100 mb-2" 
-                :class="allQuestionsAnswered ? 'btn-success' : 'btn-warning'"
-                @click="handleSaveAction"
+          <!-- Non-Embedded Mode -->
+          <template v-if="!embedded">
+            <button 
+              v-if="!assessmentStore.isLocked"
+              class="btn w-100 mb-2" 
+              :class="allQuestionsAnswered ? 'btn-success' : 'btn-warning'"
+              @click="handleSaveAction"
             >
-                <i class="ri-save-line me-1"></i>
-                {{ allQuestionsAnswered ? 'Simpan dan Selesai' : 'Simpan Sementara' }}
+              <i class="ri-save-line me-1"></i>
+              {{ allQuestionsAnswered ? 'Simpan dan Selesai' : 'Simpan Sementara' }}
             </button>
-             <button 
-                v-else
-                class="btn btn-primary w-100" 
-                @click="handleEditData"
+            <button 
+              v-else
+              class="btn btn-primary w-100" 
+              @click="handleEditData"
             >
-                <i class="ri-edit-line me-1"></i>
-                Edit Data
+              <i class="ri-edit-line me-1"></i>
+              Edit Data
             </button>
+          </template>
+
+          <!-- Embedded Mode: Show Both Buttons -->
+          <template v-else>
+            <button 
+              class="btn w-100 mb-2" 
+              :class="allQuestionsAnswered ? 'btn-success' : 'btn-warning'"
+              @click="handleSaveAction"
+            >
+              <i class="ri-save-line me-1"></i>
+              {{ allQuestionsAnswered ? 'Simpan dan Selesai' : 'Simpan Sementara' }}
+            </button>
+            <button 
+              class="btn btn-primary w-100" 
+              @click="handleEditData"
+            >
+              <i class="ri-edit-line me-1"></i>
+              Edit Data Responden
+            </button>
+          </template>
             
-            <div v-if="!assessmentStore.isLocked" class="text-center">
-                 <small v-if="!allQuestionsAnswered" class="text-muted" style="font-size: 0.75rem;">
-                    {{ assessmentStore.answeredQuestions }} / {{ assessmentStore.totalQuestions }} Terjawab
-                </small>
-                <small v-else class="text-success fw-bold" style="font-size: 0.75rem;">
-                   <i class="ri-checkbox-circle-line"></i> Siap Disimpan
-                </small>
+          <div v-if="!assessmentStore.isLocked && !embedded" class="text-center">
+            <small v-if="!allQuestionsAnswered" class="text-muted" style="font-size: 0.75rem;">
+              {{ assessmentStore.answeredQuestions }} / {{ assessmentStore.totalQuestions }} Terjawab
+            </small>
+            <small v-else class="text-success fw-bold" style="font-size: 0.75rem;">
+              <i class="ri-checkbox-circle-line"></i> Siap Disimpan
+            </small>
             </div>
         </div>
 

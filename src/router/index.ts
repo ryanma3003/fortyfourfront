@@ -114,6 +114,16 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/kse.vue"),
         },
         {
+          path: `kse-list`,
+          name: 'Kse List',
+          component: () => import("../components/kse/KategorisasiSE-list.vue"),
+        },
+        {
+          path: `kse-crud`,
+          name: 'Kse Crud',
+          component: () => import("../components/kse-crud.vue"),
+        },
+        {
           path: `csirt/:id?`,
           name: 'Csirt',
           component: () => import("../components/dashboards/csirt.vue"),
