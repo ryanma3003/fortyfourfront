@@ -4,9 +4,9 @@
   <aside class="app-sidebar sticky" id="sidebar">
     <!-- Start::main-sidebar-header -->
     <div class="main-sidebar-header">
-      <router-link to="/dashboards" class="header-logo">
+      <router-link :to="dashboardRoute" class="header-logo">
         <img
-          src="/images/brand-logos/logoLight.svg"
+          src="/images/brand-logos/logoDark.svg"
           alt="logo"
           id="logo-desktop"
           style="height: 50px; width: auto"
@@ -217,6 +217,11 @@ const router = useRouter();
 const route = useRoute();
 
 const isChatOpen = ref(false);
+
+// Computed property for dynamic dashboard route based on user role
+const dashboardRoute = computed(() => {
+  return authStore.userRole === 'admin' ? '/admin/dashboard' : '/dashboards';
+});
 
 const toggleChat = () => {
   isChatOpen.value = !isChatOpen.value;
@@ -902,7 +907,7 @@ onBeforeMount(() => {
 .sidebar-chatbot-footer {
   padding: 10px 20px;
   border-top: 1px solid var(--menu-border-color);
-  background: var(--menu-bg);
+  background: transparent;
   
   .side-menu__item {
     display: flex;

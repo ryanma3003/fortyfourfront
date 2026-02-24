@@ -1,5 +1,5 @@
 import { api } from '@/config/api';
-import type { CsirtMember, SdmCsirt, SeCsirt } from '@/types/csirt.types';
+import type { CsirtMember, SdmCsirt, SeCsirt, CreateCsirtPayload } from '@/types/csirt.types';
 
 /**
  * CSIRT Service
@@ -18,6 +18,27 @@ export const csirtService = {
      */
     async getMemberById(id: number): Promise<CsirtMember> {
         return api.get<CsirtMember>(`/api/csirt/${id}`);
+    },
+
+    /**
+     * Create a new CSIRT member
+     */
+    async create(payload: CreateCsirtPayload): Promise<CsirtMember> {
+        return api.post<CsirtMember>('/api/csirt', payload);
+    },
+
+    /**
+     * Update a CSIRT member by ID
+     */
+    async update(id: number, payload: Partial<CreateCsirtPayload>): Promise<CsirtMember> {
+        return api.patch<CsirtMember>(`/api/csirt/${id}`, payload);
+    },
+
+    /**
+     * Delete a CSIRT member by ID
+     */
+    async delete(id: number): Promise<void> {
+        return api.delete(`/api/csirt/${id}`);
     },
 
     /**

@@ -24,7 +24,7 @@ const stakeholderName = ref("");
 const dataToPass = computed(() => ({
   title: { 
     label: `Profile ${stakeholderName.value || "Stakeholder"}`, 
-    path: `/profile-stakeholders/${currentSlug.value}` 
+    path: `/admin/stakeholders/${currentSlug.value}` 
   },
   currentpage: isEdit.value ? "Edit PIC" : "Add PIC",
   activepage: "Account Settings",

@@ -1,10 +1,11 @@
-<script lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+﻿<script lang="ts">
+import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useAuthStore } from "../../stores/auth";
 import { useProfileStore } from "../../stores/profile";
 import { usersService } from "../../services/users.service";
 import { roleService, type Role } from "../../services/role.service";
+import { useListPage } from "../../composables/useListPage";
 
 
 interface User {
@@ -33,30 +34,26 @@ export default {
     const authStore = useAuthStore();
     const profileStore = useProfileStore();
 
+    const {
+      searchQuery, currentPage, itemsPerPage, sortField, sortOrder,
+      showToast, toastMessage, toastType, showNotification,
+      clearSearch, toggleSort, getAvatarColorClass, makePagination,
+    } = useListPage("name");
+
     const loading = ref(false);
-    const searchQuery = ref("");
-    const sortField = ref<"name" | "role">("name");
-    const sortOrder = ref<"asc" | "desc">("asc");
-    const currentPage = ref(1);
-    const itemsPerPage = ref(10);
 
     // Data from API
     const usersData = ref<User[]>([]);
     const rolesData = ref<Role[]>([]);
 
     // CRUD state
-    const showEditModal = ref(false);
-    const showDeleteModal = ref(false);
-    const currentEditItem = ref<User | null>(null);
+    const showEditModal    = ref(false);
+    const showDeleteModal  = ref(false);
+    const currentEditItem  = ref<User | null>(null);
     const currentDeleteItem = ref<User | null>(null);
-    const showToast = ref(false);
-    const toastMessage = ref("");
-    const toastType = ref<"success" | "error">("success");
 
     // Form state for editing role
-    const formData = ref<{ role: string }>({
-      role: "",
-    });
+    const formData = ref<{ role: string }>({ role: "" });
 
     // Computed items from API data
     const items = computed(() => {
@@ -124,41 +121,13 @@ export default {
       }
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
-        const valA = (a[sortField.value] || "").toString();
-        const valB = (b[sortField.value] || "").toString();
+        const valA = (a[sortField.value as keyof User] || "").toString();
+        const valB = (b[sortField.value as keyof User] || "").toString();
         return valA.localeCompare(valB) * mod;
       });
     });
 
-    const totalPages = computed(() =>
-      Math.ceil(filteredData.value.length / itemsPerPage.value)
-    );
-
-    const displayData = computed(() => {
-      const start = (currentPage.value - 1) * itemsPerPage.value;
-      return filteredData.value.slice(start, start + itemsPerPage.value);
-    });
-
-    const paginationInfo = computed(() => {
-      const total = filteredData.value.length;
-      if (!total) return "Tidak ada data";
-      const start = (currentPage.value - 1) * itemsPerPage.value + 1;
-      const end = Math.min(currentPage.value * itemsPerPage.value, total);
-      return `${start} - ${end} dari ${total}`;
-    });
-
-    // Show toast notification
-    const showNotification = (
-      message: string,
-      type: "success" | "error" = "success"
-    ) => {
-      toastMessage.value = message;
-      toastType.value = type;
-      showToast.value = true;
-      setTimeout(() => {
-        showToast.value = false;
-      }, 3000);
-    };
+    const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
 
     // EDIT ROLE
     const openEditModal = (item: User) => {
@@ -227,54 +196,23 @@ export default {
     };
 
     // Get status badge class
-    const getStatusClass = (role: string) => {
-      return role === "admin"
-        ? "bg-danger-transparent"
-        : "bg-info-transparent";
-    };
+    const getStatusClass = (role: string) =>
+      role === "admin" ? "bg-danger-transparent" : "bg-info-transparent";
 
-    watch([searchQuery, itemsPerPage], () => (currentPage.value = 1));
+    const countAdmins  = computed(() => items.value.filter(u => u.role === 'admin').length);
+    const countRegular = computed(() => items.value.filter(u => u.role !== 'admin').length);
 
     onMounted(loadUsers);
 
     return {
-      authStore,
-      items,
-      loading,
-      searchQuery,
-      sortField,
-      sortOrder,
-      currentPage,
-      itemsPerPage,
-      totalPages,
-      displayData,
-      paginationInfo,
-      showEditModal,
-      showDeleteModal,
-      currentEditItem,
-      currentDeleteItem,
-      formData,
-      showToast,
-      toastMessage,
-      toastType,
-      rolesData,
-      openEditModal,
-      updateUser,
-      openDeleteModal,
-      deleteUser,
-      getStatusClass,
-      toggleSort: (f: "name" | "role") => {
-        if (sortField.value === f)
-          sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
-        else {
-          sortField.value = f;
-          sortOrder.value = "asc";
-        }
-      },
-      clearSearch: () => {
-        searchQuery.value = "";
-        currentPage.value = 1;
-      },
+      authStore, items, loading,
+      searchQuery, sortField, sortOrder, currentPage, itemsPerPage,
+      totalPages, displayData, paginationInfo,
+      showEditModal, showDeleteModal, currentEditItem, currentDeleteItem,
+      formData, showToast, toastMessage, toastType,
+      rolesData, countAdmins, countRegular,
+      openEditModal, updateUser, openDeleteModal, deleteUser,
+      getStatusClass, clearSearch, toggleSort, getAvatarColorClass,
     };
   },
 };
@@ -284,79 +222,113 @@ export default {
   <Pageheader :propData="dataToPass" />
 
   <!-- Toast Notification -->
-  <div v-if="showToast" class="position-fixed top-0 end-0 p-3" style="z-index: 9999">
-    <div class="toast show" 
-      :class="{ 'bg-success': toastType === 'success', 'bg-danger': toastType === 'error' }" 
-      role="alert">
-      <div class="toast-body text-white">
-        <i :class="toastType === 'success' ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'" class="me-2"></i>
-        {{ toastMessage }}
+  <transition name="toast-slide">
+    <div v-if="showToast" class="toast-wrapper position-fixed">
+      <div class="toast-modern" :class="toastType === 'success' ? 'toast-success' : 'toast-error'" role="alert">
+        <div class="toast-icon-wrap">
+          <i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
+        </div>
+        <div class="toast-content">
+          <span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span>
+          <span class="toast-msg">{{ toastMessage }}</span>
+        </div>
       </div>
     </div>
-  </div>
+  </transition>
 
   <div class="row">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
-            style="background: radial-gradient(ellipse at top, #032a5c, #084696)">
-          <div class="d-flex align-items-center">
-            <i class="ri-group-line me-2 fs-18" style="color: white !important;"></i>
-            <div class="card-title mb-0" style="color: white !important;">Daftar User</div>
-          </div>
-          <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-container position-relative" style="min-width: 400px">
-              <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
-                placeholder="Cari nama, email, jabatan, atau role..." 
-                style="background: #fff; color: #333; border: none; padding-right: 60px;" />
-              <i class="ri-search-line search-icon" style="color: #666; right: 35px;"></i>
-              <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" style="color: #666;">
-                <i class="ri-close-line"></i>
-              </button>
+        <!-- Header -->
+        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+          <div class="d-flex align-items-center gap-3">
+            <div class="header-icon-box">
+              <i class="ri-group-line"></i>
             </div>
+            <div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">Daftar User</div>
+              <div class="header-subtitle mt-1">Manajemen data pengguna sistem</div>
+            </div>
+          </div>
+          <div class="search-container position-relative">
+            <i class="ri-search-line card-search-icon"></i>
+            <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input"
+              placeholder="Cari nama, email, jabatan, atau role..." />
+            <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
+              <i class="ri-close-circle-fill"></i>
+            </button>
           </div>
         </div>
 
         <div class="card-body p-4">
-          <div v-if="loading" class="text-center p-5">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Loading...</span>
+          <div v-if="loading" class="skeleton-loading p-4">
+            <div class="skeleton-row" v-for="n in 5" :key="n">
+              <div class="skel skel-no"></div>
+              <div class="skel skel-avatar"></div>
+              <div class="skel skel-name"></div>
+              <div class="skel skel-badge"></div>
+              <div class="skel skel-email"></div>
+              <div class="skel skel-actions"></div>
             </div>
-            <p class="text-muted mt-2 mb-0">Memuat data...</p>
           </div>
 
           <template v-else>
+            <!-- Stats Strip -->
+            <div class="stats-strip mb-4">
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-blue"><i class="ri-group-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ items.length }}</div>
+                  <div class="stat-label">Total User</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-violet"><i class="ri-shield-star-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ countAdmins }}</div>
+                  <div class="stat-label">Admin</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-teal"><i class="ri-user-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ countRegular }}</div>
+                  <div class="stat-label">Regular User</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-amber"><i class="ri-shield-keyhole-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ rolesData.length }}</div>
+                  <div class="stat-label">Total Role</div>
+                </div>
+              </div>
+            </div>
+
             <!-- Controls Bar -->
             <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
               <div class="d-flex align-items-center gap-2">
-                <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
-                  <i class="ri-list-ordered me-2 text-primary"></i>
-                  <span class="text-muted fs-13 me-2">Tampilkan</span>
-                  <select v-model="itemsPerPage" class="form-select form-select-sm border-0 bg-transparent" style="width: 70px">
-                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                  </select>
-                </div>
-                <span class="badge bg-primary-transparent text-primary px-3 py-2">
-                  <i class="ri-database-2-line me-1"></i>{{ displayData.length }} data
-                </span>
+                <span class="text-muted fs-13">Tampilkan</span>
+                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                </select>
+                <span class="text-muted fs-13">per halaman</span>
               </div>
             </div>
 
             <!-- Table -->
-            <div class="table-responsive rounded-3 border">
-              <table class="table table-hover text-nowrap mb-0">
-                <thead class="table-light">
+            <div class="table-responsive users-table-wrap">
+              <table class="table users-table text-nowrap mb-0">
+                <thead class="users-thead">
                   <tr>
-                    <th class="fw-semibold text-muted" style="width: 60px">No</th>
-                    <th class="sortable fw-semibold">
+                    <th class="th-no">No</th>
+                    <th class="sortable fw-semibold th-name">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-user-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('name')" title="Click to toggle sort">Nama</span>
+                        <span class="column-label" @click="toggleSort('name')">Nama</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{ active: sortField === 'name' && sortOrder === 'asc' }" @click.stop="sortField = 'name'; sortOrder = 'asc';" title="Sort A-Z"></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{ active: sortField === 'name' && sortOrder === 'desc' }" @click.stop="sortField = 'name'; sortOrder = 'desc';" title="Sort Z-A"></i>
+                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'name' && sortOrder === 'asc' }" @click.stop="sortField = 'name'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'name' && sortOrder === 'desc' }" @click.stop="sortField = 'name'; sortOrder = 'desc';"></i>
                         </div>
                       </div>
                     </th>
@@ -375,67 +347,50 @@ export default {
                     <th class="sortable fw-semibold">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-shield-user-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('role')" title="Click to toggle sort">Role</span>
+                        <span class="column-label" @click="toggleSort('role')">Role</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'role' && sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'role';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'role' && sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'role';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
+                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'role' && sortOrder === 'asc' }" @click.stop="sortField = 'role'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'role' && sortOrder === 'desc' }" @click.stop="sortField = 'role'; sortOrder = 'desc';"></i>
                         </div>
                       </div>
                     </th>
-                    <th class="text-center fw-semibold" style="width: 120px">Aksi</th>
+                    <th class="text-center fw-semibold th-actions-sm">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
                     <td colspan="6" class="text-center py-5">
                       <div class="empty-state">
-                        <div class="empty-icon mb-3">
-                          <i class="ri-user-search-line"></i>
+                        <div class="empty-icon-ring mb-3">
+                          <div class="empty-icon-inner">
+                            <i class="ri-user-search-line"></i>
+                          </div>
                         </div>
-                        <h6 class="text-muted mb-1">No Users Found</h6>
-                        <p class="text-muted fs-13 mb-0">Try adjusting your search criteria</p>
+                        <h6 class="fw-semibold mb-1 empty-state-title">Tidak Ada User</h6>
+                        <p class="text-muted fs-13 mb-3">Coba ubah kata kunci pencarian Anda</p>
+                        <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                          <i class="ri-refresh-line me-1"></i>Reset Pencarian
+                        </button>
                       </div>
                     </td>
                   </tr>
-                  <tr v-for="(item, i) in displayData" :key="item.id">
-                    <td class="align-middle">
-                      <span class="text-muted fw-medium">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
+                  <tr v-for="(item, i) in displayData" :key="item.id" class="users-row">
+                    <td class="align-middle text-center">
+                      <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
                     <td class="align-middle">
-                      <div class="d-flex align-items-center gap-2">
-                        <span class="avatar avatar-sm avatar-rounded bg-primary-transparent overflow-hidden">
-                          <img v-if="item.photo" :src="item.photo" :alt="item.name" />
-                          <span v-else class="text-primary fw-semibold">{{ item.name.charAt(0).toUpperCase() }}</span>
-                        </span>
+                      <div class="d-flex align-items-center gap-3">
+                        <div class="company-avatar" :class="getAvatarColorClass(item.name.charAt(0))">
+                          <img v-if="item.photo" :src="item.photo" :alt="item.name" class="company-avatar-img" />
+                          <span v-else class="company-avatar-letter">{{ item.name.charAt(0).toUpperCase() }}</span>
+                        </div>
                         <div>
-                          <span class="fw-semibold d-block">{{ item.name }}</span>
+                          <span class="company-name d-block">{{ item.name }}</span>
                         </div>
                       </div>
                     </td>
                     <td class="align-middle">
-                      <div class="d-flex align-items-center gap-1">
-                        <span class="text-muted fs-13">{{ item.username }}</span>
-                      </div>
+                      <span class="text-muted fs-13">{{ item.username }}</span>
                     </td>
                     <td class="align-middle">
                       <span class="badge bg-light text-dark border fs-12">
@@ -450,23 +405,19 @@ export default {
                     </td>
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
-                        <router-link :to="`/profile-user/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
+                        <router-link :to="`/admin/users/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
                           <i class="ri-eye-line"></i>
                         </router-link>
-                        <button 
-                          v-if="authStore.currentUser?.id !== item.id"
-                          @click="openEditModal(item)" 
-                          class="btn btn-sm btn-icon btn-wave btn-warning-light" 
-                          title="Edit Role"
-                        >
+                        <button v-if="authStore.currentUser?.id !== item.id"
+                          @click="openEditModal(item)"
+                          class="btn btn-sm btn-icon btn-wave btn-warning-light"
+                          title="Edit Role">
                           <i class="ri-pencil-line"></i>
                         </button>
-                        <button 
-                          v-if="authStore.currentUser?.id !== item.id"
-                          @click="openDeleteModal(item)" 
-                          class="btn btn-sm btn-icon btn-wave btn-danger-light" 
-                          title="Delete"
-                        >
+                        <button v-if="authStore.currentUser?.id !== item.id"
+                          @click="openDeleteModal(item)"
+                          class="btn btn-sm btn-icon btn-wave btn-danger-light"
+                          title="Hapus">
                           <i class="ri-delete-bin-line"></i>
                         </button>
                       </div>
@@ -477,29 +428,42 @@ export default {
             </div>
 
             <!-- Pagination -->
-            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top gap-2">
-              <span class="text-muted fs-13">
-                Page {{ currentPage }} of {{ totalPages }}
-              </span>
+            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-muted px-3 py-2">
+                  <i class="ri-file-list-3-line me-1"></i>
+                  {{ paginationInfo }}
+                </span>
+              </div>
               <nav>
-                <ul class="pagination pagination-sm mb-0">
+                <ul class="pagination pagination-sm mb-0 gap-1">
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link" href="#" @click.prevent="currentPage = 1">
-                      <i class="ri-skip-back-mini-line"></i></a></li>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1" title="First">
+                      <i class="ri-skip-back-mini-line"></i>
+                    </a>
+                  </li>
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link" href="#" @click.prevent="currentPage--">
-                      <i class="ri-arrow-left-s-line"></i></a></li>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--" title="Previous">
+                      <i class="ri-arrow-left-s-line"></i>
+                    </a>
+                  </li>
                   <template v-for="p in totalPages" :key="p">
                     <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
-                      <a class="page-link" href="#" @click.prevent="currentPage = p">{{ p }}</a>
+                      <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
                     </li>
-                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled"><span class="page-link">...</span></li>
+                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">
+                      <span class="page-link border-0 bg-transparent">...</span>
+                    </li>
                   </template>
                   <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++" title="Next">
+                      <i class="ri-arrow-right-s-line"></i>
+                    </a>
                   </li>
                   <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link" href="#" @click.prevent="currentPage = totalPages"><i class="ri-skip-forward-mini-line"></i></a>
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages" title="Last">
+                      <i class="ri-skip-forward-mini-line"></i>
+                    </a>
                   </li>
                 </ul>
               </nav>
@@ -511,29 +475,25 @@ export default {
   </div>
 
   <!-- Edit Role Modal -->
-  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click="showEditModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal" @click.stop>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">
-            <i class="ri-shield-user-line me-2"></i>Edit Role
-          </h5>
+  <Teleport to="body">
+  <div v-if="showEditModal" class="modal-overlay" tabindex="-1" @click="showEditModal = false">
+    <div class="modal-dialog modal-dialog-md" @click.stop>
+      <div class="modal-content rounded-4 border-0 shadow-lg">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold"><i class="ri-shield-user-line me-2 text-warning"></i>Edit Role</h5>
           <button type="button" class="btn-close" @click="showEditModal = false"></button>
         </div>
-        <div class="modal-body" v-if="currentEditItem">
-          <!-- User Info (Readonly) -->
-          <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded">
-            <span class="avatar avatar-md avatar-rounded bg-primary-transparent overflow-hidden">
+        <div class="modal-body pt-2" v-if="currentEditItem">
+          <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded-3">
+            <span class="company-avatar modal-avatar-md">
               <img v-if="currentEditItem.photo" :src="currentEditItem.photo" :alt="currentEditItem.name" />
-              <span v-else class="text-primary fw-semibold">{{ currentEditItem.name.charAt(0).toUpperCase() }}</span>
+              <span v-else>{{ currentEditItem.name.charAt(0).toUpperCase() }}</span>
             </span>
             <div>
               <h6 class="mb-0 fw-semibold">{{ currentEditItem.name }}</h6>
               <span class="text-muted fs-13">{{ currentEditItem.username }}</span>
             </div>
           </div>
-          
-          <!-- Role Selection -->
           <div class="mb-3">
             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
             <select v-model="formData.role" class="form-select">
@@ -541,39 +501,34 @@ export default {
               <option v-if="!rolesData.length" value="admin">Admin</option>
               <option v-if="!rolesData.length" value="user">User</option>
             </select>
-            <small class="text-muted">Pilih role untuk user ini.</small>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="showEditModal = false">Batal</button>
-          <button type="button" class="btn btn-primary" @click="updateUser">
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-light" @click="showEditModal = false">Batal</button>
+          <button type="button" class="btn btn-warning" @click="updateUser">
             <i class="ri-save-line me-1"></i>Simpan
           </button>
         </div>
       </div>
     </div>
   </div>
+  </Teleport>
 
   <!-- Delete Modal -->
-  <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Hapus User</h5>
+  <Teleport to="body">
+  <div v-if="showDeleteModal" class="modal-overlay" tabindex="-1">
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-content rounded-4 border-0 shadow-lg">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold"><i class="ri-delete-bin-line me-2 text-danger"></i>Hapus User</h5>
           <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
         </div>
-        <div class="modal-body" v-if="currentDeleteItem">
-          <p class="mb-0">
-            Apakah Anda yakin ingin menghapus user
-            <strong>{{ currentDeleteItem.name }}</strong
-            >?
-          </p>
-          <p class="text-muted fs-13 mt-2 mb-0">
-            Tindakan ini tidak dapat dibatalkan.
-          </p>
+        <div class="modal-body pt-2" v-if="currentDeleteItem">
+          <p class="mb-1">Apakah Anda yakin ingin menghapus user <strong>{{ currentDeleteItem.name }}</strong>?</p>
+          <p class="text-muted fs-13 mb-0">Tindakan ini tidak dapat dibatalkan.</p>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">Batal</button>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-light" @click="showDeleteModal = false">Batal</button>
           <button type="button" class="btn btn-danger" @click="deleteUser">
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
@@ -581,87 +536,8 @@ export default {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
-<style scoped>
-.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075) !important; overflow: hidden !important; }
-.gradient-header-card .card-header { border: none !important; border-radius: 0 !important; margin: 0 !important; }
-.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
+<style src="../../assets/css/style2.css"></style>
 
-.search-container { position: relative; }
-.search-container input { padding-right: 35px !important; }
-.search-container input::placeholder { color: #999; }
-.search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
-.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
-.clear-btn:hover { color: #333; }
-
-.sortable, .column-label { cursor: pointer; user-select: none; }
-.sort-arrows { display: flex; flex-direction: column; line-height: 0.5; }
-.sort-arrows i { font-size: 1rem; color: #d1d5db; cursor: pointer; transition: color 0.2s; }
-.sort-arrows i:hover { color: #6b7280; }
-.sort-arrows i.active { color: #3b82f6; }
-
-.modal.show { display: block; }
-.modal.show .modal-dialog { margin: 0 auto; max-width: 600px; }
-.modal.show .modal-dialog.custom-modal { 
-  margin: 0 auto !important; 
-  max-width: 800px !important;
-  width: 800px !important;
-  position: fixed;
-  top: 50%;
-  left: calc(50% + 125px);
-  transform: translate(-50%, -50%);
-}
-.modal.show .modal-dialog.custom-modal .modal-content {
-  width: 100% !important;
-}
-
-.toast { min-width: 250px; }
-
-.empty-state { padding: 2rem 1rem; }
-.empty-state .empty-icon { width: 80px; height: 80px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--secondary-rgb),0.1)); border-radius: 50%; }
-.empty-state .empty-icon i { font-size: 2.5rem; color: var(--primary-color); opacity: 0.7; }
-
-.btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
-
-.email-link { color: var(--default-text-color); transition: all 0.2s ease; }
-.email-link:hover { color: var(--primary-color); }
-.email-link .email-icon-wrapper { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--info-rgb),0.1)); border-radius: 6px; color: var(--primary-color); font-size: 14px; transition: all 0.2s ease; }
-.email-link:hover .email-icon-wrapper { background: linear-gradient(135deg, rgba(var(--primary-rgb),0.2), rgba(var(--info-rgb),0.2)); transform: scale(1.05); }
-.email-link .email-text { font-size: 13px; color: #6c757d; transition: color 0.2s ease; }
-.email-link:hover .email-text { color: var(--primary-color); }
-
-/* Dark Mode Specific Styles */
-html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
-html[data-theme-mode="dark"] .card-header[style*="gradient"] i,
-html.dark .card-header[style*="gradient"] .card-title,
-html.dark .card-header[style*="gradient"] i {
-  color: rgb(0, 0, 0) !important;
-}
-
-html[data-theme-mode="dark"] .search-container input::placeholder,
-html.dark .search-container input::placeholder {
-  color: #000000 !important;
-}
-
-html[data-theme-mode="dark"] .table thead th,
-html.dark .table thead th {
-  color: #e2e8f0 !important;
-}
-
-html[data-theme-mode="dark"] .table tbody .text-dark,
-html.dark .table tbody .text-dark {
-  color: #cbd5e0 !important;
-}
-
-html[data-theme-mode="dark"] .table tbody .text-muted,
-html.dark .table tbody .text-muted {
-  color: #a0aec0 !important;
-}
-
-html[data-theme-mode="dark"] .badge.bg-light,
-html.dark .badge.bg-light {
-  background-color: #374151 !important;
-  color: #d1d5db !important;
-}
-</style>

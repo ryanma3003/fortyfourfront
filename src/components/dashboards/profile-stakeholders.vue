@@ -113,7 +113,7 @@ const relatedCsirtId = computed(() => {
 
 const dataToPass = computed(() => ({
   currentpage: "Profile Stakeholders",
-  title: { label: "Stakeholders", path: "/stakeholders" },
+  title: { label: "Stakeholders", path: "/admin/stakeholders" },
   activepage: "Profile Stakeholder",
 }));
 

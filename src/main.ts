@@ -1,5 +1,6 @@
 // main.ts
 import './style.scss';
+// dashboard styles → src/components/dashboards/style2.css (loaded via <style src>)
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router/index';
@@ -69,8 +70,6 @@ app.use(router);
 // Vuetify UI
 app.use(vuetify);
 
-app.use(SmartTable)
-
 // Register global components
 app.component('apexchart', VueApexCharts);
 app.component('Datepicker', Datepicker);
@@ -95,7 +94,7 @@ app.use(Particles, {
   }
 });
 
-// Initialize auth state from localStorage
+// Initialize auth state from sessionStorage (instant, no API call)
 import { useAuthStore } from './stores/auth';
 const authStore = useAuthStore();
 authStore.checkAuthOnStartup();

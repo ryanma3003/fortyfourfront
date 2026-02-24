@@ -6,12 +6,23 @@
 export interface CsirtMember {
     id: number;
     id_perusahaan: number;
-    nama: string;
+    nama_csirt: string;
     web_csirt: string;
-    no_telepon: string;
+    telepon_csirt: string;
     file_rfc2350: string;
     file_public_key_pgp: string;
     img_csirt: string;
+    slug?: string;
+}
+
+export interface CreateCsirtPayload {
+    id_perusahaan: number;
+    nama_csirt: string;
+    web_csirt: string;
+    telepon_csirt: string;
+    file_rfc2350?: string;
+    file_public_key_pgp?: string;
+    img_csirt?: string;
 }
 
 export interface SdmCsirt {

@@ -5,6 +5,8 @@ import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
 import ParticlesJs from "../../../../shared/components/@spk/reuseble-plugin/particles-js.vue";
 import { useAuthStore } from "@/stores/auth";
+import { stakeholdersService } from "@/services/stakeholders.service";
+import type { Stakeholder } from "@/types/stakeholders.types";
 
 const router = useRouter();
 
@@ -20,6 +22,12 @@ const showHint = ref(false);
 const passwordTouched = ref(false);
 const isLoading = ref(false);
 const agreeToTerms = ref(false);
+
+// Company State
+const companies = ref<Stakeholder[]>([]);
+const selectedCompany = ref("");
+const newCompanyName = ref("");
+const isLoadingCompanies = ref(false);
 
 // Password Generator State
 const passwordLength = ref(16);
@@ -159,16 +167,26 @@ const signUp = async () => {
   if (!email.value) return showToast("error", "Email is required");
   if (!isPasswordValid.value) return showToast("error", "Password does not meet requirements");
   if (!doPasswordsMatch.value) return showToast("error", "Passwords do not match");
+  if (!selectedCompany.value) return showToast("error", "Please select a company");
+  if (selectedCompany.value === "NEW" && !newCompanyName.value.trim()) return showToast("error", "Company name is required");
   if (!agreeToTerms.value) return showToast("error", "You must agree to the terms and conditions");
 
   isLoading.value = true;
   isLoading.value = true;
   
-  const result = await authStore.registerUser({
+  const payload: any = {
     username: fullName.value,
     email: email.value,
     password: password.value
-  });
+  };
+
+  if (selectedCompany.value === "NEW") {
+    payload.nama_perusahaan = newCompanyName.value;
+  } else {
+    payload.id_perusahaan = selectedCompany.value;
+  }
+  
+  const result = await authStore.registerUser(payload);
 
   if (result.success) {
     showToast("success", "Account created successfully! Please login.");
@@ -191,6 +209,20 @@ onMounted(() => {
   localStorage.setItem("visited", "true");
   router.beforeEach(() => setBodyClass(false));
   window.addEventListener("beforeunload", cleanup, { passive: true });
+  
+  // Fetch Companies
+  isLoadingCompanies.value = true;
+  stakeholdersService.getAll()
+    .then(data => {
+      companies.value = data;
+    })
+    .catch(err => {
+      console.error("Failed to fetch companies", err);
+      showToast("error", "Failed to load companies list");
+    })
+    .finally(() => {
+      isLoadingCompanies.value = false;
+    });
 });
 
 onUnmounted(() => {
@@ -222,6 +254,27 @@ onUnmounted(() => {
 
               <!-- Form -->
               <div class="row gy-3">
+                <!-- Company Selection -->
+                <div class="col-12">
+                  <label for="signup-company" class="form-label">Company</label>
+                  <div class="input-group input-group-modern mb-3">
+                    <span class="input-group-text"><i class="ri-building-line"></i></span>
+                    <select class="form-control form-control-lg form-select" id="signup-company" v-model="selectedCompany" :disabled="isLoadingCompanies">
+                      <option value="" disabled selected>Select your company</option>
+                      <option value="NEW" class="fw-bold">+ Add New Company</option>
+                      <option v-for="company in companies" :key="company.id" :value="company.id">
+                        {{ company.nama_perusahaan }}
+                      </option>
+                    </select>
+                  </div>
+                  
+                  <!-- New Company Name Input -->
+                  <div v-if="selectedCompany === 'NEW'" class="input-group input-group-modern animate__animated animate__fadeIn">
+                    <span class="input-group-text"><i class="ri-add-circle-line"></i></span>
+                    <input type="text" class="form-control form-control-lg" v-model="newCompanyName" placeholder="Enter new company name" @keyup.enter="signUp" />
+                  </div>
+                </div>
+                
                 <!-- Full Name -->
                 <div class="col-12">
                   <label for="signup-name" class="form-label">Username</label>

@@ -1,5 +1,5 @@
-<script lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+﻿<script lang="ts">
+import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 import { useStakeholdersStore } from "../../stores/stakeholders";
@@ -7,6 +7,9 @@ import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakehol
 import EasyDataTable from "vue3-easy-data-table";
 import "vue3-easy-data-table/dist/style.css";
 import { useAuthStore } from "../../stores/auth";
+import { useIkasStore } from "../../stores/ikas";
+import { useKseStore } from "../../stores/kse";
+import { useListPage } from "../../composables/useListPage";
 
 
 
@@ -24,25 +27,26 @@ export default {
   setup() {
     const authStore = useAuthStore();
     const stakeholdersStore = useStakeholdersStore();
+    const ikasStore = useIkasStore();
+    const kseStore = useKseStore();
     const isAdmin = computed(() => authStore.isAdmin);
 
     const loading = computed(() => stakeholdersStore.loading);
-    const searchQuery = ref("");
+
+    const {
+      searchQuery, currentPage, itemsPerPage, sortField, sortOrder,
+      showToast, toastMessage, toastType, showNotification,
+      clearSearch, toggleSort, makePagination,
+    } = useListPage("nama_perusahaan");
+
     const searchValue2 = ref("");
-    const sortField = ref<"nama_perusahaan" | "sektor">("nama_perusahaan");
-    const sortOrder = ref<"asc" | "desc">("asc");
-    const currentPage = ref(1);
-    const itemsPerPage = ref(10);
 
     // CRUD state
-    const showCreateModal = ref(false);
-    const showEditModal = ref(false);
-    const showDeleteModal = ref(false);
-    const currentEditItem = ref<Stakeholder | null>(null);
+    const showCreateModal   = ref(false);
+    const showEditModal     = ref(false);
+    const showDeleteModal   = ref(false);
+    const currentEditItem   = ref<Stakeholder | null>(null);
     const currentDeleteItem = ref<Stakeholder | null>(null);
-    const showToast = ref(false);
-    const toastMessage = ref("");
-    const toastType = ref<"success" | "error">("success");
 
     // Form state
     const formData = ref<Partial<Stakeholder>>({
@@ -121,26 +125,13 @@ export default {
       }
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
-        return a[sortField.value].localeCompare(b[sortField.value]) * mod;
+        const aVal = (a[sortField.value as keyof Stakeholder] || "") as string;
+        const bVal = (b[sortField.value as keyof Stakeholder] || "") as string;
+        return aVal.localeCompare(bVal) * mod;
       });
     });
 
-    const totalPages = computed(() =>
-      Math.ceil(filteredData.value.length / itemsPerPage.value)
-    );
-
-    const displayData = computed(() => {
-      const start = (currentPage.value - 1) * itemsPerPage.value;
-      return filteredData.value.slice(start, start + itemsPerPage.value);
-    });
-
-    const paginationInfo = computed(() => {
-      const total = filteredData.value.length;
-      if (!total) return "Tidak ada data";
-      const start = (currentPage.value - 1) * itemsPerPage.value + 1;
-      const end = Math.min(currentPage.value * itemsPerPage.value, total);
-      return `${start} - ${end} dari ${total}`;
-    });
+    const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
 
     // Form validation
     const validateForm = (): boolean => {
@@ -187,18 +178,7 @@ export default {
       return isValid;
     };
 
-    // Show toast notification
-    const showNotification = (
-      message: string,
-      type: "success" | "error" = "success"
-    ) => {
-      toastMessage.value = message;
-      toastType.value = type;
-      showToast.value = true;
-      setTimeout(() => {
-        showToast.value = false;
-      }, 3000);
-    };
+    // â”€â”€â”€ show notification is provided by composable â”€â”€â”€
 
     // CREATE
     const openCreateModal = () => {
@@ -290,9 +270,11 @@ export default {
       }
     };
 
-    watch([searchQuery, itemsPerPage], () => (currentPage.value = 1));
-
-    onMounted(loadStakeholders);
+    onMounted(() => {
+      loadStakeholders();
+      ikasStore.initialize();
+      kseStore.initialize();
+    });
 
     const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -348,7 +330,41 @@ export default {
       }
     };
 
+    // Status helpers
+    const hasIkas = (slug: string): boolean => {
+      const data = ikasStore.ikasDataMap[slug];
+      if (!data) return false;
+      const val = data.total_rata_rata;
+      return val !== null && val !== 0 && val !== 'NA';
+    };
+    const hasKse = (slug: string): boolean => {
+      const data = kseStore.kseDataMap[slug];
+      if (!data) return false;
+      return data.isSubmitted || Object.values(data.answers).some((a: any) => a.selectedOption !== null);
+    };
+
+    const countIkasOnly = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && !hasKse(s.slug)).length
+    );
+    const countKseOnly = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => !hasIkas(s.slug) && hasKse(s.slug)).length
+    );
+    const countBoth = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && hasKse(s.slug)).length
+    );
+    const countIkas = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug)).length
+    );
+    const countKse = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => hasKse(s.slug)).length
+    );
+
     return {
+      countIkasOnly,
+      countKseOnly,
+      countBoth,
+      countIkas,
+      countKse,
       isAdmin,
       stakeholdersStore,
       loading,
@@ -359,6 +375,7 @@ export default {
       sortOrder,
       currentPage,
       itemsPerPage,
+      filteredData,
       totalPages,
       displayData,
       paginationInfo,
@@ -378,18 +395,8 @@ export default {
       updateStakeholder,
       openDeleteModal,
       deleteStakeholder,
-      toggleSort: (f: "nama_perusahaan" | "sektor") => {
-        if (sortField.value === f)
-          sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
-        else {
-          sortField.value = f;
-          sortOrder.value = "asc";
-        }
-      },
-      clearSearch: () => {
-        searchQuery.value = "";
-        currentPage.value = 1;
-      },
+      toggleSort,
+      clearSearch,
       fileInput,
       triggerFileInput,
       onFileChange,
@@ -403,21 +410,32 @@ export default {
       handleCountryCodeChange,
       getSektorBadgeClass: (sektor: string) => {
         const sektorColors: Record<string, string> = {
-          'Hasil hutan & perkebunan': 'bg-success-transparent text-success',
-          'Pangan & perikanan': 'bg-teal-transparent text-teal',
-          'Minuman, tembakau & bahan penyegar': 'bg-warning-transparent text-warning',
-          'Kemurgi, oleokimia & pakan': 'bg-orange-transparent text-orange',
-          'Kimia hulu': 'bg-info-transparent text-info',
-          'Kimia hilir & farmasi': 'bg-danger-transparent text-danger',
-          'Semen, keramik & nonlogam': 'bg-secondary-transparent text-secondary',
-          'Tekstil, kulit & alas kaki': 'bg-primary-transparent text-primary',
-          'Logam': 'bg-indigo-transparent text-indigo',
-          'Permesinan & alat pertanian': 'bg-secondary-transparent text-secondary',
-          'Transportasi, maritim & pertahanan': 'bg-info-transparent text-info',
-          'Elektronika & telematika': 'bg-primary-transparent text-primary',
+          'Hasil hutan & perkebunan': 'badge-sektor badge-sektor-green',
+          'Pangan & perikanan': 'badge-sektor badge-sektor-teal',
+          'Minuman, tembakau & bahan penyegar': 'badge-sektor badge-sektor-amber',
+          'Kemurgi, oleokimia & pakan': 'badge-sektor badge-sektor-orange',
+          'Kimia hulu': 'badge-sektor badge-sektor-cyan',
+          'Kimia hilir & farmasi': 'badge-sektor badge-sektor-red',
+          'Semen, keramik & nonlogam': 'badge-sektor badge-sektor-slate',
+          'Tekstil, kulit & alas kaki': 'badge-sektor badge-sektor-blue',
+          'Logam': 'badge-sektor badge-sektor-indigo',
+          'Permesinan & alat pertanian': 'badge-sektor badge-sektor-violet',
+          'Transportasi, maritim & pertahanan': 'badge-sektor badge-sektor-sky',
+          'Elektronika & telematika': 'badge-sektor badge-sektor-purple',
         };
-        return sektorColors[sektor] || 'bg-light text-muted';
+        return sektorColors[sektor] || 'badge-sektor badge-sektor-default';
       },
+      getAvatarClass: (letter: string) => {
+        const variants = [
+          'avatar-blue', 'avatar-indigo', 'avatar-violet', 'avatar-purple',
+          'avatar-teal', 'avatar-cyan', 'avatar-green', 'avatar-amber',
+          'avatar-orange', 'avatar-red'
+        ];
+        const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
+        return variants[idx];
+      },
+      hasIkas,
+      hasKse,
     };
   },
 };
@@ -428,90 +446,122 @@ export default {
   <Pageheader :propData="dataToPass" />
 
   <!-- Toast Notification -->
-  <div v-if="showToast" class="position-fixed top-0 end-0 p-3" style="z-index: 9999">
-    <div class="toast show"
-      :class="{
-        'bg-success': toastType === 'success',
-        'bg-danger': toastType === 'error',
-      }"
-      role="alert">
-      <div class="toast-body text-white">
-        <i
-          :class="
-            toastType === 'success'
-              ? 'ri-checkbox-circle-line'
-              : 'ri-error-warning-line'
-          "
-          class="me-2"
-        ></i>
-        {{ toastMessage }}
+  <transition name="toast-slide">
+    <div v-if="showToast" class="toast-wrapper position-fixed">
+      <div class="toast-modern" :class="toastType === 'success' ? 'toast-success' : 'toast-error'" role="alert">
+        <div class="toast-icon-wrap">
+          <i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
+        </div>
+        <div class="toast-content">
+          <span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span>
+          <span class="toast-msg">{{ toastMessage }}</span>
+        </div>
       </div>
     </div>
-  </div>
+  </transition>
 
   <div class="row">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3" 
-            style="background:
-  radial-gradient(ellipse at top, #032a5c, #084696);
-">
-          <div class="d-flex align-items-center">
-            <i class="ri-building-2-line me-2 fs-18" style="color: white !important;"></i>
-            <div class="card-title mb-0" style="color: white !important;">Daftar Stakeholders</div>
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header">
+          <div class="d-flex align-items-center gap-3 header-inner">
+            <div class="header-icon-box">
+              <i class="ri-building-2-line"></i>
+            </div>
+            <div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">Daftar Stakeholders</div>
+              <div class="header-subtitle mt-1">Manajemen data perusahaan stakeholder</div>
+            </div>
           </div>
-          <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-container position-relative" style="min-width: 400px">
-              <input v-model="searchQuery" type="text" class="form-control form-control-sm" 
-                placeholder="Cari perusahaan, sektor, atau email..." 
-                style="background: #fff; color: #333; border: none; padding-right: 60px;" />
-              <i class="ri-search-line search-icon" style="color: #666; right: 35px;"></i>
-              <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm clear-btn" style="color: #666;">
-                <i class="ri-close-line"></i>
+          <div class="d-flex gap-2 align-items-center flex-wrap header-inner">
+            <div class="search-container position-relative">
+              <i class="ri-search-line card-search-icon"></i>
+              <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
+                placeholder="Cari perusahaan, sektor, atau email..." />
+              <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
+                <i class="ri-close-circle-fill"></i>
               </button>
             </div>
           </div>
         </div>
 
         <div class="card-body p-4">
-          <div v-if="loading" class="text-center p-5">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Loading...</span>
+          <div v-if="loading" class="skeleton-loading p-4">
+            <div class="skeleton-row" v-for="n in 5" :key="n">
+              <div class="skel skel-no"></div>
+              <div class="skel skel-avatar"></div>
+              <div class="skel skel-name"></div>
+              <div class="skel skel-badge"></div>
+              <div class="skel skel-email"></div>
+              <div class="skel skel-actions"></div>
             </div>
-            <p class="text-muted mt-2 mb-0">Memuat data...</p>
           </div>
 
           <template v-else>
+            <!-- Stats Strip -->
+            <div class="stats-strip mb-4">
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-blue"><i class="ri-building-2-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ filteredData.length }}</div>
+                  <div class="stat-label">Total Stakeholder</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-teal"><i class="ri-pie-chart-2-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ new Set(filteredData.map((d) => d.sektor)).size }}</div>
+                  <div class="stat-label">Sektor Aktif</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-violet"><i class="ri-check-double-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ countBoth }}</div>
+                  <div class="stat-label">IKAS &amp; KSE</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-blue"><i class="ri-bar-chart-grouped-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ countIkasOnly }}</div>
+                  <div class="stat-label">IKAS Saja</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-teal"><i class="ri-shield-check-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ countKseOnly }}</div>
+                  <div class="stat-label">KSE Saja</div>
+                </div>
+              </div>
+            </div>
+
             <!-- Controls Bar -->
             <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
               <div class="d-flex align-items-center gap-2">
-                <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
-                  <i class="ri-list-ordered me-2 text-primary"></i>
-                  <span class="text-muted fs-13 me-2">Tampilkan</span>
-                  <select v-model="itemsPerPage" class="form-select form-select-sm border-0 bg-transparent" style="width: 70px">
-                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                  </select>
-                </div>
-                <span class="badge bg-primary-transparent text-primary px-3 py-2">
-                  <i class="ri-database-2-line me-1"></i>{{ displayData.length }} data
-                </span>
+                <span class="text-muted fs-13">Tampilkan</span>
+                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                </select>
+                <span class="text-muted fs-13">per halaman</span>
               </div>
               <button v-if="isAdmin"
                 @click="openCreateModal"
-                class="btn btn-secondary d-flex align-items-center gap-2 shadow-sm"
+                class="btn btn-warning d-flex align-items-center gap-2"
               >
-                <i class="ri-add-circle-line"></i>
+                <i class="ri-add-circle-line fs-16"></i>
                 <span>Tambah Stakeholder</span>
               </button>
             </div>
 
             <!-- Table -->
-            <div class="table-responsive rounded-3 border">
-              <table class="table table-hover text-nowrap mb-0">
-                <thead class="table-light">
+            <div class="table-responsive stakeholder-table-wrap">
+              <table class="table stakeholder-table text-nowrap mb-0">
+                <thead class="stakeholder-thead">
                   <tr>
-                    <th class="fw-semibold text-muted" style="width: 60px">No</th>
-                    <th class="sortable fw-semibold">
+                    <th class="th-no">No</th>
+                    <th class="sortable fw-semibold th-name-wide">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-building-line text-primary"></i>
                         <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Click to toggle sort">Nama Perusahaan</span>
@@ -543,7 +593,7 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="sortable fw-semibold">
+                    <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
                         <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sektor</span>
@@ -573,61 +623,87 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="fw-semibold">
+                    <th class="th-email">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-mail-line text-primary"></i>
                         <span>Email</span>
                       </div>
                     </th>
-                    <th class="text-center fw-semibold" style="width: 180px">Aksi</th>
+                    <th class="text-center th-status">
+                      <div class="d-flex align-items-center justify-content-center gap-2">
+                        <i class="ri-bar-chart-grouped-line text-primary"></i>
+                        <span>Status</span>
+                      </div>
+                    </th>
+                    <th class="text-center th-actions-md">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="5" class="text-center py-5">
+                    <td colspan="6" class="text-center py-5">
                       <div class="empty-state">
-                        <div class="empty-icon mb-3">
-                          <i class="ri-building-2-line"></i>
+                        <div class="empty-icon-ring mb-3">
+                          <div class="empty-icon-inner">
+                            <i class="ri-building-2-line"></i>
+                          </div>
                         </div>
-                        <h6 class="text-muted mb-1">Tidak Ada Stakeholder</h6>
-                        <p class="text-muted fs-13 mb-0">Coba ubah kriteria pencarian Anda</p>
+                        <h6 class="fw-semibold mb-1 empty-state-title">Tidak Ada Stakeholder</h6>
+                        <p class="text-muted fs-13 mb-3">Coba ubah kata kunci pencarian Anda</p>
+                        <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                          <i class="ri-refresh-line me-1"></i>Reset Pencarian
+                        </button>
                       </div>
                     </td>
                   </tr>
-                  <tr v-for="(item, i) in displayData" :key="item.slug" class="table-row-hover">
-                    <td class="align-middle">
-                      <span class="badge bg-light text-muted fw-medium">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
+                  <tr v-for="(item, i) in displayData" :key="item.slug" class="stakeholder-row">
+                    <td class="align-middle text-center">
+                      <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
                     <td class="align-middle">
                       <div class="d-flex align-items-center gap-3">
-                        <span class="avatar avatar-md avatar-rounded shadow-sm overflow-hidden" 
-                          :style="{ background: item.photo ? 'transparent' : 'linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%)' }">
-                          <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="w-100 h-100 object-fit-cover" />
-                          <span v-else class="text-white fw-bold fs-16">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
-                        </span>
-                        <div>
-                          <span class="fw-semibold d-block text-dark">{{ item.nama_perusahaan }}</span>
-                          <small class="text-muted d-none d-lg-block">
-                            <i class="ri-map-pin-line me-1"></i>{{ item.alamat?.substring(0, 30) }}...
+                        <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
+                          <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="company-avatar-img" />
+                          <span v-else class="company-avatar-letter">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                        </div>
+                        <div class="company-name-wrap">
+                          <span class="company-name d-block">{{ item.nama_perusahaan }}</span>
+                          <small class="company-address d-none d-lg-block">
+                            <i class="ri-map-pin-2-line me-1"></i>{{ item.alamat?.substring(0, 38) }}...
                           </small>
                         </div>
                       </div>
                     </td>
                     <td class="align-middle">
-                      <span class="badge rounded-pill px-3 py-2 fs-12" 
-                        :class="getSektorBadgeClass(item.sektor)">
+                      <span :class="getSektorBadgeClass(item.sektor)">
                         {{ item.sektor }}
                       </span>
                     </td>
                     <td class="align-middle">
-                      <a :href="`mailto:${item.email}`" class="email-link d-inline-flex align-items-center gap-2 text-decoration-none">
+                      <a :href="`mailto:${item.email}`" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none">
+                       
                         <span class="email-text">{{ item.email }}</span>
                       </a>
                     </td>
                     <td class="text-center align-middle">
+                      <div class="status-indicators">
+                        <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="IKAS">
+                          <span class="badge-icon-dot">
+                            <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                          </span>
+                          <span class="badge-label">IKAS</span>
+                        </div>
+                        <div class="status-badge" :class="hasKse(item.slug) ? 'badge-done' : 'badge-pending'" title="KSE/CSIRT">
+                          <span class="badge-icon-dot">
+                            <i :class="hasKse(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                          </span>
+                          <span class="badge-label">KSE</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
                         <router-link
-                          :to="`/profile-stakeholders/${item.slug}`"
+                          :to="`/admin/stakeholders/${item.slug}`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light"
                           title="Lihat Profil">
                           <i class="ri-eye-line"></i>
@@ -642,13 +718,13 @@ export default {
                           @click="openEditModal(item)"
                           class="btn btn-sm btn-icon btn-wave btn-success-light"
                           title="Edit">
-                          <i class="ri-edit-line"></i>
+                          <i class="ri-edit-2-line"></i>
                         </button>
                         <button v-if="isAdmin"
                           @click="openDeleteModal(item)"
                           class="btn btn-sm btn-icon btn-wave btn-danger-light"
-                          title="Delete">
-                          <i class="ri-delete-bin-line"></i>
+                          title="Hapus">
+                          <i class="ri-delete-bin-3-line"></i>
                         </button>
                       </div>
                     </td>
@@ -705,7 +781,7 @@ export default {
   </div>
 
   <!-- Create Modal -->
-  <div v-if="showCreateModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click.self="showCreateModal = false">
+  <div v-if="showCreateModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
@@ -735,8 +811,7 @@ export default {
                       }"
                     >
                       <!-- Empty State -->
-                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted" 
-                        style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada foto</span>
                       </div>
@@ -886,7 +961,7 @@ export default {
   </div>
 
   <!-- Edit Modal -->
-  <div v-if="showEditModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click.self="showEditModal = false">
+  <div v-if="showEditModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
@@ -916,8 +991,7 @@ export default {
                       }"
                     >
                       <!-- Empty State -->
-                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted" 
-                        style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada foto</span>
                       </div>
@@ -1072,7 +1146,7 @@ export default {
   </div>
 
   <!-- Delete Confirmation Modal -->
-  <div v-if="showDeleteModal" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0, 0, 0, 0.5)" @click.self="showDeleteModal = false">
+  <div v-if="showDeleteModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showDeleteModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -1081,7 +1155,7 @@ export default {
         </div>
         <div class="modal-body">
           <div class="text-center">
-            <i class="ri-error-warning-line text-danger" style="font-size: 3rem"></i>
+            <i class="ri-error-warning-line text-danger warning-icon-lg"></i>
             <h5 class="mt-3">Apakah Anda yakin?</h5>
             <p class="text-muted">
               Anda akan menghapus stakeholder
@@ -1101,101 +1175,7 @@ export default {
   </div>
 </template>
 
-<style scoped>
-.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075) !important; overflow: hidden !important; }
-.gradient-header-card .card-header { border: none !important; border-radius: 0 !important; margin: 0 !important; }
-.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
-
-.search-container { position: relative; }
-.search-container input { padding-right: 35px !important; }
-.search-container input::placeholder { color: #999; }
-.search-icon { position: absolute; right: 35px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 10; }
-.clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0.25rem; background: transparent; border: none; }
-.clear-btn:hover { color: #333; }
-
-.sortable, .column-label { cursor: pointer; user-select: none; }
-.sort-arrows { display: flex; flex-direction: column; line-height: 0.5; }
-.sort-arrows i { font-size: 1rem; color: #d1d5db; cursor: pointer; transition: color 0.2s; }
-.sort-arrows i:hover { color: #6b7280; }
-.sort-arrows i.active { color: #3b82f6; }
-
-.modal.show { display: block; }
-.modal.show .modal-dialog:not(.custom-modal) { margin: 0 auto; max-width: 800px; }
-.modal.show .modal-dialog.custom-modal { margin: 0 auto; max-width: 800px; width: 800px; }
-.modal.show .modal-dialog.modal-xxl { max-width: 95%; width: 95%; }
-.modal.show .modal-dialog.custom-modal .modal-content { width: 100% !important; max-width: none !important; }
-.toast { min-width: 250px; }
-
-.empty-state { padding: 2rem 1rem; }
-.empty-state .empty-icon { width: 80px; height: 80px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--secondary-rgb),0.1)); border-radius: 50%; }
-.empty-state .empty-icon i { font-size: 2.5rem; color: var(--primary-color); opacity: 0.7; }
-
-.btn-icon { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
-
-.email-link { color: var(--default-text-color); transition: all 0.2s ease; }
-.email-link:hover { color: var(--primary-color); }
-.email-link .email-icon-wrapper { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(var(--primary-rgb),0.1), rgba(var(--info-rgb),0.1)); border-radius: 6px; color: var(--primary-color); font-size: 14px; transition: all 0.2s ease; }
-.email-link:hover .email-icon-wrapper { background: linear-gradient(135deg, rgba(var(--primary-rgb),0.2), rgba(var(--info-rgb),0.2)); transform: scale(1.05); }
-.email-link .email-text { font-size: 13px; color: #6c757d; transition: color 0.2s ease; }
-.email-link:hover .email-text { color: var(--primary-color); }
-
-.photo-preview-modal { width: 180px; height: 120px; border-color: #dee2e6 !important; }
-@media (max-width: 575px) { .photo-preview-modal { width: 100%; height: 150px; } }
-
-
-/* Dark Mode Specific Styles */
-html[data-theme-mode="dark"] .card-header[style*="gradient"] .card-title,
-html[data-theme-mode="dark"] .card-header[style*="gradient"] i,
-html.dark .card-header[style*="gradient"] .card-title,
-html.dark .card-header[style*="gradient"] i {
-  color: rgb(0, 0, 0) !important;
-}
-
-html[data-theme-mode="dark"] .search-container input::placeholder,
-html.dark .search-container input::placeholder {
-  color: #000000 !important;
-}
-
-html[data-theme-mode="dark"] .search-icon,
-html[data-theme-mode="dark"] .clear-btn,
-html.dark .search-icon,
-html.dark .clear-btn {  
-  color: #000000 !important;
-}
-
-html[data-theme-mode="dark"] .table thead th,
-html.dark .table thead th {
-  color: #e2e8f0 !important;
-}
-
-html[data-theme-mode="dark"] .table tbody .text-dark,
-html[data-theme-mode="dark"] .email-link,
-html[data-theme-mode="dark"] .email-link .email-text,
-html.dark .table tbody .text-dark,
-html.dark .email-link,
-html.dark .email-link .email-text {
-  color: #cbd5e0 !important;
-}
-
-html[data-theme-mode="dark"] .table tbody .text-muted,
-html.dark .table tbody .text-muted {
-  color: #a0aec0 !important;
-}
-
-html[data-theme-mode="dark"] .badge.bg-light,
-html.dark .badge.bg-light {
-  background-color: #374151 !important;
-  color: #d1d5db !important;
-}
-
-html[data-theme-mode="dark"] .email-link:hover,
-html[data-theme-mode="dark"] .email-link:hover .email-text,
-html.dark .email-link:hover,
-html.dark .email-link:hover .email-text {
-  color: var(--primary-color) !important;
-}
-
-</style>
+<style src="../../assets/css/style2.css"></style>
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */

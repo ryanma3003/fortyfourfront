@@ -15,6 +15,14 @@ class UsersService {
     }
 
     /**
+     * Get current authenticated user (cookie auth)
+     * @returns Current user object
+     */
+    async getCurrentUser(): Promise<User> {
+        return api.get<User>('/api/me');
+    }
+
+    /**
      * Get user by ID
      * @param id User ID
      * @returns User object

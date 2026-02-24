@@ -225,7 +225,7 @@ const saveChanges = async () => {
       showSuccessAlert.value = true;
       // Redirect after short delay
       setTimeout(() => {
-        router.push(`/profile-stakeholders/${currentSlug.value}`);
+        router.push(`/admin/stakeholders/${currentSlug.value}`);
       }, 1000);
     } else {
       throw new Error(result.error || "Gagal menyimpan perubahan");
@@ -245,7 +245,7 @@ const saveChanges = async () => {
 const dataToPass = computed(() => ({
   title: {
     label: `Profile ${form.nama_perusahaan || "Stakeholder"}`,
-    path: `/profile-stakeholders/${currentSlug.value}`,
+    path: `/admin/stakeholders/${currentSlug.value}`,
   },
   currentpage: "Account Settings",
   activepage: "Account Settings",

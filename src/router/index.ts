@@ -3,7 +3,6 @@ import Errorpagesinfo from "../shared/layouts/errorpagesinfo.vue";
 import Landingpage from "../shared/layouts/landingpage.vue";
 import Maindashboard from "../shared/layouts/maindashboard.vue";
 import Authlayout from "../shared/layouts/authlayout.vue";
-import { TokenStorage } from "@/config/api";
 
 
 const routes: RouteRecordRaw[] = [
@@ -30,17 +29,7 @@ const routes: RouteRecordRaw[] = [
         //   redirect: '/dashboards/sales',
         // },
         //Dashboard
-        {
-          path: `profile-stakeholders/:slug`,
-          name: 'Profile Stakeholders',
-          component: () => import("../components/dashboards/profile-stakeholders.vue"),
-        },
-        {
-          path: `profile-user/:slug`,
-          name: 'Profile User',
-          component: () => import("../components/dashboards/user-profile.vue"),
-          meta: { requiresAdmin: true },
-        },
+        //Dashboard
         {
           path: 'profile',
           name: "Profile",
@@ -62,289 +51,52 @@ const routes: RouteRecordRaw[] = [
           component: () => import("../components/pages/pic-add.vue"),
         },
         {
-          path: 'users-list',
-          name: "Users List",
-          component: () => import("../components/dashboards/users-list.vue"),
+          path: 'dashboards',
+          name: 'User Dashboard',
+          component: () => import("../views/user/Dashboard.vue"),
+        },
+        // Admin Routes
+        {
+          path: 'admin',
+          component: () => import("../shared/layouts/simple-router-view.vue"),
           meta: { requiresAdmin: true },
-        },
-        {
-          path: 'role-list',
-          name: "Role List",
-          component: () => import("../components/pages/role-list.vue"),
-        },
-        {
-          path: `dashboards`,
-          name: 'Dashboards',
-          component: () => import("../components/dashboards/main-dashboards.vue"),
-          //children: [
-          //   {
-          //     path: 'sales',
-          //     name: "Sales",
-          //     component: () => import("../components/dashboards/sales.vue"),
-          //   },
-          //   {
-          //     path: 'analytics',
-          //     name: "Analytics",
-          //     component: () => import("../components/dashboards/analytics.vue"),
-          //   },
-          // {
-          //   path: 'ecommerce',
-          //   name: "Ecommerce",
-          //   children: [
-          //     {
-          //       path: 'ecommerce-dashboard',
-          //       name: 'Ecommerce Dashboard',
-          //       component: () => import("../components/dashboards/ecommerce/dashboard.vue"),
-          //     },
-          //     {
-          //       path: 'products',
-          //       name: 'Products',
-          //       component: () => import("../components/dashboards/ecommerce/products.vue"),
-          //     },
-          //     {
-          //       path: 'product-details',
-          //       name: 'Product Details',
-          //       component: () => import("../components/dashboards/ecommerce/product-details.vue"),
-          //     },
-          //     {
-          //       path: 'cart',
-          //       name: 'Cart',
-          //       component: () => import("../components/dashboards/ecommerce/cart.vue"),
-          //     },
-          //     {
-          //       path: 'checkout',
-          //       name: 'Checkout',
-          //       component: () => import("../components/dashboards/ecommerce/checkout.vue"),
-          //     },
-          //     {
-          //       path: 'customers',
-          //       name: 'Customers',
-          //       component: () => import("../components/dashboards/ecommerce/customers.vue"),
-          //     },
-          //     {
-          //       path: 'orders',
-          //       name: 'Orders',
-          //       component: () => import("../components/dashboards/ecommerce/orders.vue"),
-          //     },
-          //     {
-          //       path: 'order-details',
-          //       name: 'Order Details',
-          //       component: () => import("../components/dashboards/ecommerce/order-details.vue"),
-          //     },
-          //     {
-          //       path: 'add-product',
-          //       name: 'Add Product',
-          //       component: () => import("../components/dashboards/ecommerce/add-product.vue"),
-          //     },
-          //   ]
-          // },
-          // {
-          //   path: 'crypto',
-          //   name: "Crypto",
-          //   children: [
-          //     {
-          //       path: 'crypto-dashboard',
-          //       name: 'Crypto Dashboard',
-          //       component: () => import("../components/dashboards/crypto/dashboard.vue"),
-          //     },
-          //     {
-          //       path: 'transactions',
-          //       name: 'Transactions',
-          //       component: () => import("../components/dashboards/crypto/transactions.vue"),
-          //     },
-          //     {
-          //       path: 'currency-exchange',
-          //       name: 'Currency Exchange',
-          //       component: () => import("../components/dashboards/crypto/currency-exchange.vue"),
-          //     },
-          //     {
-          //       path: 'buy-sell',
-          //       name: 'Buy $ Sell',
-          //       component: () => import("../components/dashboards/crypto/buy-sell.vue"),
-          //     },
-          //     {
-          //       path: 'market-cap',
-          //       name: 'Marketcap',
-          //       component: () => import("../components/dashboards/crypto/market-cap.vue"),
-          //     },
-          //     {
-          //       path: 'wallet',
-          //       name: 'Wallet',
-          //       component: () => import("../components/dashboards/crypto/wallet.vue"),
-          //     },
-          //   ]
-          // },
-          // {
-          //   path: 'crm',
-          //   name: "CRM",
-          //   children: [
-          //     {
-          //       path: 'crm-dashboard',
-          //       name: 'CRM Dashboard',
-          //       component: () => import("../components/dashboards/crm/dashboard.vue"),
-          //     },
-          //     {
-          //       path: 'contacts',
-          //       name: 'Contacts',
-          //       component: () => import("../components/dashboards/crm/contacts.vue"),
-          //     },
-          //     {
-          //       path: 'companies',
-          //       name: 'Companies',
-          //       component: () => import("../components/dashboards/crm/companies.vue"),
-          //     },
-          //     {
-          //       path: 'deals',
-          //       name: 'Deals',
-          //       component: () => import("../components/dashboards/crm/deals.vue"),
-          //     },
-          //     {
-          //       path: 'leads',
-          //       name: 'Leads',
-          //       component: () => import("../components/dashboards/crm/leads.vue"),
-          //     },
-          //   ]
-          // },
-          // {
-          //   path: 'projects',
-          //   name: "Projects",
-          //   children: [
-          //     {
-          //       path: 'project-dashboard',
-          //       name: 'Projects Dashboard',
-          //       component: () => import("../components/dashboards/projects/dashboard.vue"),
-          //     },
-          //     {
-          //       path: 'projects-list',
-          //       name: 'Project List',
-          //       component: () => import("../components/dashboards/projects/projects-list.vue"),
-          //     },
-          //     {
-          //       path: 'project-overview',
-          //       name: 'Project Overview',
-          //       component: () => import("../components/dashboards/projects/project-overview.vue"),
-          //     },
-          //     {
-          //       path: 'create-project',
-          //       name: 'Create Project',
-          //       component: () => import("../components/dashboards/projects/create-project.vue"),
-          //     },
-          //   ]
-          // },
-          // {
-          //   path: 'hrm',
-          //   name: "HRM",
-          //   component: () => import("../components/dashboards/hrm.vue"),
-          // },
-          // {
-          //   path: 'courses',
-          //   name: "Courses",
-          //   component: () => import("../components/dashboards/courses.vue"),
-          // },
-          // {
-          //   path: 'stocks',
-          //   name: "Stocks",
-          //   component: () => import("../components/dashboards/stocks.vue"),
-          // },
-          // {
-          //   path: 'nft',
-          //   name: "NFT",
-          //   children: [
-          //     {
-          //       path: 'nft-dashboard',
-          //       name: 'Nft Dashboard',
-          //       component: () => import("../components/dashboards/nft/dashboard.vue"),
-          //     },
-          //     {
-          //       path: 'market-place',
-          //       name: 'Market Place',
-          //       component: () => import("../components/dashboards/nft/market-place.vue"),
-          //     },
-          //     {
-          //       path: 'nft-details',
-          //       name: 'NFT Details',
-          //       component: () => import("../components/dashboards/nft/nft-details.vue"),
-          //     },
-          //     {
-          //       path: 'create-nft',
-          //       name: 'Create NFT',
-          //       component: () => import("../components/dashboards/nft/create-nft.vue"),
-          //     },
-          //     {
-          //       path: 'wallet-integration',
-          //       name: 'Wallet ntegration',
-          //       component: () => import("../components/dashboards/nft/wallet-integration.vue"),
-          //     },
-          //     {
-          //       path: 'live-auction',
-          //       name: 'Live Auction',
-          //       component: () => import("../components/dashboards/nft/live-auction.vue"),
-          //     },
-          //   ]
-          // },
-          // {
-          //   path: 'jobs',
-          //   name: "Jobs",
-          //   children: [
-          //     {
-          //       path: 'jobs-dashboard',
-          //       name: 'Jobs Dashboard',
-          //       component: () => import("../components/dashboards/jobs/dashboard.vue"),
-          //     },
-          //     {
-          //       path: 'job-details',
-          //       name: 'Job Details',
-          //       component: () => import("../components/dashboards/jobs/job-details.vue"),
-          //     },
-          //     {
-          //       path: 'search-company',
-          //       name: 'Search Company',
-          //       component: () => import("../components/dashboards/jobs/search-company.vue"),
-          //     },
-          //     {
-          //       path: 'search-jobs',
-          //       name: 'Search Jobs',
-          //       component: () => import("../components/dashboards/jobs/search-jobs.vue"),
-          //     },
-          //     {
-          //       path: 'job-post',
-          //       name: 'Job Post',
-          //       component: () => import("../components/dashboards/jobs/job-post.vue"),
-          //     },
-          //     {
-          //       path: 'jobs-list',
-          //       name: 'Jobs List',
-          //       component: () => import("../components/dashboards/jobs/jobs-list.vue"),
-          //     },
-          //     {
-          //       path: 'search-candidate',
-          //       name: 'Search Candidate',
-          //       component: () => import("../components/dashboards/jobs/search-candidate.vue"),
-          //     },
-          //     {
-          //       path: 'candidate-details',
-          //       name: 'Candidate Details',
-          //       component: () => import("../components/dashboards/jobs/candidate-details.vue"),
-          //     },
-          //   ]
-          // },
-          // {
-          //   path: 'social-media',
-          //   name: "Social Media",
-          //   component: () => import("../components/dashboards/social-media.vue"),
-          // },
-          // {
-          //   path: 'pos-system',
-          //   name: "POS System",
-          //   component: () => import("../components/dashboards/pos-system.vue"),
-          // },
-
-          // ],
-        },
-        {
-          path: `stakeholders`,
-          name: 'Stakeholders',
-          component: () => import("../components/dashboards/stakeholders.vue"),
+          children: [
+            {
+              path: 'dashboard',
+              name: 'Admin Dashboard',
+              component: () => import("../views/admin/Dashboard.vue"),
+            },
+            {
+              path: 'users',
+              name: "Users List",
+              component: () => import("../components/dashboards/users-list.vue"),
+            },
+            {
+              path: 'users/:slug',
+              name: 'Profile User',
+              component: () => import("../components/dashboards/user-profile.vue"),
+            },
+            {
+              path: 'roles',
+              name: "Role List",
+              component: () => import("../components/pages/role-list.vue"),
+            },
+            {
+              path: 'stakeholders',
+              name: 'Stakeholders',
+              component: () => import("../components/dashboards/stakeholders.vue"),
+            },
+            {
+              path: 'stakeholders/:slug',
+              name: 'Profile Stakeholders',
+              component: () => import("../components/dashboards/profile-stakeholders.vue"),
+            },
+            {
+              path: 'csirt',
+              name: 'Csirt Admin',
+              component: () => import("../components/dashboards/csirt-admin.vue"),
+            },
+          ]
         },
         {
           path: `ikas`,
@@ -359,13 +111,283 @@ const routes: RouteRecordRaw[] = [
         {
           path: `kse`,
           name: 'Kse',
-          component: () => import("../components/kse.vue"),
+          component: () => import("../components/kse/KategorisasiSE-list.vue"),
+        },
+        {
+          path: `kse-crud`,
+          name: 'Kse Crud',
+          component: () => import("../components/kse-crud.vue"),
         },
         {
           path: `csirt/:id?`,
           name: 'Csirt',
           component: () => import("../components/dashboards/csirt.vue"),
         },
+
+        //children: [
+        //   {
+        //     path: 'sales',
+        //     name: "Sales",
+        //     component: () => import("../components/dashboards/sales.vue"),
+        //   },
+        //   {
+        //     path: 'analytics',
+        //     name: "Analytics",
+        //     component: () => import("../components/dashboards/analytics.vue"),
+        //   },
+        // {
+        //   path: 'ecommerce',
+        //   name: "Ecommerce",
+        //   children: [
+        //     {
+        //       path: 'ecommerce-dashboard',
+        //       name: 'Ecommerce Dashboard',
+        //       component: () => import("../components/dashboards/ecommerce/dashboard.vue"),
+        //     },
+        //     {
+        //       path: 'products',
+        //       name: 'Products',
+        //       component: () => import("../components/dashboards/ecommerce/products.vue"),
+        //     },
+        //     {
+        //       path: 'product-details',
+        //       name: 'Product Details',
+        //       component: () => import("../components/dashboards/ecommerce/product-details.vue"),
+        //     },
+        //     {
+        //       path: 'cart',
+        //       name: 'Cart',
+        //       component: () => import("../components/dashboards/ecommerce/cart.vue"),
+        //     },
+        //     {
+        //       path: 'checkout',
+        //       name: 'Checkout',
+        //       component: () => import("../components/dashboards/ecommerce/checkout.vue"),
+        //     },
+        //     {
+        //       path: 'customers',
+        //       name: 'Customers',
+        //       component: () => import("../components/dashboards/ecommerce/customers.vue"),
+        //     },
+        //     {
+        //       path: 'orders',
+        //       name: 'Orders',
+        //       component: () => import("../components/dashboards/ecommerce/orders.vue"),
+        //     },
+        //     {
+        //       path: 'order-details',
+        //       name: 'Order Details',
+        //       component: () => import("../components/dashboards/ecommerce/order-details.vue"),
+        //     },
+        //     {
+        //       path: 'add-product',
+        //       name: 'Add Product',
+        //       component: () => import("../components/dashboards/ecommerce/add-product.vue"),
+        //     },
+        //   ]
+        // },
+        // {
+        //   path: 'crypto',
+        //   name: "Crypto",
+        //   children: [
+        //     {
+        //       path: 'crypto-dashboard',
+        //       name: 'Crypto Dashboard',
+        //       component: () => import("../components/dashboards/crypto/dashboard.vue"),
+        //     },
+        //     {
+        //       path: 'transactions',
+        //       name: 'Transactions',
+        //       component: () => import("../components/dashboards/crypto/transactions.vue"),
+        //     },
+        //     {
+        //       path: 'currency-exchange',
+        //       name: 'Currency Exchange',
+        //       component: () => import("../components/dashboards/crypto/currency-exchange.vue"),
+        //     },
+        //     {
+        //       path: 'buy-sell',
+        //       name: 'Buy $ Sell',
+        //       component: () => import("../components/dashboards/crypto/buy-sell.vue"),
+        //     },
+        //     {
+        //       path: 'market-cap',
+        //       name: 'Marketcap',
+        //       component: () => import("../components/dashboards/crypto/market-cap.vue"),
+        //     },
+        //     {
+        //       path: 'wallet',
+        //       name: 'Wallet',
+        //       component: () => import("../components/dashboards/crypto/wallet.vue"),
+        //     },
+        //   ]
+        // },
+        // {
+        //   path: 'crm',
+        //   name: "CRM",
+        //   children: [
+        //     {
+        //       path: 'crm-dashboard',
+        //       name: 'CRM Dashboard',
+        //       component: () => import("../components/dashboards/crm/dashboard.vue"),
+        //     },
+        //     {
+        //       path: 'contacts',
+        //       name: 'Contacts',
+        //       component: () => import("../components/dashboards/crm/contacts.vue"),
+        //     },
+        //     {
+        //       path: 'companies',
+        //       name: 'Companies',
+        //       component: () => import("../components/dashboards/crm/companies.vue"),
+        //     },
+        //     {
+        //       path: 'deals',
+        //       name: 'Deals',
+        //       component: () => import("../components/dashboards/crm/deals.vue"),
+        //     },
+        //     {
+        //       path: 'leads',
+        //       name: 'Leads',
+        //       component: () => import("../components/dashboards/crm/leads.vue"),
+        //     },
+        //   ]
+        // },
+        // {
+        //   path: 'projects',
+        //   name: "Projects",
+        //   children: [
+        //     {
+        //       path: 'project-dashboard',
+        //       name: 'Projects Dashboard',
+        //       component: () => import("../components/dashboards/projects/dashboard.vue"),
+        //     },
+        //     {
+        //       path: 'projects-list',
+        //       name: 'Project List',
+        //       component: () => import("../components/dashboards/projects/projects-list.vue"),
+        //     },
+        //     {
+        //       path: 'project-overview',
+        //       name: 'Project Overview',
+        //       component: () => import("../components/dashboards/projects/project-overview.vue"),
+        //     },
+        //     {
+        //       path: 'create-project',
+        //       name: 'Create Project',
+        //       component: () => import("../components/dashboards/projects/create-project.vue"),
+        //     },
+        //   ]
+        // },
+        // {
+        //   path: 'hrm',
+        //   name: "HRM",
+        //   component: () => import("../components/dashboards/hrm.vue"),
+        // },
+        // {
+        //   path: 'courses',
+        //   name: "Courses",
+        //   component: () => import("../components/dashboards/courses.vue"),
+        // },
+        // {
+        //   path: 'stocks',
+        //   name: "Stocks",
+        //   component: () => import("../components/dashboards/stocks.vue"),
+        // },
+        // {
+        //   path: 'nft',
+        //   name: "NFT",
+        //   children: [
+        //     {
+        //       path: 'nft-dashboard',
+        //       name: 'Nft Dashboard',
+        //       component: () => import("../components/dashboards/nft/dashboard.vue"),
+        //     },
+        //     {
+        //       path: 'market-place',
+        //       name: 'Market Place',
+        //       component: () => import("../components/dashboards/nft/market-place.vue"),
+        //     },
+        //     {
+        //       path: 'nft-details',
+        //       name: 'NFT Details',
+        //       component: () => import("../components/dashboards/nft/nft-details.vue"),
+        //     },
+        //     {
+        //       path: 'create-nft',
+        //       name: 'Create NFT',
+        //       component: () => import("../components/dashboards/nft/create-nft.vue"),
+        //     },
+        //     {
+        //       path: 'wallet-integration',
+        //       name: 'Wallet ntegration',
+        //       component: () => import("../components/dashboards/nft/wallet-integration.vue"),
+        //     },
+        //     {
+        //       path: 'live-auction',
+        //       name: 'Live Auction',
+        //       component: () => import("../components/dashboards/nft/live-auction.vue"),
+        //     },
+        //   ]
+        // },
+        // {
+        //   path: 'jobs',
+        //   name: "Jobs",
+        //   children: [
+        //     {
+        //       path: 'jobs-dashboard',
+        //       name: 'Jobs Dashboard',
+        //       component: () => import("../components/dashboards/jobs/dashboard.vue"),
+        //     },
+        //     {
+        //       path: 'job-details',
+        //       name: 'Job Details',
+        //       component: () => import("../components/dashboards/jobs/job-details.vue"),
+        //     },
+        //     {
+        //       path: 'search-company',
+        //       name: 'Search Company',
+        //       component: () => import("../components/dashboards/jobs/search-company.vue"),
+        //     },
+        //     {
+        //       path: 'search-jobs',
+        //       name: 'Search Jobs',
+        //       component: () => import("../components/dashboards/jobs/search-jobs.vue"),
+        //     },
+        //     {
+        //       path: 'job-post',
+        //       name: 'Job Post',
+        //       component: () => import("../components/dashboards/jobs/job-post.vue"),
+        //     },
+        //     {
+        //       path: 'jobs-list',
+        //       name: 'Jobs List',
+        //       component: () => import("../components/dashboards/jobs/jobs-list.vue"),
+        //     },
+        //     {
+        //       path: 'search-candidate',
+        //       name: 'Search Candidate',
+        //       component: () => import("../components/dashboards/jobs/search-candidate.vue"),
+        //     },
+        //     {
+        //       path: 'candidate-details',
+        //       name: 'Candidate Details',
+        //       component: () => import("../components/dashboards/jobs/candidate-details.vue"),
+        //     },
+        //   ]
+        // },
+        // {
+        //   path: 'social-media',
+        //   name: "Social Media",
+        //   component: () => import("../components/dashboards/social-media.vue"),
+        // },
+        // {
+        //   path: 'pos-system',
+        //   name: "POS System",
+        //   component: () => import("../components/dashboards/pos-system.vue"),
+        // },
+
+
 
         //applications
         {
@@ -1193,9 +1215,9 @@ const router = createRouter({
 
 // Navigation guard for authentication
 router.beforeEach((to, from, next) => {
-  // Check if user is authenticated from in-memory token storage
-  const hasToken = TokenStorage.hasToken();
-  const isAuthenticated = hasToken;
+  // Cookie auth — check if we have a verified session in sessionStorage
+  const storedSession = sessionStorage.getItem('auth_user_session');
+  const isAuthenticated = !!storedSession;
 
   // List of public routes that don't require authentication
   const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover',
@@ -1209,14 +1231,20 @@ router.beforeEach((to, from, next) => {
     // Redirect to login if not authenticated
     next('/');
   } else if (isAuthenticated && to.path === '/') {
-    // Redirect to dashboard if already authenticated and trying to access login
-    next('/dashboards');
+    // Redirect to role-appropriate dashboard if already authenticated and trying to access login
+    const storedUser = sessionStorage.getItem('auth_user_session');
+    const currentUser = storedUser ? JSON.parse(storedUser) : null;
+    if (currentUser?.role === 'admin') {
+      next('/admin/dashboard');
+    } else {
+      next('/dashboards');
+    }
   } else if (to.meta?.requiresAdmin) {
     // Check admin role for admin-only routes
     const storedUser = sessionStorage.getItem('auth_user_session');
     const currentUser = storedUser ? JSON.parse(storedUser) : null;
     if (currentUser?.role !== 'admin') {
-      // Redirect non-admin users to dashboards
+      alert('Access denied. Admin access required.');
       next('/dashboards');
     } else {
       next();

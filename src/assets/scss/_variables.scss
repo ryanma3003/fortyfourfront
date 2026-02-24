@@ -33,12 +33,12 @@
 	--default-text-color: #011a42;
 	--default-border: #e2e8ee;
 	--default-background: #f9f7fc;
-	--menu-bg: #fff;
-	--menu-prime-color: #302d36;
-	--menu-icon-color: #6c7e96;
+	--menu-bg: linear-gradient(180deg, #0750ac 0%, #053d8c 35%, #021f44 75%, #010e20 100%);
+	--menu-prime-color: rgba(255, 255, 255, 0.9);
+	--menu-icon-color: rgba(255, 255, 255, 0.65);
 	--header-icon-color: #6c7e96;
-	--menu-border-color: #e2e8ee;
-	--header-bg: #fff;
+	--menu-border-color: rgba(255, 255, 255, 0.1);
+	--header-bg: #ffffff;
 	--header-prime-color: #302d36;
 	--header-border-color: #e2e8ee;
 	--custom-white: #fff;

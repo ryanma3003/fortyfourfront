@@ -17,6 +17,12 @@ const props = defineProps({
 const store = useIkasStore();
 store.initialize();
 
+// Helper to convert null values to 0 for chart display
+const toChartValue = (val) => {
+    if (val === null || typeof val !== 'number') return 0;
+    return val;
+};
+
 const calculatedSeries = computed(() => {
     if (props.stakeholderSlug) {
         const data = store.getIkasData(props.stakeholderSlug);
@@ -28,25 +34,25 @@ const calculatedSeries = computed(() => {
             {
                 name: "Nilai Kematangan",
                 data: [
-                    data.total_rata_rata,
-                    data.identifikasi.nilai_subdomain1,
-                    data.identifikasi.nilai_subdomain2,
-                    data.identifikasi.nilai_subdomain3,
-                    data.identifikasi.nilai_subdomain4,
-                    data.identifikasi.nilai_subdomain5,
-                    data.proteksi.nilai_subdomain1,
-                    data.proteksi.nilai_subdomain2,
-                    data.proteksi.nilai_subdomain3,
-                    data.proteksi.nilai_subdomain4,
-                    data.proteksi.nilai_subdomain5,
-                    data.proteksi.nilai_subdomain6,
-                    data.deteksi.nilai_subdomain1,
-                    data.deteksi.nilai_subdomain2,
-                    data.deteksi.nilai_subdomain3,
-                    data.gulih.nilai_subdomain1,
-                    data.gulih.nilai_subdomain2,
-                    data.gulih.nilai_subdomain3,
-                    data.gulih.nilai_subdomain4
+                    toChartValue(data.total_rata_rata),
+                    toChartValue(data.identifikasi.nilai_subdomain1),
+                    toChartValue(data.identifikasi.nilai_subdomain2),
+                    toChartValue(data.identifikasi.nilai_subdomain3),
+                    toChartValue(data.identifikasi.nilai_subdomain4),
+                    toChartValue(data.identifikasi.nilai_subdomain5),
+                    toChartValue(data.proteksi.nilai_subdomain1),
+                    toChartValue(data.proteksi.nilai_subdomain2),
+                    toChartValue(data.proteksi.nilai_subdomain3),
+                    toChartValue(data.proteksi.nilai_subdomain4),
+                    toChartValue(data.proteksi.nilai_subdomain5),
+                    toChartValue(data.proteksi.nilai_subdomain6),
+                    toChartValue(data.deteksi.nilai_subdomain1),
+                    toChartValue(data.deteksi.nilai_subdomain2),
+                    toChartValue(data.deteksi.nilai_subdomain3),
+                    toChartValue(data.tanggulih.nilai_subdomain1),
+                    toChartValue(data.tanggulih.nilai_subdomain2),
+                    toChartValue(data.tanggulih.nilai_subdomain3),
+                    toChartValue(data.tanggulih.nilai_subdomain4)
                 ]
             }
         ];
@@ -85,11 +91,11 @@ const calculatedSeries = computed(() => {
         sums[13] += data.deteksi.nilai_subdomain2 || 0;
         sums[14] += data.deteksi.nilai_subdomain3 || 0;
 
-        // Index 15-18: Gulih (4 subdomains)
-        sums[15] += data.gulih.nilai_subdomain1 || 0;
-        sums[16] += data.gulih.nilai_subdomain2 || 0;
-        sums[17] += data.gulih.nilai_subdomain3 || 0;
-        sums[18] += data.gulih.nilai_subdomain4 || 0;
+        // Index 15-18: Tanggulih (4 subdomains)
+        sums[15] += data.tanggulih.nilai_subdomain1 || 0;
+        sums[16] += data.tanggulih.nilai_subdomain2 || 0;
+        sums[17] += data.tanggulih.nilai_subdomain3 || 0;
+        sums[18] += data.tanggulih.nilai_subdomain4 || 0;
     });
 
     const averages = sums.map(sum => Number((sum / count).toFixed(2)));
@@ -120,10 +126,10 @@ const calculatedSeriesDomain = computed(() => {
             {
                 name: "Nilai Kematangan",
                 data: [
-                    data.identifikasi.nilai_identifikasi,
-                    data.proteksi.nilai_proteksi,
-                    data.deteksi.nilai_deteksi,
-                    data.gulih.nilai_gulih
+                    toChartValue(data.identifikasi.nilai_identifikasi),
+                    toChartValue(data.proteksi.nilai_proteksi),
+                    toChartValue(data.deteksi.nilai_deteksi),
+                    toChartValue(data.tanggulih.nilai_tanggulih)
                 ]
             }
         ];
@@ -136,13 +142,13 @@ const calculatedSeriesDomain = computed(() => {
         return radarData.Multiseries; // Return default
     }
 
-    const sums = [0, 0, 0, 0]; // Identifikasi, Proteksi, Deteksi, Gulih
+    const sums = [0, 0, 0, 0]; // Identifikasi, Proteksi, Deteksi, Tanggulih
 
     allData.forEach(data => {
         sums[0] += data.identifikasi.nilai_identifikasi || 0;
         sums[1] += data.proteksi.nilai_proteksi || 0;
         sums[2] += data.deteksi.nilai_deteksi || 0;
-        sums[3] += data.gulih.nilai_gulih || 0;
+        sums[3] += data.tanggulih.nilai_tanggulih || 0;
     });
 
     const averages = sums.map(sum => Number((sum / count).toFixed(2)));
