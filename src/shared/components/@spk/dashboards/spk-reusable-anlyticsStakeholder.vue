@@ -31,9 +31,9 @@ const handleCsirt = () => {
 };
 const handleKse = () => {
   if (props.stakeholderSlug) {
-    router.push({ path: "/kse-list", query: { slug: props.stakeholderSlug } });
+    router.push({ path: "/kse", query: { slug: props.stakeholderSlug } });
   } else {
-    router.push("/kse-list");
+    router.push("/kse");
   }
 };
 </script>
