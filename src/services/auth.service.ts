@@ -1,26 +1,31 @@
-
 import { api } from '@/config/api';
-import type { LoginPayload, RegisterPayload, AuthResponse } from '@/types/auth.types';
+import type {
+    LoginPayload,
+    RegisterPayload,
+    AuthResponse,
+    MfaSetupResponse,
+    MfaEnableResponse,
+    MfaVerifyResponse,
+} from '@/types/auth.types';
 
 /**
- * Authentication Service — Full Cookie Auth.
+ * Authentication Service — Cookie Auth + MFA.
  * Backend sets HTTP-only cookie on login.
- * All requests include the cookie automatically via `credentials: 'include'`.
- * No tokens stored or sent by the frontend.
+ * MFA tokens (setup_token, mfa_token) are returned in response body.
  */
 class AuthService {
     /**
-     * Login — backend sets HTTP-only cookie in Set-Cookie header.
+     * Login — backend returns setup_token, mfa_token, or access_token.
      */
     async login(payload: LoginPayload): Promise<AuthResponse> {
         return api.post<AuthResponse>('/api/login', {
             username: payload.email,
-            password: payload.password
+            password: payload.password,
         });
     }
 
     /**
-     * Register new user
+     * Register new user.
      */
     async register(payload: RegisterPayload): Promise<AuthResponse> {
         return api.post<AuthResponse>('/api/register', payload);
@@ -43,6 +48,42 @@ class AuthService {
      */
     async verifySession(): Promise<any> {
         return api.get<any>('/api/me');
+    }
+
+    // ============================
+    // MFA Endpoints
+    // ============================
+
+    /**
+     * MFA Setup — request QR code and secret for first-time TOTP setup.
+     * Returns otpauth_url (full URI for QR) and secret (Base32 uppercase).
+     */
+    async mfaSetup(setupToken: string): Promise<MfaSetupResponse> {
+        return api.post<MfaSetupResponse>('/api/mfa/setup', {
+            setup_token: setupToken,
+        });
+    }
+
+    /**
+     * MFA Enable — verify the 6-digit code during first-time setup.
+     * On success, returns access_token + user data.
+     */
+    async mfaEnable(setupToken: string, code: string): Promise<MfaEnableResponse> {
+        return api.post<MfaEnableResponse>('/api/mfa/enable', {
+            setup_token: setupToken,
+            code,
+        });
+    }
+
+    /**
+     * MFA Verify — verify the 6-digit code for returning users.
+     * On success, returns access_token + user data.
+     */
+    async mfaVerify(mfaToken: string, code: string): Promise<MfaVerifyResponse> {
+        return api.post<MfaVerifyResponse>('/api/mfa/verify', {
+            mfa_token: mfaToken,
+            code,
+        });
     }
 }
 

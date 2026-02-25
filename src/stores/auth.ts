@@ -17,7 +17,7 @@ interface CurrentUser {
 const USER_SESSION_KEY = "auth_user_session";
 
 /**
- * Helper: map a /api/me (or login) response to CurrentUser.
+ * Helper: map a backend user response to CurrentUser.
  * Handles both flat `{ id, username, ... }` and nested `{ user: { ... } }` shapes.
  */
 function mapToCurrentUser(data: any): CurrentUser {
@@ -38,6 +38,10 @@ export const useAuthStore = defineStore("auth", {
     loading: false,
     currentUser: null as CurrentUser | null,
     error: null as string | null,
+
+    // MFA temporary state — never persisted to localStorage/sessionStorage
+    setupToken: null as string | null,
+    mfaToken: null as string | null,
   }),
 
   getters: {
@@ -66,36 +70,54 @@ export const useAuthStore = defineStore("auth", {
         return this.currentUser.createdAt;
       }
     },
+    /** True when login returned setup_token (first-time MFA setup) */
+    isMfaSetupRequired(): boolean {
+      return !!this.setupToken;
+    },
+    /** True when login returned mfa_token (returning user verify) */
+    isMfaVerifyRequired(): boolean {
+      return !!this.mfaToken;
+    },
   },
 
   actions: {
     // ================================
-    // LOGIN — Full Cookie Auth
+    // LOGIN — returns MFA state or authenticated
     // ================================
     async authenticateUser(payload: LoginPayload) {
       this.loading = true;
       this.error = null;
+      this.clearMfaState();
 
       try {
-        // 1. Login — backend sets HTTP-only cookie + returns user info in body
         const response = await authService.login(payload);
 
-        // 2. Build user data from login response (no separate /api/me call needed)
+        // Case 1: MFA first-time setup required
+        if (response.setup_token) {
+          this.setupToken = response.setup_token;
+          return { authenticated: false, mfaSetup: true };
+        }
+
+        // Case 2: MFA verification required (returning user)
+        if (response.mfa_token) {
+          this.mfaToken = response.mfa_token;
+          return { authenticated: false, mfaVerify: true };
+        }
+
+        // Case 3: Direct login (access_token or cookie-based)
         const userData = mapToCurrentUser(response);
-
-        // Store user info in sessionStorage for UI (no token!)
         sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
-
         this.authenticated = true;
         this.currentUser = userData;
 
-        // 3. Load profile data
+        // Load profile data
         const profileStore = useProfileStore();
         await profileStore.switchUser();
 
         return { authenticated: true };
       } catch (error: any) {
         this.error = error.message || "Login failed";
+        this.clearMfaState();
         sessionStorage.removeItem(USER_SESSION_KEY);
         this.authenticated = false;
         this.currentUser = null;
@@ -103,6 +125,36 @@ export const useAuthStore = defineStore("auth", {
       } finally {
         this.loading = false;
       }
+    },
+
+    // ================================
+    // MFA SETUP COMPLETE — after successful /api/mfa/enable
+    // ================================
+    completeMfaSetup(response: any) {
+      const userData = mapToCurrentUser(response);
+      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
+      this.authenticated = true;
+      this.currentUser = userData;
+      this.clearMfaState();
+    },
+
+    // ================================
+    // MFA VERIFY COMPLETE — after successful /api/mfa/verify
+    // ================================
+    completeMfaVerify(response: any) {
+      const userData = mapToCurrentUser(response);
+      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
+      this.authenticated = true;
+      this.currentUser = userData;
+      this.clearMfaState();
+    },
+
+    // ================================
+    // CLEAR MFA STATE — wipe temporary tokens
+    // ================================
+    clearMfaState() {
+      this.setupToken = null;
+      this.mfaToken = null;
     },
 
     // ================================
@@ -135,12 +187,13 @@ export const useAuthStore = defineStore("auth", {
       this.authenticated = false;
       this.currentUser = null;
       this.error = null;
+      this.clearMfaState();
     },
 
     // ================================
     // CHECK AUTH ON STARTUP / REFRESH
-    // Restore user data from sessionStorage (no backend call needed).
-    // The HTTP-only cookie handles actual API auth automatically.
+    // Restore user data from sessionStorage if present.
+    // Without a valid session, user stays unauthenticated.
     // ================================
     checkAuthOnStartup() {
       const storedUser = sessionStorage.getItem(USER_SESSION_KEY);

@@ -7,7 +7,7 @@ import ParticlesJs from "../../shared/components/@spk/reuseble-plugin/particles-
 import { useAuthStore } from "../../stores/auth";
 
 const router = useRouter();
-const { authenticateUser } = useAuthStore();
+const authStore = useAuthStore();
 
 // State
 const user = ref({ email: "", password: "" });
@@ -25,34 +25,49 @@ const showToast = (type: "success" | "error", message: string) => {
   });
 };
 
+// Redirect helper based on user role
+const redirectByRole = () => {
+  const role = authStore.userRole;
+  return role === "admin" ? "/admin/dashboard" : "/dashboards";
+};
+
 // Login handler
 const login = async () => {
   if (isLoading.value) return;
   isLoading.value = true;
 
   try {
-      const result = await authenticateUser(user.value);
-      console.log('Login result in login.vue:', result);
+    const result = await authStore.authenticateUser(user.value);
 
-      if (result.authenticated) {
-        showToast("success", "Logged In");
-        console.log('Authenticated! Redirecting based on role...');
-        // Delay before redirect so user can see the toast
-        setTimeout(async () => {
-          // Redirect based on user role
-          const userRole = useAuthStore().userRole;
-          const redirectPath = userRole === 'admin' ? '/admin/dashboard' : '/dashboards';
-          await router.push(redirectPath);
-          console.log(`Router push called to ${redirectPath}`);
-        }, 1500);
-      } else {
-        showToast("error", "Invalid credentials" + (result.error ? `: ${result.error}` : ''));
-      }
-  } catch (error) {
-      console.error("Login error:", error);
-      showToast("error", "An error occurred");
+    // Case 1: MFA first-time setup required
+    if (result.mfaSetup) {
+      showToast("success", "MFA setup required");
+      router.push("/pages/authentication/two-step-verification/basic?mode=setup");
+      return;
+    }
+
+    // Case 2: MFA verification required (returning user)
+    if (result.mfaVerify) {
+      showToast("success", "MFA verification required");
+      router.push("/pages/authentication/two-step-verification/basic?mode=verify");
+      return;
+    }
+
+    // Case 3: Direct login success
+    if (result.authenticated) {
+      showToast("success", "Logged In");
+      setTimeout(() => {
+        router.push(redirectByRole());
+      }, 1500);
+      return;
+    }
+
+    // Login failed
+    showToast("error", "Invalid credentials" + (result.error ? `: ${result.error}` : ""));
+  } catch (error: any) {
+    showToast("error", "An error occurred");
   } finally {
-      isLoading.value = false;
+    isLoading.value = false;
   }
 };
 
@@ -63,12 +78,10 @@ const setBodyClass = (add: boolean) => {
 
 const cleanup = () => {
   setBodyClass(false);
-  localStorage.removeItem("visited");
 };
 
 onMounted(() => {
   setBodyClass(true);
-  localStorage.setItem("visited", "true");
   router.beforeEach(() => setBodyClass(false));
   window.addEventListener("beforeunload", cleanup, { passive: true });
 });
