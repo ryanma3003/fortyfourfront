@@ -3,6 +3,7 @@ import Errorpagesinfo from "../shared/layouts/errorpagesinfo.vue";
 import Landingpage from "../shared/layouts/landingpage.vue";
 import Maindashboard from "../shared/layouts/maindashboard.vue";
 import Authlayout from "../shared/layouts/authlayout.vue";
+import { useAuthStore } from "../stores/auth";
 
 
 const routes: RouteRecordRaw[] = [
@@ -1214,37 +1215,47 @@ const router = createRouter({
 });
 
 // Navigation guard for authentication
-router.beforeEach((to, from, next) => {
-  // Cookie auth — check if we have a verified session in sessionStorage
-  const storedSession = sessionStorage.getItem('auth_user_session');
-  const isAuthenticated = !!storedSession;
+router.beforeEach((to, _from, next) => {
+  const authStore = useAuthStore();
 
-  // List of public routes that don't require authentication
-  const publicRoutes = ['/', '/pages/authentication/sign-up/basic', '/pages/authentication/sign-up/cover',
-    '/pages/authentication/reset-password/basic', '/pages/authentication/reset-password/cover',
-    '/pages/authentication/sign-in/basic', '/pages/authentication/sign-in/cover',
-    '/pages/error/401-error', '/pages/error/404-error', '/pages/error/500-error'];
+  const isAuthenticated = authStore.authenticated;
 
-  const isPublicRoute = publicRoutes.includes(to.path) || to.path.startsWith('/pages/authentication');
+  // Public routes that don't require authentication
+  const isPublicRoute =
+    to.path === '/' ||
+    to.path.startsWith('/pages/authentication') ||
+    to.path.startsWith('/pages/error');
 
-  if (!isAuthenticated && !isPublicRoute) {
+  // Special handling for MFA two-step-verification page
+  const isMfaPage = to.path === '/pages/authentication/two-step-verification/basic';
+
+  if (isMfaPage) {
+    const queryMode = to.query.mode as string;
+    if (queryMode === 'setup' && !authStore.setupToken) {
+      // No setup token — cannot access setup page
+      next('/');
+    } else if (queryMode === 'verify' && !authStore.mfaToken) {
+      // No mfa token — cannot access verify page
+      next('/');
+    } else if (!queryMode) {
+      // No mode specified — redirect to login
+      next('/');
+    } else {
+      next();
+    }
+  } else if (!isAuthenticated && !isPublicRoute) {
     // Redirect to login if not authenticated
     next('/');
   } else if (isAuthenticated && to.path === '/') {
-    // Redirect to role-appropriate dashboard if already authenticated and trying to access login
-    const storedUser = sessionStorage.getItem('auth_user_session');
-    const currentUser = storedUser ? JSON.parse(storedUser) : null;
-    if (currentUser?.role === 'admin') {
+    // Redirect to role-appropriate dashboard if already authenticated
+    if (authStore.isAdmin) {
       next('/admin/dashboard');
     } else {
       next('/dashboards');
     }
   } else if (to.meta?.requiresAdmin) {
     // Check admin role for admin-only routes
-    const storedUser = sessionStorage.getItem('auth_user_session');
-    const currentUser = storedUser ? JSON.parse(storedUser) : null;
-    if (currentUser?.role !== 'admin') {
-      alert('Access denied. Admin access required.');
+    if (!authStore.isAdmin) {
       next('/dashboards');
     } else {
       next();
