@@ -13,8 +13,10 @@ const kseStore          = useKseStore();
 const stakeholdersStore = useStakeholdersStore();
 
 // ── Query params ──────────────────────────────────────────────
-const currentSlug   = computed(() => String(route.query.slug   || ''));
-const currentSource = computed(() => String(route.query.source || ''));
+const currentSlug        = computed(() => String(route.query.slug        || ''));
+const currentSource      = computed(() => String(route.query.source      || ''));
+const stakeholderSlug    = computed(() => String(route.query.stakeholder || currentSlug.value));
+const viewMode           = computed(() => route.query.mode === 'view');
 
 // ── Step: 1 = Data Responden, 2 = Penilaian KSE ─────────────
 const currentStep = ref(1);
@@ -26,9 +28,9 @@ onMounted(async () => {
     await stakeholdersStore.initialize();
   }
 
-  // Skip respondent form if profile already saved for this slug
+  // View mode or profile already saved → go straight to step 2
   const profileKey = `kse_respondent_${currentSlug.value}`;
-  if (localStorage.getItem(profileKey)) {
+  if (viewMode.value || localStorage.getItem(profileKey)) {
     currentStep.value = 2;
   }
 });
@@ -65,10 +67,10 @@ const handleEditData = () => {
 };
 
 const backToKse = () => {
-  if (currentSlug.value) {
-    router.push(`/admin/stakeholders/${currentSlug.value}`);
+  if (stakeholderSlug.value) {
+    router.push({ path: '/kse', query: { slug: stakeholderSlug.value } });
   } else {
-    router.push('/stakeholders');
+    router.push('/kse');
   }
 };
 </script>
@@ -87,8 +89,8 @@ const backToKse = () => {
   </div>
 
   <template v-else>
-    <!-- ── Step Indicator ── -->
-    <div class="row mb-4">
+    <!-- ── Step Indicator (hanya tampil jika bukan view mode) ── -->
+    <div v-if="!viewMode" class="row mb-4">
       <div class="col-12">
         <div class="card custom-card step-card">
           <div class="card-body py-4">

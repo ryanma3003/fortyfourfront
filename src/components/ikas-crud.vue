@@ -68,9 +68,9 @@ const handleEditData = () => {
 
 const backToIkas = () => {
   if (currentSlug.value) {
-    router.push(`/admin/stakeholders/${currentSlug.value}`);
+    router.push({ path: '/ikas', query: { slug: currentSlug.value } });
   } else {
-    router.push('/stakeholders');
+    router.push('/ikas');
   }
 };
 </script>

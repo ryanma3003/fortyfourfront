@@ -231,7 +231,7 @@ const handleEditData = () => {
             </button>
             <button 
               class="btn btn-primary w-100" 
-              @click="handleEditData"
+              @click="emit('edit')"
             >
               <i class="ri-edit-line me-1"></i>
               Edit Data Responden
@@ -329,14 +329,6 @@ const handleEditData = () => {
 
           <!-- Action Buttons -->
           <div class="d-flex gap-2">
-            <button 
-              @click="emit('edit')" 
-              class="btn btn-sm btn-light"
-              title="Edit Data Responden"
-            >
-              <i class="ri-edit-line me-1"></i>
-              Edit Data
-            </button>
             <button 
               @click="emit('back')" 
               class="btn btn-sm btn-success-light"

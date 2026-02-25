@@ -25,6 +25,7 @@ const emit = defineEmits<{ (e: 'back'): void; (e: 'edit'): void; }>();
 
 const currentSlug = computed(() => props.slug || String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
+const stakeholderSlug = computed(() => String(route.query.stakeholder || '') || currentSlug.value);
 
 // Navigation state
 const currentCategoryId = ref<string>(kseCategories[0].id);
@@ -262,10 +263,11 @@ const saveAndExit = () => {
       emit('back');
       return;
     }
-    if (currentSlug.value) {
-      router.push(`/admin/stakeholders/${currentSlug.value}`);
+    // Navigate to kse
+    if (stakeholderSlug.value) {
+      router.push({ path: '/kse', query: { slug: stakeholderSlug.value } });
     } else {
-      router.push('/stakeholders');
+      router.push('/kse');
     }
   }, 1500);
 };
@@ -362,20 +364,30 @@ const editData = () => {
 
             <!-- Embedded Mode: Show Both Buttons -->
             <template v-else>
+              <template v-if="!isLocked">
+                <button 
+                  @click="saveAndExit" 
+                  class="action-btn mb-3"
+                  :class="isAllAnswered ? 'action-btn-success' : 'action-btn-warning'"
+                >
+                  <i :class="isAllAnswered ? 'ri-checkbox-circle-line' : 'ri-save-3-line'"></i> 
+                  <span>{{ isAllAnswered ? 'Simpan &amp; Selesai' : 'Simpan Sementara' }}</span>
+                </button>
+                <button 
+                  @click="editData" 
+                  class="action-btn action-btn-edit bg-primary"
+                >
+                  <i class="ri-edit-2-line"></i>
+                  <span>Edit Data Responden</span>
+                </button>
+              </template>
               <button 
-                @click="saveAndExit" 
-                class="action-btn mb-3"
-                :class="isAllAnswered ? 'action-btn-success' : 'action-btn-warning'"
-              >
-                <i :class="isAllAnswered ? 'ri-checkbox-circle-line' : 'ri-save-3-line'"></i> 
-                <span>{{ isAllAnswered ? 'Simpan &amp; Selesai' : 'Simpan Sementara' }}</span>
-              </button>
-              <button 
+                v-else
                 @click="editData" 
-                class="action-btn action-btn-edit bg-primary"
+                class="action-btn action-btn-edit bg-warning"
               >
                 <i class="ri-edit-2-line"></i>
-                <span>Edit Data Responden</span>
+                <span>Edit Data</span>
               </button>
             </template>
           </div> 

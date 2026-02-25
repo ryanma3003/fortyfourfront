@@ -145,16 +145,16 @@ function confirmAdd() {
   showAddModal.value = false;
 
   // Go straight to the form
-  router.push({ path: '/kse-crud', query: { slug: id, source: 'kse-list', stakeholder: stakeholderSlug.value } });
+  router.push({ path: '/kse-crud', query: { slug: id, source: 'kse', stakeholder: stakeholderSlug.value } });
 }
 
 // ── View / Edit ───────────────────────────────────────────────
 function viewKse(entry: KseListEntry) {
-  router.push({ path: '/kse', query: { slug: entry.id, source: 'kse-list', stakeholder: stakeholderSlug.value, mode: 'view' } });
+  router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse', stakeholder: stakeholderSlug.value, mode: 'view' } });
 }
 
 function editKse(entry: KseListEntry) {
-  router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse-list', stakeholder: stakeholderSlug.value } });
+  router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse', stakeholder: stakeholderSlug.value } });
 }
 
 // ── Delete ────────────────────────────────────────────────────
@@ -181,6 +181,14 @@ function kategoriVariant(k: string): string {
   if (k === 'Tinggi')         return 'kategori-tinggi';
   if (k === 'Rendah')         return 'kategori-rendah';
   return 'kategori-default';
+}
+
+function scoreColorClass(entry: KseListEntry): string {
+  const k = kategoriOf(entry);
+  if (k === 'Strategis') return 'bg-danger';
+  if (k === 'Tinggi')    return 'bg-warning';
+  if (k === 'Rendah')    return 'bg-primary';
+  return 'bg-secondary';
 }
 
 function progressClass(pct: number): string {
@@ -390,7 +398,7 @@ function progressClass(pct: number): string {
                     <div class="kse-score-bar">
                       <div
                         class="kse-score-fill"
-                        :class="progressClass(Math.round((scoreOf(entry)/maxScore)*100))"
+                        :class="scoreColorClass(entry)"
                         :style="{ width: Math.min(Math.round((scoreOf(entry)/maxScore)*100), 100) + '%' }"
                       ></div>
                     </div>
@@ -437,7 +445,6 @@ function progressClass(pct: number): string {
                         <i class="ri-eye-line"></i>
                       </button>
                       <button
-                        v-if="!isSubmitted(entry)"
                         @click="editKse(entry)"
                         class="btn btn-sm btn-icon btn-wave btn-success-light"
                         title="Isi / Edit"

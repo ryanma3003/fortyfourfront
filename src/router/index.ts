@@ -112,11 +112,6 @@ const routes: RouteRecordRaw[] = [
         {
           path: `kse`,
           name: 'Kse',
-          component: () => import("../components/kse.vue"),
-        },
-        {
-          path: `kse-list`,
-          name: 'Kse List',
           component: () => import("../components/kse/KategorisasiSE-list.vue"),
         },
         {
