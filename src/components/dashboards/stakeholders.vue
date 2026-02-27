@@ -1,7 +1,7 @@
 ﻿<script lang="ts">
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
+
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
 import EasyDataTable from "vue3-easy-data-table";
@@ -23,7 +23,7 @@ export default {
       },
     };
   },
-  components: { Pageheader, EasyDataTable, CountryCodeDropdown },
+  components: { Pageheader, EasyDataTable },
   setup() {
     const authStore = useAuthStore();
     const stakeholdersStore = useStakeholdersStore();
@@ -61,49 +61,11 @@ export default {
 
     const formErrors = ref<Record<string, string>>({});
     
-    // Phone state for modals
-    const selectedCountryCode = ref("+62");
-    const phoneNumber = ref("");
-    
-// Phone formatting - format: XXX-XXXX-XXXX
-    const formatPhoneNumber = (value: string): string => {
-      const nums = value.replace(/\D/g, "");
-      if (nums.length <= 3) return nums;
-      if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`;
-      return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 12)}`;
-    };
-    
-    const handlePhoneInput = (event: Event) => {
-      const input = event.target as HTMLInputElement;
-      const numbers = input.value.replace(/\D/g, "").slice(0, 11);
-      phoneNumber.value = formatPhoneNumber(numbers);
-      formData.value.telepon = selectedCountryCode.value + " " + phoneNumber.value;
-    };
-    
-    const handleCountryCodeChange = () => {
-      if (phoneNumber.value) {
-        formData.value.telepon = selectedCountryCode.value + " " + phoneNumber.value;
-      }
-    };
-    
-    const parsePhoneNumber = (telepon: string) => {
-      if (telepon) {
-        const match = telepon.match(/^(\+\d+)\s*(.+)$/);
-        if (match) {
-          selectedCountryCode.value = match[1];
-          phoneNumber.value = match[2];
-        } else {
-          phoneNumber.value = telepon;
-        }
-      } else {
-        selectedCountryCode.value = "+62";
-        phoneNumber.value = "";
-      }
-    };
+
 
     const headers = [
       { text: "Nama Perusahaan", value: "nama_perusahaan", sortable: true },
-      { text: "Sektor", value: "sektor", sortable: true },
+      { text: "Sub-Sektor", value: "sektor", sortable: true },
       { text: "Email", value: "email", sortable: true },
       { text: "Aksi", value: "id" },
     ];
@@ -144,7 +106,7 @@ export default {
       }
 
       if (!formData.value.sektor?.trim()) {
-        formErrors.value.sektor = "Sektor wajib diisi";
+        formErrors.value.sektor = "Sub-Sektor wajib diisi";
         isValid = false;
       }
 
@@ -192,8 +154,7 @@ export default {
         photo: "",
       };
       formErrors.value = {};
-      selectedCountryCode.value = "+62";
-      phoneNumber.value = "";
+
       showCreateModal.value = true;
     };
 
@@ -225,7 +186,7 @@ export default {
       currentEditItem.value = item;
       formData.value = { ...item };
       formErrors.value = {};
-      parsePhoneNumber(item.telepon);
+
       showEditModal.value = true;
     };
 
@@ -404,10 +365,7 @@ export default {
       ALLOWED_EXTENSIONS,
       MAX_FILE_SIZE_MB,
       ALLOWED_FORMATS,
-      selectedCountryCode,
-      phoneNumber,
-      handlePhoneInput,
-      handleCountryCodeChange,
+
       getSektorBadgeClass: (sektor: string) => {
         const sektorColors: Record<string, string> = {
           'Hasil hutan & perkebunan': 'badge-sektor badge-sektor-green',
@@ -477,7 +435,7 @@ export default {
             <div class="search-container position-relative">
               <i class="ri-search-line card-search-icon"></i>
               <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
-                placeholder="Cari perusahaan, sektor, atau email..." />
+                placeholder="Cari perusahaan, sub-sektor, atau email..." />
               <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
                 <i class="ri-close-circle-fill"></i>
               </button>
@@ -511,7 +469,7 @@ export default {
                 <div class="stat-icon stat-icon-teal"><i class="ri-pie-chart-2-line"></i></div>
                 <div>
                   <div class="stat-value">{{ new Set(filteredData.map((d) => d.sektor)).size }}</div>
-                  <div class="stat-label">Sektor Aktif</div>
+                  <div class="stat-label">Sub-Sektor Aktif</div>
                 </div>
               </div>
               <div class="stat-card">
@@ -596,7 +554,7 @@ export default {
                     <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sektor</span>
+                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sub-Sektor</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" 
                             :class="{
@@ -853,14 +811,14 @@ export default {
                   </div>
                 </div>
 
-                <!-- Sektor -->
+                <!-- Sub-Sektor -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
                   <label class="form-label fw-medium">
-                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
+                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sub-Sektor
                     <span class="text-danger">*</span>
                   </label>
                   <select v-model="formData.sektor" class="form-select" :class="{ 'is-invalid': formErrors.sektor }">
-                    <option value="" disabled>-- Pilih Sektor --</option>
+                    <option value="" disabled>-- Pilih Sub-Sektor --</option>
                     <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
                     <option value="Pangan & perikanan">Pangan & perikanan</option>
                     <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
@@ -897,22 +855,13 @@ export default {
                     <i class="ri-phone-line me-1 text-primary"></i>Nomor
                     Telepon <span class="text-danger">*</span>
                   </label>
-                  <div class="input-group" :class="{ 'is-invalid': formErrors.telepon }">
-                    <CountryCodeDropdown 
-                      v-model="selectedCountryCode" 
-                      :error="!!formErrors.telepon"
-                      @update:modelValue="handleCountryCodeChange"
-                    />
-                    <input 
+                  <input 
                       type="tel" 
                       class="form-control" 
-                      v-model="phoneNumber"
-                      @input="handlePhoneInput"
-                      inputmode="numeric" 
-                      placeholder="813-8282-8282"
+                      v-model="formData.telepon"
+                      placeholder="Masukkan nomor telepon"
                       :class="{ 'is-invalid': formErrors.telepon }"
                     />
-                  </div>
                   <div v-if="formErrors.telepon" class="invalid-feedback d-block">
                     {{ formErrors.telepon }}
                   </div>
@@ -1033,14 +982,14 @@ export default {
                   </div>
                 </div>
 
-                <!-- Sektor -->
+                <!-- Sub-Sektor -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
                   <label class="form-label fw-medium">
-                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
+                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sub-Sektor
                     <span class="text-danger">*</span>
                   </label>
                   <select v-model="formData.sektor" class="form-select" :class="{ 'is-invalid': formErrors.sektor }">
-                    <option value="" disabled>-- Pilih Sektor --</option>
+                    <option value="" disabled>-- Pilih Sub-Sektor --</option>
                     <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
                     <option value="Pangan & perikanan">Pangan & perikanan</option>
                     <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
@@ -1077,22 +1026,13 @@ export default {
                     <i class="ri-phone-line me-1 text-primary"></i>Nomor
                     Telepon <span class="text-danger">*</span>
                   </label>
-                  <div class="input-group" :class="{ 'is-invalid': formErrors.telepon }">
-                    <CountryCodeDropdown 
-                      v-model="selectedCountryCode" 
-                      :error="!!formErrors.telepon"
-                      @update:modelValue="handleCountryCodeChange"
-                    />
-                    <input 
+                  <input 
                       type="tel" 
                       class="form-control" 
-                      v-model="phoneNumber"
-                      @input="handlePhoneInput"
-                      inputmode="numeric" 
-                      placeholder="813 8282 8282"
+                      v-model="formData.telepon"
+                      placeholder="Masukkan nomor telepon"
                       :class="{ 'is-invalid': formErrors.telepon }"
                     />
-                  </div>
                   <div v-if="formErrors.telepon" class="invalid-feedback d-block">
                     {{ formErrors.telepon }}
                   </div>

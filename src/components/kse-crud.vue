@@ -90,7 +90,7 @@ const backToKse = () => {
 
   <template v-else>
     <!-- ── Step Indicator (hanya tampil jika bukan view mode) ── -->
-    <div v-if="!viewMode" class="row mb-4">
+    <div v-if="!viewMode" class="row mb-2">
       <div class="col-12">
         <div class="card custom-card step-card">
           <div class="card-body py-4">
@@ -153,7 +153,7 @@ const backToKse = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   transition: all 0.3s ease;
 }
 
@@ -179,8 +179,8 @@ const backToKse = () => {
 }
 
 .step-indicator {
-  width: 50px;
-  height: 50px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: white;
   border: 2px solid #dee2e6;
@@ -189,11 +189,12 @@ const backToKse = () => {
   justify-content: center;
   color: #6c757d;
   font-weight: 700;
+  font-size: 0.85rem;
   transition: all 0.3s ease;
 }
 
 .step-label {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #6c757d;
   white-space: nowrap;
@@ -201,7 +202,7 @@ const backToKse = () => {
 }
 
 .step-divider {
-  width: 60px;
+  width: 40px;
   height: 2px;
   background: #dee2e6;
   transition: all 0.3s ease;
@@ -209,6 +210,6 @@ const backToKse = () => {
 
 .step-divider.active {
   background: #198754;
-  width: 80px;
+  width: 50px;
 }
 </style>

@@ -167,21 +167,23 @@ const handleEditData = () => {
 </script>
 
 <template>
-  <div class="row">
+  <div class="assessment-container">
+  <div class="row sticky-progress-row">
     <div class="col-12">
-      <!-- Progress Bar -->
-      <ProgressBar
-        :answered="assessmentStore.answeredQuestions"
-        :total="assessmentStore.totalQuestions"
-        :currentPage="assessmentStore.progress.currentPage"
-        :totalPages="assessmentStore.totalPagesInSubCategory"
-        :questionsPerPage="5"
-        title="IKAS"
-      />
+      <div class="progress-wrapper">
+        <!-- Progress Bar -->
+        <ProgressBar
+          :answered="assessmentStore.answeredQuestions"
+          :total="assessmentStore.totalQuestions"
+          :currentPage="assessmentStore.progress.currentPage"
+          :totalPages="assessmentStore.totalPagesInSubCategory"
+          title="IKAS"
+        />
+      </div>
     </div>
   </div>
 
-  <div class="row mt-3">
+  <div class="row g-4">
     <!-- Sidebar -->
     <div :class="sidebarCollapsed ? 'col-md-1' : 'col-md-3'">
       <div class="card custom-card assessment-sidebar">
@@ -221,20 +223,31 @@ const handleEditData = () => {
 
           <!-- Embedded Mode: Show Both Buttons -->
           <template v-else>
+            <template v-if="!assessmentStore.isLocked">
+              <button 
+                class="btn w-100 mb-2" 
+                :class="allQuestionsAnswered ? 'btn-success' : 'btn-warning'"
+                @click="handleSaveAction"
+              >
+                <i class="ri-save-line me-1"></i>
+                {{ allQuestionsAnswered ? 'Simpan dan Selesai' : 'Simpan Sementara' }}
+              </button>
+              <button 
+                v-if="allQuestionsAnswered"
+                class="btn btn-primary w-100" 
+                @click="emit('edit')"
+              >
+                <i class="ri-edit-line me-1"></i>
+                Edit Data
+              </button>
+            </template>
             <button 
-              class="btn w-100 mb-2" 
-              :class="allQuestionsAnswered ? 'btn-success' : 'btn-warning'"
-              @click="handleSaveAction"
-            >
-              <i class="ri-save-line me-1"></i>
-              {{ allQuestionsAnswered ? 'Simpan dan Selesai' : 'Simpan Sementara' }}
-            </button>
-            <button 
-              class="btn btn-primary w-100" 
-              @click="emit('edit')"
+              v-else
+              class="btn btn-warning w-100" 
+              @click="handleEditData"
             >
               <i class="ri-edit-line me-1"></i>
-              Edit Data Responden
+              Edit Data
             </button>
           </template>
             
@@ -382,6 +395,7 @@ const handleEditData = () => {
       </div>
     </div>
   </div>
+  </div>
 </template>
 
 <style scoped>
@@ -470,5 +484,28 @@ const handleEditData = () => {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Sticky Progress Row */
+.sticky-progress-row {
+  position: sticky;
+  top: 74px;
+  z-index: 99;
+  margin-top: -10px;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.progress-wrapper {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.assessment-container {
+  min-height: 100vh;
+  padding-bottom: 3rem;
+  font-family: 'Inter', -apple-system, sans-serif;
 }
 </style>

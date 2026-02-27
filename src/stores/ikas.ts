@@ -153,6 +153,7 @@ export const useIkasStore = defineStore('ikas', {
     // Map: stakeholder slug -> IkasData
     ikasDataMap: {} as Record<string, IkasData>,
     initialized: false,
+    ikasVersion: 0, // incremented on every save — lets other components react to changes
   }),
 
   getters: {
@@ -275,11 +276,13 @@ export const useIkasStore = defineStore('ikas', {
         }
       }
       this.initialized = true;
+      this.ikasVersion++; // signal watchers that store is now loaded
     },
 
     // Save ke localStorage
     saveToStorage() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.ikasDataMap));
+      this.ikasVersion++; // signal all watchers that IKAS data has changed
     },
 
     // Ensure stakeholder data exists
