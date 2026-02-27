@@ -95,9 +95,7 @@ jobs:
             docker pull "$IMAGE"
 
             # ── Ensure app directory exists ──────────────────
-            # Use sudo in case the parent dir is not writable
-            sudo mkdir -p "$APP_DIR"
-            sudo chown "$(id -u):$(id -g)" "$APP_DIR"
+            mkdir -p "$APP_DIR" || { echo "❌ Cannot create $APP_DIR — pre-create it on the server with correct ownership"; exit 1; }
             cd "$APP_DIR"
 
             # ── Write docker-compose.yml on the VPS ─────────
