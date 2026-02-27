@@ -1,12 +1,8 @@
 <script setup>
 import { ref, computed } from "vue";
 
-import * as dummytotal from "../../../../data/dummytotal";
 import * as radarData from '../../../../data/apexcharts/apexchart-radar.ts';
-import { defineAsyncComponent } from 'vue';
 import { useIkasStore } from '../../../../stores/ikas';
-
-const ChartCards = defineAsyncComponent(() => import('../../../../shared/components/@spk/chart-cards.vue'));
 
 const props = defineProps({
     stakeholderSlug: {
@@ -195,18 +191,80 @@ const ApexRadarChart = computed(() => [
 <template>
     <div class="row">
         <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
-            <ChartCards :card="card" :title="card.title" cardHeaderClass="gradient-header-ikas" />
+            <div class="radar-chart-card">
+                <!-- Chart card header -->
+                <div class="radar-chart-header">
+                    <div class="radar-chart-header-inner">
+                        <div class="radar-chart-icon-wrap">
+                            <i :class="card.id === 1 ? 'ri-bar-chart-grouped-line' : 'ri-donut-chart-line'"></i>
+                        </div>
+                        <div>
+                            <div class="radar-chart-title">{{ card.title }}</div>
+                            <div class="radar-chart-sub">
+                                {{ card.id === 1 ? 'Radar per sub-domain keamanan siber' : 'Radar per domain utama (4 domain)' }}
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+                <!-- Chart body -->
+                <div class="radar-chart-body">
+                    <apexchart
+                        :height="card.height"
+                        :type="card.type"
+                        :options="card.chart.options"
+                        :series="card.chart.series"
+                    />
+                </div>
+            </div>
         </div>
     </div>
 </template>
 
 <style scoped>
-:deep(.gradient-header-ikas) {
-  background: radial-gradient(ellipse at top, #032a5c, #084696) !important;
-  color: white !important;
+/* ── Radar chart card wrapper ──────────────────────────── */
+.radar-chart-card {
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 12px 50px rgba(99,51,228,0.14), 0 4px 16px rgba(37,99,235,0.1), 0 1px 4px rgba(0,0,0,0.06);
+    margin-bottom: 1.5rem;
+    background: #fff;
+    border: none;
 }
 
-:deep(.gradient-header-ikas .card-title) {
-  color: white !important;
+/* ── Header ─────────────────────────────────────────────── */
+.radar-chart-header {
+    background: linear-gradient(135deg, #0c1e6b 0%, #1130a0 25%, #1a3fc8 50%, #2563eb 75%, #3b82f6 100%);
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+}
+.radar-chart-header::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.5) 30%, rgba(96,165,250,0.8) 60%, rgba(167,243,208,0.4) 100%);
+}
+.radar-chart-header-inner  { display: flex; align-items: center; gap: 12px; }
+.radar-chart-icon-wrap {
+    width: 42px; height: 48px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.radar-chart-icon-wrap i   { font-size: 1.6rem; color: #fff; }
+.radar-chart-title         { font-size: 1rem; font-weight: 800; color: #fff; line-height: 1.2; }
+.radar-chart-sub           { font-size: 11.5px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+
+/* ── Legend ─────────────────────────────────────────────── */
+.radar-chart-legend     { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.radar-legend-item      { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: rgba(255,255,255,0.8); font-weight: 600; }
+.radar-legend-dot       { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Body ────────────────────────────────────────────────── */
+.radar-chart-body {
+    padding: 1rem 0.5rem;
+    background: #fff;
 }
 </style>

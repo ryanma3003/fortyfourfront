@@ -51,6 +51,7 @@ export const useKseStore = defineStore('kse', {
   state: () => ({
     kseDataMap: {} as Record<string, KseStakeholderData>,
     initialized: false,
+    kseVersion: 0, // incremented on every save — lets other components react to changes
   }),
 
   getters: {
@@ -90,10 +91,12 @@ export const useKseStore = defineStore('kse', {
         }
       }
       this.initialized = true;
+      this.kseVersion++; // signal watchers that store is now loaded
     },
 
     saveToStorage() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.kseDataMap));
+      this.kseVersion++; // signal all watchers that KSE data has changed
     },
 
     ensureStakeholderData(slug: string) {
