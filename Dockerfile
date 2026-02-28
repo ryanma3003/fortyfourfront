@@ -40,12 +40,12 @@ COPY --from=build --chown=appuser:appgroup /app/dist ./dist
 # Switch to non-root user
 USER appuser
 
-EXPOSE 3000
+EXPOSE 3080
 
-# Healthcheck — serve listens on 3000
+# Healthcheck — serve listens on 3080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://localhost:3000/ || exit 1
+  CMD wget -qO- http://localhost:3080/ || exit 1
 
 # -s = SPA mode (rewrites all routes to index.html)
 # -l = listen port
-CMD ["serve", "-s", "dist", "-l", "3000"]
+CMD ["serve", "-s", "dist", "-l", "3080"]
