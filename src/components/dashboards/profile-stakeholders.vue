@@ -9,7 +9,7 @@ import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import { picService } from "../../services/pic.service";
 import type { Pic } from "../../types/pic.types";
-import { csirtMembersData } from "../../data/pages/csirt";
+import { useCsirtStore } from "../../stores/csirt";
 import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
@@ -17,6 +17,7 @@ import { useKseStore } from "../../stores/kse";
 const authStore = useAuthStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
+const csirtStore = useCsirtStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Use storeToRefs to get reactive refs — ensures computed() tracks store state changes
@@ -97,6 +98,9 @@ onMounted(async () => {
     }
     ikasStore.initialize();
     kseStore.initialize();
+    if (!csirtStore.initialized) {
+        await csirtStore.initialize();
+    }
     await loadPics();
 });
 
@@ -158,11 +162,14 @@ const penilaian = computed(() => {
 
 const relatedCsirtId = computed(() => {
   if (!currentStakeholder.value) return null;
-  const csirt = csirtMembersData.find(
-    (c) => c.id_perusahaan === Number(currentStakeholder.value?.id) || c.id_perusahaan === (currentStakeholder.value?.id as any)
+  const csirt = csirtStore.csirts.find(
+    (c) => String(c.id_perusahaan) === String(currentStakeholder.value?.id)
+      || c.perusahaan?.id === String(currentStakeholder.value?.id)
   );
-  return csirt ? csirt.id : null;
+  return csirt ? (csirt.id as any) : null;
 });
+
+
 
 const dataToPass = computed(() => ({
   currentpage: "Profile Stakeholders",
@@ -725,6 +732,20 @@ html.dark .hero-card-shell {
                         :stakeholderSlug="currentStakeholder.slug"
                       />
 
+                      <!-- Daftarkan CSIRT button (admin only, when not yet registered) -->
+                      <div v-if="isAdmin && !relatedCsirtId" class="col-12 mb-3">
+                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
+                          <div class="d-flex align-items-center gap-2">
+                            <i class="ri-shield-check-line fs-16"></i>
+                            <span class="fs-13">CSIRT belum terdaftar untuk perusahaan ini.</span>
+                          </div>
+                          <button @click="router.push({ path: '/csirt', query: { stakeholder: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                            <i class="ri-add-circle-line fs-14"></i>
+                            <span>Daftarkan CSIRT</span>
+                          </button>
+                        </div>
+                      </div>
+
      
                       <div class="col-12 mb-4">
                         <div class="card custom-card">
@@ -862,4 +883,6 @@ html.dark .hero-card-shell {
       </div>
     </div>
   </div>
+
+
 </template>

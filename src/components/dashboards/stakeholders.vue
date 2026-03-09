@@ -599,7 +599,7 @@ export default {
                 <div class="stat-icon stat-icon-violet"><i class="ri-check-double-line"></i></div>
                 <div>
                   <div class="stat-value">{{ countBoth }}</div>
-                  <div class="stat-label">IKAS &amp; KSE</div>
+                  <div class="stat-label">IKAS &amp; CSIRT</div>
                 </div>
               </div>
               <div class="stat-card">
@@ -613,7 +613,7 @@ export default {
                 <div class="stat-icon stat-icon-teal"><i class="ri-shield-check-line"></i></div>
                 <div>
                   <div class="stat-value">{{ countKseOnly }}</div>
-                  <div class="stat-label">KSE Saja</div>
+                  <div class="stat-label">CSIRT Saja</div>
                 </div>
               </div>
             </div>
@@ -772,11 +772,11 @@ export default {
                           </span>
                           <span class="badge-label">IKAS</span>
                         </div>
-                        <div class="status-badge" :class="hasKse(item.slug) ? 'badge-done' : 'badge-pending'" title="KSE/CSIRT">
+                        <div class="status-badge" :class="hasKse(item.slug) ? 'badge-done' : 'badge-pending'" title="CSIRT">
                           <span class="badge-icon-dot">
                             <i :class="hasKse(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
                           </span>
-                          <span class="badge-label">KSE</span>
+                          <span class="badge-label">CSIRT</span>
                         </div>
                       </div>
                     </td>

@@ -96,6 +96,14 @@ class UsersService {
     }
 
     /**
+     * Update current user's own password via /api/me/password
+     * @param payload { old_password, new_password, confirm_new_password }
+     */
+    async updateMePassword(payload: { old_password: string; new_password: string; confirm_new_password: string }): Promise<void> {
+        return api.put<void>('/api/me/password', payload);
+    }
+
+    /**
      * Update current user's profile photo via /api/me/profile-photo
      * @param formData FormData containing 'profile_photo' file field
      */

@@ -1,59 +1,43 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { useKseStore } from '@/stores/kse';
+import { useStakeholdersStore } from '@/stores/stakeholders';
 
 // ----- Props & Emits -----
-const props = defineProps<{ slug: string }>();
+const props = defineProps<{ slug: string; stakeholderSlug?: string }>();
 
 const emit = defineEmits<{
   (e: 'submit'): void;
   (e: 'cancel'): void;
 }>();
 
-const kseStore = useKseStore();
+const kseStore          = useKseStore();
+const stakeholdersStore = useStakeholdersStore();
 
 // ----- Storage key -----
 const PROFILE_KEY = `kse_respondent_${props.slug}`;
-
-// ----- Dropdown options -----
-const jenisUsahaOptions = [
-  'Pemerintah Pusat',
-  'Pemerintah Daerah',
-  'BUMN / BUMD',
-  'Swasta - Keuangan & Perbankan',
-  'Swasta - Telekomunikasi',
-  'Swasta - Teknologi & E-Commerce',
-  'Swasta - Kesehatan',
-  'Swasta - Pendidikan',
-  'Swasta - Ritel',
-  'Swasta - Lainnya',
-];
 
 const tahunOptions = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
 
 // ----- Form state -----
 interface KseRespondentProfile {
-  namaPerusahaan     : string;
-  jenisUsaha         : string;
-  namaSistem         : string;
-  alamat             : string;
-  email              : string;
-  nomorTelepon       : string;
-  namaResponden      : string;
-  jabatanResponden   : string;
-  tahunPengukuran    : number;
-  tanggalPengisian   : string;
+  namaPerusahaan   : string;
+  jenisUsaha       : string;
+  namaSistem       : string;
+  alamat           : string;
+  email            : string;
+  nomorTelepon     : string;
+  tahunPengukuran  : number;
+  tanggalPengisian : string;
 }
 
 const formData = reactive<KseRespondentProfile>({
   namaPerusahaan   : '',
-  jenisUsaha       : 'Pemerintah Pusat',
+  jenisUsaha       : '',
   namaSistem       : '',
   alamat           : '',
   email            : '',
   nomorTelepon     : '',
-  namaResponden    : '',
-  jabatanResponden : '',
   tahunPengukuran  : new Date().getFullYear(),
   tanggalPengisian : new Date().toISOString().split('T')[0],
 });
@@ -65,27 +49,12 @@ const saveIndicator = ref('');
 const validateField = (field: string, value: any): string => {
   const v = String(value ?? '').trim();
   switch (field) {
-    case 'namaPerusahaan'  : return v === '' ? 'Nama instansi / perusahaan wajib diisi' : '';
-    case 'namaSistem'      : return v === '' ? 'Nama sistem elektronik wajib diisi' : '';
-    case 'alamat'          : return v === '' ? 'Alamat wajib diisi' : '';
-    case 'email': {
-      if (v === '') return 'Email wajib diisi';
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'Format email tidak valid';
-    }
-    case 'nomorTelepon': {
-      if (v === '') return 'Nomor telepon wajib diisi';
-      return /^[0-9+\-\s()]+$/.test(v) ? '' : 'Format nomor telepon tidak valid';
-    }
-    case 'namaResponden'   : return v === '' ? 'Nama responden wajib diisi' : '';
-    case 'jabatanResponden': return v === '' ? 'Jabatan responden wajib diisi' : '';
-    default                : return '';
+    case 'namaSistem': return v === '' ? 'Nama sistem elektronik wajib diisi' : '';
+    default          : return '';
   }
 };
 
-const requiredFields: (keyof KseRespondentProfile)[] = [
-  'namaPerusahaan', 'namaSistem', 'alamat',
-  'email', 'nomorTelepon', 'namaResponden', 'jabatanResponden',
-];
+const requiredFields: (keyof KseRespondentProfile)[] = ['namaSistem'];
 
 const validateForm = (): boolean => {
   Object.keys(errors).forEach(k => delete errors[k]);
@@ -108,26 +77,47 @@ const handleFieldBlur = (field: string) => {
 const saveProfile = () => {
   localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...formData }));
 
-  // Sync namaPerusahaan + jenisUsaha into kse store
+  // Keep kse store in sync: namaPerusahaan slot holds namaSistem (as set on +tambah KSE)
   kseStore.ensureStakeholderData(props.slug);
-  kseStore.updateStakeholderInfo(props.slug, formData.namaPerusahaan, formData.jenisUsaha);
+  kseStore.updateStakeholderInfo(props.slug, formData.namaSistem, formData.jenisUsaha);
 
   saveIndicator.value = '✓ Disimpan otomatis';
   setTimeout(() => { saveIndicator.value = ''; }, 2500);
 };
 
-onMounted(() => {
+onMounted(async () => {
   kseStore.initialize();
+  if (!stakeholdersStore.initialized) {
+    await stakeholdersStore.initialize();
+  }
 
-  // Restore from localStorage
+  // 1. Auto-fill company data from stakeholder profile (always fresh)
+  const companySlug = props.stakeholderSlug || '';
+  if (companySlug) {
+    const stakeholder = stakeholdersStore.getStakeholderBySlug(companySlug);
+    if (stakeholder) {
+      formData.namaPerusahaan = stakeholder.nama_perusahaan || '';
+      formData.alamat         = stakeholder.alamat          || '';
+      formData.email          = stakeholder.email           || '';
+      formData.nomorTelepon   = stakeholder.telepon         || '';
+      formData.jenisUsaha     = stakeholder.sub_sektor?.nama_sub_sektor || stakeholder.sektor || '';
+    }
+  }
+
+  // 2. Auto-fill namaSistem from kse store (stored when +tambah KSE was clicked)
+  const kseData = kseStore.getKseData(props.slug);
+  if (kseData.namaPerusahaan) {
+    formData.namaSistem = kseData.namaPerusahaan;
+  }
+
+  // 3. Restore user-editable fields (tahun & tanggal) from localStorage if previously saved
   const stored = localStorage.getItem(PROFILE_KEY);
   if (stored) {
-    try { Object.assign(formData, JSON.parse(stored)); } catch {}
-  } else {
-    // Pre-fill from kse store if available
-    const kseData = kseStore.getKseData(props.slug);
-    if (kseData.namaPerusahaan) formData.namaPerusahaan = kseData.namaPerusahaan;
-    if (kseData.jenisUsaha)    formData.jenisUsaha    = kseData.jenisUsaha;
+    try {
+      const saved = JSON.parse(stored);
+      if (saved.tahunPengukuran)  formData.tahunPengukuran  = saved.tahunPengukuran;
+      if (saved.tanggalPengisian) formData.tanggalPengisian = saved.tanggalPengisian;
+    } catch {}
   }
 });
 
@@ -165,26 +155,26 @@ const handleSubmit = () => {
           <form @submit.prevent="handleSubmit" novalidate>
             <div class="row g-3">
 
-              <!-- ── Instansi / Perusahaan ── -->
-              <div class="col-md-6">
-                <label class="form-label fw-semibold">
-                  Nama Instansi / Perusahaan <span class="text-danger">*</span>
-                </label>
-                <input type="text" class="form-control" :class="{ 'is-invalid': errors.namaPerusahaan }"
-                  v-model="formData.namaPerusahaan" @blur="handleFieldBlur('namaPerusahaan')"
-                  placeholder="Contoh: PT. ABC Indonesia" />
-                <div v-if="errors.namaPerusahaan" class="invalid-feedback">{{ errors.namaPerusahaan }}</div>
+              <!-- Profile info note -->
+              <div class="col-12">
+                <div class="alert alert-info py-2 mb-0 d-flex align-items-center gap-2">
+                  <i class="ri-information-line fs-16"></i>
+                  <span class="fs-13">Data instansi diambil otomatis dari profil perusahaan.</span>
+                </div>
               </div>
 
-              <!-- ── Jenis Usaha ── -->
+              <!-- ── Nama Instansi / Perusahaan ── -->
               <div class="col-md-6">
-                <label class="form-label fw-semibold">
-                  Jenis Usaha / Sektor <span class="text-danger">*</span>
-                </label>
-                <select class="form-select" v-model="formData.jenisUsaha"
-                  @change="handleFieldBlur('jenisUsaha')">
-                  <option v-for="opt in jenisUsahaOptions" :key="opt" :value="opt">{{ opt }}</option>
-                </select>
+                <label class="form-label fw-semibold">Nama Instansi / Perusahaan</label>
+                <input type="text" class="form-control bg-light"
+                  :value="formData.namaPerusahaan" readonly />
+              </div>
+
+              <!-- ── Sektor (Sub-Sektor) ── -->
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Sektor</label>
+                <input type="text" class="form-control bg-light"
+                  :value="formData.jenisUsaha" readonly />
               </div>
 
               <!-- ── Nama Sistem Elektronik ── -->
@@ -192,74 +182,36 @@ const handleSubmit = () => {
                 <label class="form-label fw-semibold">
                   Nama Sistem Elektronik <span class="text-danger">*</span>
                 </label>
-                <input type="text" class="form-control" :class="{ 'is-invalid': errors.namaSistem }"
-                  v-model="formData.namaSistem" @blur="handleFieldBlur('namaSistem')"
-                  placeholder="Contoh: Sistem Informasi Manajemen XYZ" />
+                <input type="text" class="form-control bg-light" :class="{ 'is-invalid': errors.namaSistem }"
+                  :value="formData.namaSistem" readonly />
                 <div v-if="errors.namaSistem" class="invalid-feedback">{{ errors.namaSistem }}</div>
+                <div class="form-text">Nama sistem dari entri KSE yang dipilih.</div>
               </div>
 
               <!-- ── Alamat ── -->
               <div class="col-12">
-                <label class="form-label fw-semibold">
-                  Alamat <span class="text-danger">*</span>
-                </label>
-                <textarea class="form-control" :class="{ 'is-invalid': errors.alamat }"
-                  v-model="formData.alamat" @blur="handleFieldBlur('alamat')"
-                  rows="2" placeholder="Alamat lengkap instansi / perusahaan"></textarea>
-                <div v-if="errors.alamat" class="invalid-feedback">{{ errors.alamat }}</div>
+                <label class="form-label fw-semibold">Alamat</label>
+                <textarea class="form-control bg-light"
+                  :value="formData.alamat" readonly
+                  rows="2"></textarea>
               </div>
 
               <!-- ── Email ── -->
               <div class="col-md-6">
-                <label class="form-label fw-semibold">
-                  Alamat Surel (Email) <span class="text-danger">*</span>
-                </label>
-                <input type="email" class="form-control" :class="{ 'is-invalid': errors.email }"
-                  v-model="formData.email" @blur="handleFieldBlur('email')"
-                  placeholder="email@example.com" />
-                <div v-if="errors.email" class="invalid-feedback">{{ errors.email }}</div>
+                <label class="form-label fw-semibold">Alamat Surel (Email)</label>
+                <input type="email" class="form-control bg-light"
+                  :value="formData.email" readonly />
               </div>
 
               <!-- ── Nomor Telepon ── -->
               <div class="col-md-6">
-                <label class="form-label fw-semibold">
-                  Nomor Telepon <span class="text-danger">*</span>
-                </label>
-                <input type="tel" class="form-control" :class="{ 'is-invalid': errors.nomorTelepon }"
-                  v-model="formData.nomorTelepon" @blur="handleFieldBlur('nomorTelepon')"
-                  placeholder="Contoh: 021-12345678" />
-                <div v-if="errors.nomorTelepon" class="invalid-feedback">{{ errors.nomorTelepon }}</div>
+                <label class="form-label fw-semibold">Nomor Telepon</label>
+                <input type="tel" class="form-control bg-light"
+                  :value="formData.nomorTelepon" readonly />
               </div>
 
               <!-- ── Separator ── -->
-              <div class="col-12">
-                <hr class="my-1" />
-                <p class="text-muted fs-13 mb-0">
-                  <i class="ri-user-line me-1"></i>Informasi Responden
-                </p>
-              </div>
-
-              <!-- ── Nama Responden ── -->
-              <div class="col-md-6">
-                <label class="form-label fw-semibold">
-                  Nama Responden <span class="text-danger">*</span>
-                </label>
-                <input type="text" class="form-control" :class="{ 'is-invalid': errors.namaResponden }"
-                  v-model="formData.namaResponden" @blur="handleFieldBlur('namaResponden')"
-                  placeholder="Nama lengkap responden" />
-                <div v-if="errors.namaResponden" class="invalid-feedback">{{ errors.namaResponden }}</div>
-              </div>
-
-              <!-- ── Jabatan Responden ── -->
-              <div class="col-md-6">
-                <label class="form-label fw-semibold">
-                  Jabatan Responden <span class="text-danger">*</span>
-                </label>
-                <input type="text" class="form-control" :class="{ 'is-invalid': errors.jabatanResponden }"
-                  v-model="formData.jabatanResponden" @blur="handleFieldBlur('jabatanResponden')"
-                  placeholder="Contoh: Manajer TI / Kepala Divisi IT" />
-                <div v-if="errors.jabatanResponden" class="invalid-feedback">{{ errors.jabatanResponden }}</div>
-              </div>
+              <div class="col-12"><hr class="my-1" /></div>
 
               <!-- ── Tahun Pengukuran ── -->
               <div class="col-md-6">

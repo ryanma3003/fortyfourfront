@@ -21,10 +21,20 @@ export const csirtService = {
     },
 
     /**
-     * Create a new CSIRT member
+     * Create a new CSIRT (POST /api/csirt)
+     * Sends multipart/form-data so file fields can be uploaded.
      */
     async create(payload: CreateCsirtPayload): Promise<CsirtMember> {
-        return api.post<CsirtMember>('/api/csirt', payload);
+        const form = new FormData();
+        form.append('id_perusahaan', String(payload.id_perusahaan));
+        form.append('nama_csirt', payload.nama_csirt);
+        form.append('web_csirt', payload.web_csirt);
+        form.append('telepon_csirt', payload.telepon_csirt);
+        if (payload.slug) form.append('slug', payload.slug);
+        if (payload.photo_csirt instanceof File)        form.append('photo_csirt',        payload.photo_csirt);
+        if (payload.file_rfc2350 instanceof File)       form.append('file_rfc2350',        payload.file_rfc2350);
+        if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
+        return api.post<CsirtMember>('/api/csirt', form);
     },
 
     /**
@@ -44,14 +54,56 @@ export const csirtService = {
     /**
      * Get SDM (Resources) for a CSIRT
      */
-    async getSdmByCsirtId(id: number): Promise<SdmCsirt[]> {
+    async getSdmByCsirtId(id: number | string): Promise<SdmCsirt[]> {
         return api.get<SdmCsirt[]>(`/api/sdm_csirt/${id}`);
+    },
+
+    /**
+     * Create a new SDM record
+     */
+    async createSdm(payload: Omit<SdmCsirt, 'id'>): Promise<SdmCsirt> {
+        return api.post<SdmCsirt>('/api/sdm_csirt', payload);
+    },
+
+    /**
+     * Update an SDM record by its own ID
+     */
+    async updateSdm(id: number, payload: Partial<Omit<SdmCsirt, 'id'>>): Promise<SdmCsirt> {
+        return api.patch<SdmCsirt>(`/api/sdm_csirt/${id}`, payload);
+    },
+
+    /**
+     * Delete an SDM record by its own ID
+     */
+    async deleteSdm(id: number): Promise<void> {
+        return api.delete(`/api/sdm_csirt/${id}`);
     },
 
     /**
      * Get SE (Systems) for a CSIRT
      */
-    async getSeByCsirtId(id: number): Promise<SeCsirt[]> {
-        return api.get<SeCsirt[]>(`/api/se_csirt/${id}`);
-    }
+    async getSeByCsirtId(id: number | string): Promise<SeCsirt[]> {
+        return api.get<SeCsirt[]>(`/api/se/${id}`);
+    },
+
+    /**
+     * Create a new SE record
+     */
+    async createSe(payload: Omit<SeCsirt, 'id'>): Promise<SeCsirt> {
+        return api.post<SeCsirt>('/api/se', payload);
+    },
+
+    /**
+     * Update a SE record by its own ID
+     */
+    async updateSe(id: number, payload: Partial<Omit<SeCsirt, 'id'>>): Promise<SeCsirt> {
+        return api.patch<SeCsirt>(`/api/se/${id}`, payload);
+    },
+
+    /**
+     * Delete a SE record by its own ID
+     */
+    async deleteSe(id: number): Promise<void> {
+        return api.delete(`/api/se/${id}`);
+    },
 };

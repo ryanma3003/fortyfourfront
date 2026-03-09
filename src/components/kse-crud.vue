@@ -126,6 +126,7 @@ const backToKse = () => {
     <template v-if="currentStep === 1">
       <RespondentFormKse
         :slug="currentSlug"
+        :stakeholder-slug="stakeholderSlug"
         @submit="handleFormSubmit"
         @cancel="backToKse"
       />

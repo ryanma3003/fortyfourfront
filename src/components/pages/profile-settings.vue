@@ -330,7 +330,7 @@ const savePassword = async () => {
   }
   isSaving.value = true;
   try {
-    await usersService.updatePassword(authStore.currentUser!.id, {
+    await usersService.updateMePassword({
       old_password: passwordData.value.currentPassword,
       new_password: passwordData.value.newPassword,
       confirm_new_password: passwordData.value.confirmPassword,

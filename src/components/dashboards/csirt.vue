@@ -2,12 +2,14 @@
 import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
 import { ref, onMounted, watch, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { sdmCsirtData, type sdmCsirt, seCsirtData, type seCsirt } from "../../data/pages/csirt";
-import { csirtMembersData, type csirtMember } from "../../data/pages/csirt";
+import { csirtService } from "../../services/csirt.service";
+import type { SdmCsirt, SeCsirt, CsirtMember } from "../../types/csirt.types";
 import { useRoute } from "vue-router";
 import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import { useAuthStore } from "../../stores/auth";
+import { useCsirtStore } from "../../stores/csirt";
+import { useRouter } from "vue-router";
 
 export default {
     data() {   
@@ -26,7 +28,17 @@ export default {
     setup() {
         const stakeholdersStore = useStakeholdersStore();
         const authStore = useAuthStore();
+        const csirtStore = useCsirtStore();
+        const router = useRouter();
         const isAdmin = computed(() => authStore.isAdmin);
+
+        // slug passed from profile-stakeholders when CSIRT not yet registered
+        const newStakeholderSlug = computed(() => String(route.query.stakeholder || ''));
+        const newStakeholder = computed(() =>
+            newStakeholderSlug.value
+                ? stakeholdersStore.getStakeholderBySlug(newStakeholderSlug.value)
+                : undefined
+        );
 
         const headers = [
             { text: "Nama Personel" },
@@ -46,47 +58,50 @@ export default {
             { text: "Aksi" },
         ];
 
-        const items = ref<sdmCsirt[]>([]);
-        const seItems = ref<seCsirt[]>([]);
+        const items = ref<SdmCsirt[]>([]);
+        const seItems = ref<SeCsirt[]>([]);
         const loading = ref(false);
 
-        // SOURCE DATA
-        const csirtData: csirtMember[] = csirtMembersData;
         const route = useRoute();
 
         // DERIVED DATA
-        const csirtId = computed(() => {
-            const id = Number(route.params.id);
-            if (!isNaN(id) && id > 0) return id;
-            return csirtMembersData.length > 0 ? csirtMembersData[0].id : 0;
-        });
+        const csirtId = computed(() => String(route.params.id || ''));
 
-        const currentCsirt = computed<csirtMember | undefined>(() => {
-            return csirtData.find(
-                (item) => item.id === csirtId.value
-            );
-        });
+        const currentCsirt = computed<CsirtMember | undefined>(() =>
+            csirtStore.csirts.find(c => String(c.id) === csirtId.value)
+        );
 
-        // Simulasi async data loading
+        // Async data loading from API
         const loadCSIRTs = async () => {
-            loading.value = true;
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            if (csirtId.value) {
-                items.value = sdmCsirtData.filter((member) => member.id_csirt === csirtId.value);
-                seItems.value = seCsirtData.filter((item) => item.id_csirt === csirtId.value);
-            } else {
+            if (!csirtId.value) {
                 items.value = [];
                 seItems.value = [];
+                return;
             }
-
-            loading.value = false;
+            loading.value = true;
+            try {
+                const [sdmData, seData] = await Promise.all([
+                    csirtService.getSdmByCsirtId(csirtId.value),
+                    csirtService.getSeByCsirtId(csirtId.value),
+                ]);
+                items.value = sdmData;
+                seItems.value = seData;
+            } catch (err) {
+                console.error('Failed to load SDM/SE:', err);
+                items.value = [];
+                seItems.value = [];
+            } finally {
+                loading.value = false;
+            }
         };
 
         onMounted(async () => {
             loadCSIRTs();
             if (!stakeholdersStore.initialized) {
                 await stakeholdersStore.initialize();
+            }
+            if (!csirtStore.initialized) {
+                await csirtStore.initialize();
             }
         });
 
@@ -134,10 +149,10 @@ export default {
         const showCreateSdmModal = ref(false);
         const showEditSdmModal   = ref(false);
         const showDeleteSdmModal = ref(false);
-        const currentEditSdm    = ref<sdmCsirt | null>(null);
-        const currentDeleteSdm  = ref<sdmCsirt | null>(null);
+        const currentEditSdm    = ref<SdmCsirt | null>(null);
+        const currentDeleteSdm  = ref<SdmCsirt | null>(null);
 
-        const sdmFormData = ref<Partial<sdmCsirt>>({
+        const sdmFormData = ref<Partial<SdmCsirt>>({
             nama_personel: "",
             jabatan_csirt: "",
             jabatan_perusahaan: "",
@@ -166,67 +181,75 @@ export default {
             showCreateSdmModal.value = true;
         };
 
-        const createSdm = () => {
-            if (!validateSdmForm()) return;
-            const newId = items.value.length > 0 ? Math.max(...items.value.map(i => i.id)) + 1 : 1;
-            items.value.push({
-                id: newId,
-                id_csirt: csirtId.value,
-                nama_personel: sdmFormData.value.nama_personel!,
-                jabatan_csirt: sdmFormData.value.jabatan_csirt!,
-                jabatan_perusahaan: sdmFormData.value.jabatan_perusahaan || "",
-                skill: sdmFormData.value.skill || "",
-                sertifikasi: sdmFormData.value.sertifikasi || "",
-            });
-            showCreateSdmModal.value = false;
-            showNotification("SDM berhasil ditambahkan!", "success");
-        };
-
-        const openEditSdmModal = (item: any) => {
-            currentEditSdm.value = item as sdmCsirt;
-            sdmFormData.value = { ...item };
-            sdmFormErrors.value = {};
-            showEditSdmModal.value = true;
-        };
-
-        const updateSdm = () => {
-            if (!validateSdmForm() || !currentEditSdm.value) return;
-            const idx = items.value.findIndex(i => i.id === currentEditSdm.value!.id);
-            if (idx !== -1) {
-                items.value[idx] = {
-                    ...items.value[idx],
+        const createSdm = async () => {
+            if (!validateSdmForm() || !csirtId.value) return;
+            try {
+                await csirtService.createSdm({
+                    id_csirt: Number(csirtId.value),
                     nama_personel: sdmFormData.value.nama_personel!,
                     jabatan_csirt: sdmFormData.value.jabatan_csirt!,
                     jabatan_perusahaan: sdmFormData.value.jabatan_perusahaan || "",
                     skill: sdmFormData.value.skill || "",
                     sertifikasi: sdmFormData.value.sertifikasi || "",
-                };
+                });
+                await loadCSIRTs();
+                showCreateSdmModal.value = false;
+                showNotification("SDM berhasil ditambahkan!", "success");
+            } catch {
+                showNotification("Gagal menambahkan SDM.", "error");
             }
-            showEditSdmModal.value = false;
-            showNotification("SDM berhasil diperbarui!", "success");
+        };
+
+        const openEditSdmModal = (item: any) => {
+            currentEditSdm.value = item as SdmCsirt;
+            sdmFormData.value = { ...item };
+            sdmFormErrors.value = {};
+            showEditSdmModal.value = true;
+        };
+
+        const updateSdm = async () => {
+            if (!validateSdmForm() || !currentEditSdm.value) return;
+            try {
+                await csirtService.updateSdm(currentEditSdm.value.id, {
+                    nama_personel: sdmFormData.value.nama_personel!,
+                    jabatan_csirt: sdmFormData.value.jabatan_csirt!,
+                    jabatan_perusahaan: sdmFormData.value.jabatan_perusahaan || "",
+                    skill: sdmFormData.value.skill || "",
+                    sertifikasi: sdmFormData.value.sertifikasi || "",
+                });
+                await loadCSIRTs();
+                showEditSdmModal.value = false;
+                showNotification("SDM berhasil diperbarui!", "success");
+            } catch {
+                showNotification("Gagal memperbarui SDM.", "error");
+            }
         };
 
         const openDeleteSdmModal = (item: any) => {
-            currentDeleteSdm.value = item as sdmCsirt;
+            currentDeleteSdm.value = item as SdmCsirt;
             showDeleteSdmModal.value = true;
         };
 
-        const deleteSdm = () => {
+        const deleteSdm = async () => {
             if (!currentDeleteSdm.value) return;
-            const idx = items.value.findIndex(i => i.id === currentDeleteSdm.value!.id);
-            if (idx !== -1) items.value.splice(idx, 1);
-            showDeleteSdmModal.value = false;
-            showNotification("SDM berhasil dihapus!", "success");
+            try {
+                await csirtService.deleteSdm(currentDeleteSdm.value.id);
+                await loadCSIRTs();
+                showDeleteSdmModal.value = false;
+                showNotification("SDM berhasil dihapus!", "success");
+            } catch {
+                showNotification("Gagal menghapus SDM.", "error");
+            }
         };
 
         // ─── SE CRUD ──────────────────────────────────────────────────────────
         const showCreateSeModal = ref(false);
         const showEditSeModal   = ref(false);
         const showDeleteSeModal = ref(false);
-        const currentEditSe    = ref<seCsirt | null>(null);
-        const currentDeleteSe  = ref<seCsirt | null>(null);
+        const currentEditSe    = ref<SeCsirt | null>(null);
+        const currentDeleteSe  = ref<SeCsirt | null>(null);
 
-        const seFormData = ref<Partial<seCsirt>>({
+        const seFormData = ref<Partial<SeCsirt>>({
             nama_se: "",
             ip_se: "",
             as_number_se: "",
@@ -256,66 +279,139 @@ export default {
             showCreateSeModal.value = true;
         };
 
-        const createSe = () => {
-            if (!validateSeForm()) return;
-            const newId = seItems.value.length > 0 ? Math.max(...seItems.value.map(i => i.id)) + 1 : 1;
-            seItems.value.push({
-                id: newId,
-                id_csirt: csirtId.value,
-                nama_se: seFormData.value.nama_se!,
-                ip_se: seFormData.value.ip_se!,
-                as_number_se: seFormData.value.as_number_se || "",
-                pengelola_se: seFormData.value.pengelola_se || "",
-                fitur_se: seFormData.value.fitur_se || "",
-                kategori_se: seFormData.value.kategori_se || "Tinggi",
-            });
-            showCreateSeModal.value = false;
-            showNotification("SE berhasil ditambahkan!", "success");
-        };
-
-        const openEditSeModal = (item: any) => {
-            currentEditSe.value = item as seCsirt;
-            seFormData.value = { ...item };
-            seFormErrors.value = {};
-            showEditSeModal.value = true;
-        };
-
-        const updateSe = () => {
-            if (!validateSeForm() || !currentEditSe.value) return;
-            const idx = seItems.value.findIndex(i => i.id === currentEditSe.value!.id);
-            if (idx !== -1) {
-                seItems.value[idx] = {
-                    ...seItems.value[idx],
+        const createSe = async () => {
+            if (!validateSeForm() || !csirtId.value) return;
+            try {
+                await csirtService.createSe({
+                    id_csirt: Number(csirtId.value),
                     nama_se: seFormData.value.nama_se!,
                     ip_se: seFormData.value.ip_se!,
                     as_number_se: seFormData.value.as_number_se || "",
                     pengelola_se: seFormData.value.pengelola_se || "",
                     fitur_se: seFormData.value.fitur_se || "",
                     kategori_se: seFormData.value.kategori_se || "Tinggi",
-                };
+                });
+                await loadCSIRTs();
+                showCreateSeModal.value = false;
+                showNotification("SE berhasil ditambahkan!", "success");
+            } catch {
+                showNotification("Gagal menambahkan SE.", "error");
             }
-            showEditSeModal.value = false;
-            showNotification("SE berhasil diperbarui!", "success");
+        };
+
+        const openEditSeModal = (item: any) => {
+            currentEditSe.value = item as SeCsirt;
+            seFormData.value = { ...item };
+            seFormErrors.value = {};
+            showEditSeModal.value = true;
+        };
+
+        const updateSe = async () => {
+            if (!validateSeForm() || !currentEditSe.value) return;
+            try {
+                await csirtService.updateSe(currentEditSe.value.id, {
+                    nama_se: seFormData.value.nama_se!,
+                    ip_se: seFormData.value.ip_se!,
+                    as_number_se: seFormData.value.as_number_se || "",
+                    pengelola_se: seFormData.value.pengelola_se || "",
+                    fitur_se: seFormData.value.fitur_se || "",
+                    kategori_se: seFormData.value.kategori_se || "Tinggi",
+                });
+                await loadCSIRTs();
+                showEditSeModal.value = false;
+                showNotification("SE berhasil diperbarui!", "success");
+            } catch {
+                showNotification("Gagal memperbarui SE.", "error");
+            }
         };
 
         const openDeleteSeModal = (item: any) => {
-            currentDeleteSe.value = item as seCsirt;
+            currentDeleteSe.value = item as SeCsirt;
             showDeleteSeModal.value = true;
         };
 
-        const deleteSe = () => {
+        const deleteSe = async () => {
             if (!currentDeleteSe.value) return;
-            const idx = seItems.value.findIndex(i => i.id === currentDeleteSe.value!.id);
-            if (idx !== -1) seItems.value.splice(idx, 1);
-            showDeleteSeModal.value = false;
-            showNotification("SE berhasil dihapus!", "success");
+            try {
+                await csirtService.deleteSe(currentDeleteSe.value.id);
+                await loadCSIRTs();
+                showDeleteSeModal.value = false;
+                showNotification("SE berhasil dihapus!", "success");
+            } catch {
+                showNotification("Gagal menghapus SE.", "error");
+            }
+        };
+
+        // ─── TAMBAH CSIRT ──────────────────────────────────────────────────────
+        const showAddCsirtModal    = ref(false);
+        const csirtFormLoading     = ref(false);
+        const csirtFormError       = ref('');
+        const csirtFormSuccess     = ref(false);
+
+        const csirtFormData = ref({
+            nama_csirt          : '',
+            web_csirt           : '',
+            telepon_csirt       : '',
+            photo_csirt         : null as File | null,
+            file_rfc2350        : null as File | null,
+            file_public_key_pgp : null as File | null,
+        });
+        const csirtFormErrors = ref<Record<string, string>>({});
+
+        const openAddCsirtModal = () => {
+            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', photo_csirt: null, file_rfc2350: null, file_public_key_pgp: null };
+            csirtFormErrors.value = {};
+            csirtFormError.value = '';
+            csirtFormSuccess.value = false;
+            showAddCsirtModal.value = true;
+        };
+
+        const onCsirtFileChange = (event: Event, field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp') => {
+            const input = event.target as HTMLInputElement;
+            csirtFormData.value[field] = input.files?.[0] ?? null;
+        };
+
+        const validateCsirtForm = (): boolean => {
+            csirtFormErrors.value = {};
+            if (!csirtFormData.value.nama_csirt.trim())
+                csirtFormErrors.value.nama_csirt = 'Nama CSIRT wajib diisi';
+            return Object.keys(csirtFormErrors.value).length === 0;
+        };
+
+        const submitAddCsirt = async () => {
+            if (!validateCsirtForm() || !newStakeholder.value) return;
+            csirtFormLoading.value = true;
+            csirtFormError.value = '';
+            const result = await csirtStore.createCsirt({
+                id_perusahaan       : newStakeholder.value.id,
+                slug                : newStakeholder.value.slug,
+                nama_csirt          : csirtFormData.value.nama_csirt,
+                web_csirt           : csirtFormData.value.web_csirt,
+                telepon_csirt       : csirtFormData.value.telepon_csirt,
+                photo_csirt         : csirtFormData.value.photo_csirt,
+                file_rfc2350        : csirtFormData.value.file_rfc2350,
+                file_public_key_pgp : csirtFormData.value.file_public_key_pgp,
+            });
+            csirtFormLoading.value = false;
+            if (result.success) {
+                csirtFormSuccess.value = true;
+                setTimeout(() => {
+                    showAddCsirtModal.value = false;
+                    // Navigate to the newly created CSIRT
+                    const created = result.data as any;
+                    if (created?.id) router.push(`/csirt/${created.id}`);
+                    else router.push(`/profile-stakeholders/${newStakeholder.value!.slug}`);
+                }, 1500);
+            } else {
+                csirtFormError.value = result.error || 'Gagal mendaftarkan CSIRT.';
+            }
         };
 
         // ─── PROFILE CRUD ──────────────────────────────────────────────────────
         const showEditProfileModal = ref(false);
-        const profileFormData = ref<Partial<csirtMember>>({
-            nama: "",
-            no_telepon: "",
+        const profileFormData = ref<Partial<CsirtMember>>({
+            nama_csirt: "",
+            telepon_csirt: "",
             web_csirt: "",
             file_rfc2350: "",
             file_public_key_pgp: "",
@@ -325,8 +421,8 @@ export default {
         const validateProfileForm = (): boolean => {
             profileFormErrors.value = {};
             let valid = true;
-            if (!profileFormData.value.nama?.trim()) {
-                profileFormErrors.value.nama = "Nama CSIRT wajib diisi";
+            if (!profileFormData.value.nama_csirt?.trim()) {
+                profileFormErrors.value.nama_csirt = "Nama CSIRT wajib diisi";
                 valid = false;
             }
             return valid;
@@ -340,33 +436,26 @@ export default {
             }
         };
 
-        const updateProfile = () => {
+        const updateProfile = async () => {
             if (!validateProfileForm() || !currentCsirt.value) return;
-            const idx = csirtMembersData.findIndex(i => i.id === currentCsirt.value!.id);
-            if (idx !== -1) {
-                csirtMembersData[idx] = {
-                    ...csirtMembersData[idx],
-                    nama: profileFormData.value.nama!,
-                    no_telepon: profileFormData.value.no_telepon || "",
-                    web_csirt: profileFormData.value.web_csirt || "",
-                    file_rfc2350: profileFormData.value.file_rfc2350 || "",
-                    file_public_key_pgp: profileFormData.value.file_public_key_pgp || "",
-                };
-                // Re-trigger computed currentCsirt if necessary by forcing a reload or just rely on reactivity if csirtData is ref
-                // Since csirtData is a const array, we might need to manually trigger update if currentCsirt doesn't pick it up
-                // However, currentCsirt uses csirtData.find. If csirtData is not reactive, we might need to make it so.
-                // Let's check how csirtData is defined.
+            try {
+                await csirtService.update(Number(currentCsirt.value.id), {
+                    nama_csirt   : profileFormData.value.nama_csirt!,
+                    telepon_csirt: profileFormData.value.telepon_csirt || "",
+                    web_csirt    : profileFormData.value.web_csirt || "",
+                });
+                await csirtStore.refresh();
+                showEditProfileModal.value = false;
+                showNotification("Profil CSIRT berhasil diperbarui!", "success");
+            } catch {
+                showNotification("Gagal memperbarui profil CSIRT.", "error");
             }
-            showEditProfileModal.value = false;
-            showNotification("Profil CSIRT berhasil diperbarui!", "success");
         };
 
         const handleFileUpload = (event: Event, type: 'rfc' | 'pgp') => {
             const target = event.target as HTMLInputElement;
             if (target.files && target.files.length > 0) {
                 const file = target.files[0];
-                // In a real app, you would upload this to a server.
-                // For simulation, we create a local URL or just store the filename.
                 const fakeUrl = URL.createObjectURL(file);
                 if (type === 'rfc') {
                     profileFormData.value.file_rfc2350 = fakeUrl;
@@ -380,6 +469,18 @@ export default {
         return {
 
             isAdmin,
+            newStakeholder,
+            // Tambah CSIRT
+            showAddCsirtModal,
+            csirtFormLoading,
+            csirtFormError,
+            csirtFormSuccess,
+            csirtFormData,
+            csirtFormErrors,
+            openAddCsirtModal,
+            onCsirtFileChange,
+            validateCsirtForm,
+            submitAddCsirt,
             headers,
             items,
             loading,
@@ -472,12 +573,16 @@ export default {
                         <i class="ri-building-2-line"></i>
                     </div>
                     <div>
-                        <div class="card-title mb-0 text-white fw-bold header-card-title">{{ currentCsirt?.nama || 'Profil CSIRT' }}</div>
+                        <div class="card-title mb-0 text-white fw-bold header-card-title">{{ currentCsirt?.nama_csirt || 'Profil CSIRT' }}</div>
                         <div class="header-subtitle mt-1">Detail informasi dan manajemen CSIRT</div>
                     </div>
                 </div>
-                <div v-if="isAdmin && currentCsirt" class="header-actions">
-                    <button @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
+                <div class="header-actions d-flex gap-2">
+                    <button v-if="isAdmin && !currentCsirt && newStakeholder" @click="openAddCsirtModal" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
+                        <i class="ri-add-circle-line fs-14"></i>
+                        <span>Tambah CSIRT</span>
+                    </button>
+                    <button v-if="isAdmin && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
                         <i class="ri-edit-2-line fs-14"></i>
                         <span>Edit Profile</span>
                     </button>
@@ -491,11 +596,11 @@ export default {
                 <div v-else class="row align-items-center">
                     <div class="col-12 col-md-2 text-center">
                         <div class="company-avatar avatar-blue shadow-sm mb-3 mb-md-0 mx-auto" style="width: 140px; height: 140px; border-radius: 12px;">
-                            <img :src="currentCsirt.img_csirt" class="img-fluid profile-csirt-img" alt="Logo CSIRT"/>
+                            <img :src="currentCsirt.photo_csirt" class="img-fluid profile-csirt-img" alt="Logo CSIRT"/>
                         </div>
                     </div>
                     <div class="col-12 col-md-5">
-                        <h3 class="fw-bold mb-3 text-primary">{{ currentCsirt.nama }}</h3>
+                        <h3 class="fw-bold mb-3 text-primary">{{ currentCsirt.nama_csirt }}</h3>
                         <div class="d-flex flex-column gap-2 mt-4">
                             <div class="d-flex align-items-center gap-3">
                                 <div class="avatar avatar-sm avatar-rounded bg-primary-transparent">
@@ -503,7 +608,7 @@ export default {
                                 </div>
                                 <div>
                                     <div class="text-muted fs-11">Telepon</div>
-                                    <div class="fw-semibold">{{ currentCsirt.no_telepon }}</div>
+                                    <div class="fw-semibold">{{ currentCsirt.telepon_csirt }}</div>
                                 </div>
                             </div>
                             <div class="d-flex align-items-center gap-3 mt-1">
@@ -1123,17 +1228,17 @@ export default {
                                 <label class="form-label fw-medium">
                                     <i class="ri-building-line me-1 text-primary"></i>Nama CSIRT <span class="text-danger">*</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="profileFormData.nama"
-                                    :class="{ 'is-invalid': profileFormErrors.nama }"
+                                <input type="text" class="form-control" v-model="profileFormData.nama_csirt"
+                                    :class="{ 'is-invalid': profileFormErrors.nama_csirt }"
                                     placeholder="Masukkan nama CSIRT" />
-                                <div v-if="profileFormErrors.nama" class="invalid-feedback">{{ profileFormErrors.nama }}</div>
+                                <div v-if="profileFormErrors.nama_csirt" class="invalid-feedback">{{ profileFormErrors.nama_csirt }}</div>
                             </div>
                             <!-- No Telepon & Website -->
                             <div class="col-xl-6">
                                 <label class="form-label fw-medium">
                                     <i class="ri-phone-line me-1 text-primary"></i>No. Telepon
                                 </label>
-                                <input type="text" class="form-control" v-model="profileFormData.no_telepon"
+                                <input type="text" class="form-control" v-model="profileFormData.telepon_csirt"
                                     placeholder="Contoh: 08123456789" />
                             </div>
                             <div class="col-xl-6">
@@ -1186,6 +1291,95 @@ export default {
                     </button>
                     <button type="button" class="btn btn-secondary" @click="updateProfile">
                         <i class="ri-save-line me-1"></i>Simpan Perubahan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- MODAL: Daftarkan CSIRT Baru -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div v-if="showAddCsirtModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showAddCsirtModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal">
+        <div class="modal-content border-0 bg-transparent">
+            <div class="card custom-card gradient-header-card w-100 mb-0">
+                <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
+                    <div class="d-flex align-items-center">
+                        <i class="ri-shield-check-line text-white me-2 fs-18"></i>
+                        <div class="card-title text-white mb-0">Daftarkan CSIRT</div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @click="showAddCsirtModal = false"></button>
+                </div>
+                <div class="card-body p-4 bg-white">
+
+                    <!-- Success state -->
+                    <div v-if="csirtFormSuccess" class="text-center py-4">
+                        <i class="ri-checkbox-circle-fill text-success" style="font-size:3rem"></i>
+                        <h6 class="mt-2 fw-semibold">CSIRT berhasil didaftarkan!</h6>
+                    </div>
+
+                    <form v-else @submit.prevent="submitAddCsirt">
+                        <!-- Info perusahaan (readonly) -->
+                        <div class="alert alert-light border py-2 mb-3 fs-13 d-flex align-items-center gap-2">
+                            <i class="ri-building-2-line text-primary"></i>
+                            <span>Perusahaan: <strong>{{ newStakeholder?.nama_perusahaan }}</strong></span>
+                        </div>
+
+                        <div class="row gy-3">
+                            <!-- Nama CSIRT -->
+                            <div class="col-12">
+                                <label class="form-label fw-medium">Nama CSIRT <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" :class="{ 'is-invalid': csirtFormErrors.nama_csirt }"
+                                    v-model="csirtFormData.nama_csirt" placeholder="Contoh: CSIRT PT. ABC Indonesia" />
+                                <div v-if="csirtFormErrors.nama_csirt" class="invalid-feedback">{{ csirtFormErrors.nama_csirt }}</div>
+                            </div>
+                            <!-- Website -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-medium">Website CSIRT</label>
+                                <input type="url" class="form-control" v-model="csirtFormData.web_csirt"
+                                    placeholder="https://csirt.example.com" />
+                            </div>
+                            <!-- Telepon -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-medium">Telepon CSIRT</label>
+                                <input type="tel" class="form-control" v-model="csirtFormData.telepon_csirt"
+                                    placeholder="021-12345678" />
+                            </div>
+                            <!-- Photo CSIRT -->
+                            <div class="col-12">
+                                <label class="form-label fw-medium">Logo / Photo CSIRT</label>
+                                <input type="file" class="form-control" accept="image/*"
+                                    @change="onCsirtFileChange($event, 'photo_csirt')" />
+                            </div>
+                            <!-- RFC 2350 -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-medium">File RFC 2350</label>
+                                <input type="file" class="form-control"
+                                    @change="onCsirtFileChange($event, 'file_rfc2350')" />
+                            </div>
+                            <!-- Public Key PGP -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-medium">File Public Key PGP</label>
+                                <input type="file" class="form-control"
+                                    @change="onCsirtFileChange($event, 'file_public_key_pgp')" />
+                            </div>
+                        </div>
+
+                        <div v-if="csirtFormError" class="alert alert-danger py-2 mt-3 fs-13">
+                            <i class="ri-error-warning-line me-1"></i>{{ csirtFormError }}
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer bg-light d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-danger" @click="showAddCsirtModal = false">
+                        <i class="ri-close-line me-1"></i>Batal
+                    </button>
+                    <button v-if="!csirtFormSuccess" type="button" class="btn btn-primary" @click="submitAddCsirt" :disabled="csirtFormLoading">
+                        <span v-if="csirtFormLoading" class="spinner-border spinner-border-sm me-1"></span>
+                        <i v-else class="ri-save-line me-1"></i>
+                        Daftarkan
                     </button>
                 </div>
             </div>
