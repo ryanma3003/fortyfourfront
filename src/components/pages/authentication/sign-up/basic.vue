@@ -6,7 +6,6 @@ import "vue3-toastify/dist/index.css";
 import ParticlesJs from "../../../../shared/components/@spk/reuseble-plugin/particles-js.vue";
 import { useAuthStore } from "@/stores/auth";
 import { stakeholdersService } from "@/services/stakeholders.service";
-import type { Stakeholder } from "@/types/stakeholders.types";
 
 const router = useRouter();
 
@@ -24,7 +23,7 @@ const isLoading = ref(false);
 const agreeToTerms = ref(false);
 
 // Company State
-const companies = ref<Stakeholder[]>([]);
+const companies = ref<{ id: number; nama_perusahaan: string }[]>([]);
 const selectedCompany = ref("");
 const newCompanyName = ref("");
 const isLoadingCompanies = ref(false);
@@ -212,7 +211,7 @@ onMounted(() => {
   
   // Fetch Companies
   isLoadingCompanies.value = true;
-  stakeholdersService.getAll()
+  stakeholdersService.getDropdown()
     .then(data => {
       companies.value = data;
     })
@@ -253,163 +252,165 @@ onUnmounted(() => {
               </div>
 
               <!-- Form -->
-              <div class="row gy-3">
-                <!-- Company Selection -->
-                <div class="col-12">
-                  <label for="signup-company" class="form-label">Company</label>
-                  <div class="input-group input-group-modern mb-3">
-                    <span class="input-group-text"><i class="ri-building-line"></i></span>
-                    <select class="form-control form-control-lg form-select" id="signup-company" v-model="selectedCompany" :disabled="isLoadingCompanies">
-                      <option value="" disabled selected>Select your company</option>
-                      <option value="NEW" class="fw-bold">+ Add New Company</option>
-                      <option v-for="company in companies" :key="company.id" :value="company.id">
-                        {{ company.nama_perusahaan }}
-                      </option>
-                    </select>
+              <form @submit.prevent="signUp">
+                <div class="row gy-3">
+                  <!-- Company Selection -->
+                  <div class="col-12">
+                    <label for="signup-company" class="form-label">Company</label>
+                    <div class="input-group input-group-modern mb-3">
+                      <span class="input-group-text"><i class="ri-building-line"></i></span>
+                      <select class="form-control form-control-lg form-select" id="signup-company" v-model="selectedCompany" :disabled="isLoadingCompanies" autocomplete="organization">
+                        <option value="" disabled selected>Select your company</option>
+                        <option value="NEW" class="fw-bold">+ Add New Company</option>
+                        <option v-for="company in companies" :key="company.id" :value="company.id">
+                          {{ company.nama_perusahaan }}
+                        </option>
+                      </select>
+                    </div>
+                    
+                    <!-- New Company Name Input -->
+                    <div v-if="selectedCompany === 'NEW'" class="input-group input-group-modern animate__animated animate__fadeIn">
+                      <span class="input-group-text"><i class="ri-add-circle-line"></i></span>
+                      <input type="text" class="form-control form-control-lg" v-model="newCompanyName" placeholder="Enter new company name" autocomplete="organization" />
+                    </div>
                   </div>
                   
-                  <!-- New Company Name Input -->
-                  <div v-if="selectedCompany === 'NEW'" class="input-group input-group-modern animate__animated animate__fadeIn">
-                    <span class="input-group-text"><i class="ri-add-circle-line"></i></span>
-                    <input type="text" class="form-control form-control-lg" v-model="newCompanyName" placeholder="Enter new company name" @keyup.enter="signUp" />
-                  </div>
-                </div>
-                
-                <!-- Full Name -->
-                <div class="col-12">
-                  <label for="signup-name" class="form-label">Username</label>
-                  <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-user-3-line"></i></span>
-                    <input type="text" class="form-control form-control-lg" id="signup-name" v-model="fullName" placeholder="Enter your Username" @keyup.enter="signUp" />
-                  </div>
-                </div>
-
-                <!-- Email -->
-                <div class="col-12">
-                  <label for="signup-email" class="form-label">Email</label>
-                  <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-at-line"></i></span>
-                    <input type="email" class="form-control form-control-lg" id="signup-email" v-model="email" placeholder="contoh@email.com" @keyup.enter="signUp" />
-                  </div>
-                </div>
-
-                <!-- Password -->
-                <div class="col-12">
-                  <label for="signup-password" class="form-label">Password</label>
-                  <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
-                    <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-password" v-model="password" placeholder="Create a strong password" @focus="showHint = true" @blur="hideHint" @keyup.enter="signUp" />
-                    <button @click="showPassword = !showPassword" class="btn btn-toggle-password" type="button">
-                      <i :class="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                    </button>
-                  </div>
-
-                  <!-- Password Strength -->
-                  <div v-if="password" class="password-strength mt-2">
-                    <div class="strength-bar-bg">
-                      <div class="strength-bar" :style="{ width: passwordStrength.width, backgroundColor: passwordStrength.color }"></div>
-                    </div>
-                    <div class="d-flex justify-content-between mt-1">
-                      <small class="strength-label" :style="{ color: passwordStrength.color }">
-                        <i class="ri-shield-check-line me-1"></i>{{ passwordStrength.label }}
-                      </small>
-                      <small class="text-muted">{{ password.length }} characters</small>
+                  <!-- Full Name -->
+                  <div class="col-12">
+                    <label for="signup-name" class="form-label">Username</label>
+                    <div class="input-group input-group-modern">
+                      <span class="input-group-text"><i class="ri-user-3-line"></i></span>
+                      <input type="text" class="form-control form-control-lg" id="signup-name" v-model="fullName" placeholder="Enter your Username" autocomplete="username" />
                     </div>
                   </div>
 
-                  <!-- Password Rules -->
-                  <div v-if="showHint && password" class="password-rules mt-3">
-                    <div class="rules-grid">
-                      <div v-for="(rule, i) in passwordRules" :key="i" class="rule-item" :class="rule.valid ? 'valid' : 'invalid'">
-                        <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="rule-icon"></i>
-                        <span>{{ rule.label }}</span>
-                      </div>
+                  <!-- Email -->
+                  <div class="col-12">
+                    <label for="signup-email" class="form-label">Email</label>
+                    <div class="input-group input-group-modern">
+                      <span class="input-group-text"><i class="ri-at-line"></i></span>
+                      <input type="email" class="form-control form-control-lg" id="signup-email" v-model="email" placeholder="contoh@email.com" autocomplete="email" />
                     </div>
                   </div>
 
-                  <!-- Password Error Alert -->
-                  <div v-if="passwordTouched && password && !isPasswordValid" class="match-indicator text-danger mt-1">
-                    <i class="ri-close-circle-fill me-1"></i>Password does not meet requirements
-                  </div>
-                </div>
-
-                <!-- Confirm Password -->
-                <div class="col-12">
-                  <label for="signup-confirm-password" class="form-label">Confirm Password</label>
-                  <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-lock-2-line"></i></span>
-                    <input :type="showConfirmPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-confirm-password" v-model="confirmPassword" placeholder="Repeat password" @keyup.enter="signUp" />
-                    <button @click="showConfirmPassword = !showConfirmPassword" class="btn btn-toggle-password" type="button">
-                      <i :class="showConfirmPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                    </button>
-                  </div>
-                  <div v-if="confirmPassword && !doPasswordsMatch" class="match-indicator text-danger mt-1">
-                    <i class="ri-close-circle-fill me-1"></i>Passwords do not match
-                  </div>
-                  <div v-if="doPasswordsMatch" class="match-indicator text-success mt-1">
-                    <i class="ri-checkbox-circle-fill me-1"></i>Passwords match
-                  </div>
-                </div>
-
-                <!-- Password Generator -->
-                <div class="col-12">
-                  <button @click="showGenerator = !showGenerator" class="btn btn-generator-toggle w-100" type="button">
-                    <i class="ri-key-2-line me-2"></i><span>Password Generator</span>
-                    <i :class="showGenerator ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'" class="ms-auto"></i>
-                  </button>
-
-                  <div v-if="showGenerator" class="generator-panel mt-3">
-                    <div class="generator-header"><i class="ri-magic-line me-2"></i>Auto Generate Password</div>
-                    <div class="generator-body">
-                      <div class="length-control">
-                        <div class="d-flex justify-content-between mb-2">
-                          <label class="form-label small mb-0">Password Length</label>
-                          <span class="length-value">{{ passwordLength }}</span>
-                        </div>
-                        <input type="range" v-model.number="passwordLength" min="8" max="32" class="form-range" />
-                        <div class="d-flex justify-content-between"><small class="text-muted">8</small><small class="text-muted">32</small></div>
-                      </div>
-                      <button @click="generatePassword" class="btn btn-generate w-100 mb-3" :disabled="!isPasswordLengthValid">
-                        <i class="ri-refresh-line me-2"></i>Generate Password
+                  <!-- Password -->
+                  <div class="col-12">
+                    <label for="signup-password" class="form-label">Password</label>
+                    <div class="input-group input-group-modern">
+                      <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
+                      <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-password" v-model="password" placeholder="Create a strong password" autocomplete="new-password" @focus="showHint = true" @blur="hideHint" />
+                      <button @click="showPassword = !showPassword" class="btn btn-toggle-password" type="button">
+                        <i :class="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
                       </button>
-                      <div v-if="generatedPassword" class="generated-result">
-                        <div class="result-display">
-                          <code class="password-display">{{ showGeneratedPassword ? generatedPassword : "•".repeat(generatedPassword.length) }}</code>
+                    </div>
+
+                    <!-- Password Strength -->
+                    <div v-if="password" class="password-strength mt-2">
+                      <div class="strength-bar-bg">
+                        <div class="strength-bar" :style="{ width: passwordStrength.width, backgroundColor: passwordStrength.color }"></div>
+                      </div>
+                      <div class="d-flex justify-content-between mt-1">
+                        <small class="strength-label" :style="{ color: passwordStrength.color }">
+                          <i class="ri-shield-check-line me-1"></i>{{ passwordStrength.label }}
+                        </small>
+                        <small class="text-muted">{{ password.length }} characters</small>
+                      </div>
+                    </div>
+
+                    <!-- Password Rules -->
+                    <div v-if="showHint && password" class="password-rules mt-3">
+                      <div class="rules-grid">
+                        <div v-for="(rule, i) in passwordRules" :key="i" class="rule-item" :class="rule.valid ? 'valid' : 'invalid'">
+                          <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="rule-icon"></i>
+                          <span>{{ rule.label }}</span>
                         </div>
-                        <div class="result-actions">
-                          <button @click="showGeneratedPassword = !showGeneratedPassword" class="btn btn-action" type="button">
-                            <i :class="showGeneratedPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                          </button>
-                          <button @click="copyToClipboard" class="btn btn-action" :class="{ copied: copiedToClipboard }" type="button">
-                            <i :class="copiedToClipboard ? 'ri-check-line' : 'ri-file-copy-line'"></i>
-                          </button>
-                          <button @click="useGeneratedPassword" class="btn btn-use-password" type="button">
-                            <i class="ri-check-double-line me-1"></i>Use
-                          </button>
+                      </div>
+                    </div>
+
+                    <!-- Password Error Alert -->
+                    <div v-if="passwordTouched && password && !isPasswordValid" class="match-indicator text-danger mt-1">
+                      <i class="ri-close-circle-fill me-1"></i>Password does not meet requirements
+                    </div>
+                  </div>
+
+                  <!-- Confirm Password -->
+                  <div class="col-12">
+                    <label for="signup-confirm-password" class="form-label">Confirm Password</label>
+                    <div class="input-group input-group-modern">
+                      <span class="input-group-text"><i class="ri-lock-2-line"></i></span>
+                      <input :type="showConfirmPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signup-confirm-password" v-model="confirmPassword" placeholder="Repeat password" autocomplete="new-password" />
+                      <button @click="showConfirmPassword = !showConfirmPassword" class="btn btn-toggle-password" type="button">
+                        <i :class="showConfirmPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                      </button>
+                    </div>
+                    <div v-if="confirmPassword && !doPasswordsMatch" class="match-indicator text-danger mt-1">
+                      <i class="ri-close-circle-fill me-1"></i>Passwords do not match
+                    </div>
+                    <div v-if="doPasswordsMatch" class="match-indicator text-success mt-1">
+                      <i class="ri-checkbox-circle-fill me-1"></i>Passwords match
+                    </div>
+                  </div>
+
+                  <!-- Password Generator -->
+                  <div class="col-12">
+                    <button @click="showGenerator = !showGenerator" class="btn btn-generator-toggle w-100" type="button">
+                      <i class="ri-key-2-line me-2"></i><span>Password Generator</span>
+                      <i :class="showGenerator ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'" class="ms-auto"></i>
+                    </button>
+
+                    <div v-if="showGenerator" class="generator-panel mt-3">
+                      <div class="generator-header"><i class="ri-magic-line me-2"></i>Auto Generate Password</div>
+                      <div class="generator-body">
+                        <div class="length-control">
+                          <div class="d-flex justify-content-between mb-2">
+                            <label class="form-label small mb-0">Password Length</label>
+                            <span class="length-value">{{ passwordLength }}</span>
+                          </div>
+                          <input type="range" v-model.number="passwordLength" min="8" max="32" class="form-range" />
+                          <div class="d-flex justify-content-between"><small class="text-muted">8</small><small class="text-muted">32</small></div>
+                        </div>
+                        <button @click="generatePassword" class="btn btn-generate w-100 mb-3" :disabled="!isPasswordLengthValid" type="button">
+                          <i class="ri-refresh-line me-2"></i>Generate Password
+                        </button>
+                        <div v-if="generatedPassword" class="generated-result">
+                          <div class="result-display">
+                            <code class="password-display">{{ showGeneratedPassword ? generatedPassword : "•".repeat(generatedPassword.length) }}</code>
+                          </div>
+                          <div class="result-actions">
+                            <button @click="showGeneratedPassword = !showGeneratedPassword" class="btn btn-action" type="button">
+                              <i :class="showGeneratedPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                            </button>
+                            <button @click="copyToClipboard" class="btn btn-action" :class="{ copied: copiedToClipboard }" type="button">
+                              <i :class="copiedToClipboard ? 'ri-check-line' : 'ri-file-copy-line'"></i>
+                            </button>
+                            <button @click="useGeneratedPassword" class="btn btn-use-password" type="button">
+                              <i class="ri-check-double-line me-1"></i>Use
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <!-- Terms -->
-                <div class="col-12">
-                  <div class="form-check terms-check">
-                    <input class="form-check-input" type="checkbox" id="agreeTerms" v-model="agreeToTerms" />
-                    <label class="form-check-label" for="agreeTerms">
-                      I agree to the <a href="javascript:void(0);" class="terms-link">Terms & Conditions</a> and <a href="javascript:void(0);" class="terms-link">Privacy Policy</a>
-                    </label>
+                  <!-- Terms -->
+                  <div class="col-12">
+                    <div class="form-check terms-check">
+                      <input class="form-check-input" type="checkbox" id="agreeTerms" v-model="agreeToTerms" />
+                      <label class="form-check-label" for="agreeTerms">
+                        I agree to the <a href="javascript:void(0);" class="terms-link">Terms & Conditions</a> and <a href="javascript:void(0);" class="terms-link">Privacy Policy</a>
+                      </label>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Submit -->
-              <div class="d-grid mt-4">
-                <button class="btn btn-auth-submit btn-lg" @click="signUp" :disabled="isLoading || !isPasswordValid || !doPasswordsMatch || !agreeToTerms">
-                  <span v-if="!isLoading"><i class="ri-user-add-line me-2"></i>Sign Up Now</span>
-                  <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Creating account...</span>
-                </button>
-              </div>
+                <!-- Submit -->
+                <div class="d-grid mt-4">
+                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !isPasswordValid || !doPasswordsMatch || !agreeToTerms">
+                    <span v-if="!isLoading"><i class="ri-user-add-line me-2"></i>Sign Up Now</span>
+                    <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Creating account...</span>
+                  </button>
+                </div>
+              </form>
 
               <!-- Login Link -->
               <div class="text-center mt-4">

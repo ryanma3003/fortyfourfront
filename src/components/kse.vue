@@ -41,7 +41,7 @@ onMounted(() => {
     kseStore.updateStakeholderInfo(
       currentSlug.value,
       currentStakeholder.value.nama_perusahaan || '',
-      currentStakeholder.value.sektor || ''
+      currentStakeholder.value.sub_sektor?.nama_sub_sektor || currentStakeholder.value.sektor || ''
     );
   }
 });
@@ -267,7 +267,7 @@ const saveAndExit = () => {
     if (stakeholderSlug.value) {
       router.push({ path: '/kse', query: { slug: stakeholderSlug.value } });
     } else {
-      router.push('/kse');
+      router.push('/stakeholders');
     }
   }, 1500);
 };

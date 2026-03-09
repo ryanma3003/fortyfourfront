@@ -28,7 +28,7 @@ const showToast = (type: "success" | "error", message: string) => {
 // Redirect helper based on user role
 const redirectByRole = () => {
   const role = authStore.userRole;
-  return role === "admin" ? "/admin/dashboard" : "/dashboards";
+  return role === "admin" ? "/dashboard" : "/dashboards";
 };
 
 // Login handler
@@ -109,52 +109,54 @@ onUnmounted(() => {
 
               <!-- Header -->
               <div class="text-center mb-4">
-                <h4 class="mb-2 fw-bold login-title">Welcome Back</h4>
+                <h4 class="mb-2 fw-bold login-title">Welcome</h4>
                 <p class="text-muted fw-normal fs-14">Sign in to access your dashboard</p>
               </div>
 
               <!-- Form -->
-              <div class="row gy-3">
-                <!-- Email -->
-                <div class="col-12">
-                  <label for="signin-username" class="form-label">Username</label>
-                  <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-user-line"></i></span>
-                    <input type="text" class="form-control form-control-lg" id="signin-username" v-model="user.email" placeholder="Enter your username" @keyup.enter="login"/>
-                  </div>
-                </div>
-
-                <!-- Password -->
-                <div class="col-12">
-                  <label for="signin-password" class="form-label">Password</label>
-                  <div class="input-group input-group-modern">
-                    <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
-                    <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Enter your password" @keyup.enter="login"/>
-                    <button @click="showPassword = !showPassword" class="btn btn-toggle-password" type="button">
-                      <i :class="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Remember & Forgot -->
-                <div class="col-12">
-                  <div class="d-flex justify-content-between align-items-center">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" id="rememberMe" checked/>
-                      <label class="form-check-label" for="rememberMe">Remember me</label>
+              <form @submit.prevent="login">
+                <div class="row gy-3">
+                  <!-- Email -->
+                  <div class="col-12">
+                    <label for="signin-username" class="form-label">Username</label>
+                    <div class="input-group input-group-modern">
+                      <span class="input-group-text"><i class="ri-user-line"></i></span>
+                      <input type="text" class="form-control form-control-lg" id="signin-username" v-model="user.email" placeholder="Enter your username" autocomplete="username" />
                     </div>
-                    <router-link to="/pages/authentication/reset-password/basic" class="auth-link fs-12">Forgot password?</router-link>
+                  </div>
+
+                  <!-- Password -->
+                  <div class="col-12">
+                    <label for="signin-password" class="form-label">Password</label>
+                    <div class="input-group input-group-modern">
+                      <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
+                      <input :type="showPassword ? 'text' : 'password'" class="form-control form-control-lg" id="signin-password" v-model="user.password" placeholder="Enter your password" autocomplete="current-password" />
+                      <button @click="showPassword = !showPassword" class="btn btn-toggle-password" type="button">
+                        <i :class="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Remember & Forgot -->
+                  <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="rememberMe" checked/>
+                        <label class="form-check-label" for="rememberMe">Remember me</label>
+                      </div>
+                      <router-link to="/pages/authentication/reset-password/basic" class="auth-link fs-12">Forgot password?</router-link>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Submit Button -->
-              <div class="d-grid mt-4">
-                <button class="btn btn-auth-submit btn-lg" @click="login" :disabled="isLoading">
-                  <span v-if="!isLoading"><i class="ri-login-box-line me-2"></i>Sign In</span>
-                  <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Signing in...</span>
-                </button>
-              </div>
+                <!-- Submit Button -->
+                <div class="d-grid mt-4">
+                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading">
+                    <span v-if="!isLoading"><i class="ri-login-box-line me-2"></i>Sign In</span>
+                    <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Signing in...</span>
+                  </button>
+                </div>
+              </form>
 
               <!-- Register Link -->
               <div class="text-center mt-4">

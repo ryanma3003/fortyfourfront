@@ -4,6 +4,8 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
 import { useAuthStore } from "../../stores/auth";
+import { subSektorService, getSubSektorName } from "../../services/sektor.service";
+import type { SubSektor } from "../../services/sektor.service";
 
 export default {
   data() {
@@ -26,8 +28,12 @@ export default {
     const loading = computed(() => stakeholdersStore.loading);
     
     const searchQuery = ref("");
-    const sortField = ref<"nama_perusahaan" | "sektor">("nama_perusahaan");
+    const sortField = ref<"nama_perusahaan">("nama_perusahaan");
     const sortOrder = ref<"asc" | "desc">("asc");
+    const subSektorList = ref<SubSektor[]>([]);
+    const loadingSubSektors = ref(false);
+    const selectedSubSektorId = ref<string | number | "">("");
+    const photoFile = ref<File | null>(null);
     const currentPage = ref(1);
     const itemsPerPage = ref(10);
 
@@ -44,7 +50,6 @@ export default {
     // Form state
     const formData = ref<Partial<Stakeholder>>({
       nama_perusahaan: "",
-      sektor: "",
       email: "",
       alamat: "",
       telepon: "",
@@ -61,8 +66,15 @@ export default {
       { text: "Aksi", value: "id" },
     ];
 
+    const loadAllSubSektors = async () => {
+      loadingSubSektors.value = true;
+      try { subSektorList.value = await subSektorService.getAll(); }
+      catch (e) { console.error('Failed to load sub sektors:', e); }
+      finally { loadingSubSektors.value = false; }
+    };
+
     const loadStakeholders = async () => {
-      await stakeholdersStore.initialize();
+      await Promise.all([stakeholdersStore.initialize(), loadAllSubSektors()]);
     };
 
     const filteredData = computed(() => {
@@ -72,7 +84,7 @@ export default {
         data = data.filter(
           (i: Stakeholder) =>
             i.nama_perusahaan.toLowerCase().includes(q) ||
-            i.sektor.toLowerCase().includes(q) ||
+            (i.sub_sektor?.nama_sub_sektor || i.sektor || '').toLowerCase().includes(q) ||
             i.email.toLowerCase().includes(q)
         );
       }
@@ -111,8 +123,8 @@ export default {
         isValid = false;
       }
 
-      if (!formData.value.sektor?.trim()) {
-        formErrors.value.sektor = "Sektor wajib diisi";
+      if (!selectedSubSektorId.value) {
+        formErrors.value.sektor = "Sub sektor wajib diisi";
         isValid = false;
       }
 
@@ -159,13 +171,14 @@ export default {
     const openCreateModal = () => {
       formData.value = {
         nama_perusahaan: "",
-        sektor: "",
         email: "",
         alamat: "",
         telepon: "",
         website: "",
         photo: "",
       };
+      selectedSubSektorId.value = "";
+      photoFile.value = null;
       formErrors.value = {};
       showCreateModal.value = true;
     };
@@ -175,12 +188,12 @@ export default {
 
       const payload: CreateStakeholderPayload = {
         nama_perusahaan: formData.value.nama_perusahaan!,
-        sektor: formData.value.sektor!,
+        id_sub_sektor: String(selectedSubSektorId.value),
         email: formData.value.email!,
         alamat: formData.value.alamat!,
         telepon: formData.value.telepon!,
         website: formData.value.website!,
-        photo: formData.value.photo || "",
+        photo: photoFile.value,
       };
 
       const result = await stakeholdersStore.createStakeholder(payload);
@@ -196,6 +209,8 @@ export default {
     const openEditModal = (item: Stakeholder) => {
       currentEditItem.value = item;
       formData.value = { ...item };
+      selectedSubSektorId.value = item.sub_sektor?.id || "";
+      photoFile.value = null;
       formErrors.value = {};
       showEditModal.value = true;
     };
@@ -205,12 +220,12 @@ export default {
 
       const payload: CreateStakeholderPayload = {
           nama_perusahaan: formData.value.nama_perusahaan!,
-          sektor: formData.value.sektor!,
+          id_sub_sektor: String(selectedSubSektorId.value),
           email: formData.value.email!,
           alamat: formData.value.alamat!,
           telepon: formData.value.telepon!,
           website: formData.value.website!,
-          photo: formData.value.photo || "",
+          photo: photoFile.value,
       };
 
       const result = await stakeholdersStore.updateStakeholderById(currentEditItem.value.id, payload);
@@ -281,6 +296,7 @@ export default {
           return;
         }
 
+        photoFile.value = file;
         const reader = new FileReader();
         reader.onload = (e) => {
           if (e.target?.result) {
@@ -327,7 +343,12 @@ export default {
       updateStakeholder,
       openDeleteModal,
       deleteStakeholder,
-      toggleSort: (f: "nama_perusahaan" | "sektor") => {
+      subSektorList,
+      loadingSubSektors,
+      selectedSubSektorId,
+      photoFile,
+      getSubSektorName,
+      toggleSort: (f: "nama_perusahaan") => {
         if (sortField.value === f)
           sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
         else {
@@ -504,42 +525,7 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="sortable">
-                      <div class="d-flex align-items-center gap-1">
-                        <span
-                          class="column-label"
-                          @click="toggleSort('sektor')"
-                          title="Click to toggle sort"
-                          >Sektor</span
-                        >
-                        <div class="sort-arrows">
-                          <i
-                            class="ri-arrow-up-s-line"
-                            :class="{
-                              active:
-                                sortField === 'sektor' && sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'sektor';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i
-                            class="ri-arrow-down-s-line"
-                            :class="{
-                              active:
-                                sortField === 'sektor' && sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'sektor';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
-                        </div>
-                      </div>
-                    </th>
+                    <th>Sub Sektor</th>
                     <th>Email</th>
                     <th class="text-center">Aksi</th>
                   </tr>
@@ -702,23 +688,13 @@ export default {
                   >Sektor <span class="text-danger">*</span></label
                 >
                 <select
-                  v-model="formData.sektor"
+                  v-model="selectedSubSektorId"
                   class="form-select"
                   :class="{ 'is-invalid': formErrors.sektor }"
+                  :disabled="loadingSubSektors"
                 >
-                    <option value="" disabled>-- Pilih Sektor --</option>
-                    <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
-                    <option value="Pangan & perikanan">Pangan & perikanan</option>
-                    <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
-                    <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
-                    <option value="Kimia hulu">Kimia hulu</option>
-                    <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
-                    <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
-                    <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
-                    <option value="Logam">Logam</option>
-                    <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
-                    <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
-                    <option value="Elektronika & telematika">Elektronika & telematika</option>
+                    <option value="" disabled>{{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}</option>
+                    <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">{{ getSubSektorName(ss) }}</option>
                 </select>
                 <div v-if="formErrors.sektor" class="invalid-feedback">
                   {{ formErrors.sektor }}
@@ -918,23 +894,13 @@ export default {
                     <span class="text-danger">*</span>
                   </label>
                   <select
-                    v-model="formData.sektor"
+                    v-model="selectedSubSektorId"
                     class="form-select"
                     :class="{ 'is-invalid': formErrors.sektor }"
+                    :disabled="loadingSubSektors"
                   >
-                    <option value="" disabled>-- Pilih Sektor --</option>
-                    <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
-                    <option value="Pangan & perikanan">Pangan & perikanan</option>
-                    <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
-                    <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
-                    <option value="Kimia hulu">Kimia hulu</option>
-                    <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
-                    <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
-                    <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
-                    <option value="Logam">Logam</option>
-                    <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
-                    <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
-                    <option value="Elektronika & telematika">Elektronika & telematika</option>
+                    <option value="" disabled>{{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}</option>
+                    <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">{{ getSubSektorName(ss) }}</option>
                   </select>
                   <div v-if="formErrors.sektor" class="invalid-feedback">
                     {{ formErrors.sektor }}

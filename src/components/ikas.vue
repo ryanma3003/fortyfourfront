@@ -72,7 +72,7 @@ const dataToPass = computed(() => {
 
             if (stakeholder) {
                 return {
-                    title: { label: `Profile ${stakeholder.nama_perusahaan}`, path: `/admin/stakeholders/${stakeholder.slug}` },
+                    title: { label: `Profile ${stakeholder.nama_perusahaan}`, path: `/stakeholders/${stakeholder.slug}` },
                     currentpage: "IKAS",
                     activepage: "IKAS",
                 };
@@ -382,7 +382,7 @@ const formatValue = (value) => {
             <div>
               <div class="ikas-header-label">IKAS - {{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }}</div>
               <div class="ikas-header-stakeholder">
-                <span v-if="currentStakeholder?.sektor" class="ikas-header-sektor">{{ currentStakeholder.sektor }}</span>
+                <span v-if="currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor" class="ikas-header-sektor">{{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor }}</span>
               </div>
             </div>
           </div>

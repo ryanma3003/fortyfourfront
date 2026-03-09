@@ -575,27 +575,28 @@ export default {
                         tableClass="table stakeholder-table text-nowrap mb-0" 
                         theadClass="stakeholder-thead"
                         tbodyClass="stakeholder-tbody"
-                        v-slot:cell="{ row }"
                     >
-                        <td class="align-middle">
-                            <div class="fw-semibold text-primary">{{ row.nama_personel }}</div>
-                        </td>
-                        <td class="align-middle">{{ row.jabatan_csirt }}</td>
-                        <td class="align-middle text-muted small">{{ row.skill }}</td>
-                        <td class="align-middle">
-                            <span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span>
-                        </td>
-                        <td class="text-center align-middle">
-                            <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
-                                <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
-                                    <i class="ri-edit-2-line"></i>
-                                </button>
-                                <button @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
-                                    <i class="ri-delete-bin-3-line"></i>
-                                </button>
-                            </div>
-                            <span v-else class="text-muted small">—</span>
-                        </td>
+                        <template #cell="{ row }">
+                            <td class="align-middle">
+                                <div class="fw-semibold text-primary">{{ row.nama_personel }}</div>
+                            </td>
+                            <td class="align-middle">{{ row.jabatan_csirt }}</td>
+                            <td class="align-middle text-muted small">{{ row.skill }}</td>
+                            <td class="align-middle">
+                                <span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span>
+                            </td>
+                            <td class="text-center align-middle">
+                                <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
+                                    <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
+                                        <i class="ri-edit-2-line"></i>
+                                    </button>
+                                    <button @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <i class="ri-delete-bin-3-line"></i>
+                                    </button>
+                                </div>
+                                <span v-else class="text-muted small">—</span>
+                            </td>
+                        </template>
                     </TableComponent>
                 </div>
             </template>
@@ -634,29 +635,30 @@ export default {
                         tableClass="table stakeholder-table text-nowrap mb-0" 
                         theadClass="stakeholder-thead"
                         tbodyClass="stakeholder-tbody"
-                        v-slot:cell="{ row }"
                     >
-                        <td class="align-middle fw-semibold">{{ row.nama_se }}</td>
-                        <td class="align-middle"><code class="text-primary">{{ row.ip_se }}</code></td>
-                        <td class="align-middle"><span class="badge bg-light text-muted">{{ row.as_number_se }}</span></td>
-                        <td class="align-middle">{{ row.pengelola_se }}</td>
-                        <td class="align-middle small text-muted">{{ row.fitur_se }}</td>
-                        <td class="align-middle">
-                            <span :class="['badge rounded-pill px-3', getKategoriBadgeClass(row.kategori_se)]">
-                                {{ row.kategori_se }}
-                            </span>
-                        </td>
-                        <td class="text-center align-middle">
-                            <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
-                                <button @click="openEditSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
-                                    <i class="ri-edit-2-line"></i>
-                                </button>
-                                <button @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
-                                    <i class="ri-delete-bin-3-line"></i>
-                                </button>
-                            </div>
-                            <span v-else class="text-muted small">—</span>
-                        </td>
+                        <template #cell="{ row }">
+                            <td class="align-middle fw-semibold">{{ row.nama_se }}</td>
+                            <td class="align-middle"><code class="text-primary">{{ row.ip_se }}</code></td>
+                            <td class="align-middle"><span class="badge bg-light text-muted">{{ row.as_number_se }}</span></td>
+                            <td class="align-middle">{{ row.pengelola_se }}</td>
+                            <td class="align-middle small text-muted">{{ row.fitur_se }}</td>
+                            <td class="align-middle">
+                                <span :class="['badge rounded-pill px-3', getKategoriBadgeClass(row.kategori_se)]">
+                                    {{ row.kategori_se }}
+                                </span>
+                            </td>
+                            <td class="text-center align-middle">
+                                <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
+                                    <button @click="openEditSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
+                                        <i class="ri-edit-2-line"></i>
+                                    </button>
+                                    <button @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <i class="ri-delete-bin-3-line"></i>
+                                    </button>
+                                </div>
+                                <span v-else class="text-muted small">—</span>
+                            </td>
+                        </template>
                     </TableComponent>
                 </div>
             </template>
@@ -683,47 +685,82 @@ export default {
                         <div class="row gy-3">
                             <!-- Nama Personel -->
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-user-line me-1 text-primary"></i>Nama Personel <span class="text-danger">*</span>
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Nama Personel</span> <span class="text-danger ms-1">*</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.nama_personel"
-                                    :class="{ 'is-invalid': sdmFormErrors.nama_personel }"
-                                    placeholder="Masukkan nama personel" />
-                                <div v-if="sdmFormErrors.nama_personel" class="invalid-feedback">{{ sdmFormErrors.nama_personel }}</div>
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.createNamaSdm.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-blue d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-user-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="createNamaSdm" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.nama_personel"
+                                            :class="{ 'is-invalid': sdmFormErrors.nama_personel }"
+                                            placeholder="Masukkan nama personel" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
+                                <div v-if="sdmFormErrors.nama_personel" class="text-danger mt-1 fs-12">{{ sdmFormErrors.nama_personel }}</div>
                             </div>
                             <!-- Jabatan CSIRT -->
                             <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-shield-user-line me-1 text-primary"></i>Jabatan CSIRT <span class="text-danger">*</span>
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Jabatan CSIRT</span> <span class="text-danger ms-1">*</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.jabatan_csirt"
-                                    :class="{ 'is-invalid': sdmFormErrors.jabatan_csirt }"
-                                    placeholder="Contoh: Incident Handler" />
-                                <div v-if="sdmFormErrors.jabatan_csirt" class="invalid-feedback">{{ sdmFormErrors.jabatan_csirt }}</div>
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.createJabatanCsirt.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-purple d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-shield-user-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="createJabatanCsirt" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.jabatan_csirt"
+                                            :class="{ 'is-invalid': sdmFormErrors.jabatan_csirt }"
+                                            placeholder="Contoh: Incident Handler" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
+                                <div v-if="sdmFormErrors.jabatan_csirt" class="text-danger mt-1 fs-12">{{ sdmFormErrors.jabatan_csirt }}</div>
                             </div>
                             <!-- Jabatan Perusahaan -->
                             <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-building-line me-1 text-primary"></i>Jabatan Perusahaan
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Jabatan Perusahaan</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.jabatan_perusahaan"
-                                    placeholder="Contoh: IT Security Specialist" />
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.createJabatanPrshn.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-teal d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-building-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="createJabatanPrshn" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.jabatan_perusahaan"
+                                            placeholder="Contoh: IT Security Specialist" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
                             </div>
                             <!-- Keahlian -->
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-tools-line me-1 text-primary"></i>Keahlian / Skill
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Keahlian / Skill</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.skill"
-                                    placeholder="Contoh: Malware Analysis, Network Security" />
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.createSkill.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-orange d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-tools-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="createSkill" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.skill"
+                                            placeholder="Contoh: Malware Analysis, Network Security" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
                             </div>
                             <!-- Sertifikasi -->
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-award-line me-1 text-primary"></i>Sertifikasi
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Sertifikasi</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.sertifikasi"
-                                    placeholder="Contoh: CEH, CISSP" />
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.createSertifikasi.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-pink d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-award-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="createSertifikasi" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.sertifikasi"
+                                            placeholder="Contoh: CEH, CISSP" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -757,43 +794,78 @@ export default {
                     <form @submit.prevent="updateSdm">
                         <div class="row gy-3">
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-user-line me-1 text-primary"></i>Nama Personel <span class="text-danger">*</span>
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Nama Personel</span> <span class="text-danger ms-1">*</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.nama_personel"
-                                    :class="{ 'is-invalid': sdmFormErrors.nama_personel }"
-                                    placeholder="Masukkan nama personel" />
-                                <div v-if="sdmFormErrors.nama_personel" class="invalid-feedback">{{ sdmFormErrors.nama_personel }}</div>
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.editNamaSdm.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-blue d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-user-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="editNamaSdm" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.nama_personel"
+                                            :class="{ 'is-invalid': sdmFormErrors.nama_personel }"
+                                            placeholder="Masukkan nama personel" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
+                                <div v-if="sdmFormErrors.nama_personel" class="text-danger mt-1 fs-12">{{ sdmFormErrors.nama_personel }}</div>
                             </div>
                             <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-shield-user-line me-1 text-primary"></i>Jabatan CSIRT <span class="text-danger">*</span>
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Jabatan CSIRT</span> <span class="text-danger ms-1">*</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.jabatan_csirt"
-                                    :class="{ 'is-invalid': sdmFormErrors.jabatan_csirt }"
-                                    placeholder="Contoh: Incident Handler" />
-                                <div v-if="sdmFormErrors.jabatan_csirt" class="invalid-feedback">{{ sdmFormErrors.jabatan_csirt }}</div>
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.editJabatanCsirt.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-purple d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-shield-user-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="editJabatanCsirt" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.jabatan_csirt"
+                                            :class="{ 'is-invalid': sdmFormErrors.jabatan_csirt }"
+                                            placeholder="Contoh: Incident Handler" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
+                                <div v-if="sdmFormErrors.jabatan_csirt" class="text-danger mt-1 fs-12">{{ sdmFormErrors.jabatan_csirt }}</div>
                             </div>
                             <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-building-line me-1 text-primary"></i>Jabatan Perusahaan
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Jabatan Perusahaan</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.jabatan_perusahaan"
-                                    placeholder="Contoh: IT Security Specialist" />
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.editJabatanPrshn.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-teal d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-building-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="editJabatanPrshn" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.jabatan_perusahaan"
+                                            placeholder="Contoh: IT Security Specialist" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-tools-line me-1 text-primary"></i>Keahlian / Skill
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Keahlian / Skill</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.skill"
-                                    placeholder="Contoh: Malware Analysis, Network Security" />
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.editSkill.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-orange d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-tools-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="editSkill" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.skill"
+                                            placeholder="Contoh: Malware Analysis, Network Security" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-award-line me-1 text-primary"></i>Sertifikasi
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">Sertifikasi</span>
                                 </label>
-                                <input type="text" class="form-control" v-model="sdmFormData.sertifikasi"
-                                    placeholder="Contoh: CEH, CISSP" />
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" @click="$refs.editSertifikasi.focus()" style="cursor: text;">
+                                    <div class="form-item-icon stat-icon-pink d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-award-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input ref="editSertifikasi" type="text" class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.sertifikasi"
+                                            placeholder="Contoh: CEH, CISSP" style="outline: none; box-shadow: none;" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -1080,7 +1152,7 @@ export default {
                                     <input type="text" class="form-control" v-model="profileFormData.file_rfc2350"
                                         placeholder="Link atau pilih file" />
                                     <input type="file" ref="rfcFile" class="d-none" @change="handleFileUpload($event, 'rfc')" accept=".pdf" />
-                                    <button class="btn btn-primary-light" type="button" @click="($refs.rfcFile as HTMLInputElement).click()">
+                                    <button class="btn btn-primary-light" type="button" @click="$refs.rfcFile.click()">
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>
@@ -1097,7 +1169,7 @@ export default {
                                     <input type="text" class="form-control" v-model="profileFormData.file_public_key_pgp"
                                         placeholder="Link atau pilih file" />
                                     <input type="file" ref="pgpFile" class="d-none" @change="handleFileUpload($event, 'pgp')" accept=".asc,.txt,.key" />
-                                    <button class="btn btn-secondary-light" type="button" @click="($refs.pgpFile as HTMLInputElement).click()">
+                                    <button class="btn btn-secondary-light" type="button" @click="$refs.pgpFile.click()">
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>

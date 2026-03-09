@@ -2,19 +2,46 @@
 import { defineStore } from "pinia";
 import { useProfileStore } from "./profile";
 import { authService } from "@/services/auth.service";
+import { api } from "@/config/api";
+import router from "@/router/index";
 import type { LoginPayload, RegisterPayload } from "@/types/auth.types";
 
 interface CurrentUser {
   id: string;
+  slug: string;
   username: string;
   name: string;
   email: string;
   role: string;
   createdAt: string;
+  phone?: string;
+  location?: string;
+  jabatan?: string;
+  id_jabatan?: string;
+  id_perusahaan?: string;
+  foto_profile?: string;
+  banner?: string;
 }
 
-// Session storage key for user info (UI display only, no token)
-const USER_SESSION_KEY = "auth_user_session";
+function setSessionActiveCookie() {
+  document.cookie = 'session_active=1; path=/; SameSite=Lax';
+}
+
+function getSessionActiveCookie() {
+  return document.cookie.split('; ').some(row => row.startsWith('session_active='));
+}
+
+function clearSessionActiveCookie() {
+  document.cookie = 'session_active=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+}
+
+/**
+ * Store the mapped CurrentUser object (display data only — no tokens)
+ * in localStorage so it can be shared across tabs.
+ * We use a session cookie (session_active=1) to detect if the browser was closed.
+ * The HTTP-only cookie is the real auth proof on every API request.
+ */
+const AUTH_USER_KEY = "auth_user";
 
 /**
  * Helper: map a backend user response to CurrentUser.
@@ -22,13 +49,33 @@ const USER_SESSION_KEY = "auth_user_session";
  */
 function mapToCurrentUser(data: any): CurrentUser {
   const u = data?.user ?? data;
+
+  const formatImageUrl = (path: string | undefined | null) => {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('/images/')) {
+        return path;
+    }
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+    const cleanBaseUrl = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+    const cleanPath = path.replace(/^\//, '');
+    return cleanBaseUrl ? `${cleanBaseUrl}/${cleanPath}` : `/${cleanPath}`;
+  };
+
   return {
     id: u.id,
+    slug: u.slug || "",
     username: u.username,
     name: u.name || u.username,
     email: u.email,
     role: u.role || u.role_name || "user",
     createdAt: u.created_at || u.createdAt || "",
+    phone: u.phone || u.telepon || "",
+    location: u.location || u.alamat || "",
+    jabatan: u.jabatan || u.jabatan_name || "",
+    id_jabatan: u.id_jabatan || "",
+    id_perusahaan: u.id_perusahaan || "",
+    foto_profile: formatImageUrl(u.photo || u.foto_profile),
+    banner: formatImageUrl(u.banner),
   };
 }
 
@@ -39,7 +86,7 @@ export const useAuthStore = defineStore("auth", {
     currentUser: null as CurrentUser | null,
     error: null as string | null,
 
-    // MFA temporary state — never persisted to localStorage/sessionStorage
+    // MFA temporary state — in-memory only, never persisted
     setupToken: null as string | null,
     mfaToken: null as string | null,
   }),
@@ -106,7 +153,8 @@ export const useAuthStore = defineStore("auth", {
 
         // Case 3: Direct login (access_token or cookie-based)
         const userData = mapToCurrentUser(response);
-        sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData));
+        setSessionActiveCookie();
         this.authenticated = true;
         this.currentUser = userData;
 
@@ -118,7 +166,6 @@ export const useAuthStore = defineStore("auth", {
       } catch (error: any) {
         this.error = error.message || "Login failed";
         this.clearMfaState();
-        sessionStorage.removeItem(USER_SESSION_KEY);
         this.authenticated = false;
         this.currentUser = null;
         return { authenticated: false, error: this.error };
@@ -131,10 +178,10 @@ export const useAuthStore = defineStore("auth", {
     // MFA SETUP COMPLETE — after successful /api/mfa/enable
     // ================================
     completeMfaSetup(response: any) {
-      const userData = mapToCurrentUser(response);
-      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
       this.authenticated = true;
-      this.currentUser = userData;
+      this.currentUser = mapToCurrentUser(response);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
+      setSessionActiveCookie();
       this.clearMfaState();
     },
 
@@ -142,10 +189,10 @@ export const useAuthStore = defineStore("auth", {
     // MFA VERIFY COMPLETE — after successful /api/mfa/verify
     // ================================
     completeMfaVerify(response: any) {
-      const userData = mapToCurrentUser(response);
-      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(userData));
       this.authenticated = true;
-      this.currentUser = userData;
+      this.currentUser = mapToCurrentUser(response);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
+      setSessionActiveCookie();
       this.clearMfaState();
     },
 
@@ -183,7 +230,8 @@ export const useAuthStore = defineStore("auth", {
 
       await authService.logout();
 
-      sessionStorage.removeItem(USER_SESSION_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+      clearSessionActiveCookie();
       this.authenticated = false;
       this.currentUser = null;
       this.error = null;
@@ -191,27 +239,59 @@ export const useAuthStore = defineStore("auth", {
     },
 
     // ================================
-    // CHECK AUTH ON STARTUP / REFRESH
-    // Restore user data from sessionStorage if present.
-    // Without a valid session, user stays unauthenticated.
+    // CHECK AUTH ON STARTUP / NEW TAB
+    // Reads CurrentUser from localStorage and checks session_active cookie.
+    // This allows sessions to be shared across tabs but deleted on browser close.
+    // The HTTP-only cookie is the real auth proof — it's sent automatically
+    // The HTTP-only cookie is the real auth proof — it's sent automatically
+    // by the browser on every request. If expired, the first API call
+    // triggers the refresh flow (api.ts) or forces logout.
     // ================================
     checkAuthOnStartup() {
-      const storedUser = sessionStorage.getItem(USER_SESSION_KEY);
-
-      if (!storedUser) {
+      const stored = localStorage.getItem(AUTH_USER_KEY);
+      if (!stored || !getSessionActiveCookie()) {
+        localStorage.removeItem(AUTH_USER_KEY);
+        clearSessionActiveCookie();
         this.authenticated = false;
         this.currentUser = null;
         return;
       }
-
       try {
-        this.currentUser = JSON.parse(storedUser);
+        this.currentUser = JSON.parse(stored);
         this.authenticated = true;
       } catch {
-        sessionStorage.removeItem(USER_SESSION_KEY);
+        localStorage.removeItem(AUTH_USER_KEY);
+        clearSessionActiveCookie();
         this.authenticated = false;
         this.currentUser = null;
       }
+    },
+
+    // ================================
+    // SETUP API HOOKS
+    // Register the onUnauthorized callback on the api client.
+    // When the refresh token is expired/invalid (double 401),
+    // the api client calls this — we log out and redirect to login.
+    // Call this once after Pinia is initialized (main.ts).
+    // ================================
+    setupApiHooks() {
+      api.onUnauthorized = async () => {
+        const profileStore = useProfileStore();
+        profileStore.resetToDefaults();
+
+        // Best-effort backend logout (cookie cleanup)
+        try { await authService.logout(); } catch { /* ignore */ }
+
+        localStorage.removeItem(AUTH_USER_KEY);
+        clearSessionActiveCookie();
+        this.authenticated = false;
+        this.currentUser = null;
+        this.error = null;
+        this.clearMfaState();
+
+        // Redirect to login
+        router.push('/');
+      };
     },
   },
 });

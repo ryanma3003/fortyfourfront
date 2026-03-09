@@ -1,40 +1,50 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 import { useRouter, useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
+import { subSektorService, sektorService, getSubSektorName } from "../../services/sektor.service";
+import type { SubSektor, Sektor } from "../../services/sektor.service";
 
-// Phone input state
-const selectedCountryCode = ref("+62");
+// Sub Sektor state
+const subSektorList = ref<SubSektor[]>([]);
+const sektorList = ref<Sektor[]>([]);
+const loadingSubSektors = ref(false);
+const selectedSubSektorId = ref<string | number | "">("");
+
+const loadAllSubSektors = async () => {
+  loadingSubSektors.value = true;
+  try {
+    const [sektors, subSektors] = await Promise.all([
+      sektorService.getAll(),
+      subSektorService.getAll(),
+    ]);
+    sektorList.value = sektors;
+    subSektorList.value = subSektors;
+  } catch (e) {
+    console.error("Gagal memuat sub_sektor:", e);
+  } finally {
+    loadingSubSektors.value = false;
+  }
+};
+
+// Phone input state — fixed +62 prefix
+const PHONE_PREFIX = "+62";
 const phoneNumber = ref("");
 
-// Format phone number
 const formatPhoneNumber = (value: string) => {
   const numbers = value.replace(/\D/g, "");
-  if (selectedCountryCode.value === "+62") {
-    if (numbers.length <= 3) return numbers;
-    if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
-    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
-  } else {
-    if (numbers.length <= 3) return numbers;
-    if (numbers.length <= 6) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
-    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
-  }
+  if (numbers.length <= 3) return numbers;
+  if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
+  return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
 };
 
 const handlePhoneInput = (event: Event) => {
   const input = event.target as HTMLInputElement;
   const numbers = input.value.replace(/\D/g, "").slice(0, 11);
   phoneNumber.value = formatPhoneNumber(numbers);
-  form.telepon = selectedCountryCode.value + " " + phoneNumber.value;
-};
-
-const handleCountryCodeChange = () => {
-  if (phoneNumber.value) {
-    form.telepon = selectedCountryCode.value + " " + phoneNumber.value;
-  }
+  form.telepon = PHONE_PREFIX + " " + phoneNumber.value;
 };
 
 const router = useRouter();
@@ -58,6 +68,15 @@ const form = reactive<Partial<Stakeholder>>({
 const currentSlug = ref("");
 const currentId = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
+const photoFile = ref<File | null>(null);
+
+// Form Input Refs for click-to-focus
+const namaInput = ref<HTMLInputElement | null>(null);
+const sektorSelect = ref<HTMLSelectElement | null>(null);
+const emailInput = ref<HTMLInputElement | null>(null);
+const phoneInput = ref<HTMLInputElement | null>(null);
+const websiteInput = ref<HTMLInputElement | null>(null);
+const alamatInput = ref<HTMLTextAreaElement | null>(null);
 
 // Image validation constants
 const MAX_FILE_SIZE_MB = 5;
@@ -127,26 +146,34 @@ onMounted(async () => {
       form.email = found.email;
       form.telepon = found.telepon;
       
-      // Parse existing phone number
+      // Parse existing phone number — strip +62 prefix
       if (found.telepon) {
-        const match = found.telepon.match(/^(\+\d+)\s*(.+)$/);
+        const match = found.telepon.match(/^\+62\s*(.+)$/);
         if (match) {
-          selectedCountryCode.value = match[1];
-          phoneNumber.value = match[2];
+          phoneNumber.value = match[1];
         } else {
           phoneNumber.value = found.telepon;
         }
       }
       
-      form.sektor = found.sektor;
+      form.sektor = found.sub_sektor?.nama_sub_sektor || found.sektor || '';
       form.website = found.website;
       form.alamat = found.alamat;
       form.photo = found.photo;
-      // Load saved photo position if available
+      // Load photo position if available
       photoPosition.value = {
         x: (found as any).photoPositionX ?? 50,
         y: (found as any).photoPositionY ?? 50
       };
+
+      // Load sub sektor list and auto-select
+      await loadAllSubSektors();
+      if (found.sub_sektor?.id) {
+        selectedSubSektorId.value = found.sub_sektor.id;
+      } else if (found.sektor && subSektorList.value.length) {
+        const matched = subSektorList.value.find(ss => getSubSektorName(ss) === found.sektor);
+        if (matched) selectedSubSektorId.value = matched.id;
+      }
     }
   }
 });
@@ -182,6 +209,7 @@ const onFileChange = (event: Event) => {
       return;
     }
 
+    photoFile.value = file;
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
@@ -196,7 +224,15 @@ const onFileChange = (event: Event) => {
 
 const removeImage = () => {
   form.photo = "";
+  photoFile.value = null;
   photoPosition.value = { x: 50, y: 50 };
+};
+
+const focusInput = (inputRef: any) => {
+  const el = inputRef?.value || inputRef;
+  if (el && typeof el.focus === 'function') {
+    el.focus();
+  }
 };
 
 const saveChanges = async () => {
@@ -207,12 +243,12 @@ const saveChanges = async () => {
   try {
     const payload: Partial<CreateStakeholderPayload> = {
       nama_perusahaan: form.nama_perusahaan!,
-      sektor: form.sektor!,
+      id_sub_sektor: String(selectedSubSektorId.value),
       email: form.email!,
       alamat: form.alamat!,
       telepon: form.telepon!,
       website: form.website!,
-      photo: form.photo,
+      photo: photoFile.value,
     };
 
     // Include photo position in payload if needed by backend (optional, but keep for local state)
@@ -223,9 +259,14 @@ const saveChanges = async () => {
 
     if (result.success) {
       showSuccessAlert.value = true;
+      
+      // Update local slug reference if name (and thus slug) changed
+      const updatedSlug = result.data?.slug || currentSlug.value;
+      currentSlug.value = updatedSlug;
+      
       // Redirect after short delay
       setTimeout(() => {
-        router.push(`/admin/stakeholders/${currentSlug.value}`);
+        router.push(`/stakeholders/${updatedSlug}`);
       }, 1000);
     } else {
       throw new Error(result.error || "Gagal menyimpan perubahan");
@@ -245,7 +286,7 @@ const saveChanges = async () => {
 const dataToPass = computed(() => ({
   title: {
     label: `Profile ${form.nama_perusahaan || "Stakeholder"}`,
-    path: `/admin/stakeholders/${currentSlug.value}`,
+    path: `/stakeholders/${currentSlug.value}`,
   },
   currentpage: "Account Settings",
   activepage: "Account Settings",
@@ -260,159 +301,177 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
 <template>
   <Pageheader :propData="dataToPass" />
 
-  <!-- Alerts -->
-  <div v-if="showSuccessAlert" class="alert alert-success alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
-    <i class="ri-checkbox-circle-line fs-18 me-2"></i>
-    <div>Perubahan berhasil disimpan!</div>
-    <button type="button" class="btn-close" @click="showSuccessAlert = false"></button>
-  </div>
-
-  <div v-if="showErrorAlert" class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
-    <i class="ri-error-warning-line fs-18 me-2"></i>
-    <div>{{ errorMessage }}</div>
-    <button type="button" class="btn-close" @click="showErrorAlert = false"></button>
-  </div>
+  <!-- Alerts - Toast Style -->
+  <transition name="slide-toast">
+    <div v-if="showSuccessAlert" class="settings-toast settings-toast--success">
+      <div class="settings-toast-icon"><i class="ri-checkbox-circle-fill"></i></div>
+      <div class="settings-toast-body"><strong>Berhasil!</strong> Perubahan berhasil disimpan.</div>
+      <button class="settings-toast-close" @click="showSuccessAlert = false"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
+  <transition name="slide-toast">
+    <div v-if="showErrorAlert" class="settings-toast settings-toast--error">
+      <div class="settings-toast-icon"><i class="ri-error-warning-fill"></i></div>
+      <div class="settings-toast-body"><strong>Error!</strong> {{ errorMessage }}</div>
+      <button class="settings-toast-close" @click="showErrorAlert = false"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
 
   <!-- Main Container -->
-  <div class="row justify-content-center">
-    <div class="col-xl-10">
-      <!-- Account Information Card -->
+  <div class="row">
+    <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
-        <div class="card-header d-flex align-items-center gradient-header-blue">
-          <i class="ri-building-2-line text-white me-2 fs-18"></i>
-          <div class="card-title text-white mb-0">Informasi Perusahaan</div>
+        <!-- Page Header -->
+        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+          <div class="d-flex align-items-center gap-3">
+            <div class="header-icon-box">
+              <i class="ri-building-2-line"></i>
+            </div>
+            <div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">Informasi Perusahaan</div>
+              <div class="header-subtitle mt-1">Edit data detail stakeholder</div>
+            </div>
+          </div>
         </div>
+
         <div class="card-body p-4">
-          <div class="row gy-4">
-            <!-- Profile Picture Section - Stacked Layout for accurate preview -->
-            <div class="col-xl-12">
-              <div class="d-flex flex-column gap-3">
-                <!-- Photo Info & Actions (Above) -->
-                <div class="photo-info-header d-flex flex-wrap align-items-center justify-content-between gap-3">
-                  <div>
-                    <h6 class="fw-semibold mb-1 d-flex align-items-center gap-2">
-                      <i class="ri-image-2-line text-primary"></i>
-                      Foto Perusahaan
-                    </h6>
-                    <span class="fs-12 text-muted">
-                      <i class="ri-information-line me-1"></i>
-                      Format: {{ ALLOWED_EXTENSIONS }} | Max: {{ MAX_FILE_SIZE_MB }}MB
-                    </span>
-                  </div>
-                  <div class="d-flex flex-wrap gap-2">
-                    <button class="btn btn-primary btn-sm" @click="triggerFileInput">
-                      <i class="ri-upload-2-line me-1"></i>
-                      {{ form.photo ? 'Ganti Gambar' : 'Upload Gambar' }}
-                    </button>
-                    <button v-if="form.photo" class="btn btn-outline-danger btn-sm" @click="removeImage">
-                      <i class="ri-delete-bin-line me-1"></i>Hapus
-                    </button>
-                  </div>
+          <!-- Photo Section -->
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <div class="d-flex align-items-center gap-2">
+              <i class="ri-image-2-line text-primary fs-18"></i>
+              <div>
+                <h6 class="fw-semibold mb-0">Foto Perusahaan</h6>
+                <span class="fs-12 text-muted">Format: {{ ALLOWED_EXTENSIONS }} | Max: {{ MAX_FILE_SIZE_MB }}MB</span>
+              </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-primary btn-sm" @click="triggerFileInput">
+                <i class="ri-upload-2-line me-1"></i>
+                {{ form.photo ? 'Ganti Gambar' : 'Upload Gambar' }}
+              </button>
+              <button v-if="form.photo" class="btn btn-outline-danger btn-sm" @click="removeImage">
+                <i class="ri-delete-bin-line me-1"></i>Hapus
+              </button>
+            </div>
+          </div>
+          <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
+
+          <!-- Photo Container -->
+          <div 
+            ref="photoContainer" 
+            class="photo-container photo-preview-compact position-relative overflow-hidden shadow-sm border mb-4"
+            :class="{ 'dragging': dragState.isDragging, 'draggable': true }"
+            :style="{ 
+              cursor: dragState.isDragging ? 'grabbing' : 'grab',
+              backgroundImage: form.photo ? `url(${form.photo})` : 'none',
+              backgroundColor: form.photo ? 'transparent' : '#e9ecef',
+              backgroundSize: 'cover',
+              backgroundPosition: `${photoPosition.x}% ${photoPosition.y}%`
+            }"
+            @mousedown="startDrag($event)" 
+            @touchstart="startDrag($event)"
+          >
+            <!-- Drag Indicator -->
+            <div v-if="form.photo" class="stk-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" 
+              style="top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5;">
+              <div class="stk-drag-hint-box bg-dark bg-opacity-50 text-white px-3 py-2 rounded-pill d-flex align-items-center gap-2">
+                <i class="ri-drag-move-2-fill fs-16"></i>
+                <span class="fs-13">Seret untuk atur posisi</span>
+              </div>
+            </div>
+            <!-- Empty State -->
+            <div v-if="!form.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted" 
+              style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+              <i class="ri-image-add-line fs-1 mb-2 opacity-50"></i>
+              <span class="fs-13">Belum ada foto</span>
+            </div>
+          </div>
+
+          <!-- Form Fields -->
+          <div class="row g-3">
+            <!-- Nama Perusahaan -->
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <div class="form-group-split" @click="focusInput(namaInput)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px"><i class="ri-building-line" style="font-size:0.95rem"></i></div>
+                  <label class="form-item-label mb-0">Nama Perusahaan</label>
                 </div>
-                <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
-                
-                <!-- Photo Container (Full Width - Matches Profile Page) -->
-                <div 
-                  ref="photoContainer" 
-                  class="photo-container photo-preview-compact position-relative overflow-hidden shadow-sm border"
-                  :class="{ 'dragging': dragState.isDragging, 'draggable': true }"
-                  :style="{ 
-                    cursor: dragState.isDragging ? 'grabbing' : 'grab',
-                    backgroundImage: form.photo ? `url(${form.photo})` : 'none',
-                    backgroundColor: form.photo ? 'transparent' : '#e9ecef',
-                    backgroundSize: 'cover',
-                    backgroundPosition: `${photoPosition.x}% ${photoPosition.y}%`
-                  }"
-                  @mousedown="startDrag($event)" 
-                  @touchstart="startDrag($event)"
-                >
-                  <!-- Drag Indicator -->
-                  <div v-if="form.photo" class="drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" 
-                    style="top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5;">
-                    <div class="drag-hint-box bg-dark bg-opacity-50 text-white px-3 py-2 rounded-pill d-flex align-items-center gap-2">
-                      <i class="ri-drag-move-2-fill fs-16"></i>
-                      <span class="fs-13">Seret untuk atur posisi</span>
-                    </div>
-                  </div>
-                  <!-- Empty State -->
-                  <div v-if="!form.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted" 
-                    style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
-                    <i class="ri-image-add-line fs-1 mb-2 opacity-50"></i>
-                    <span class="fs-13">Belum ada foto</span>
-                  </div>
+                <div class="form-group-split-input-card">
+                  <input ref="namaInput" type="text" class="form-item-input" v-model="form.nama_perusahaan" placeholder="Masukkan nama perusahaan" />
+                  <i class="ri-pencil-line form-item-edit-action"></i>
                 </div>
               </div>
             </div>
 
-            <!-- Nama Perusahaan -->
+            <!-- Sub Sektor -->
             <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-building-line me-1 text-primary"></i>Nama
-                Perusahaan
-              </label>
-              <input type="text" class="form-control" v-model="form.nama_perusahaan" placeholder="Masukkan nama perusahaan" />
-            </div>
-
-            <!-- Sektor -->
-            <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-pie-chart-line me-1 text-primary"></i>Sektor
-              </label>
-              <select class="form-select" v-model="form.sektor">
-                <option value="" disabled>-- Pilih Sektor --</option>
-                <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
-                <option value="Pangan & perikanan">Pangan & perikanan</option>
-                <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
-                <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
-                <option value="Kimia hulu">Kimia hulu</option>
-                <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
-                <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
-                <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
-                <option value="Logam">Logam</option>
-                <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
-                <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
-                <option value="Elektronika & telematika">Elektronika & telematika</option>
-              </select>
+              <div class="form-group-split" @click="focusInput(sektorSelect)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-purple" style="width:32px;height:32px"><i class="ri-pie-chart-line" style="font-size:0.95rem"></i></div>
+                  <label class="form-item-label mb-0">Sub Sektor</label>
+                </div>
+                <div class="form-group-split-input-card">
+                  <select ref="sektorSelect" class="form-item-input form-item-select" v-model="selectedSubSektorId" :disabled="loadingSubSektors">
+                    <option value="" disabled>{{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}</option>
+                    <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">{{ getSubSektorName(ss) }}</option>
+                  </select>
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
+              </div>
+              <small v-if="loadingSubSektors" class="text-muted ms-1">Memuat data sub sektor...</small>
             </div>
 
             <!-- Email -->
             <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-mail-line me-1 text-primary"></i>Email
-              </label>
-              <input type="email" class="form-control" v-model="form.email" placeholder="Masukkan email" />
+              <div class="form-group-split" @click="focusInput(emailInput)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-indigo" style="width:32px;height:32px"><i class="ri-mail-line" style="font-size:0.95rem"></i></div>
+                  <label class="form-item-label mb-0">Email</label>
+                </div>
+                <div class="form-group-split-input-card">
+                  <input ref="emailInput" type="email" class="form-item-input" v-model="form.email" placeholder="Masukkan email" />
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
+              </div>
             </div>
 
             <!-- Phone -->
             <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon
-              </label>
-              <div class="input-group">
-                <CountryCodeDropdown 
-                  v-model="selectedCountryCode" 
-                  @update:modelValue="handleCountryCodeChange"
-                />
-                <input 
-                  type="tel" 
-                  class="form-control" 
-                  v-model="phoneNumber"
-                  @input="handlePhoneInput"
-                  inputmode="numeric" 
-                  placeholder="813 8282 8282"
-                />
-              </div>
-              <div class="form-text text-muted mt-1">
-                <i class="ri-information-line"></i> Format: {{ selectedCountryCode }} 813 8282 8282
+              <div class="form-group-split" @click="focusInput(phoneInput)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-violet" style="width:32px;height:32px"><i class="ri-phone-line" style="font-size:0.95rem"></i></div>
+                  <label class="form-item-label mb-0">Nomor Telepon</label>
+                </div>
+                <div class="form-group-split-input-card">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text fw-semibold bg-transparent border-0 px-0 pe-2">+62</span>
+                    <input 
+                      ref="phoneInput"
+                      type="tel" 
+                      class="form-control border-0 p-0 shadow-none bg-transparent form-item-input" 
+                      v-model="phoneNumber"
+                      @input="handlePhoneInput"
+                      inputmode="numeric" 
+                      placeholder="813 8282 8282"
+                    />
+                  </div>
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
               </div>
             </div>
 
             <!-- Website -->
             <div class="col-xl-6 col-lg-6 col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-global-line me-1 text-primary"></i>Website
-              </label>
-              <input type="url" class="form-control" v-model="form.website" placeholder="Masukkan website" />
+              <div class="form-group-split" @click="focusInput(websiteInput)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-cyan" style="width:32px;height:32px"><i class="ri-global-line" style="font-size:0.95rem"></i></div>
+                  <label class="form-item-label mb-0">Website</label>
+                </div>
+                <div class="form-group-split-input-card">
+                  <input ref="websiteInput" type="url" class="form-item-input" v-model="form.website" placeholder="Masukkan website" />
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
+              </div>
             </div>
 
             <!-- Empty column for alignment -->
@@ -420,19 +479,25 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
 
             <!-- Alamat -->
             <div class="col-12">
-              <label class="form-label fw-medium">
-                <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
-              </label>
-              <textarea class="form-control" v-model="form.alamat" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
+              <div class="form-group-split" @click="focusInput(alamatInput)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px"><i class="ri-map-pin-line" style="font-size:0.95rem"></i></div>
+                  <label class="form-item-label mb-0">Alamat</label>
+                </div>
+                <div class="form-group-split-input-card">
+                  <textarea ref="alamatInput" class="form-item-input" v-model="form.alamat" rows="3" placeholder="Masukkan alamat lengkap" style="resize: vertical;"></textarea>
+                  <i class="ri-pencil-line form-item-edit-action" style="top:24px; transform:none"></i>
+                </div>
+              </div>
             </div>
 
             <!-- Action Buttons -->
             <div class="col-12">
               <div class="d-flex justify-content-end gap-2">
-                <button @click="handleCancel" class="btn btn-outline-danger">
+                <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-4">
                   <i class="ri-arrow-left-line me-1"></i>Batal
                 </button>
-                <button @click="saveChanges" :disabled="isSaving" class="btn btn-secondary">
+                <button @click="saveChanges" :disabled="isSaving" class="btn-save-primary rounded-pill px-4">
                   <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
                   <i v-else class="ri-save-line me-1"></i>
                   {{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
@@ -446,97 +511,6 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
   </div>
 </template>
 
-<style scoped>
-.gradient-header-card {
-  border: none !important;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
-  overflow: hidden !important;
-}
+<style src="../../assets/css/style2.css"></style>
+<!-- All styles live in src/assets/css/style2.css - STAKEHOLDER PROFILE SETTINGS section -->
 
-.gradient-header-card .card-header {
-  border: none !important;
-  border-bottom: none !important;
-  border-block-end: none !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-}
-
-.gradient-header-card .card-body {
-  border: 1px solid var(--default-border);
-  border-top: none !important;
-  border-radius: 0 !important;
-}
-
-/* Draggable Photo Styles */
-.photo-container.draggable {
-  user-select: none;
-  -webkit-user-select: none;
-  transition: box-shadow 0.3s ease;
-}
-
-.photo-container.draggable:hover {
-  cursor: grab;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
-}
-
-.photo-container.dragging {
-  cursor: grabbing !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
-}
-
-.pointer-events-none {
-  pointer-events: none;
-}
-
-.drag-indicator {
-  opacity: 0.7;
-  transition: opacity 0.3s ease;
-}
-
-.photo-container:hover .drag-indicator {
-  opacity: 1;
-}
-
-.photo-container.dragging .drag-indicator {
-  opacity: 0;
-}
-
-.drag-hint-box {
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Photo Preview - Matches profile-stakeholders.vue banner dimensions exactly */
-.photo-preview-compact {
-  width: 100%;
-  height: 400px;
-  border-color: #dee2e6 !important;
-  border-radius: 0.5rem;
-}
-
-.photo-info-side {
-  padding-top: 0.25rem;
-}
-
-/* Responsive - Tablet (768px - 991px) */
-@media (max-width: 991px) {
-  .photo-preview-compact {
-    height: 220px;
-  }
-}
-
-/* Responsive - Mobile (576px - 767px) */
-@media (max-width: 767px) {
-  .photo-preview-compact {
-    width: 100%;
-    height: 180px;
-  }
-}
-
-/* Responsive - Small Mobile (< 576px) */
-@media (max-width: 575px) {
-  .photo-preview-compact {
-    height: 150px;
-  }
-}
-</style>

@@ -1,101 +1,85 @@
 <template>
-  <!-- Start::app-sidebar -->
+  <!-- Sidebar Overlay -->
   <div id="responsive-overlay" @click="mainContentFn"></div>
-  <aside class="app-sidebar sticky" id="sidebar">
-    <!-- Start::main-sidebar-header -->
-    <div class="main-sidebar-header">
-      <router-link :to="dashboardRoute" class="header-logo">
-        <img
-          src="/images/brand-logos/logoDark.svg"
-          alt="logo"
-          id="logo-desktop"
-          style="height: 50px; width: auto"
-        />
-        <img
-          src="/images/brand-logos/logoDark.svg"
-          alt="logo"
-          id="logo-desktop-dark"
-          style="height: 50px; width: auto"
-        />
-        <img
-          src="/images/brand-logos/logoD4.svg"
-          alt="logo"
-          id="logo-toggle"
-          style="height: 50px; width: auto"
-        />
-        <img
-          src="/images/brand-logos/logoD4.svg"
-          alt="logo"
-          id="logo-toggle-dark"
-          style="height: 50px; width: auto"
-        />
+
+  <aside class="app-sidebar sticky sidebar-v2" id="sidebar">
+
+    <!-- Decorative background orbs -->
+    <div class="sb2-orb sb2-orb-1" aria-hidden="true"></div>
+    <div class="sb2-orb sb2-orb-2" aria-hidden="true"></div>
+    <div class="sb2-orb sb2-orb-3" aria-hidden="true"></div>
+
+    <!-- ── Logo Header ── -->
+    <div class="main-sidebar-header sb2-header">
+      <router-link :to="dashboardRoute" class="header-logo sb2-logo-link">
+        <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
+        <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
+        <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
+        <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle-dark"  class="sb2-logo-mini" />
       </router-link>
     </div>
-    <!-- End::main-sidebar-header -->
 
-    <!-- Start::main-sidebar -->
-    <PerfectScrollbar class="main-sidebar" id="sidebar-scroll">
-      <!-- Start::nav -->
+    <!-- ── Scrollable Menu ── -->
+    <PerfectScrollbar class="main-sidebar sb2-scroll" id="sidebar-scroll">
       <nav class="main-menu-container nav nav-pills flex-column sub-open">
+
         <div class="slide-left" id="slide-left" @click="leftArrowFn">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="#7b8191"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-          >
-            <path
-              d="M13.293 6.293 7.586 12l5.707 5.707 1.414-1.414L10.414 12l4.293-4.293z"
-            ></path>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="20" height="20" viewBox="0 0 24 24">
+            <path d="M13.293 6.293 7.586 12l5.707 5.707 1.414-1.414L10.414 12l4.293-4.293z"/>
           </svg>
         </div>
-        <ul class="main-menu">
+
+        <ul class="main-menu sb2-menu">
           <li
             v-for="(mainmenuItem, index) in menuData"
             :key="index"
-            :class="`${mainmenuItem?.menutitle ? '' : ''} ${
-              mainmenuItem?.type == 'link' ? 'slide' : ''
-            } ${mainmenuItem?.type == 'empty' ? 'slide' : ''} ${
-              mainmenuItem?.type == 'sub' ? 'slide has-sub' : ''
-            } ${mainmenuItem?.active ? 'open' : ''} ${
-              mainmenuItem?.selected ? 'active' : ''
-            }`"
+            :class="[
+              mainmenuItem?.menutitle ? 'sb2-category-li' : '',
+              mainmenuItem?.type === 'link'  ? 'slide' : '',
+              mainmenuItem?.type === 'empty' ? 'slide' : '',
+              mainmenuItem?.type === 'sub'   ? 'slide has-sub' : '',
+              mainmenuItem?.active   ? 'open'   : '',
+              mainmenuItem?.selected ? 'active' : '',
+            ]"
           >
+            <!-- Category title -->
             <template v-if="mainmenuItem?.menutitle">
-              <span class="">{{ mainmenuItem.menutitle }}</span>
+              <div class="sb2-category">
+                <span class="sb2-category-text">{{ mainmenuItem.menutitle }}</span>
+                <span class="sb2-category-rule"></span>
+              </div>
             </template>
+
+            <!-- Direct link -->
             <template v-if="mainmenuItem?.type === 'link'">
               <router-link
                 :to="mainmenuItem.path"
-                class="side-menu__item"
-                :class="`${mainmenuItem.selected ? 'active' : ''}`"
+                class="side-menu__item sb2-item"
+                :class="mainmenuItem.selected ? 'active' : ''"
                 @click="mainContentFn"
               >
-                <span v-if="mainmenuItem.icon" v-html="mainmenuItem.icon">
-                </span>
-                <span class="side-menu__label"
-                  >{{ mainmenuItem.title }}
-                  <span
-                    v-if="mainmenuItem.badgetxt"
-                    v-html="mainmenuItem.badgetxt"
-                  ></span>
+                <span class="sb2-item-indicator" aria-hidden="true"></span>
+                <span class="sb2-icon-wrap" v-if="mainmenuItem.icon" v-html="mainmenuItem.icon"></span>
+                <span class="side-menu__label sb2-label">
+                  {{ mainmenuItem.title }}
+                  <span v-if="mainmenuItem.badgetxt" v-html="mainmenuItem.badgetxt"></span>
                 </span>
               </router-link>
             </template>
+
+            <!-- Empty / placeholder link -->
             <template v-if="mainmenuItem?.type === 'empty'">
-              <a href="javascript:;" class="side-menu__item">
-                <span v-if="mainmenuItem.icon" v-html="mainmenuItem.icon">
-                </span>
-                <span class="side-menu__label"
-                  >{{ mainmenuItem.title }}
-                  <span
-                    v-if="mainmenuItem.badgetxt"
-                    v-html="mainmenuItem.badgetxt"
-                  ></span>
+              <a href="javascript:;" class="side-menu__item sb2-item">
+                <span class="sb2-item-indicator" aria-hidden="true"></span>
+                <span class="sb2-icon-wrap" v-if="mainmenuItem.icon" v-html="mainmenuItem.icon"></span>
+                <span class="side-menu__label sb2-label">
+                  {{ mainmenuItem.title }}
+                  <span v-if="mainmenuItem.badgetxt" v-html="mainmenuItem.badgetxt"></span>
                 </span>
               </a>
             </template>
+
+            <!-- Sub-menu -->
             <template v-if="mainmenuItem?.type === 'sub'">
               <RecursiveMenu
                 :menuData="mainmenuItem"
@@ -105,41 +89,25 @@
               />
             </template>
           </li>
-          <!-- <li>
-                    <ul class="slide-menu child1 doublemenu_slide-menu">
-                        <li class="text-center p-3 text-fixed-white">
-                            <div class="doublemenu_slide-menu-background">
-                                <img src="/images/media/backgrounds/13.png" alt="">
-                            </div>
-                            <div class="d-flex flex-column align-items-center justify-content-between h-100">
-                                <div class="fs-15 fw-medium">Dashboard AI Helper</div>
-                                <div>
-                                    <span class="avatar avatar-lg p-1">
-                                        <img :src="media80" alt="">
-                                        <span class="top-right"></span>
-                                        <span class="bottom-right"></span>
-                                    </span>
-                                </div>
-                                <div class="d-grid w-100">
-                                    <button class="btn btn-light border-0">Try Now</button>
-                                </div>
-                            </div>
-                        </li>
-                    </ul>
-                </li> -->
         </ul>
       </nav>
-      <!-- End::nav -->
     </PerfectScrollbar>
-    <!-- End::main-sidebar -->
-    
-    <!-- Chatbot Sidebar Footer -->
-    <!-- Chatbot Sidebar Footer -->
-    <div class="sidebar-chatbot-footer">
-       <a href="javascript:void(0);" class="side-menu__item" @click="toggleChat">
-          <i class="ti ti-message-chatbot side-menu__icon"></i>
-          <span class="side-menu__label">AI Assistant</span>
-       </a>
+
+    <!-- ── AI Assistant Footer ── -->
+    <div class="sidebar-chatbot-footer sb2-footer">
+      <a href="javascript:void(0);" class="sb2-ai-btn" @click="toggleChat">
+        <span class="sb2-ai-glow" aria-hidden="true"></span>
+        <span class="sb2-ai-icon">
+          <i class="ti ti-message-chatbot"></i>
+        </span>
+        <span class="sb2-ai-body">
+          <span class="sb2-ai-label">AI Assistant</span>
+          <span class="sb2-ai-sub">Tanya apa saja &bull; Powered by AI</span>
+        </span>
+        <span class="sb2-ai-arrow">
+          <i class="ti ti-chevron-right"></i>
+        </span>
+      </a>
     </div>
 
     <Teleport to="body">
@@ -147,7 +115,6 @@
     </Teleport>
 
   </aside>
-  <!-- End::app-sidebar -->
 </template>
 
 <script setup>
@@ -220,7 +187,7 @@ const isChatOpen = ref(false);
 
 // Computed property for dynamic dashboard route based on user role
 const dashboardRoute = computed(() => {
-  return authStore.userRole === 'admin' ? '/admin/dashboard' : '/dashboards';
+  return authStore.userRole === 'admin' ? '/dashboard' : '/dashboards';
 });
 
 const toggleChat = () => {
@@ -894,73 +861,5 @@ onBeforeMount(() => {
 });
 </script>
 
-<style scoped lang="scss">
-.app-sidebar {
-  display: flex !important;
-  flex-direction: column;
-}
-
-.main-sidebar {
-  flex: 1; /* Takes up remaining space */
-}
-
-.sidebar-chatbot-footer {
-  padding: 10px 20px;
-  border-top: 1px solid var(--menu-border-color);
-  background: transparent;
-  
-  .side-menu__item {
-    display: flex;
-    align-items: center;
-    color: var(--menu-prime-color);
-    padding: 10px;
-    border-radius: 6px;
-    transition: all 0.3s ease;
-    
-    &:hover {
-      background-color: var(--primary01);
-      color: var(--primary-color);
-      
-      .side-menu__icon {
-        color: var(--primary-color);
-        fill: var(--primary-color);
-      }
-    }
-    
-    .side-menu__icon {
-      font-size: 20px;
-      margin-right: 10px;
-      color: var(--menu-icon-color);
-      fill: var(--menu-icon-color);
-      transition: all 0.3s ease;
-    }
-    
-    .side-menu__label {
-      font-size: 14px;
-      white-space: nowrap;
-    }
-  }
-}
-
-/* Handle collapsed state */
-[data-toggled="icon-overlay-close"] .sidebar-chatbot-footer,
-[data-toggled="close"] .sidebar-chatbot-footer,
-[data-toggled="icon-text-close"] .sidebar-chatbot-footer {
-  padding: 10px 5px; /* Reduce padding */
-  text-align: center;
-  
-  .side-menu__item {
-    justify-content: center;
-    padding: 10px 0;
-    
-    .side-menu__icon {
-      margin-right: 0;
-      font-size: 24px;
-    }
-    
-    .side-menu__label {
-      display: none;
-    }
-  }
-}
-</style>
+<!-- All sidebar-v2 styles live in src/assets/css/style2.css -->
+<style src="../../../assets/css/style2.css"></style>

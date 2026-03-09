@@ -49,7 +49,7 @@ const pageData = computed(() => {
       label: currentStakeholder.value 
         ? `IKAS ${currentStakeholder.value.nama_perusahaan}` 
         : "IKAS Dashboard", 
-      path: currentSlug.value ? `/admin/stakeholders/${currentSlug.value}` : '/stakeholders'
+      path: currentSlug.value ? `/stakeholders/${currentSlug.value}` : '/stakeholders'
     },
     currentpage: currentStep.value === 1 ? "Data Responden" : "Input Data",
     activepage: currentStep.value === 1 ? "Data Responden" : (assessmentStore.currentDomain?.name || 'Input Data'),
@@ -70,7 +70,7 @@ const backToIkas = () => {
   if (currentSlug.value) {
     router.push({ path: '/ikas', query: { slug: currentSlug.value } });
   } else {
-    router.push('/ikas');
+    router.push('/stakeholders');
   }
 };
 </script>

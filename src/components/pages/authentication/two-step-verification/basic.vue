@@ -37,7 +37,7 @@ const error = ref('');
 // =====================
 const redirectByRole = () => {
   const role = authStore.userRole;
-  return role === 'admin' ? '/admin/dashboard' : '/dashboards';
+  return role === 'admin' ? '/dashboard' : '/dashboards';
 };
 
 // =====================

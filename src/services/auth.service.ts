@@ -43,11 +43,19 @@ class AuthService {
     }
 
     /**
-     * Verify session: GET /api/me.
+     * Refresh access token — backend validates the refresh-token cookie
+     * and issues a new access-token cookie.
+     */
+    async refresh(): Promise<void> {
+        await api.post<void>('/api/refresh', {});
+    }
+
+    /**
+     * Verify session: GET /api/users/{id}.
      * Cookie is sent automatically. Returns current user if valid.
      */
-    async verifySession(): Promise<any> {
-        return api.get<any>('/api/me');
+    async verifySession(userId: string): Promise<any> {
+        return api.get<any>(`/api/users/${userId}`);
     }
 
     // ============================

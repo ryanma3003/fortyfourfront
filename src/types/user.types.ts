@@ -11,6 +11,12 @@ export interface User {
     joined: string;
     photo?: string;
     banner?: string;
+    // Backend specific fields
+    id_jabatan?: string;
+    jabatan_name?: string;
+    id_perusahaan?: string;
+    role_name?: string;
+    foto_profile?: string;
 }
 
 export interface CreateUserPayload {
@@ -18,7 +24,8 @@ export interface CreateUserPayload {
     password: string;
     name: string;
     email: string;
-    jabatan: string;
+    jabatan?: string;
+    id_jabatan?: string;
     role: string;
     phone: string;
     location: string;
@@ -32,6 +39,7 @@ export interface UpdateUserPayload {
     name?: string;
     email?: string;
     jabatan?: string;
+    id_jabatan?: string;
     role?: string;
     phone?: string;
     location?: string;
