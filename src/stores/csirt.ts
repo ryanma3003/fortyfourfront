@@ -36,7 +36,7 @@ export const useCsirtStore = defineStore('csirt', {
             try {
                 const data = await csirtService.getMembers();
                 console.log('CSIRTs from backend:', data);
-                this.csirts = data.map(c => ({
+                this.csirts = (Array.isArray(data) ? data : []).map(c => ({
                     ...c,
                     slug: c.slug || this.generateSlug(c.nama_csirt)
                 }));
@@ -59,7 +59,7 @@ export const useCsirtStore = defineStore('csirt', {
 
             try {
                 const data = await csirtService.getMembers();
-                this.csirts = data.map(c => ({
+                this.csirts = (Array.isArray(data) ? data : []).map(c => ({
                     ...c,
                     slug: c.slug || this.generateSlug(c.nama_csirt)
                 }));
