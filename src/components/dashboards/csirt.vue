@@ -10,6 +10,7 @@ import { useStakeholdersStore } from "../../stores/stakeholders";
 import { useAuthStore } from "../../stores/auth";
 import { useCsirtStore } from "../../stores/csirt";
 import { useRouter } from "vue-router";
+import "../../assets/css/style2.css";
 
 export default {
     data() {   
@@ -375,6 +376,8 @@ export default {
             csirtFormErrors.value = {};
             if (!csirtFormData.value.nama_csirt.trim())
                 csirtFormErrors.value.nama_csirt = 'Nama CSIRT wajib diisi';
+            if (!csirtFormData.value.photo_csirt)
+                csirtFormErrors.value.photo_csirt = 'Logo / Photo CSIRT wajib diunggah';
             return Object.keys(csirtFormErrors.value).length === 0;
         };
 
@@ -384,7 +387,8 @@ export default {
             csirtFormError.value = '';
             const result = await csirtStore.createCsirt({
                 id_perusahaan       : newStakeholder.value.id,
-                slug                : newStakeholder.value.slug,
+                // Do NOT pass the company slug/UUID as the CSIRT slug.
+                // The backend will auto-generate the CSIRT slug from nama_csirt.
                 nama_csirt          : csirtFormData.value.nama_csirt,
                 web_csirt           : csirtFormData.value.web_csirt,
                 telepon_csirt       : csirtFormData.value.telepon_csirt,
@@ -544,7 +548,6 @@ export default {
   border-radius: 8px;
 }
 </style>
-<style src="../../assets/css/style2.css"></style>
 
 <template>
 <Pageheader :propData="dataToPass" />
@@ -1349,9 +1352,10 @@ export default {
                             </div>
                             <!-- Photo CSIRT -->
                             <div class="col-12">
-                                <label class="form-label fw-medium">Logo / Photo CSIRT</label>
-                                <input type="file" class="form-control" accept="image/*"
+                                <label class="form-label fw-medium">Logo / Photo CSIRT <span class="text-danger">*</span></label>
+                                <input type="file" class="form-control" :class="{ 'is-invalid': csirtFormErrors.photo_csirt }" accept="image/*"
                                     @change="onCsirtFileChange($event, 'photo_csirt')" />
+                                <div v-if="csirtFormErrors.photo_csirt" class="invalid-feedback">{{ csirtFormErrors.photo_csirt }}</div>
                             </div>
                             <!-- RFC 2350 -->
                             <div class="col-md-6">

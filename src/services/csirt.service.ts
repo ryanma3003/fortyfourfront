@@ -26,13 +26,14 @@ export const csirtService = {
      */
     async create(payload: CreateCsirtPayload): Promise<CsirtMember> {
         const form = new FormData();
+        // id_perusahaan is a required string field — send the UUID as-is.
         form.append('id_perusahaan', String(payload.id_perusahaan));
         form.append('nama_csirt', payload.nama_csirt);
-        form.append('web_csirt', payload.web_csirt);
-        form.append('telepon_csirt', payload.telepon_csirt);
-        if (payload.slug) form.append('slug', payload.slug);
-        if (payload.photo_csirt instanceof File)        form.append('photo_csirt',        payload.photo_csirt);
-        if (payload.file_rfc2350 instanceof File)       form.append('file_rfc2350',        payload.file_rfc2350);
+        form.append('web_csirt', payload.web_csirt || '');
+        form.append('telepon_csirt', payload.telepon_csirt || '');
+        // photo_csirt is required: the backend always tries to open/save the photo file.
+        if (payload.photo_csirt instanceof File) form.append('photo_csirt',         payload.photo_csirt);
+        if (payload.file_rfc2350        instanceof File) form.append('file_rfc2350',        payload.file_rfc2350);
         if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
         return api.post<CsirtMember>('/api/csirt', form);
     },
