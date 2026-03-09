@@ -138,7 +138,7 @@ function confirmAdd() {
   };
 
   // Pre-create kseStore entry with namaSistem as jenisUsaha placeholder
-  kseStore.updateStakeholderInfo(id, entry.namaSistem, currentStakeholder.value?.sektor || '');
+  kseStore.updateStakeholderInfo(id, entry.namaSistem, currentStakeholder.value?.sub_sektor?.nama_sub_sektor || currentStakeholder.value?.sektor || '');
 
   kseEntries.value.unshift(entry);
   saveEntries();
@@ -172,7 +172,7 @@ function confirmDelete() {
 
 // ── Back ──────────────────────────────────────────────────────
 function goBack() {
-  router.push(`/admin/stakeholders/${stakeholderSlug.value}`);
+  router.push(`/stakeholders/${stakeholderSlug.value}`);
 }
 
 // ── Category badge ────────────────────────────────────────────
@@ -225,7 +225,7 @@ function progressClass(pct: number): string {
               </div>
               <div class="header-card-title text-white fw-bold">Kategorisasi Sistem Elektronik</div>
               <div class="header-subtitle mt-1">
-                {{ currentStakeholder?.sektor || '' }} &bull;
+                {{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor || '' }} &bull;
                 {{ totalKse }} sistem terdaftar
               </div>
             </div>

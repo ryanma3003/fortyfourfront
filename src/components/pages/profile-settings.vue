@@ -1,14 +1,15 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
+import type { Jabatan } from "@/types/jabatan.types";
+import { usersService } from "../../services/users.service";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 
 // Constants
-const DEFAULT_AVATAR = "/images/faces/9.jpg";
-const DEFAULT_BANNER = "/images/media/media-3.jpg";
+const DEFAULT_AVATAR = " ";
+const DEFAULT_BANNER = " ";
 const MAX_BANNER_SIZE = 2 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 1 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 8;
@@ -61,8 +62,26 @@ const dataToPass = computed(() => ({
 }));
 
 const formData = ref({
-  name: "", role: "", jabatan: "", location: "", email: "", phone: "", website: "", bio: "", address: ""
+  name: "", role: "", jabatan: "", idJabatan: "", location: "", email: "", phone: "", website: "", bio: "", address: ""
 });
+
+const nameInput = ref<HTMLInputElement | null>(null);
+const jabatanSelect = ref<HTMLSelectElement | null>(null);
+const emailInput = ref<HTMLInputElement | null>(null);
+const roleSelect = ref<HTMLSelectElement | null>(null);
+
+const focusInput = (inputRef: any) => {
+  const el = inputRef?.value || inputRef;
+  if (el && typeof el.focus === 'function') {
+    el.focus();
+  }
+};
+
+// Jabatan dropdown state
+const jabatanList = ref<Jabatan[]>([]);
+const isLoadingJabatan = ref(false);
+const selectedJabatan = ref(""); // id or "NEW"
+const newJabatanName = ref("");
 
 // Image State
 const avatarInput = ref<HTMLInputElement | null>(null);
@@ -88,36 +107,8 @@ const showNewPassword = ref(false);
 const showConfirmPassword = ref(false);
 const passwordLength = ref(12);
 
-// Phone input state
-const selectedCountryCode = ref("+62");
-const phoneNumber = ref("");
-
-// Format phone number
-const formatPhoneNumber = (value: string) => {
-  const numbers = value.replace(/\D/g, "");
-  if (selectedCountryCode.value === "+62") {
-    if (numbers.length <= 3) return numbers;
-    if (numbers.length <= 7) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
-    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
-  } else {
-    if (numbers.length <= 3) return numbers;
-    if (numbers.length <= 6) return `${numbers.slice(0, 3)} ${numbers.slice(3)}`;
-    return `${numbers.slice(0, 3)} ${numbers.slice(3, 7)} ${numbers.slice(7, 11)}`;
-  }
-};
-
-const handlePhoneInput = (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const numbers = input.value.replace(/\D/g, "").slice(0, 11);
-  phoneNumber.value = formatPhoneNumber(numbers);
-  formData.value.phone = selectedCountryCode.value + " " + phoneNumber.value;
-};
-
-const handleCountryCodeChange = () => {
-  if (phoneNumber.value) {
-    formData.value.phone = selectedCountryCode.value + " " + phoneNumber.value;
-  }
-};
+// Phone input state - simplified to +62 only
+const PHONE_PREFIX = "+62 ";
 
 // Password Validation - Simplified with array
 const passwordRules = computed(() => [
@@ -163,8 +154,11 @@ const useGeneratedPassword = () => {
 
 // Load user data (self-edit mode only)
 const loadUserData = async () => {
-  // Load profile data from API
-  await profileStore.switchUser();
+  await profileStore.fetchFromApi();
+  // Load jabatan list for dropdown
+  isLoadingJabatan.value = true;
+  jabatanList.value = await profileStore.fetchJabatanList();
+  isLoadingJabatan.value = false;
   resetForm();
 };
 
@@ -180,20 +174,20 @@ watch(() => route.params.slug, async () => {
 
 const resetForm = () => {
   formData.value = {
-    name: profileStore.displayName, role: profileStore.displayRole, jabatan: profileStore.displayJabatan,
-    location: profileStore.location, email: profileStore.displayEmail, phone: profileStore.phone,
-    website: profileStore.website, bio: profileStore.bio, address: profileStore.address,
+    name: profileStore.name || profileStore.displayName,
+    role: profileStore.displayRole,
+    jabatan: profileStore.jabatan,
+    idJabatan: profileStore.idJabatan,
+    location: profileStore.location,
+    email: profileStore.email || profileStore.displayEmail,
+    phone: profileStore.phone,
+    website: profileStore.website,
+    bio: profileStore.bio,
+    address: profileStore.address,
   };
-  // Parse existing phone number
-  if (formData.value.phone) {
-    const match = formData.value.phone.match(/^(\+\d+)\s*(.+)$/);
-    if (match) {
-      selectedCountryCode.value = match[1];
-      phoneNumber.value = match[2];
-    } else {
-      phoneNumber.value = formData.value.phone;
-    }
-  }
+  // Set jabatan dropdown selection
+  selectedJabatan.value = profileStore.idJabatan || '';
+  newJabatanName.value = '';
   avatarPreview.value = profileStore.avatarUrl;
   bannerPreview.value = profileStore.bannerUrl;
   bannerPosition.value = { x: profileStore.bannerPositionX ?? 50, y: profileStore.bannerPositionY ?? 50 };
@@ -272,9 +266,14 @@ const removeBanner = () => { bannerPreview.value = DEFAULT_BANNER; };
 const saveProfile = async () => {
   isSaving.value = true;
   try {
-    // Prepare profile data for API
-    const profileData = {
-      ...formData.value,
+    const profileData: Record<string, any> = {
+      name:     formData.value.name,
+      email:    formData.value.email,
+      phone:    formData.value.phone,
+      location: formData.value.location,
+      website:  formData.value.website,
+      bio:      formData.value.bio,
+      address:  formData.value.address,
       avatarUrl: avatarPreview.value, 
       bannerUrl: bannerPreview.value,
       bannerPositionX: bannerPosition.value.x, 
@@ -282,6 +281,18 @@ const saveProfile = async () => {
       avatarPositionX: avatarPosition.value.x, 
       avatarPositionY: avatarPosition.value.y,
     };
+
+    // Handle jabatan: existing ID or new name
+    if (selectedJabatan.value === 'NEW') {
+      profileData.newJabatanName = newJabatanName.value;
+    } else if (selectedJabatan.value) {
+      profileData.idJabatan = selectedJabatan.value;
+      // Also pass the display name so non-admin path can show it without an extra API call
+      const found = jabatanList.value.find(j => j.id === selectedJabatan.value);
+      if (found) profileData.jabatan = found.nama_jabatan;
+    }
+    
+    console.log('Saving profile data:', profileData);
     
     // Save to API
     const result = await profileStore.saveToApi(profileData);
@@ -289,7 +300,14 @@ const saveProfile = async () => {
     if (!result.success) {
       throw new Error(result.error || 'Failed to save profile');
     }
+
+    // Refresh jabatan list if new one was created
+    if (selectedJabatan.value === 'NEW') {
+      jabatanList.value = await profileStore.fetchJabatanList();
+    }
     
+    // Refresh form fields from the freshly-fetched store state
+    resetForm();
     showSuccessAlert.value = true;
     setTimeout(() => router.push("/profile"), 1000);
   } catch (error: any) {
@@ -300,11 +318,33 @@ const saveProfile = async () => {
 };
 
 const savePassword = async () => {
-  if (passwordData.value.newPassword !== passwordData.value.confirmPassword) { alert("Password tidak cocok!"); return; }
-  await new Promise(r => setTimeout(r, 500));
-  passwordData.value = { currentPassword: "", newPassword: "", confirmPassword: "" };
-  showSuccessAlert.value = true;
-  setTimeout(() => showSuccessAlert.value = false, 3000);
+  if (passwordData.value.newPassword !== passwordData.value.confirmPassword) { 
+    showErrorAlert.value = true;
+    errorMessage.value = "Password baru dan konfirmasi tidak cocok!";
+    return; 
+  }
+  if (!isPasswordValid.value) {
+    showErrorAlert.value = true;
+    errorMessage.value = "Password tidak memenuhi syarat keamanan.";
+    return;
+  }
+  isSaving.value = true;
+  try {
+    await usersService.updateMePassword({
+      old_password: passwordData.value.currentPassword,
+      new_password: passwordData.value.newPassword,
+      confirm_new_password: passwordData.value.confirmPassword,
+    });
+    passwordData.value = { currentPassword: "", newPassword: "", confirmPassword: "" };
+    showSuccessAlert.value = true;
+    setTimeout(() => showSuccessAlert.value = false, 3000);
+  } catch (error: any) {
+    showErrorAlert.value = true;
+    errorMessage.value = error.message || "Gagal mengubah password. Pastikan password lama benar.";
+    setTimeout(() => showErrorAlert.value = false, 4000);
+  } finally {
+    isSaving.value = false;
+  }
 };
 
 // Cancel handler
@@ -312,9 +352,12 @@ const handleCancel = () => {
   router.push("/profile");
 };
 
+
 // Computed for drag state
 const isDraggingBanner = computed(() => dragState.value.type === 'banner');
 const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
+const displayPerusahaan = computed(() => profileStore.namaPerusahaan || 'Belum terkait');
+const displaySektor = computed(() => profileStore.namaSubSektor || 'Belum terkait');
 
 // Role options for admin edit mode
 const roleOptions = ['admin', 'User'];
@@ -323,170 +366,307 @@ const roleOptions = ['admin', 'User'];
 <template>
   <Pageheader :propData="dataToPass" />
 
-  <!-- Alerts -->
-  <div v-if="showSuccessAlert" class="alert alert-success alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
-    <i class="ri-checkbox-circle-line fs-18 me-2"></i><div>Perubahan berhasil disimpan!</div>
-    <button type="button" class="btn-close" @click="showSuccessAlert = false"></button>
-  </div>
-  <div v-if="showErrorAlert" class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
-    <i class="ri-error-warning-line fs-18 me-2"></i><div>{{ errorMessage || 'Terjadi kesalahan. Silakan coba lagi.' }}</div>
-    <button type="button" class="btn-close" @click="showErrorAlert = false"></button>
-  </div>
-  <div v-if="imageError" class="alert alert-warning alert-dismissible fade show mb-3 d-flex align-items-center" role="alert">
-    <i class="ri-image-line fs-18 me-2"></i><div>{{ imageError }}</div>
-    <button type="button" class="btn-close" @click="imageError = ''"></button>
-  </div>
+  <!-- Alerts - Toast Style -->
+  <transition name="slide-toast">
+    <div v-if="showSuccessAlert" class="settings-toast settings-toast--success">
+      <div class="settings-toast-icon"><i class="ri-checkbox-circle-fill"></i></div>
+      <div class="settings-toast-body"><strong>Berhasil!</strong> Perubahan berhasil disimpan.</div>
+      <button class="settings-toast-close" @click="showSuccessAlert = false"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
+  <transition name="slide-toast">
+    <div v-if="showErrorAlert" class="settings-toast settings-toast--error">
+      <div class="settings-toast-icon"><i class="ri-error-warning-fill"></i></div>
+      <div class="settings-toast-body"><strong>Error!</strong> {{ errorMessage || 'Terjadi kesalahan. Silakan coba lagi.' }}</div>
+      <button class="settings-toast-close" @click="showErrorAlert = false"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
+  <transition name="slide-toast">
+    <div v-if="imageError" class="settings-toast settings-toast--warning">
+      <div class="settings-toast-icon"><i class="ri-image-2-fill"></i></div>
+      <div class="settings-toast-body">{{ imageError }}</div>
+      <button class="settings-toast-close" @click="imageError = ''"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
 
-  <!-- Main Container -->
-  <div class="row justify-content-center">
-    <div class="col-xl-11 col-xxl-10">
-      <div class="card custom-card overflow-hidden profile-main-card mb-3">
-        <!-- Banner Image -->
-          <div ref="bannerContainer" class="profile-header-banner position-relative"
-            :class="{ 'dragging': isDraggingBanner, 'draggable': !isAdminEditMode }"
-            :style="{ backgroundImage: `url(${bannerPreview})`, backgroundSize: 'cover', backgroundPosition: `${bannerPosition.x}% ${bannerPosition.y}%`, minHeight: '180px', cursor: isAdminEditMode ? 'default' : (isDraggingBanner ? 'grabbing' : 'grab') }"
-            @mousedown="!isAdminEditMode && startDrag('banner', $event)" @touchstart="!isAdminEditMode && startDrag('banner', $event)">
-            <!-- Overlay -->
-            <div class="position-absolute w-100 h-100 pointer-events-none" style="background: linear-gradient(to bottom, rgba(30, 58, 95, 0.3) 0%, rgba(26, 54, 93, 0.1) 100%);"></div>
-            <!-- Banner Edit Buttons (only show in self-edit mode) -->
-            <div v-if="!isAdminEditMode" class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
-              <div class="d-flex gap-2">
-                <button @click.stop="triggerBannerUpload" class="btn btn-light btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1" title="Ganti Banner">
-                  <i class="ri-image-edit-line"></i><span class="d-none d-sm-inline">Ganti Banner</span>
-                </button>
-                <button v-if="bannerPreview !== DEFAULT_BANNER" @click="removeBanner" class="btn btn-danger btn-sm rounded-pill shadow-sm d-flex align-items-center gap-1" title="Hapus Banner">
-                  <i class="ri-delete-bin-line"></i>
-                </button>
-              </div>
+  <!-- Main container (style-2 layout) -->
+  <div class="row">
+    <div class="col-xl-12">
+      <div class="card custom-card gradient-header-card">
+        <!-- Page Header -->
+        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+          <div class="d-flex align-items-center gap-3">
+            <div class="header-icon-box">
+              <i class="ri-user-settings-line"></i>
             </div>
-            <!-- Drag Indicator (only show in self-edit mode) -->
-            <div v-if="!isAdminEditMode" class="drag-indicator position-absolute d-flex flex-column align-items-center justify-content-center pointer-events-none" style="top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5;">
-              <div class="drag-hint-box bg-dark bg-opacity-50 text-white px-3 py-2 rounded-pill d-flex align-items-center gap-2">
-                <i class="ri-drag-move-2-fill fs-16"></i><span class="fs-12">Seret untuk atur posisi</span>
-              </div>
-            </div>
-            <input ref="bannerInput" type="file" accept="image/jpeg,image/png,image/webp" class="d-none" @change="handleImageUpload('banner', $event)" />
-          </div>
-
-          <!-- Card Body - Avatar + User Info -->
-          <div class="card-body p-3 p-md-4 pb-4 position-relative">
-            <div class="d-flex align-items-end justify-content-between flex-wrap gap-3" style="margin-top: -70px">
-              <div class="d-flex align-items-end gap-3 flex-wrap">
-                <!-- Avatar with Edit Actions -->
-                <div class="position-relative">
-                  <div ref="avatarContainer" class="avatar-container" :class="{ 'dragging': isDraggingAvatar, 'draggable': !isAdminEditMode }"
-                    :style="{ cursor: isAdminEditMode ? 'default' : (isDraggingAvatar ? 'grabbing' : 'grab') }"
-                    @mousedown="!isAdminEditMode && startDrag('avatar', $event)" @touchstart="!isAdminEditMode && startDrag('avatar', $event)">
-                    <span class="avatar avatar-xxl avatar-rounded shadow-lg border border-4 border-white overflow-hidden position-relative">
-                      <img :src="avatarPreview" alt="Profile Avatar" :style="{ objectPosition: `${avatarPosition.x}% ${avatarPosition.y}%`, objectFit: 'cover', width: '100%', height: '100%' }" />
-                      <!-- Avatar Drag Indicator (only show in self-edit mode) -->
-                      <div v-if="!isAdminEditMode" class="avatar-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" style="top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2);">
-                        <i class="ri-drag-move-2-fill text-white fs-20"></i>
-                      </div>
-                    </span>
-                    <div v-if="!isAdminEditMode" class="avatar-actions position-absolute bottom-0 d-flex gap-1" style="z-index: 10;">
-                      <button @click.stop="triggerAvatarUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
-                        <i class="ri-camera-line"></i>
-                      </button>
-                    </div>
-                  </div>
-                  <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('avatar', $event)" />
-                </div>
-                <!-- Name & Title -->
-                <div class="pb-2 mt-2 mt-md-5">
-                  <h4 class="fw-bold mb-1 text-dark profile-name">{{ formData.name || "User Name" }}</h4>
-                  <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"><i class="ri-user-line"></i>{{ formData.role }}</p>
-                  <p class="text-primary-dark fw-medium mb-1 d-flex align-items-center gap-1"><i class="ri-briefcase-line"></i>{{ formData.jabatan }}</p>
-                  <p class="text-black fs-13 mb-2 d-flex align-items-center gap-1"><i class="ri-mail-line"></i>{{ formData.email }}</p>
-                  <p class="fs-12 mb-0 mt-1">
-                    <span class="me-3"><i class="ri-phone-line me-1"></i>{{ formData.phone }}</span>
-                    <span><i class="ri-map-pin-line me-1"></i>{{ formData.location }}</span>
-                  </p>
-                </div>
-              </div>
-              <!-- Action Buttons (Desktop) -->
-              <div class="save-btn-desktop d-none d-md-flex gap-2">
-                <button @click="handleCancel" class="btn btn-outline-danger rounded-pill px-4"><i class="ri-arrow-left-line me-1"></i>Batal</button>
-                <button @click="saveProfile" :disabled="isSaving" class="btn btn-secondary rounded-pill px-4">
-                  <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
-                  <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
-                </button>
-              </div>
+            <div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">Profile Settings</div>
+              <div class="header-subtitle mt-1">Edit informasi akun &amp; data pribadi</div>
             </div>
           </div>
         </div>
 
-        <!-- Account Info Card -->
-        <div class="card custom-card gradient-header-card">
-          <div class="card-header d-flex align-items-center gradient-header-blue">
-            <i class="ri-user-settings-line text-white me-2 fs-18"></i>
-            <div class="card-title text-white mb-0">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
+        <div class="card-body p-4">
+          <!--  HERO CARD (banner + avatar + info)  -->
+          <div class="card custom-card hero-card-shell mb-4">
+            <!-- Banner Image -->
+            <div
+              ref="bannerContainer"
+              class="profile-banner"
+              :class="{ 'profile-banner-nophoto': !bannerPreview, 'dragging': isDraggingBanner, 'draggable': !isAdminEditMode }"
+              :style="bannerPreview ? { backgroundImage: `url(${bannerPreview})`, backgroundPosition: `${bannerPosition.x}% ${bannerPosition.y}%` } : {}"
+              @mousedown="!isAdminEditMode && startDrag('banner', $event)"
+              @touchstart="!isAdminEditMode && startDrag('banner', $event)"
+            >
+              <!-- Banner Edit Buttons -->
+              <div v-if="!isAdminEditMode" class="position-absolute top-0 end-0 p-3 p-md-4" style="z-index:10">
+                <div class="d-flex gap-2">
+                  <button @click.stop="triggerBannerUpload" class="btn-edit-profile btn-primary">
+                    <i class="ri-image-edit-line"></i>
+                    <span class="d-none d-sm-inline">Ganti Banner</span>
+                  </button>
+                  <button v-if="bannerPreview !== DEFAULT_BANNER" @click.stop="removeBanner" class="btn-edit-profile btn-danger">
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
+              </div>
+              <!-- Drag Indicator -->
+              <div v-if="!isAdminEditMode" class="drag-indicator position-absolute d-flex flex-column align-items-center justify-content-center pointer-events-none" style="top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5;">
+                <div class="drag-hint-box bg-dark bg-opacity-50 text-white px-3 py-2 rounded-pill d-flex align-items-center gap-2">
+                  <i class="ri-drag-move-2-fill fs-16"></i><span class="fs-12">Seret untuk atur posisi</span>
+                </div>
+              </div>
+              <input ref="bannerInput" type="file" accept="image/jpeg,image/png,image/webp" class="d-none" @change="handleImageUpload('banner', $event)" />
+            </div>
+
+            <!-- Profile Content Body -->
+            <div class="profile-content-body">
+              <!-- Avatar Container -->
+              <div class="profile-avatar-container">
+                <div
+                  ref="avatarContainer"
+                  class="profile-avatar-wrap"
+                  :class="{ 'dragging': isDraggingAvatar, 'draggable': !isAdminEditMode }"
+                  :style="{ cursor: isAdminEditMode ? 'default' : (isDraggingAvatar ? 'grabbing' : 'grab') }"
+                  @mousedown="!isAdminEditMode && startDrag('avatar', $event)"
+                  @touchstart="!isAdminEditMode && startDrag('avatar', $event)"
+                >
+                  <img
+                    :src="avatarPreview"
+                    alt="Avatar"
+                    class="profile-avatar-img"
+                    :style="{ objectPosition: `${avatarPosition.x}% ${avatarPosition.y}%` }"
+                  />
+                  <!-- Avatar Drag Indicator -->
+                  <div v-if="!isAdminEditMode" class="avatar-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" style="top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2); border-radius: 50%;">
+                    <i class="ri-drag-move-2-fill text-white fs-20"></i>
+                  </div>
+                </div>
+                <!-- Avatar Upload Button -->
+                <div v-if="!isAdminEditMode" class="avatar-upload-btn">
+                  <button @click.stop="triggerAvatarUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
+                    <i class="ri-camera-line"></i>
+                  </button>
+                </div>
+                <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('avatar', $event)" />
+              </div>
+
+              <!-- Info Block -->
+              <div class="profile-info-block">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+                  <div>
+                    <h4 class="profile-user-name mb-1">{{ formData.name || "User Name" }}</h4>
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                      <span :class="['profile-role-badge', `profile-role-badge--${(formData.role || '').toLowerCase()}`]">
+                        <i :class="formData.role?.toLowerCase() === 'admin' ? 'ri-shield-user-line' : 'ri-user-line'"></i>{{ formData.role }}
+                      </span>
+                      <span class="profile-jabatan-badge">
+                        <i class="ri-briefcase-line"></i>{{ formData.jabatan }}
+                      </span>
+                      <span class="profile-perusahaan-badge">
+                        <i class="ri-building-line"></i>{{ displayPerusahaan }}
+                      </span>
+                      <span class="profile-sektor-badge">
+                        <i class="ri-pie-chart-line"></i>{{ displaySektor }}
+                      </span>
+                    </div>
+                    <p class="profile-email-text mb-1">
+                      <i class="ri-mail-line me-1"></i>{{ formData.email }}
+                    </p>
+                    <div class="profile-meta-row">
+                      <span><i class="ri-phone-line me-1"></i>{{ formData.phone }}</span>
+                      <span class="contact-bar-sep-inline"></span>
+                      <span><i class="ri-map-pin-line me-1"></i>{{ formData.location }}</span>
+                    </div>
+                  </div>
+                  <!-- Action Buttons (Desktop) -->
+                  <div class="save-btn-desktop d-none d-md-flex gap-2 align-self-start mt-1">
+                    <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-4">
+                      <i class="ri-arrow-left-line me-1"></i>Batal
+                    </button>
+                    <button @click="saveProfile" :disabled="isSaving" class="btn-save-primary rounded-pill px-4">
+                      <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
+                      <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+
+          <!-- INFORMASI AKUN -->
+          <div class="card custom-card gradient-header-card mb-4">
+            <div class="card-header d-flex align-items-center gap-3 users-header">
+              <div class="header-icon-box" style="width:36px;height:36px">
+                <i class="ri-user-settings-line" style="font-size:1.3rem"></i>
+              </div>
+              <div>
+                <div class="card-title mb-0 text-white fw-bold header-card-title">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
+                <div class="header-subtitle mt-1">Edit data detail profil pengguna</div>
+              </div>
+            </div>
           <div class="card-body p-4">
-            <div class="row gy-4">
-              <!-- Name (readonly in admin mode) -->
+            <div class="row g-3">
+              <!-- Name -->
               <div class="col-xl-6 col-lg-6 col-md-6">
-                <label class="form-label fw-medium"><i class="ri-user-line me-1 text-primary"></i>Nama Lengkap</label>
-                <input type="text" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.name" placeholder="Masukkan nama lengkap" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
-              </div>
-              <!-- Jabatan (readonly in admin mode) -->
-              <div class="col-xl-6 col-lg-6 col-md-6">
-                <label class="form-label fw-medium"><i class="ri-briefcase-line me-1 text-primary"></i>Jabatan</label>
-                <input type="text" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.jabatan" placeholder="Masukkan jabatan" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
-              </div>
-              <!-- Email (readonly in admin mode) -->
-              <div class="col-xl-6 col-lg-6 col-md-6">
-                <label class="form-label fw-medium"><i class="ri-mail-line me-1 text-primary"></i>Email</label>
-                <input type="email" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.email" placeholder="Masukkan email" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
-              </div>
-              <!-- Phone (readonly in admin mode) -->
-              <div class="col-xl-6 col-lg-6 col-md-6">
-                <label class="form-label fw-medium"><i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon</label>
-                <div v-if="isAdminEditMode" class="input-group">
-                  <input type="tel" class="form-control bg-light" v-model="formData.phone" placeholder="Masukkan nomor telepon" readonly disabled />
-                </div>
-                <div v-else class="input-group">
-                  <CountryCodeDropdown 
-                    v-model="selectedCountryCode" 
-                    @update:modelValue="handleCountryCodeChange"
-                  />
-                  <input 
-                    type="tel" 
-                    class="form-control" 
-                    v-model="phoneNumber"
-                    @input="handlePhoneInput"
-                    inputmode="numeric" 
-                    placeholder="813 8282 8282"
-                  />
-                </div>
-                <div class="form-text text-muted mt-1">
-                  <i class="ri-information-line"></i> Format: {{ selectedCountryCode }} 813 8282 8282
+                <div class="form-group-split" @click="focusInput(nameInput)">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px"><i class="ri-user-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Nama Lengkap</label>
+                  </div>
+                  <div class="form-group-split-input-card">
+                    <input ref="nameInput" type="text" class="form-item-input" v-model="formData.name" placeholder="Masukkan nama lengkap" />
+                    <i class="ri-pencil-line form-item-edit-action"></i>
+                  </div>
                 </div>
               </div>
-              <!-- Location (readonly in admin mode) -->
+              <!-- Jabatan -->
               <div class="col-xl-6 col-lg-6 col-md-6">
-                <label class="form-label fw-medium"><i class="ri-map-pin-line me-1 text-primary"></i>Lokasi</label>
-                <input type="text" class="form-control" :class="{ 'bg-light': isAdminEditMode }" v-model="formData.location" placeholder="Masukkan lokasi" :readonly="isAdminEditMode" :disabled="isAdminEditMode" />
+                <div class="form-group-split" @click="focusInput(jabatanSelect)">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px"><i class="ri-briefcase-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Jabatan</label>
+                  </div>
+                  <div class="form-group-split-input-card">
+                    <select ref="jabatanSelect" class="form-item-input form-item-select" v-model="selectedJabatan" :disabled="isLoadingJabatan">
+                      <option value="" disabled>Pilih jabatan</option>
+                      <option value="NEW" class="fw-bold">+ Tambah Jabatan Baru</option>
+                      <option v-for="j in jabatanList" :key="j.id" :value="j.id">{{ j.nama_jabatan }}</option>
+                    </select>
+                    <i class="ri-pencil-line form-item-edit-action"></i>
+                  </div>
+                </div>
               </div>
-              <!-- Role (editable dropdown in admin mode, readonly in self-edit mode) -->
+              <!-- New Jabatan input — expands into its own full-width row -->
+              <transition name="slide-down">
+                <div v-if="selectedJabatan === 'NEW'" class="col-12">
+                  <div class="form-group-split" @click.stop>
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px"><i class="ri-add-line" style="font-size:0.95rem"></i></div>
+                      <label class="form-item-label mb-0">Nama Jabatan Baru</label>
+                    </div>
+                    <div class="form-group-split-input-card">
+                      <input type="text" class="form-item-input" v-model="newJabatanName" placeholder="Masukkan nama jabatan baru" autofocus />
+                      <i class="ri-pencil-line form-item-edit-action"></i>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+              <!-- Email -->
               <div class="col-xl-6 col-lg-6 col-md-6">
-                <label class="form-label fw-medium">
-                  <i class="ri-shield-user-line me-1 text-primary"></i>Role 
-                  <span v-if="!isAdminEditMode" class="text-muted fs-11 ms-1">(Tidak dapat diubah)</span>
-                  <span v-else class="text-success fs-11 ms-1">(Dapat diubah)</span>
-                </label>
-                <select v-if="isAdminEditMode" v-model="formData.role" class="form-select">
-                  <option v-for="role in roleOptions" :key="role" :value="role">{{ role }}</option>
-                </select>
-                <input v-else type="text" class="form-control bg-light" v-model="formData.role" readonly disabled />
+                <div class="form-group-split" @click="focusInput(emailInput)">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-indigo" style="width:32px;height:32px"><i class="ri-mail-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Email</label>
+                  </div>
+                  <div class="form-group-split-input-card">
+                    <input ref="emailInput" type="email" class="form-item-input" v-model="formData.email" placeholder="Masukkan email" />
+                    <i class="ri-pencil-line form-item-edit-action"></i>
+                  </div>
+                </div>
+              </div>
+              <!-- Perusahaan (read-only) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <div class="form-group-split">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px"><i class="ri-building-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Perusahaan <span class="form-item-badge">dari registrasi</span></label>
+                  </div>
+                  <div class="form-group-split-input-card form-item-card--readonly">
+                    <div class="form-item-value">{{ profileStore.namaPerusahaan || 'Belum terkait' }}</div>
+                    <i class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                  </div>
+                </div>
+              </div>
+              <!-- Phone -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <div class="form-group-split">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-violet" style="width:32px;height:32px"><i class="ri-phone-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Nomor Telepon <span class="form-item-badge">dari stakeholder</span></label>
+                  </div>
+                  <div class="form-group-split-input-card form-item-card--readonly">
+                    <div class="form-item-value">{{ PHONE_PREFIX }}{{ formData.phone }}</div>
+                    <i class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                  </div>
+                </div>
+              </div>
+              <!-- Location -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <div class="form-group-split">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px"><i class="ri-map-pin-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Lokasi <span class="form-item-badge">dari stakeholder</span></label>
+                  </div>
+                  <div class="form-group-split-input-card form-item-card--readonly">
+                    <div class="form-item-value">{{ formData.location || 'Belum diatur' }}</div>
+                    <i class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                  </div>
+                </div>
+              </div>
+              <!-- Sektor -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <div class="form-group-split">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-purple" style="width:32px;height:32px"><i class="ri-pie-chart-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Sektor <span class="form-item-badge">dari stakeholder</span></label>
+                  </div>
+                  <div class="form-group-split-input-card form-item-card--readonly">
+                    <div class="form-item-value">{{ profileStore.namaSubSektor || 'Belum terkait' }}</div>
+                    <i class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                  </div>
+                </div>
+              </div>
+              <!-- Role -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <div class="form-group-split" @click="isAdminEditMode && focusInput(roleSelect)">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-red" style="width:32px;height:32px"><i class="ri-shield-user-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">
+                      Role
+                      <span v-if="!isAdminEditMode" class="form-item-badge">tidak dapat diubah</span>
+                    </label>
+                  </div>
+                  <div class="form-group-split-input-card" :class="{ 'form-item-card--readonly': !isAdminEditMode }">
+                    <select v-if="isAdminEditMode" ref="roleSelect" class="form-item-input form-item-select" v-model="formData.role">
+                      <option v-for="role in roleOptions" :key="role" :value="role">{{ role }}</option>
+                    </select>
+                    <div v-else class="form-item-value">{{ formData.role }}</div>
+                    
+                    <i v-if="isAdminEditMode" class="ri-pencil-line form-item-edit-action"></i>
+                    <i v-else class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                  </div>
+                </div>
               </div>
               <!-- Mobile Action Buttons -->
               <div class="col-12 d-md-none">
-                <div class="d-flex gap-2">
-                  <button @click="handleCancel" class="btn btn-outline-secondary w-50 py-2"><i class="ri-arrow-left-line me-1"></i>Batal</button>
-                  <button @click="saveProfile" :disabled="isSaving" class="btn text-white w-50 py-2" style="background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);">
+                <div class="d-flex gap-2 mt-1">
+                  <button @click="handleCancel" class="btn-cancel-glass rounded-pill w-50">
+                    <i class="ri-arrow-left-line me-1"></i>Batal
+                  </button>
+                  <button @click="saveProfile" :disabled="isSaving" class="btn-save-primary rounded-pill w-50">
                     <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
-                    <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
+                    <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan" }}
                   </button>
                 </div>
               </div>
@@ -494,15 +674,20 @@ const roleOptions = ['admin', 'User'];
           </div>
         </div>
 
-        <!-- Password Card (Hidden in Admin Edit Mode) -->
-        <div v-if="!isAdminEditMode" class="card custom-card gradient-header-card">
-          <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
-            <div class="d-flex align-items-center">
-              <i class="ri-lock-password-line text-white me-2 fs-18"></i>
-              <div class="card-title text-white mb-0">Ubah Password</div>
+          <!--  UBAH PASSWORD  -->
+          <div v-if="!isAdminEditMode" class="card custom-card gradient-header-card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
+              <div class="d-flex align-items-center gap-3">
+                <div class="header-icon-box" style="width:36px;height:36px">
+                  <i class="ri-lock-password-line" style="font-size:1.3rem"></i>
+                </div>
+                <div>
+                  <div class="card-title mb-0 text-white fw-bold header-card-title">Ubah Password</div>
+                  <div class="header-subtitle mt-1">Ganti kata sandi akun Anda</div>
+                </div>
+              </div>
+              <i class="ri-arrow-down-s-line text-white fs-20"></i>
             </div>
-            <i class="ri-arrow-down-s-line text-white fs-20"></i>
-          </div>
           <div id="changePassword" class="collapse">
             <div class="card-body p-4">
               <div class="row gy-3">
@@ -523,19 +708,34 @@ const roleOptions = ['admin', 'User'];
                       <i :class="showNewPassword ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
                     </button>
                   </div>
-                  <!-- Password Rules - Simplified -->
-                  <div v-if="showHint && passwordData.newPassword" class="mt-2 small">
-                    <div class="d-flex gap-4">
-                      <ul class="list-unstyled mb-0">
-                        <li v-for="(rule, i) in passwordRules.slice(0, 3)" :key="i" :class="rule.valid ? 'text-success' : 'text-danger'">
-                          <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="me-1"></i>{{ rule.label }}
-                        </li>
-                      </ul>
-                      <ul class="list-unstyled mb-0">
-                        <li v-for="(rule, i) in passwordRules.slice(3)" :key="i" :class="rule.valid ? 'text-success' : 'text-danger'">
-                          <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" class="me-1"></i>{{ rule.label }}
-                        </li>
-                      </ul>
+                  <!-- Password Strength Bar + Rule Pills -->
+                  <div v-if="passwordData.newPassword" class="mt-2">
+                    <div class="pwd-strength-wrap">
+                      <div class="pwd-strength-bar">
+                        <div
+                          class="pwd-strength-fill"
+                          :class="{
+                            'pwd-weak':   passwordRules.filter(r=>r.valid).length <= 1,
+                            'pwd-medium': passwordRules.filter(r=>r.valid).length === 2 || passwordRules.filter(r=>r.valid).length === 3,
+                            'pwd-good':   passwordRules.filter(r=>r.valid).length === 4,
+                            'pwd-strong': passwordRules.filter(r=>r.valid).length === 5,
+                          }"
+                          :style="{ width: (passwordRules.filter(r=>r.valid).length / passwordRules.length * 100) + '%' }"
+                        ></div>
+                      </div>
+                      <span class="pwd-strength-label" :class="{
+                        'text-danger':  passwordRules.filter(r=>r.valid).length <= 1,
+                        'text-warning': passwordRules.filter(r=>r.valid).length === 2 || passwordRules.filter(r=>r.valid).length === 3,
+                        'text-primary': passwordRules.filter(r=>r.valid).length === 4,
+                        'text-success': passwordRules.filter(r=>r.valid).length === 5,
+                      }">
+                        {{ passwordRules.filter(r=>r.valid).length <= 1 ? 'Lemah' : passwordRules.filter(r=>r.valid).length <= 3 ? 'Sedang' : passwordRules.filter(r=>r.valid).length === 4 ? 'Baik' : 'Kuat' }}
+                      </span>
+                    </div>
+                    <div v-if="showHint" class="d-flex flex-wrap gap-1 mt-2">
+                      <span v-for="(rule, i) in passwordRules" :key="i" :class="['pwd-rule-pill', rule.valid ? 'pwd-rule-valid' : 'pwd-rule-invalid']">
+                        <i :class="rule.valid ? 'ri-checkbox-circle-fill' : 'ri-circle-line'"></i>{{ rule.label }}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -588,97 +788,21 @@ const roleOptions = ['admin', 'User'];
                 </div>
               </div>
             </div>
-            <div class="card-footer bg-light border-top-0">
+            <div class="card-footer border-top-0 pwd-footer">
               <div class="d-flex justify-content-end">
-                <button @click="savePassword" class="btn btn-gradient-blue text-white">
+                <button @click="savePassword" class="btn-save-primary rounded-pill" style="padding: 10px 32px">
                   <i class="ri-lock-line me-1"></i>Update Password
                 </button>
               </div>
             </div>
           </div>
+          </div>
         </div>
       </div>
     </div>
+  </div>
 </template>
 
-<style scoped>
-.gradient-header-card { border: none !important; box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important; overflow: visible !important; }
-.gradient-header-card .card-header { border: none !important; border-bottom: none !important; border-block-end: none !important; border-radius: 0 !important; margin: 0 !important; overflow: hidden; }
-.gradient-header-card .card-body { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; overflow: visible !important; }
-.gradient-header-card .card-footer { border: 1px solid var(--default-border); border-top: none !important; border-radius: 0 !important; }
-.draggable { user-select: none; -webkit-user-select: none; }
-.draggable:hover { cursor: grab; }
-.draggable.dragging { cursor: grabbing; }
-.pointer-events-none { pointer-events: none; }
-@keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7); } 50% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(25, 135, 84, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(25, 135, 84, 0); } }
-.animate-pulse { animation: pulse 1.5s infinite; }
-.avatar-container.draggable img { pointer-events: none; }
-.drag-indicator { opacity: 0.7; transition: opacity 0.3s ease; }
-.profile-header-banner:hover .drag-indicator { opacity: 1; }
-.profile-header-banner.dragging .drag-indicator { opacity: 0; }
-.drag-hint-box { backdrop-filter: blur(4px); border: 1px solid rgba(255, 255, 255, 0.2); }
-.avatar-drag-indicator { opacity: 0; transition: opacity 0.3s ease; border-radius: 50%; }
-.avatar-container:hover .avatar-drag-indicator { opacity: 1; }
-.avatar-container.dragging .avatar-drag-indicator { opacity: 0.5; }
+<style src="../../assets/css/style2.css"></style>
 
-/* Dark Mode Styles */
-html[data-theme-mode="dark"] .text-dark,
-html.dark .text-dark {
-  color: #e2e8f0 !important;
-}
-
-html[data-theme-mode="dark"] .text-black,
-html.dark .text-black {
-  color: #cbd5e0 !important;
-}
-
-html[data-theme-mode="dark"] .text-primary-dark,
-html.dark .text-primary-dark {
-  color: #94a3b8 !important;
-}
-
-html[data-theme-mode="dark"] .form-label,
-html.dark .form-label {
-  color: #cbd5e0 !important;
-}
-
-html[data-theme-mode="dark"] .text-muted,
-html.dark .text-muted {
-  color: #9ca3af !important;
-}
-
-html[data-theme-mode="dark"] .avatar.border-white,
-html.dark .avatar.border-white {
-  border-color: #374151 !important;
-}
-
-/* Blue Button with White Text */
-.btn-gradient-blue {
-  background: #08377c !important;
-  border: none !important;
-  color: #ffffff !important;
-}
-
-.btn-gradient-blue:hover {
-  background: #0b5ed7 !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  color: #ffffff !important;
-}
-
-.btn-gradient-blue:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Ensure white text in dark mode */
-html[data-theme-mode="dark"] .btn-gradient-blue,
-html.dark .btn-gradient-blue {
-  color: #ffffff !important;
-}
-
-html[data-theme-mode="dark"] .btn-gradient-blue:hover,
-html.dark .btn-gradient-blue:hover {
-  color: #ffffff !important;
-}
-</style>
+<!-- All styles live in src/assets/css/style2.css - PROFILE SETTINGS PAGE section -->

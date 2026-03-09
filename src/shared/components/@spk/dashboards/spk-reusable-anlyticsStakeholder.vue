@@ -25,6 +25,8 @@ const handleIkas = () => {
 const handleCsirt = () => {
   if (props.csirtId) {
     router.push(`/csirt/${props.csirtId}`);
+  } else if (props.stakeholderSlug) {
+    router.push({ path: '/csirt', query: { stakeholder: props.stakeholderSlug } });
   } else {
     router.push("/csirt");
   }

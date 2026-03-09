@@ -4,7 +4,6 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useIkasStore } from "@/stores/ikas";
 import { useKseStore } from "@/stores/kse";
-import { usersService } from "@/services/users.service";
 import RadarChartIkas from '@/shared/components/@spk/charts/ikas-charts.vue';
 
 const router = useRouter();
@@ -33,17 +32,17 @@ onMounted(async () => {
             ikasStore.initialize();
             kseStore.initialize();
             
-            // Fetch fresh user data to get slug
-            const user = await usersService.getById(authStore.currentUser.id);
-            if (user && user.slug) {
-                userSlug.value = user.slug;
+            // Read slug from login session data (no extra API call needed)
+            const slug = authStore.currentUser.slug;
+            if (slug) {
+                userSlug.value = slug;
                 
                 // Check IKAS Progress
-                const progress = ikasStore.getOverallProgress(user.slug);
+                const progress = ikasStore.getOverallProgress(slug);
                 ikasFilled.value = progress.percent > 0;
                 
                 // Check KSE Status
-                const kseData = kseStore.getKseData(user.slug);
+                const kseData = kseStore.getKseData(slug);
                 if (kseData && kseData.kategoriSE && kseData.kategoriSE !== 'Belum Dikategorikan') {
                     kseFilled.value = true;
                     kseCategory.value = kseData.kategoriSE;

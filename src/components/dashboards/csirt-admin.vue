@@ -14,7 +14,7 @@ export default {
   data() {
     return {
       dataToPass: {
-        title: { label: "Dashboards", path: "/admin/dashboard" },
+        title: { label: "Dashboards", path: "/dashboard" },
         currentpage: "CSIRT Administration",
         activepage: "CSIRT",
       },
@@ -569,7 +569,7 @@ export default {
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
                         <router-link
-                          :to="`/admin/csirt/${item.id}`"
+                          :to="`/csirt/${item.id}`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light"
                           title="Lihat Profil">
                           <i class="ri-eye-line"></i>

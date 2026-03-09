@@ -1,5 +1,5 @@
 ﻿<script lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 import { useStakeholdersStore } from "../../stores/stakeholders";
@@ -10,6 +10,8 @@ import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useListPage } from "../../composables/useListPage";
+import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
+import type { SubSektor, Sektor } from "../../services/sektor.service";
 
 
 
@@ -60,18 +62,81 @@ export default {
     });
 
     const formErrors = ref<Record<string, string>>({});
-    
 
+    // Sektor + Sub-Sektor state
+    const sektorList = ref<Sektor[]>([]);
+    const subSektorList = ref<SubSektor[]>([]);
+    const loadingSubSektors = ref(false);
+    const selectedSektorId = ref<string | number | "">("");
+    const selectedSubSektorId = ref<string | number | "">("");
+
+    // Filtered sub sektor berdasarkan sektor yang dipilih
+    const filteredSubSektorList = computed(() => {
+      if (!selectedSektorId.value) return [];
+      return subSektorList.value.filter(ss => {
+        const pid = getSubSektorParentId(ss);
+        return pid !== undefined && String(pid) === String(selectedSektorId.value);
+      });
+    });
+
+    // ✅ Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
+    watch(selectedSubSektorId, (newId) => {
+      if (newId && subSektorList.value.length) {
+        const matched = subSektorList.value.find(ss => String(ss.id) === String(newId));
+        if (matched) {
+          formData.value.sektor = getSubSektorName(matched);
+          const pid = getSubSektorParentId(matched);
+          if (pid !== undefined) selectedSektorId.value = pid;
+        }
+      } else {
+        formData.value.sektor = "";
+      }
+    });
+
+    const loadAllSubSektors = async () => {
+      loadingSubSektors.value = true;
+      try {
+        const [sektors, subSektors] = await Promise.all([
+          sektorService.getAll(),
+          subSektorService.getAll(),
+        ]);
+        sektorList.value = sektors;
+        subSektorList.value = subSektors;
+      } catch (e) {
+        console.error("Gagal memuat sektor/sub_sektor:", e);
+        sektorList.value = [];
+        subSektorList.value = [];
+        showNotification("Data sektor tidak dapat dimuat. Pastikan backend endpoint /api/sektor dan /api/sub_sektor tersedia.", "error");
+      } finally {
+        loadingSubSektors.value = false;
+      }
+    };
+
+    // ✅ Helper: Dapatkan nama sektor induk dari nama sub sektor
+    const getSektorFromSubSektor = (subSektorName: string): string => {
+      if (!subSektorName || !subSektorList.value.length) return "-";
+      const matched = subSektorList.value.find(ss => getSubSektorName(ss) === subSektorName);
+      if (!matched) return "-";
+      const parentId = getSubSektorParentId(matched);
+      if (parentId === undefined) return "-";
+      const parentSektor = sektorList.value.find(s => String(s.id) === String(parentId));
+      return parentSektor ? getSektorName(parentSektor) : "-";
+    };
 
     const headers = [
       { text: "Nama Perusahaan", value: "nama_perusahaan", sortable: true },
-      { text: "Sub-Sektor", value: "sektor", sortable: true },
+      { text: "sub_sektor", value: "sektor", sortable: true },
       { text: "Email", value: "email", sortable: true },
       { text: "Aksi", value: "id" },
     ];
 
     const loadStakeholders = async () => {
       await stakeholdersStore.initialize();
+    };
+
+    // Helper: ambil nama sub sektor dari item
+    const getItemSubSektorName = (item: Stakeholder): string => {
+      return item.sub_sektor?.nama_sub_sektor || item.sektor || "";
     };
 
     const filteredData = computed(() => {
@@ -81,14 +146,21 @@ export default {
         data = data.filter(
           (i) =>
             i.nama_perusahaan.toLowerCase().includes(q) ||
-            i.sektor.toLowerCase().includes(q) ||
+            getItemSubSektorName(i).toLowerCase().includes(q) ||
             i.email.toLowerCase().includes(q)
         );
       }
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
-        const aVal = (a[sortField.value as keyof Stakeholder] || "") as string;
-        const bVal = (b[sortField.value as keyof Stakeholder] || "") as string;
+        let aVal = "";
+        let bVal = "";
+        if (sortField.value === "sektor") {
+          aVal = getItemSubSektorName(a);
+          bVal = getItemSubSektorName(b);
+        } else {
+          aVal = (a[sortField.value as keyof Stakeholder] as string) || "";
+          bVal = (b[sortField.value as keyof Stakeholder] as string) || "";
+        }
         return aVal.localeCompare(bVal) * mod;
       });
     });
@@ -106,7 +178,7 @@ export default {
       }
 
       if (!formData.value.sektor?.trim()) {
-        formErrors.value.sektor = "Sub-Sektor wajib diisi";
+        formErrors.value.sektor = "Sub sektor wajib diisi";
         isValid = false;
       }
 
@@ -140,8 +212,6 @@ export default {
       return isValid;
     };
 
-    // â”€â”€â”€ show notification is provided by composable â”€â”€â”€
-
     // CREATE
     const openCreateModal = () => {
       formData.value = {
@@ -154,7 +224,10 @@ export default {
         photo: "",
       };
       formErrors.value = {};
-
+      selectedSektorId.value = "";
+      selectedSubSektorId.value = "";
+      photoFile.value = null;
+      loadAllSubSektors();
       showCreateModal.value = true;
     };
 
@@ -163,12 +236,12 @@ export default {
 
       const payload: CreateStakeholderPayload = {
         nama_perusahaan: formData.value.nama_perusahaan!,
-        sektor: formData.value.sektor!,
+        id_sub_sektor: String(selectedSubSektorId.value),
         email: formData.value.email!,
         alamat: formData.value.alamat!,
         telepon: formData.value.telepon!,
         website: formData.value.website!,
-        photo: formData.value.photo || "",
+        photo: photoFile.value,
       };
 
       const result = await stakeholdersStore.createStakeholder(payload);
@@ -182,10 +255,24 @@ export default {
     };
 
     // UPDATE
-    const openEditModal = (item: Stakeholder) => {
+    const openEditModal = async (item: Stakeholder) => {
       currentEditItem.value = item;
       formData.value = { ...item };
       formErrors.value = {};
+      selectedSektorId.value = "";
+      selectedSubSektorId.value = "";
+      photoFile.value = null;
+
+      // Load sektor & sub sektor
+      await loadAllSubSektors();
+
+      // ✅ Auto-detect sub sektor ID: utamakan dari sub_sektor.id (nested), fallback nama
+      if (item.sub_sektor?.id) {
+        selectedSubSektorId.value = item.sub_sektor.id;
+      } else if (item.sektor) {
+        const matched = subSektorList.value.find(ss => getSubSektorName(ss) === item.sektor);
+        if (matched) selectedSubSektorId.value = matched.id;
+      }
 
       showEditModal.value = true;
     };
@@ -195,12 +282,12 @@ export default {
 
       const payload: Partial<CreateStakeholderPayload> = {
         nama_perusahaan: formData.value.nama_perusahaan!,
-        sektor: formData.value.sektor!,
+        id_sub_sektor: String(selectedSubSektorId.value),
         email: formData.value.email!,
         alamat: formData.value.alamat!,
         telepon: formData.value.telepon!,
         website: formData.value.website!,
-        photo: formData.value.photo,
+        photo: photoFile.value,
       };
 
       const result = await stakeholdersStore.updateStakeholderById(currentEditItem.value.id, payload);
@@ -238,6 +325,23 @@ export default {
     });
 
     const fileInput = ref<HTMLInputElement | null>(null);
+    const photoFile = ref<File | null>(null);
+
+    const input_nama_perusahaan = ref<HTMLInputElement | null>(null);
+    const input_email = ref<HTMLInputElement | null>(null);
+    const input_telepon = ref<HTMLInputElement | null>(null);
+    const input_website = ref<HTMLInputElement | null>(null);
+    const input_alamat = ref<HTMLTextAreaElement | null>(null);
+
+    const focusInput = (field: string) => {
+      setTimeout(() => {
+        if (field === 'nama_perusahaan' && input_nama_perusahaan.value) input_nama_perusahaan.value.focus();
+        else if (field === 'email' && input_email.value) input_email.value.focus();
+        else if (field === 'telepon' && input_telepon.value) input_telepon.value.focus();
+        else if (field === 'website' && input_website.value) input_website.value.focus();
+        else if (field === 'alamat' && input_alamat.value) input_alamat.value.focus();
+      }, 50);
+    };
 
     // Image validation constants
     const MAX_FILE_SIZE_MB = 5;
@@ -254,7 +358,6 @@ export default {
       if (target.files && target.files[0]) {
         const file = target.files[0];
 
-        // Validate file format
         if (!ALLOWED_FORMATS.includes(file.type)) {
           showNotification(
             `Format file tidak didukung. Gunakan ${ALLOWED_EXTENSIONS}.`,
@@ -264,7 +367,6 @@ export default {
           return;
         }
 
-        // Validate file size
         if (file.size > MAX_FILE_SIZE_BYTES) {
           showNotification(
             `Ukuran file terlalu besar. Maksimal ${MAX_FILE_SIZE_MB}MB.`,
@@ -274,6 +376,9 @@ export default {
           return;
         }
 
+        // Simpan File untuk upload
+        photoFile.value = file;
+        // Simpan base64 untuk preview
         const reader = new FileReader();
         reader.onload = (e) => {
           if (e.target?.result) {
@@ -286,6 +391,7 @@ export default {
 
     const removeImage = () => {
       formData.value.photo = "";
+      photoFile.value = null;
       if (fileInput.value) {
         fileInput.value.value = "";
       }
@@ -359,12 +465,29 @@ export default {
       toggleSort,
       clearSearch,
       fileInput,
+      photoFile,
+      input_nama_perusahaan,
+      input_email,
+      input_telepon,
+      input_website,
+      input_alamat,
+      focusInput,
       triggerFileInput,
       onFileChange,
       removeImage,
+      getItemSubSektorName,
       ALLOWED_EXTENSIONS,
       MAX_FILE_SIZE_MB,
       ALLOWED_FORMATS,
+      subSektorList,
+      sektorList,
+      filteredSubSektorList,
+      loadingSubSektors,
+      selectedSektorId,
+      selectedSubSektorId,
+      getSektorName,
+      getSubSektorName,
+      getSektorFromSubSektor,
 
       getSektorBadgeClass: (sektor: string) => {
         const sektorColors: Record<string, string> = {
@@ -435,7 +558,7 @@ export default {
             <div class="search-container position-relative">
               <i class="ri-search-line card-search-icon"></i>
               <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
-                placeholder="Cari perusahaan, sub-sektor, atau email..." />
+                placeholder="Cari perusahaan, sub_sektor, atau email..." />
               <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
                 <i class="ri-close-circle-fill"></i>
               </button>
@@ -468,15 +591,15 @@ export default {
               <div class="stat-card">
                 <div class="stat-icon stat-icon-teal"><i class="ri-pie-chart-2-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ new Set(filteredData.map((d) => d.sektor)).size }}</div>
-                  <div class="stat-label">Sub-Sektor Aktif</div>
+                  <div class="stat-value">{{ new Set(filteredData.map((d) => getItemSubSektorName(d))).size }}</div>
+                  <div class="stat-label">Sub Sektor Aktif</div>
                 </div>
               </div>
               <div class="stat-card">
                 <div class="stat-icon stat-icon-violet"><i class="ri-check-double-line"></i></div>
                 <div>
                   <div class="stat-value">{{ countBoth }}</div>
-                  <div class="stat-label">IKAS &amp; KSE</div>
+                  <div class="stat-label">IKAS &amp; CSIRT</div>
                 </div>
               </div>
               <div class="stat-card">
@@ -490,7 +613,7 @@ export default {
                 <div class="stat-icon stat-icon-teal"><i class="ri-shield-check-line"></i></div>
                 <div>
                   <div class="stat-value">{{ countKseOnly }}</div>
-                  <div class="stat-label">KSE Saja</div>
+                  <div class="stat-label">CSIRT Saja</div>
                 </div>
               </div>
             </div>
@@ -554,7 +677,7 @@ export default {
                     <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sub-Sektor</span>
+                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sub Sektor</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" 
                             :class="{
@@ -632,13 +755,12 @@ export default {
                       </div>
                     </td>
                     <td class="align-middle">
-                      <span :class="getSektorBadgeClass(item.sektor)">
-                        {{ item.sektor }}
+                      <span :class="getSektorBadgeClass(getItemSubSektorName(item))">
+                        {{ getItemSubSektorName(item) }}
                       </span>
                     </td>
                     <td class="align-middle">
                       <a :href="`mailto:${item.email}`" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none">
-                       
                         <span class="email-text">{{ item.email }}</span>
                       </a>
                     </td>
@@ -650,18 +772,18 @@ export default {
                           </span>
                           <span class="badge-label">IKAS</span>
                         </div>
-                        <div class="status-badge" :class="hasKse(item.slug) ? 'badge-done' : 'badge-pending'" title="KSE/CSIRT">
+                        <div class="status-badge" :class="hasKse(item.slug) ? 'badge-done' : 'badge-pending'" title="CSIRT">
                           <span class="badge-icon-dot">
                             <i :class="hasKse(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
                           </span>
-                          <span class="badge-label">KSE</span>
+                          <span class="badge-label">CSIRT</span>
                         </div>
                       </div>
                     </td>
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
                         <router-link
-                          :to="`/admin/stakeholders/${item.slug}`"
+                          :to="`/stakeholders/${item.slug}`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light"
                           title="Lihat Profil">
                           <i class="ri-eye-line"></i>
@@ -738,27 +860,29 @@ export default {
     </div>
   </div>
 
-  <!-- Create Modal -->
+  <!-- ===================== CREATE MODAL ===================== -->
   <div v-if="showCreateModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
-            <div class="d-flex align-items-center">
-              <i class="ri-add-circle-line text-white me-2 fs-18"></i>
-              <div class="card-title text-white mb-0">
-                Tambah Stakeholder Baru
+          <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header">
+            <div class="d-flex align-items-center gap-3">
+              <div class="header-icon-box">
+                <i class="ri-add-circle-line"></i>
+              </div>
+              <div>
+                <div class="card-title mb-0 text-white fw-bold header-card-title">Tambah Stakeholder Baru</div>
+                <div class="header-subtitle mt-1">Isi data perusahaan stakeholder baru</div>
               </div>
             </div>
             <button type="button" class="btn-close btn-close-white" @click="showCreateModal = false"></button>
           </div>
           <div class="card-body p-4 bg-white">
             <form @submit.prevent="createStakeholder">
-              <div class="row gy-4">
-                <!-- Photo Section - Horizontal Layout -->
+              <div class="row gy-3">
+                <!-- Photo Section -->
                 <div class="col-xl-12">
                   <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
-                    <!-- Photo Preview (Left) -->
                     <div 
                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
                       :style="{ 
@@ -768,15 +892,12 @@ export default {
                         backgroundPosition: 'center'
                       }"
                     >
-                      <!-- Empty State -->
                       <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada foto</span>
                       </div>
                     </div>
                     <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
-                    
-                    <!-- Photo Info & Actions (Right) -->
                     <div class="flex-grow-1">
                       <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
                         <i class="ri-image-2-line text-primary"></i>
@@ -801,96 +922,110 @@ export default {
 
                 <!-- Nama Perusahaan -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-building-line me-1 text-primary"></i>Nama
-                    Perusahaan <span class="text-danger">*</span>
-                  </label>
-                  <input type="text" class="form-control" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
-                  <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">
-                    {{ formErrors.nama_perusahaan }}
+                  <div class="form-group-split" @click="focusInput('nama_perusahaan')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px">
+                        <i class="ri-building-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Nama Perusahaan <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.nama_perusahaan }">
+                      <input ref="input_nama_perusahaan" type="text" class="form-item-input" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
+                      <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">{{ formErrors.nama_perusahaan }}</div>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Sub-Sektor -->
+                <!-- ✅ SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sub-Sektor
-                    <span class="text-danger">*</span>
-                  </label>
-                  <select v-model="formData.sektor" class="form-select" :class="{ 'is-invalid': formErrors.sektor }">
-                    <option value="" disabled>-- Pilih Sub-Sektor --</option>
-                    <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
-                    <option value="Pangan & perikanan">Pangan & perikanan</option>
-                    <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
-                    <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
-                    <option value="Kimia hulu">Kimia hulu</option>
-                    <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
-                    <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
-                    <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
-                    <option value="Logam">Logam</option>
-                    <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
-                    <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
-                    <option value="Elektronika & telematika">Elektronika & telematika</option>
-                  </select>
-                  <div v-if="formErrors.sektor" class="invalid-feedback">
-                    {{ formErrors.sektor }}
+                  <div class="form-group-split">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px">
+                        <i class="ri-pie-chart-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Sub Sektor <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.sektor }">
+                      <select
+                        v-model="selectedSubSektorId"
+                        class="form-item-input form-item-select"
+                        :class="{ 'is-invalid': formErrors.sektor }"
+                        :disabled="loadingSubSektors"
+                      >
+                        <option value="" disabled>
+                          {{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}
+                        </option>
+                        <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">
+                          {{ getSubSektorName(ss) }}
+                        </option>
+                      </select>
+                      <div v-if="formErrors.sektor" class="invalid-feedback">{{ formErrors.sektor }}</div>
+                      <small v-if="loadingSubSektors" class="text-muted mt-1 d-block">Memuat data sektor...</small>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Email -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-mail-line me-1 text-primary"></i>Email
-                    <span class="text-danger">*</span>
-                  </label>
-                  <input type="email" class="form-control" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
-                  <div v-if="formErrors.email" class="invalid-feedback">
-                    {{ formErrors.email }}
+                  <div class="form-group-split" @click="focusInput('email')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-indigo" style="width:32px;height:32px">
+                        <i class="ri-mail-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Email <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.email }">
+                      <input ref="input_email" type="email" class="form-item-input" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
+                      <div v-if="formErrors.email" class="invalid-feedback">{{ formErrors.email }}</div>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Phone -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-phone-line me-1 text-primary"></i>Nomor
-                    Telepon <span class="text-danger">*</span>
-                  </label>
-                  <input 
-                      type="tel" 
-                      class="form-control" 
-                      v-model="formData.telepon"
-                      placeholder="Masukkan nomor telepon"
-                      :class="{ 'is-invalid': formErrors.telepon }"
-                    />
-                  <div v-if="formErrors.telepon" class="invalid-feedback d-block">
-                    {{ formErrors.telepon }}
+                  <div class="form-group-split" @click="focusInput('telepon')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-violet" style="width:32px;height:32px">
+                        <i class="ri-phone-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Nomor Telepon <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.telepon }">
+                      <input ref="input_telepon" type="tel" class="form-item-input" v-model="formData.telepon" placeholder="Masukkan nomor telepon" :class="{ 'is-invalid': formErrors.telepon }" />
+                      <div v-if="formErrors.telepon" class="invalid-feedback d-block">{{ formErrors.telepon }}</div>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Website -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-global-line me-1 text-primary"></i>Website
-                    <span class="text-danger">*</span>
-                  </label>
-                  <input type="url" class="form-control" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="Masukkan website" />
-                  <div v-if="formErrors.website" class="invalid-feedback">
-                    {{ formErrors.website }}
+                  <div class="form-group-split" @click="focusInput('website')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px">
+                        <i class="ri-global-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Website <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.website }">
+                      <input ref="input_website" type="url" class="form-item-input" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="https://contoh.com" />
+                      <div v-if="formErrors.website" class="invalid-feedback">{{ formErrors.website }}</div>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Empty column for alignment -->
-                <div class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"></div>
-
                 <!-- Alamat -->
                 <div class="col-12">
-                  <label class="form-label fw-medium">
-                    <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
-                    <span class="text-danger">*</span>
-                  </label>
-                  <textarea class="form-control" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
-                  <div v-if="formErrors.alamat" class="invalid-feedback">
-                    {{ formErrors.alamat }}
+                  <div class="form-group-split" @click="focusInput('alamat')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-red" style="width:32px;height:32px">
+                        <i class="ri-map-pin-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Alamat <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.alamat }">
+                      <textarea ref="input_alamat" class="form-item-input" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
+                      <div v-if="formErrors.alamat" class="invalid-feedback">{{ formErrors.alamat }}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -909,27 +1044,29 @@ export default {
     </div>
   </div>
 
-  <!-- Edit Modal -->
+  <!-- ===================== EDIT MODAL ===================== -->
   <div v-if="showEditModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
-            <div class="d-flex align-items-center">
-              <i class="ri-building-2-line text-white me-2 fs-18"></i>
-              <div class="card-title text-white mb-0">
-                Edit Stakeholder - Informasi Perusahaan
+          <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header">
+            <div class="d-flex align-items-center gap-3">
+              <div class="header-icon-box">
+                <i class="ri-building-2-line"></i>
+              </div>
+              <div>
+                <div class="card-title mb-0 text-white fw-bold header-card-title">Edit Stakeholder</div>
+                <div class="header-subtitle mt-1">Edit data detail informasi perusahaan</div>
               </div>
             </div>
             <button type="button" class="btn-close btn-close-white" @click="showEditModal = false"></button>
           </div>
           <div class="card-body p-4 bg-white">
             <form @submit.prevent="updateStakeholder">
-              <div class="row gy-4">
-                <!-- Photo Section - Horizontal Layout -->
+              <div class="row gy-3">
+                <!-- Photo Section -->
                 <div class="col-xl-12">
                   <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
-                    <!-- Photo Preview (Left) -->
                     <div 
                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
                       :style="{ 
@@ -939,15 +1076,12 @@ export default {
                         backgroundPosition: 'center'
                       }"
                     >
-                      <!-- Empty State -->
                       <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada foto</span>
                       </div>
                     </div>
                     <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
-                    
-                    <!-- Photo Info & Actions (Right) -->
                     <div class="flex-grow-1">
                       <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
                         <i class="ri-image-2-line text-primary"></i>
@@ -972,97 +1106,110 @@ export default {
 
                 <!-- Nama Perusahaan -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-building-line me-1 text-primary"></i>Nama
-                    Perusahaan <span class="text-danger">*</span>
-                  </label>
-                  <input type="text" class="form-control" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
-                  <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">
-                    {{ formErrors.nama_perusahaan }}
+                  <div class="form-group-split" @click="focusInput('nama_perusahaan')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px">
+                        <i class="ri-building-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Nama Perusahaan <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.nama_perusahaan }">
+                      <input ref="input_nama_perusahaan" type="text" class="form-item-input" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
+                      <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">{{ formErrors.nama_perusahaan }}</div>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Sub-Sektor -->
+                <!-- ✅ SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-pie-chart-line me-1 text-primary"></i>Sub-Sektor
-                    <span class="text-danger">*</span>
-                  </label>
-                  <select v-model="formData.sektor" class="form-select" :class="{ 'is-invalid': formErrors.sektor }">
-                    <option value="" disabled>-- Pilih Sub-Sektor --</option>
-                    <option value="Hasil hutan & perkebunan">Hasil hutan & perkebunan</option>
-                    <option value="Pangan & perikanan">Pangan & perikanan</option>
-                    <option value="Minuman, tembakau & bahan penyegar">Minuman, tembakau & bahan penyegar</option>
-                    <option value="Kemurgi, oleokimia & pakan">Kemurgi, oleokimia & pakan</option>
-                    <option value="Kimia hulu">Kimia hulu</option>
-                    <option value="Kimia hilir & farmasi">Kimia hilir & farmasi</option>
-                    <option value="Semen, keramik & nonlogam">Semen, keramik & nonlogam</option>
-                    <option value="Tekstil, kulit & alas kaki">Tekstil, kulit & alas kaki</option>
-                    <option value="Logam">Logam</option>
-                    <option value="Permesinan & alat pertanian">Permesinan & alat pertanian</option>
-                    <option value="Transportasi, maritim & pertahanan">Transportasi, maritim & pertahanan</option>
-                    <option value="Elektronika & telematika">Elektronika & telematika</option>
-                  </select>
-                  <div v-if="formErrors.sektor" class="invalid-feedback">
-                    {{ formErrors.sektor }}
+                  <div class="form-group-split">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px">
+                        <i class="ri-pie-chart-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Sub Sektor <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.sektor }">
+                      <select
+                        v-model="selectedSubSektorId"
+                        class="form-item-input form-item-select"
+                        :class="{ 'is-invalid': formErrors.sektor }"
+                        :disabled="loadingSubSektors"
+                      >
+                        <option value="" disabled>
+                          {{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}
+                        </option>
+                        <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">
+                          {{ getSubSektorName(ss) }}
+                        </option>
+                      </select>
+                      <div v-if="formErrors.sektor" class="invalid-feedback">{{ formErrors.sektor }}</div>
+                      <small v-if="loadingSubSektors" class="text-muted mt-1 d-block">Memuat data sektor...</small>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Email -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-mail-line me-1 text-primary"></i>Email
-                    <span class="text-danger">*</span>
-                  </label>
-                  <input type="email" class="form-control" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
-                  <div v-if="formErrors.email" class="invalid-feedback">
-                    {{ formErrors.email }}
+                  <div class="form-group-split" @click="focusInput('email')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-indigo" style="width:32px;height:32px">
+                        <i class="ri-mail-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Email <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.email }">
+                      <input ref="input_email" type="email" class="form-item-input" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
+                      <div v-if="formErrors.email" class="invalid-feedback">{{ formErrors.email }}</div>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Phone -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-phone-line me-1 text-primary"></i>Nomor
-                    Telepon <span class="text-danger">*</span>
-                  </label>
-                  <input 
-                      type="tel" 
-                      class="form-control" 
-                      v-model="formData.telepon"
-                      placeholder="Masukkan nomor telepon"
-                      :class="{ 'is-invalid': formErrors.telepon }"
-                    />
-                  <div v-if="formErrors.telepon" class="invalid-feedback d-block">
-                    {{ formErrors.telepon }}
+                  <div class="form-group-split" @click="focusInput('telepon')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-violet" style="width:32px;height:32px">
+                        <i class="ri-phone-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Nomor Telepon <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.telepon }">
+                      <input ref="input_telepon" type="tel" class="form-item-input" v-model="formData.telepon" placeholder="Masukkan nomor telepon" :class="{ 'is-invalid': formErrors.telepon }" />
+                      <div v-if="formErrors.telepon" class="invalid-feedback d-block">{{ formErrors.telepon }}</div>
+                    </div>
                   </div>
                 </div>
-
 
                 <!-- Website -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
-                  <label class="form-label fw-medium">
-                    <i class="ri-global-line me-1 text-primary"></i>Website
-                    <span class="text-danger">*</span>
-                  </label>
-                  <input type="url" class="form-control" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="Masukkan website" />
-                  <div v-if="formErrors.website" class="invalid-feedback">
-                    {{ formErrors.website }}
+                  <div class="form-group-split" @click="focusInput('website')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px">
+                        <i class="ri-global-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Website <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.website }">
+                      <input ref="input_website" type="url" class="form-item-input" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="https://contoh.com" />
+                      <div v-if="formErrors.website" class="invalid-feedback">{{ formErrors.website }}</div>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Empty column for alignment -->
-                <div class="col-xl-6 col-lg-6 col-md-6 d-none d-md-block"></div>
-
                 <!-- Alamat -->
                 <div class="col-12">
-                  <label class="form-label fw-medium">
-                    <i class="ri-map-pin-line me-1 text-primary"></i>Alamat
-                    <span class="text-danger">*</span>
-                  </label>
-                  <textarea class="form-control" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
-                  <div v-if="formErrors.alamat" class="invalid-feedback">
-                    {{ formErrors.alamat }}
+                  <div class="form-group-split" @click="focusInput('alamat')">
+                    <div class="form-group-split-label-card">
+                      <div class="form-item-icon stat-icon-red" style="width:32px;height:32px">
+                        <i class="ri-map-pin-line" style="font-size:0.95rem"></i>
+                      </div>
+                      <label class="form-item-label mb-0">Alamat <span class="text-danger ms-1">*</span></label>
+                    </div>
+                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.alamat }">
+                      <textarea ref="input_alamat" class="form-item-input" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
+                      <div v-if="formErrors.alamat" class="invalid-feedback">{{ formErrors.alamat }}</div>
+                    </div>
                   </div>
                 </div>
 
@@ -1085,7 +1232,7 @@ export default {
     </div>
   </div>
 
-  <!-- Delete Confirmation Modal -->
+  <!-- ===================== DELETE MODAL ===================== -->
   <div v-if="showDeleteModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showDeleteModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
       <div class="modal-content">
@@ -1099,8 +1246,8 @@ export default {
             <h5 class="mt-3">Apakah Anda yakin?</h5>
             <p class="text-muted">
               Anda akan menghapus stakeholder
-              <strong>{{ currentDeleteItem?.nama_perusahaan }}</strong
-              >. Tindakan ini tidak dapat dibatalkan.
+              <strong>{{ currentDeleteItem?.nama_perusahaan }}</strong>.
+              Tindakan ini tidak dapat dibatalkan.
             </p>
           </div>
         </div>

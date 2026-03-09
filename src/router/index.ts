@@ -58,7 +58,7 @@ const routes: RouteRecordRaw[] = [
         },
         // Admin Routes
         {
-          path: 'admin',
+          path: '',
           component: () => import("../shared/layouts/simple-router-view.vue"),
           meta: { requiresAdmin: true },
           children: [
@@ -93,7 +93,7 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/dashboards/profile-stakeholders.vue"),
             },
             {
-              path: 'csirt',
+              path: 'csirt-admin',
               name: 'Csirt Admin',
               component: () => import("../components/dashboards/csirt-admin.vue"),
             },
@@ -102,21 +102,25 @@ const routes: RouteRecordRaw[] = [
         {
           path: `ikas`,
           name: 'Ikas',
+          meta: { requiresStakeholder: true },
           component: () => import("../components/ikas.vue"),
         },
         {
           path: `ikas-crud`,
           name: 'Ikas Crud',
+          meta: { requiresStakeholder: true },
           component: () => import("../components/ikas-crud.vue"),
         },
         {
           path: `kse`,
           name: 'Kse',
+          meta: { requiresStakeholder: true },
           component: () => import("../components/kse/KategorisasiSE-list.vue"),
         },
         {
           path: `kse-crud`,
           name: 'Kse Crud',
+          meta: { requiresStakeholder: true },
           component: () => import("../components/kse-crud.vue"),
         },
         {
@@ -1249,7 +1253,7 @@ router.beforeEach((to, _from, next) => {
   } else if (isAuthenticated && to.path === '/') {
     // Redirect to role-appropriate dashboard if already authenticated
     if (authStore.isAdmin) {
-      next('/admin/dashboard');
+      next('/dashboard');
     } else {
       next('/dashboards');
     }
@@ -1258,6 +1262,24 @@ router.beforeEach((to, _from, next) => {
     if (!authStore.isAdmin) {
       next('/dashboards');
     } else {
+      next();
+    }
+  } else if (authStore.isAdmin && to.path === '/dashboards') {
+    // Prevent admins from accessing user dashboard
+    next('/dashboard');
+  } else if (to.meta?.requiresStakeholder) {
+    // Check if accessing IKAS/KSE without a valid stakeholder context (only for admins)
+    if (authStore.isAdmin) {
+      // Admin: strictly require slug in query params, no sessionStorage fallback
+      const stakeholderSlug = to.query.stakeholder || to.query.slug;
+      if (!stakeholderSlug) {
+        next('/stakeholders');
+      } else {
+        sessionStorage.setItem('currentStakeholder', String(stakeholderSlug));
+        next();
+      }
+    } else {
+      // Users can access directly without requiring slug
       next();
     }
   } else {

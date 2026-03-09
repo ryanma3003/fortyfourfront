@@ -109,16 +109,13 @@ export const useStakeholdersStore = defineStore('stakeholders', {
             try {
                 const updated = await stakeholdersService.update(id, updates);
 
-                const index = this.stakeholders.findIndex(s => s.id === id);
-                if (index !== -1) {
-                    this.stakeholders[index] = {
-                        ...updated,
-                        slug: updated.slug || this.generateSlug(updated.nama_perusahaan)
-                    };
-                }
+                // Refresh the store so any updated relationships or slugs are fully synced
+                await this.refresh();
+
+                const newStakeholder = this.stakeholders.find(s => String(s.id) === String(id));
 
                 this.loading = false;
-                return { success: true, data: updated };
+                return { success: true, data: newStakeholder || updated };
             } catch (error: any) {
                 console.error('Failed to update stakeholder:', error);
                 this.error = error.message || 'Failed to update stakeholder';

@@ -2,51 +2,54 @@
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
-import { FriendsList } from "../../data/pages/profiledata";
-import { stakeholdersData } from "../../data/dummydata";
+import { picService } from "../../services/pic.service";
+import { useStakeholdersStore } from "../../stores/stakeholders";
 
 // Router & Route
 const route = useRoute();
 const router = useRouter();
+const stakeholdersStore = useStakeholdersStore();
 
-// Computed props from route
-const index = computed(() => 
-  route.query.index !== undefined ? Number(route.query.index) : null
-);
-const isEdit = computed(() => index.value !== null && !!FriendsList[index.value]);
+// Route params
+const picId = computed(() => route.query.picId as string | undefined);
+const isEdit = computed(() => !!picId.value);
 
 // Stakeholder info
 const currentSlug = ref("");
+const currentPerusahaanId = ref<string | number>("");
 const stakeholderName = ref("");
 
 // Page header data
 const dataToPass = computed(() => ({
-  title: { 
-    label: `Profile ${stakeholderName.value || "Stakeholder"}`, 
-    path: `/admin/stakeholders/${currentSlug.value}` 
+  title: {
+    label: `Profile ${stakeholderName.value || "Stakeholder"}`,
+    path: `/stakeholders/${currentSlug.value}`,
   },
   currentpage: isEdit.value ? "Edit PIC" : "Add PIC",
   activepage: "Account Settings",
 }));
 
 // Form state
-const form = ref({ name: "", telepon: "" });
+const form = ref({ nama: "", telepon: "" });
 const errors = ref({ name: "", telepon: "" });
-const selectedCountryCode = ref("+62");
 const phoneNumber = ref("");
+
+// Input refs
+const inputName = ref<HTMLInputElement | null>(null);
+const inputPhone = ref<HTMLInputElement | null>(null);
 
 // UI state
 const showSuccessAlert = ref(false);
 const showErrorAlert = ref(false);
 const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
 const isSaving = ref(false);
+const isLoadingPic = ref(false);
 
 // Computed
-const isFormValid = computed(() => 
-  form.value.name.trim() && 
-  form.value.telepon.trim() && 
-  !errors.value.name && 
+const isFormValid = computed(() =>
+  form.value.nama.trim() &&
+  form.value.telepon.trim() &&
+  !errors.value.name &&
   !errors.value.telepon
 );
 
@@ -59,9 +62,7 @@ const formatPhoneNumber = (value: string): string => {
 };
 
 const updateFullPhone = () => {
-  form.value.telepon = phoneNumber.value 
-    ? `${selectedCountryCode.value} ${phoneNumber.value}` 
-    : "";
+  form.value.telepon = phoneNumber.value ? `+62 ${phoneNumber.value}` : "";
 };
 
 // Event handlers
@@ -72,19 +73,17 @@ const handlePhoneInput = (event: Event) => {
   updateFullPhone();
 };
 
-const handleCountryCodeChange = () => updateFullPhone();
-
 // Validation
 const validateName = () => {
-  errors.value.name = form.value.name.trim() ? "" : "Name cannot be empty";
+  errors.value.name = form.value.nama.trim() ? "" : "Nama tidak boleh kosong";
 };
 
 const validatePhone = () => {
   const nums = phoneNumber.value.replace(/\D/g, "");
   if (!nums) {
-    errors.value.telepon = "Phone number is required";
+    errors.value.telepon = "Nomor telepon wajib diisi";
   } else if (nums.length < 8) {
-    errors.value.telepon = "Phone number must be at least 8 digits";
+    errors.value.telepon = "Nomor telepon minimal 8 digit";
   } else {
     errors.value.telepon = "";
   }
@@ -97,21 +96,25 @@ const handleSave = async () => {
   if (!isFormValid.value) return;
 
   isSaving.value = true;
-
   try {
-    await new Promise((resolve) => setTimeout(resolve, 800)); // Simulate API
-
-    if (isEdit.value && index.value !== null) {
-      FriendsList[index.value] = { ...form.value };
+    if (isEdit.value && picId.value) {
+      await picService.update(picId.value, {
+        nama: form.value.nama,
+        telepon: form.value.telepon,
+      });
     } else {
-      FriendsList.push({ ...form.value });
+      await picService.create({
+        nama: form.value.nama,
+        telepon: form.value.telepon,
+        id_perusahaan: currentPerusahaanId.value,
+      });
     }
 
     showSuccessAlert.value = true;
     setTimeout(() => router.back(), 1000);
-  } catch {
+  } catch (err: any) {
     showErrorAlert.value = true;
-    errorMessage.value = "Terjadi kesalahan. Silakan coba lagi.";
+    errorMessage.value = err?.message || "Terjadi kesalahan. Silakan coba lagi.";
     setTimeout(() => (showErrorAlert.value = false), 3000);
   } finally {
     isSaving.value = false;
@@ -120,103 +123,172 @@ const handleSave = async () => {
 
 const handleCancel = () => router.back();
 
+const focusInput = (inputRef: any) => {
+  const el = inputRef?.value || inputRef;
+  if (el && typeof el.focus === "function") el.focus();
+};
+
 // Initialize
-onMounted(() => {
-  // Load existing data if editing
-  if (isEdit.value && index.value !== null) {
-    Object.assign(form.value, FriendsList[index.value]);
-    
-    // Parse phone number
-    const match = form.value.telepon?.match(/^(\+\d+)\s*(.+)$/);
-    if (match) {
-      selectedCountryCode.value = match[1];
-      phoneNumber.value = match[2];
-    } else if (form.value.telepon) {
-      phoneNumber.value = form.value.telepon;
+onMounted(async () => {
+  // Get stakeholder info from slug
+  const slug = route.query.slug as string;
+  const idPerusahaan = route.query.id_perusahaan as string;
+
+  if (slug) {
+    currentSlug.value = slug;
+    if (!stakeholdersStore.initialized) await stakeholdersStore.initialize();
+    const found = stakeholdersStore.getStakeholderBySlug(slug);
+    if (found) {
+      stakeholderName.value = found.nama_perusahaan;
+      currentPerusahaanId.value = found.id;
     }
   }
 
-  // Get stakeholder info from slug
-  const slug = route.query.slug as string;
-  if (slug) {
-    currentSlug.value = slug;
-    const found = stakeholdersData.find((s) => s.slug === slug);
-    if (found) stakeholderName.value = found.nama_perusahaan;
+  if (idPerusahaan) {
+    currentPerusahaanId.value = idPerusahaan;
+  }
+
+  // Load existing PIC if editing
+  if (isEdit.value && picId.value) {
+    isLoadingPic.value = true;
+    try {
+      const pic = await picService.getById(picId.value);
+      form.value.nama = pic.nama;
+      form.value.telepon = pic.telepon;
+
+      // Parse phone number — strip +62 prefix if present
+      const match = pic.telepon?.match(/^\+62\s*(.+)$/);
+      phoneNumber.value = match ? match[1] : pic.telepon;
+    } catch (err: any) {
+      showErrorAlert.value = true;
+      errorMessage.value = "Gagal memuat data PIC.";
+    } finally {
+      isLoadingPic.value = false;
+    }
   }
 });
 </script>
 
 <template>
   <Pageheader :propData="dataToPass" />
-  <!-- Alerts -->
-  <div 
-    v-if="showSuccessAlert" 
-    class="alert alert-success alert-dismissible fade show mb-3 d-flex align-items-center" 
-    role="alert"
-  >
-    <i class="ri-checkbox-circle-line fs-18 me-2"></i>
-    <div>Perubahan berhasil disimpan!</div>
-    <button type="button" class="btn-close" @click="showSuccessAlert = false"></button>
-  </div>
 
-  <div 
-    v-if="showErrorAlert" 
-    class="alert alert-danger alert-dismissible fade show mb-3 d-flex align-items-center" 
-    role="alert"
-  >
-    <i class="ri-error-warning-line fs-18 me-2"></i>
-    <div>{{ errorMessage }}</div>
-    <button type="button" class="btn-close" @click="showErrorAlert = false"></button>
-  </div>
+  <!-- Alerts - Toast Style -->
+  <transition name="slide-toast">
+    <div v-if="showSuccessAlert" class="settings-toast settings-toast--success">
+      <div class="settings-toast-icon"><i class="ri-checkbox-circle-fill"></i></div>
+      <div class="settings-toast-body"><strong>Berhasil!</strong> Perubahan berhasil disimpan.</div>
+      <button class="settings-toast-close" @click="showSuccessAlert = false"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
+  <transition name="slide-toast">
+    <div v-if="showErrorAlert" class="settings-toast settings-toast--error">
+      <div class="settings-toast-icon"><i class="ri-error-warning-fill"></i></div>
+      <div class="settings-toast-body"><strong>Error!</strong> {{ errorMessage }}</div>
+      <button class="settings-toast-close" @click="showErrorAlert = false"><i class="ri-close-line"></i></button>
+    </div>
+  </transition>
 
   <!-- Main Container -->
-  <div class="row justify-content-center">
-    <div class="col-xl-11 col-xxl-10">
+  <div class="row">
+    <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <!-- Card Header -->
-        <div class="card-header d-flex align-items-center gradient-header-blue">
-          <i class="ri-user-add-line text-white me-2 fs-18"></i>
-          <div class="card-title text-white mb-0">
-            {{ isEdit ? "Edit PIC" : "Tambah PIC" }}
+        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+          <div class="d-flex align-items-center gap-3">
+            <div class="header-icon-box">
+              <i class="ri-user-add-line"></i>
+            </div>
+            <div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">
+                {{ isEdit ? "Edit PIC" : "Tambah PIC" }}
+              </div>
+              <div class="header-subtitle mt-1">
+                {{ isEdit ? "Ubah data Person in Charge" : "Tambah Person in Charge baru" }} — {{ stakeholderName || "Stakeholder" }}
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Card Body -->
         <div class="card-body p-4">
-          <div class="row gy-4">
+          <!-- Loading state -->
+          <div v-if="isLoadingPic" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="text-muted mt-2 fs-13">Memuat data PIC...</div>
+          </div>
+
+          <div v-else class="row g-3">
             <!-- Name Field -->
-            <div class="col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-user-line me-1 text-primary"></i>Nama PIC
-              </label>
-              <input type="text" class="form-control" v-model="form.name" @blur="validateName" placeholder="Masukkan nama PIC" :class="{ 'is-invalid': errors.name }" />
-              <div class="invalid-feedback">{{ errors.name }}</div>
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <div class="form-group-split" @click="focusInput(inputName)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px">
+                    <i class="ri-user-line" style="font-size:0.95rem"></i>
+                  </div>
+                  <label class="form-item-label mb-0">
+                    Nama PIC <span class="text-danger">*</span>
+                  </label>
+                </div>
+                <div class="form-group-split-input-card" :class="{ 'is-invalid-card': errors.name }">
+                  <input
+                    ref="inputName"
+                    type="text"
+                    class="form-item-input"
+                    v-model="form.nama"
+                    @blur="validateName"
+                    placeholder="Masukkan nama PIC"
+                  />
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
+              </div>
+              <div v-if="errors.name" class="text-danger mt-1 fs-12">
+                <i class="ri-error-warning-line me-1"></i>{{ errors.name }}
+              </div>
             </div>
 
             <!-- Phone Field -->
-            <div class="col-md-6">
-              <label class="form-label fw-medium">
-                <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon
-              </label>
-              <div class="input-group" :class="{ 'is-invalid': errors.telepon }">
-                <CountryCodeDropdown v-model="selectedCountryCode" :error="!!errors.telepon" @update:modelValue="handleCountryCodeChange"/>
-                <input type="tel" class="form-control phone-input" v-model="phoneNumber" @input="handlePhoneInput" @blur="validatePhone" inputmode="numeric" placeholder="813-8282-8282" :class="{ 'is-invalid': errors.telepon }"/>
+            <div class="col-xl-6 col-lg-6 col-md-6">
+              <div class="form-group-split" @click="focusInput(inputPhone)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px">
+                    <i class="ri-phone-line" style="font-size:0.95rem"></i>
+                  </div>
+                  <label class="form-item-label mb-0">
+                    Nomor Telepon <span class="text-danger">*</span>
+                  </label>
+                </div>
+                <div class="form-group-split-input-card" :class="{ 'is-invalid-card': errors.telepon }">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text fw-semibold bg-transparent border-0 px-0 pe-2">+62</span>
+                    <input
+                      ref="inputPhone"
+                      type="tel"
+                      class="form-control border-0 p-0 shadow-none bg-transparent form-item-input"
+                      v-model="phoneNumber"
+                      @input="handlePhoneInput"
+                      @blur="validatePhone"
+                      inputmode="numeric"
+                      placeholder="813-8282-8282"
+                    />
+                  </div>
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
               </div>
-              <div v-if="errors.telepon" class="invalid-feedback d-block">
-                {{ errors.telepon }}
+              <div v-if="errors.telepon" class="text-danger mt-1 fs-12">
+                <i class="ri-error-warning-line me-1"></i>{{ errors.telepon }}
               </div>
             </div>
 
             <!-- Action Buttons -->
             <div class="col-12">
               <div class="d-flex justify-content-end gap-2">
-                <button @click="handleCancel" class="btn btn-outline-danger">
+                <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-4">
                   <i class="ri-arrow-left-line me-1"></i>Batal
                 </button>
-                <button @click="handleSave" :disabled="!isFormValid || isSaving" class="btn btn-secondary">
+                <button @click="handleSave" :disabled="!isFormValid || isSaving" class="btn-save-primary rounded-pill px-4">
                   <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
                   <i v-else class="ri-save-line me-1"></i>
-                  {{ isSaving ? "Menyimpan..." : "Simpan" }}
+                  {{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
                 </button>
               </div>
             </div>
@@ -227,13 +299,4 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
-.form-control {
-  height: calc(2.5rem + 2px);
-}
-
-.phone-input {
-  border-top-left-radius: 0 !important;
-  border-bottom-left-radius: 0 !important;
-}
-</style>
+<style src="../../assets/css/style2.css"></style>

@@ -4,11 +4,12 @@ import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder } from "../../types/stakeholders.types";
-import { computed, ref, onMounted } from "vue";
+import { computed, ref, onMounted, onActivated, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
-import { FriendsList } from "../../data/pages/profiledata";
-import { csirtMembersData } from "../../data/pages/csirt";
+import { picService } from "../../services/pic.service";
+import type { Pic } from "../../types/pic.types";
+import { useCsirtStore } from "../../stores/csirt";
 import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
@@ -16,6 +17,7 @@ import { useKseStore } from "../../stores/kse";
 const authStore = useAuthStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
+const csirtStore = useCsirtStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Use storeToRefs to get reactive refs — ensures computed() tracks store state changes
@@ -43,18 +45,41 @@ const FilePond = vueFilePond(
   FilePondPluginImagePreview
 );
 
-const friends = ref(FriendsList);
+const friends = ref<Pic[]>([]);
+const isLoadingPics = ref(false);
 
-const editPIC = (index: number) => {
+const loadPics = async () => {
+  const stakeholder = currentStakeholder.value;
+  if (!stakeholder) return;
+  isLoadingPics.value = true;
+  try {
+    friends.value = await picService.getByPerusahaan(stakeholder.id);
+  } catch {
+    friends.value = [];
+  } finally {
+    isLoadingPics.value = false;
+  }
+};
+
+const editPIC = (pic: Pic) => {
   router.push({
     path: "/pic-add",
-    query: { index },
+    query: {
+      picId: pic.id,
+      slug: currentStakeholder.value?.slug,
+      id_perusahaan: currentStakeholder.value?.id,
+    },
   });
 };
 
-const deletePIC = (index: number) => {
+const deletePIC = async (pic: Pic) => {
   if (!confirm("Yakin ingin menghapus PIC ini?")) return;
-  friends.value.splice(index, 1);
+  try {
+    await picService.delete(pic.id);
+    await loadPics();
+  } catch {
+    alert("Gagal menghapus PIC.");
+  }
 };
 
 const route = useRoute();
@@ -73,6 +98,22 @@ onMounted(async () => {
     }
     ikasStore.initialize();
     kseStore.initialize();
+    if (!csirtStore.initialized) {
+        await csirtStore.initialize();
+    }
+    await loadPics();
+});
+
+// Reload pics when navigating back to this page (keep-alive)
+onActivated(async () => {
+    await loadPics();
+});
+
+// Reload pics when switching between stakeholder profiles
+watch(stakeholderSlug, async (newSlug, oldSlug) => {
+    if (newSlug && newSlug !== oldSlug) {
+        await loadPics();
+    }
 });
 
 // Dynamic penilaian from IKAS and KSE stores
@@ -121,15 +162,18 @@ const penilaian = computed(() => {
 
 const relatedCsirtId = computed(() => {
   if (!currentStakeholder.value) return null;
-  const csirt = csirtMembersData.find(
-    (c) => c.id_perusahaan === Number(currentStakeholder.value?.id) || c.id_perusahaan === (currentStakeholder.value?.id as any)
+  const csirt = csirtStore.csirts.find(
+    (c) => String(c.id_perusahaan) === String(currentStakeholder.value?.id)
+      || c.perusahaan?.id === String(currentStakeholder.value?.id)
   );
-  return csirt ? csirt.id : null;
+  return csirt ? (csirt.id as any) : null;
 });
+
+
 
 const dataToPass = computed(() => ({
   currentpage: "Profile Stakeholders",
-  title: { label: "Stakeholders", path: "/admin/stakeholders" },
+  title: { label: "Stakeholders", path: "/stakeholders" },
   activepage: "Profile Stakeholder",
 }));
 
@@ -159,14 +203,14 @@ const getPicAvatarClass = (name: string) => {
 const companyDescription = computed(() => {
   if (!currentStakeholder.value) return '';
   const s = currentStakeholder.value;
-  return `${s.nama_perusahaan} merupakan stakeholder yang bergerak di sektor ${s.sektor}. Berkantor pusat di ${s.alamat}.`;
+  return `${s.nama_perusahaan} merupakan stakeholder yang bergerak di sektor ${s.sub_sektor?.nama_sub_sektor || s.sektor || '-'}. Berkantor pusat di ${s.alamat}.`;
 });
 
 // Detail items for Tentang Perusahaan (complete info)
 const companyDetails = computed(() => {
   if (!currentStakeholder.value) return [];
   return [
-    { icon: 'ri-pie-chart-2-line', label: 'Sektor', value: currentStakeholder.value.sektor, colorClass: 'stat-icon-blue' },
+    { icon: 'ri-pie-chart-2-line', label: 'Sub Sektor', value: currentStakeholder.value.sub_sektor?.nama_sub_sektor || currentStakeholder.value.sektor || '-', colorClass: 'stat-icon-blue' },
     { icon: 'ri-map-pin-line', label: 'Lokasi', value: currentStakeholder.value.alamat, colorClass: 'stat-icon-amber', wrap: true },
     { icon: 'ri-mail-line', label: 'Email', value: currentStakeholder.value.email, colorClass: 'stat-icon-teal' },
     { icon: 'ri-phone-line', label: 'Telepon', value: currentStakeholder.value.telepon, colorClass: 'stat-icon-violet' },
@@ -631,20 +675,20 @@ html.dark .hero-card-shell {
             <div class="row">
 
               <!-- ═══════════  HERO CARD  ═══════════ -->
-              <div class="col-12 mb-4">
+              <div class="col-12 mb-6">
                 <div class="card custom-card hero-card-shell">
                   <!-- Banner -->
-                  <div
-                    class="profile-hero"
-                    :class="{ 'profile-hero-nophoto': !(currentStakeholder as any).photo }"
-                    :style="bannerStyle"
-                  >
+                    <div
+                      class="profile-hero"
+                      :class="{ 'profile-hero-nophoto': !currentStakeholder?.photo }"
+                      :style="bannerStyle"
+                    >
                     <div class="profile-hero-overlay">
                       <div>
                         <p class="profile-hero-name">{{ currentStakeholder.nama_perusahaan }}</p>
                         <span class="profile-hero-sektor">
                           <i class="ri-pie-chart-2-line"></i>
-                          {{ currentStakeholder.sektor }}
+                          {{ currentStakeholder.sub_sektor?.nama_sub_sektor || currentStakeholder.sektor }}
                         </span>
                       </div>
                       <router-link
@@ -681,41 +725,38 @@ html.dark .hero-card-shell {
                   <div class="tab-pane show active p-0 border-0">
                     <div class="row">
 
-                      <!-- Section: Penilaian -->
-                      <div class="col-12 mb-2">
-                        <div class="sp-section-title">
-                          <i class="ri-bar-chart-box-line"></i>
-                          Ringkasan Penilaian
-                        </div>
-                      </div>
-
+                     
                       <SpkReusableAnlyticsCard
                         :analyticData="penilaian"
-                        :csirtId="relatedCsirtId"
+                        :csirtId="relatedCsirtId ?? undefined"
                         :stakeholderSlug="currentStakeholder.slug"
                       />
 
-                      <!-- ═══════════  PIC TABLE  ═══════════ -->
-                      <div class="col-12 mb-2 mt-3">
-                        <div class="sp-section-title">
-                          <i class="ri-contacts-book-line"></i>
-                          PIC &amp; Tentang Perusahaan
+                      <!-- Daftarkan CSIRT button (admin only, when not yet registered) -->
+                      <div v-if="isAdmin && !relatedCsirtId" class="col-12 mb-3">
+                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
+                          <div class="d-flex align-items-center gap-2">
+                            <i class="ri-shield-check-line fs-16"></i>
+                            <span class="fs-13">CSIRT belum terdaftar untuk perusahaan ini.</span>
+                          </div>
+                          <button @click="router.push({ path: '/csirt', query: { stakeholder: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                            <i class="ri-add-circle-line fs-14"></i>
+                            <span>Daftarkan CSIRT</span>
+                          </button>
                         </div>
                       </div>
 
+     
                       <div class="col-12 mb-4">
-                        <div class="card custom-card gradient-header-card" style="height:100%">
-                          <div class="card-header d-flex align-items-center justify-content-between gap-3 stakeholder-header">
+                        <div class="card custom-card">
+                          <div class="card-header d-flex align-items-center justify-content-between gap-3 bg-white border-bottom">
                             <div class="d-flex align-items-center gap-2">
-                              <div class="header-icon-box" style="width:36px;height:36px">
-                                <i class="ri-contacts-line" style="font-size:1.3rem"></i>
-                              </div>
-                              <div class="card-title mb-0 text-white fw-bold header-card-title">PIC Perusahaan</div>
-                              <span class="pic-count-badge">{{ friends.length }}</span>
+                              <div class="card-title mb-0 fw-semibold text-dark">PIC Perusahaan</div>
+                              <span class="pic-count-badge bg-primary-transparent text-primary ms-2">{{ friends.length }}</span>
                             </div>
-                            <router-link v-if="isAdmin" to="/pic-add" class="btn btn-sm btn-warning d-flex align-items-center gap-2">
+                            <button v-if="isAdmin" @click="router.push({ path: '/pic-add', query: { slug: currentStakeholder.slug, id_perusahaan: currentStakeholder.id } })" class="btn-sm btn-primary d-flex align-items-center gap-2 btn-edit-profile">
                               <i class="ri-add-line"></i><span>Add PIC</span>
-                            </router-link>
+                            </button>
                           </div>
                           <div class="card-body p-0">
                             <div class="stakeholder-table-wrap" style="border:none;border-radius:0;box-shadow:none">
@@ -737,7 +778,7 @@ html.dark .hero-card-shell {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr v-if="!friends.length">
+                                  <tr v-if="!friends.length && !isLoadingPics">
                                     <td :colspan="isAdmin ? 4 : 3" class="text-center py-5">
                                       <div class="empty-state">
                                         <div class="empty-icon-ring mb-3">
@@ -748,29 +789,35 @@ html.dark .hero-card-shell {
                                       </div>
                                     </td>
                                   </tr>
-                                  <tr v-for="(idx, index) in friends" :key="index" class="stakeholder-row">
+                                  <tr v-if="isLoadingPics">
+                                    <td :colspan="isAdmin ? 4 : 3" class="text-center py-4">
+                                      <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                                      <span class="text-muted fs-13">Memuat data PIC...</span>
+                                    </td>
+                                  </tr>
+                                  <tr v-for="(pic, index) in friends" :key="pic.id" class="stakeholder-row">
                                     <td class="align-middle text-center">
                                       <span class="row-number">{{ index + 1 }}</span>
                                     </td>
                                     <td class="align-middle">
                                       <div class="d-flex align-items-center gap-3">
-                                        <div class="company-avatar" :class="getPicAvatarClass(idx.name || '')">
-                                          <span class="company-avatar-letter">{{ idx.name?.charAt(0)?.toUpperCase() }}</span>
+                                        <div class="company-avatar" :class="getPicAvatarClass(pic.nama || '')">
+                                          <span class="company-avatar-letter">{{ pic.nama?.charAt(0)?.toUpperCase() }}</span>
                                         </div>
-                                        <span class="company-name">{{ idx.name }}</span>
+                                        <span class="company-name">{{ pic.nama }}</span>
                                       </div>
                                     </td>
                                     <td class="align-middle">
                                       <span class="text-muted fs-13">
-                                        <i class="ri-phone-line me-1"></i>{{ idx.telepon }}
+                                        <i class="ri-phone-line me-1"></i>{{ pic.telepon }}
                                       </span>
                                     </td>
                                     <td v-if="isAdmin" class="text-center align-middle">
                                       <div class="d-flex gap-1 justify-content-center">
-                                        <button @click="editPIC(index)" class="btn btn-sm btn-icon btn-wave btn-warning-light" title="Edit">
+                                        <button @click="editPIC(pic)" class="btn btn-sm btn-icon btn-wave btn-warning-light" title="Edit">
                                           <i class="ri-pencil-line"></i>
                                         </button>
-                                        <button @click="deletePIC(index)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <button @click="deletePIC(pic)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
                                           <i class="ri-delete-bin-line"></i>
                                         </button>
                                       </div>
@@ -785,14 +832,11 @@ html.dark .hero-card-shell {
 
                       <!-- ═══════════  TENTANG PERUSAHAAN  ═══════════ -->
                       <div class="col-12 mb-4">
-                        <div class="card custom-card gradient-header-card" style="height:100%">
-                          <div class="card-header d-flex align-items-center gap-3 stakeholder-header">
-                            <div class="header-icon-box" style="width:36px;height:36px">
-                              <i class="ri-information-line" style="font-size:1.3rem"></i>
-                            </div>
+                        <div class="card custom-card">
+                          <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom">
                             <div>
-                              <div class="card-title mb-0 text-white fw-bold header-card-title">Tentang Perusahaan</div>
-                              <div class="header-subtitle mt-1">{{ currentStakeholder.sektor }}</div>
+                              <div class="card-title mb-0 fw-semibold text-dark">Tentang Perusahaan</div>
+                              <div class="text-muted fs-13 mt-1">{{ currentStakeholder.sub_sektor?.nama_sub_sektor || currentStakeholder.sektor }}</div>
                             </div>
                           </div>
                           <div class="card-body">
@@ -839,4 +883,6 @@ html.dark .hero-card-shell {
       </div>
     </div>
   </div>
+
+
 </template>

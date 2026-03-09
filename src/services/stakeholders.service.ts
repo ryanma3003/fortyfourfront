@@ -14,6 +14,13 @@ export const stakeholdersService = {
     },
 
     /**
+     * Get stakeholders dropdown list (lightweight, for select/dropdown)
+     */
+    async getDropdown(): Promise<{ id: number; nama_perusahaan: string }[]> {
+        return api.get<{ id: number; nama_perusahaan: string }[]>('/api/perusahaan/dropdown');
+    },
+
+    /**
      * Get stakeholder by ID
      */
     async getById(id: string): Promise<Stakeholder> {
@@ -25,9 +32,15 @@ export const stakeholdersService = {
      */
     async create(data: CreateStakeholderPayload): Promise<CreateStakeholderResponse> {
         const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-            formData.append(key, value);
-        });
+        formData.append('nama_perusahaan', data.nama_perusahaan);
+        formData.append('id_sub_sektor', data.id_sub_sektor);
+        formData.append('email', data.email);
+        formData.append('alamat', data.alamat);
+        formData.append('telepon', data.telepon);
+        formData.append('website', data.website);
+        if (data.photo instanceof File) {
+            formData.append('photo', data.photo);
+        }
         return api.post<CreateStakeholderResponse>('/api/perusahaan', formData);
     },
 
@@ -36,11 +49,15 @@ export const stakeholdersService = {
      */
     async update(id: string, data: Partial<CreateStakeholderPayload>): Promise<Stakeholder> {
         const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-            if (value !== undefined) {
-                formData.append(key, value);
-            }
-        });
+        if (data.nama_perusahaan) formData.append('nama_perusahaan', data.nama_perusahaan);
+        if (data.id_sub_sektor) formData.append('id_sub_sektor', data.id_sub_sektor);
+        if (data.email) formData.append('email', data.email);
+        if (data.alamat) formData.append('alamat', data.alamat);
+        if (data.telepon) formData.append('telepon', data.telepon);
+        if (data.website) formData.append('website', data.website);
+        if (data.photo instanceof File) {
+            formData.append('photo', data.photo);
+        }
         return api.put<Stakeholder>(`/api/perusahaan/${id}`, formData);
     },
 

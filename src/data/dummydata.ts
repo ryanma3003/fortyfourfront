@@ -1,4 +1,5 @@
 // src/data/dummydata.ts
+import type { SubSektorNested } from '../types/stakeholders.types';
 
 export interface Stakeholder {
     id: number;
@@ -6,6 +7,7 @@ export interface Stakeholder {
     photo?: string;
     nama_perusahaan: string;
     sektor: string;
+    sub_sektor?: SubSektorNested;
     alamat: string;
     telepon: string;
     email: string;

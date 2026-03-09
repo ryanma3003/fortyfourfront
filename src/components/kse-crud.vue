@@ -50,7 +50,7 @@ const pageData = computed(() => ({
       ? `KSE ${currentStakeholder.value.nama_perusahaan}`
       : 'KSE',
     path: currentSlug.value
-      ? `/admin/stakeholders/${currentSlug.value}`
+      ? `/stakeholders/${currentSlug.value}`
       : '/stakeholders',
   },
   currentpage : currentStep.value === 1 ? 'Data Responden' : 'Input Data',
@@ -70,7 +70,7 @@ const backToKse = () => {
   if (stakeholderSlug.value) {
     router.push({ path: '/kse', query: { slug: stakeholderSlug.value } });
   } else {
-    router.push('/kse');
+    router.push('/stakeholders');
   }
 };
 </script>
@@ -126,6 +126,7 @@ const backToKse = () => {
     <template v-if="currentStep === 1">
       <RespondentFormKse
         :slug="currentSlug"
+        :stakeholder-slug="stakeholderSlug"
         @submit="handleFormSubmit"
         @cancel="backToKse"
       />

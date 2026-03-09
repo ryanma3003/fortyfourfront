@@ -94,9 +94,15 @@ app.use(Particles, {
   }
 });
 
-// Initialize auth state from sessionStorage (instant, no API call)
 import { useAuthStore } from './stores/auth';
 const authStore = useAuthStore();
+
+// Register API hooks: on refresh-token failure → auto-logout + redirect to login
+authStore.setupApiHooks();
+
+// Verify session via GET /api/me before mounting.
+// The HTTP-only cookie is shared across all tabs — no browser storage needed.
+// Awaiting here ensures the router guard has accurate auth state on first render.
 authStore.checkAuthOnStartup();
 
 // Mount app

@@ -2,7 +2,10 @@
 import { defineStore } from 'pinia';
 import { useAuthStore } from './auth';
 import { usersService } from '@/services/users.service';
-import type { UpdateUserPayload } from '@/types/user.types';
+import { jabatanService } from '@/services/jabatan.service';
+import { stakeholdersService } from '@/services/stakeholders.service';
+import type { Jabatan } from '@/types/jabatan.types';
+import type { Stakeholder } from '@/types/stakeholders.types';
 
 export interface ProfileData {
   name: string;
@@ -11,6 +14,7 @@ export interface ProfileData {
   location: string;
   email: string;
   jabatan: string;
+  idJabatan: string;
   phone: string;
   website: string;
   joined: string;
@@ -18,6 +22,12 @@ export interface ProfileData {
   address: string;
   avatarUrl: string;
   bannerUrl: string;
+  // Stakeholder / Perusahaan
+  idPerusahaan: string;
+  namaPerusahaan: string;
+  // Sub Sektor
+  idSubSektor: string;
+  namaSubSektor: string;
   // Image position properties (percentage values 0-100)
   bannerPositionX: number;
   bannerPositionY: number;
@@ -35,66 +45,49 @@ export interface ProfileData {
 export const useProfileStore = defineStore('profile', {
   state: (): ProfileData => ({
     name: '',
-    title: 'Senior Product Designer',
+    title: '',
     role: '',
-    location: 'Jakarta, Indonesia',
+    location: '',
     email: '',
-    phone: '+62 812-3456-7890',
-    jabatan: 'Senior Product Designer',
-    website: 'www.yourwebsite.com',
+    phone: '',
+    jabatan: '',
+    idJabatan: '',
+    website: '',
     joined: '',
-    bio: 'Passionate about creating delightful user experiences and solving complex design challenges. Love to collaborate with teams to bring ideas to life.',
-    address: 'Jl. Sudirman No. 123, Jakarta Pusat',
+    bio: '',
+    address: '',
     avatarUrl: '/images/faces/9.jpg',
     bannerUrl: '/images/media/media-3.jpg',
-    // Default positions (centered)
+    idPerusahaan: '',
+    namaPerusahaan: '',
+    idSubSektor: '',
+    namaSubSektor: '',
     bannerPositionX: 50,
     bannerPositionY: 50,
     avatarPositionX: 50,
     avatarPositionY: 50,
     isLoading: false,
-    stats: {
-      projects: '47',
-      followers: '2.4K',
-      following: '892',
-    },
+    stats: { projects: '47', followers: '2.4K', following: '892' },
   }),
 
   getters: {
-    // Get display name
     displayName(): string {
       const authStore = useAuthStore();
       return this.name || authStore.currentUser?.name || 'User';
     },
-    
-    // Get display email
     displayEmail(): string {
       const authStore = useAuthStore();
       return this.email || authStore.currentUser?.email || authStore.currentUser?.username || '';
     },
-
-    // Get display jabatan
-    displayJabatan(): string {
-      return this.jabatan || 'Belum diatur';
-    },
-    
-    // Get display role - always from auth store (not editable by user)
+    displayJabatan(): string { return this.jabatan || 'Belum diatur'; },
     displayRole(): string {
       const authStore = useAuthStore();
       return authStore.currentUser?.role || 'User';
     },
-    
-    // Get display phone
-    displayPhone(): string {
-      return this.phone || 'Belum diatur';
-    },
-    
-    // Get display location
-    displayLocation(): string {
-      return this.location || 'Belum diatur';
-    },
-
-    // Get formatted join date from auth store
+    displayPhone(): string { return this.phone || 'Belum diatur'; },
+    displayLocation(): string { return this.location || 'Belum diatur'; },
+    displayPerusahaan(): string { return this.namaPerusahaan || 'Belum diatur'; },
+    displaySubSektor(): string { return this.namaSubSektor || 'Belum diatur'; },
     displayJoined(): string {
       const authStore = useAuthStore();
       return authStore.formattedJoinDate || this.joined || 'Tidak diketahui';
@@ -102,160 +95,460 @@ export const useProfileStore = defineStore('profile', {
   },
 
   actions: {
-    /**
-     * Fetch user profile data from API
-     */
+    /* ── helpers ── */
+
+    /** Map raw API response → normalised field names */
+    _mapApiUser(raw: any) {
+      const u = raw?.user ?? raw?.data ?? raw;
+
+      const formatImageUrl = (path: string | undefined | null) => {
+        if (!path) return '';
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('/images/')) {
+            return path;
+        }
+        
+        // We'll import `config` locally if needed, or simply use `import.meta.env`
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+        const cleanBaseUrl = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+        const cleanPath = path.replace(/^\//, '');
+        return cleanBaseUrl ? `${cleanBaseUrl}/${cleanPath}` : `/${cleanPath}`;
+      };
+
+      return {
+        name:           u.name          || u.username       || '',
+        email:          u.email                             || '',
+        jabatan:        u.jabatan       || u.jabatan_name   || '',
+        idJabatan:      u.id_jabatan                        || '',
+        role:           u.role          || u.role_name      || '',
+        phone:          u.phone         || u.telepon        || '',
+        location:       u.location      || u.alamat         || '',
+        joined:         u.joined        || u.created_at     || '',
+        photo:          formatImageUrl(u.photo || u.foto_profile),
+        banner:         formatImageUrl(u.banner),
+        idPerusahaan:   u.id_perusahaan                     || '',
+      };
+    },
+
+    /** Persist non-admin profile fields to localStorage (keyed by userId) */
+    _saveLocalProfile(userId: string) {
+      const data = {
+        name:            this.name,
+        email:           this.email,
+        jabatan:         this.jabatan,
+        idJabatan:       this.idJabatan,
+        phone:           this.phone,
+        location:        this.location,
+        website:         this.website,
+        bio:             this.bio,
+        address:         this.address,
+        joined:          this.joined,
+        avatarUrl:       this.avatarUrl,
+        bannerUrl:       this.bannerUrl,
+        idPerusahaan:    this.idPerusahaan,
+        namaPerusahaan:  this.namaPerusahaan,
+        idSubSektor:     this.idSubSektor,
+        namaSubSektor:   this.namaSubSektor,
+        bannerPositionX: this.bannerPositionX,
+        bannerPositionY: this.bannerPositionY,
+        avatarPositionX: this.avatarPositionX,
+        avatarPositionY: this.avatarPositionY,
+      };
+      try {
+        localStorage.setItem(`profile_data_${userId}`, JSON.stringify(data));
+      } catch { /* ignore storage errors */ }
+    },
+
+    /** Restore non-admin profile fields from localStorage */
+    _loadLocalProfile(userId: string): boolean {
+      try {
+        const raw = localStorage.getItem(`profile_data_${userId}`);
+        if (!raw) return false;
+        const data = JSON.parse(raw);
+        if (data.name)            this.name            = data.name;
+        if (data.email)           this.email           = data.email;
+        if (data.jabatan)         this.jabatan         = data.jabatan;
+        if (data.idJabatan)       this.idJabatan       = data.idJabatan;
+        if (data.phone)           this.phone           = data.phone;
+        if (data.location)        this.location        = data.location;
+        if (data.website)         this.website         = data.website;
+        if (data.bio)             this.bio             = data.bio;
+        if (data.address)         this.address         = data.address;
+        if (data.joined)          this.joined          = data.joined;
+        if (data.avatarUrl)       this.avatarUrl       = data.avatarUrl;
+        if (data.bannerUrl)       this.bannerUrl       = data.bannerUrl;
+        if (data.idPerusahaan)    this.idPerusahaan    = data.idPerusahaan;
+        if (data.namaPerusahaan)  this.namaPerusahaan  = data.namaPerusahaan;
+        if (data.idSubSektor)     this.idSubSektor     = data.idSubSektor;
+        if (data.namaSubSektor)   this.namaSubSektor   = data.namaSubSektor;
+        if (data.bannerPositionX !== undefined) this.bannerPositionX = data.bannerPositionX;
+        if (data.bannerPositionY !== undefined) this.bannerPositionY = data.bannerPositionY;
+        if (data.avatarPositionX !== undefined) this.avatarPositionX = data.avatarPositionX;
+        if (data.avatarPositionY !== undefined) this.avatarPositionY = data.avatarPositionY;
+        return true;
+      } catch { return false; }
+    },
+
+    /* ── API actions ── */
+
     async fetchFromApi() {
       const authStore = useAuthStore();
-      if (!authStore.currentUser?.id) {
-        console.warn('fetchFromApi: No current user ID');
+      const userId = authStore.currentUser?.id;
+      if (!userId) { this.initFromAuth(); return; }
+
+      // Non-admin users: fetch from /api/me
+      if (authStore.currentUser?.role !== 'admin') {
+        this.isLoading = true;
+        try {
+          const response = await usersService.getCurrentUser();
+          const mapped = this._mapApiUser(response);
+
+          this.name       = mapped.name;
+          this.email      = mapped.email;
+          this.jabatan    = mapped.jabatan;
+          this.idJabatan  = mapped.idJabatan;
+          this.joined     = mapped.joined;
+          this.avatarUrl  = mapped.photo  || '/images/faces/9.jpg';
+          this.bannerUrl  = mapped.banner || '/images/media/media-3.jpg';
+          this.idPerusahaan = mapped.idPerusahaan;
+
+          // Extract perusahaan/sub-sektor from /api/me response if available
+          const meData = (response as any)?.user ?? (response as any)?.data ?? response;
+          if (meData.perusahaan) {
+            this.namaPerusahaan = meData.perusahaan.nama_perusahaan || '';
+            this.location       = meData.perusahaan.alamat          || this.location;
+            this.phone          = meData.perusahaan.telepon         || this.phone;
+            this.website        = meData.perusahaan.website         || this.website;
+            if (meData.perusahaan.sub_sektor) {
+              this.idSubSektor   = meData.perusahaan.sub_sektor.id || '';
+              this.namaSubSektor = meData.perusahaan.sub_sektor.nama_sub_sektor || '';
+            }
+          } else if (this.idPerusahaan) {
+            // Fallback: use dropdown endpoint (accessible to all users)
+            try {
+              const dropdownList = await stakeholdersService.getDropdown();
+              const found = dropdownList.find(c => c.id.toString() === this.idPerusahaan.toString());
+              if (found) {
+                this.namaPerusahaan = found.nama_perusahaan || '';
+              }
+            } catch {
+              console.warn('Failed to fetch company dropdown for user.');
+            }
+          }
+
+          // Keep auth store in sync
+          if (authStore.currentUser) {
+            authStore.currentUser.name  = mapped.name  || authStore.currentUser.name;
+            authStore.currentUser.email = mapped.email || authStore.currentUser.email;
+          }
+        } catch (err: any) {
+          console.warn('GET /api/me failed, falling back to auth store:', err);
+
+          // If session is truly expired or rate limited (429/401), force logout
+          if (err?.status === 401 || err?.status === 429) {
+            import('@/config/api').then(({ api }) => {
+              if (api.onUnauthorized) api.onUnauthorized();
+            });
+            return; // Abort further execution
+          }
+
+          this.initFromAuth();
+          this._loadLocalProfile(userId);
+
+          // Recover stakeholder data using dropdown (accessible to all users)
+          if (this.idPerusahaan && !this.namaPerusahaan) {
+            try {
+              const dropdownList = await stakeholdersService.getDropdown();
+              const found = dropdownList.find(c => c.id.toString() === this.idPerusahaan.toString());
+              if (found) {
+                this.namaPerusahaan = found.nama_perusahaan || '';
+              }
+            } catch { /* ignore */ }
+          }
+        } finally {
+          this.isLoading = false;
+        }
         return;
       }
 
       this.isLoading = true;
       try {
-        const userData = await usersService.getById(authStore.currentUser.id);
+        // Admin only: fetch full user details from /api/users/{id}
+        const response = await usersService.getById(userId);
+
+        const mapped = this._mapApiUser(response);
+
+        this.name       = mapped.name;
+        this.email      = mapped.email;
+        this.jabatan    = mapped.jabatan;
+        this.idJabatan  = mapped.idJabatan;
+        this.joined     = mapped.joined;
+        this.avatarUrl  = mapped.photo  || '/images/faces/9.jpg';
+        this.bannerUrl  = mapped.banner || '/images/media/media-3.jpg';
+        this.idPerusahaan = mapped.idPerusahaan;
+
+
+
+        // 2. Fetch stakeholder data (perusahaan) if linked
+        //    Requires backend to return id_perusahaan in /api/users/{id} response
+        if (this.idPerusahaan) {
+          try {
+            const company = await stakeholdersService.getById(this.idPerusahaan);
+
+            const c = (company as any)?.data ?? company;
+            this.namaPerusahaan = c.nama_perusahaan || '';
+            this.location       = c.alamat          || '';
+            this.phone          = c.telepon         || '';
+            this.website        = c.website         || '';
+            // Extract sub-sektor from stakeholder
+            if (c.sub_sektor) {
+              this.idSubSektor   = c.sub_sektor.id || '';
+              this.namaSubSektor = c.sub_sektor.nama_sub_sektor || '';
+            }
+          } catch (err) {
+            console.warn('Failed to fetch stakeholder data:', err);
+          }
+        }
+
+        if (authStore.currentUser) {
+          authStore.currentUser.name  = mapped.name  || authStore.currentUser.name;
+          authStore.currentUser.email = mapped.email || authStore.currentUser.email;
+          authStore.currentUser.role  = mapped.role  || authStore.currentUser.role;
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch profile:', error);
         
-        // Map API response to profile state
-        this.name = userData.name || '';
-        this.email = userData.email || '';
-        this.jabatan = userData.jabatan || '';
-        this.phone = userData.phone || '';
-        this.location = userData.location || '';
-        this.joined = userData.joined || '';
-        this.avatarUrl = userData.photo || '/images/faces/9.jpg';
-        this.bannerUrl = userData.banner || '/images/media/media-3.jpg';
-        
-        console.log('Profile fetched from API:', userData);
-      } catch (error) {
-        console.error('Failed to fetch profile from API:', error);
-        // Fallback to auth data if API fails
-        this.initFromAuth();
+        // If session is truly expired or rate limited (429/401), force logout
+        if (error?.status === 401 || error?.status === 429) {
+          import('@/config/api').then(({ api }) => {
+            if (api.onUnauthorized) api.onUnauthorized();
+          });
+        } else {
+          this.initFromAuth();
+        }
       } finally {
         this.isLoading = false;
       }
     },
 
     /**
-     * Save profile data to API
+     * Save profile data to backend.
+     * - Admin: PUT /api/users/{id}, POST /api/users/{id}/profile-photo, POST /api/users/{id}/banner
+     * - User:  PUT /api/me,        POST /api/me/profile-photo,         POST /api/me/banner
+     * - New jabatan → POST /api/jabatan (admin only, falls back to local name)
+     * All API calls are attempted for every role; falls back to localStorage on 403.
      */
-    async saveToApi(data: Partial<ProfileData> | FormData): Promise<{ success: boolean; error?: string }> {
+    async saveToApi(data: Partial<ProfileData> & { newJabatanName?: string }): Promise<{ success: boolean; error?: string }> {
       const authStore = useAuthStore();
       if (!authStore.currentUser?.id) {
         return { success: false, error: 'User not authenticated' };
       }
+      const id = authStore.currentUser.id;
+      const isAdmin = authStore.currentUser?.role === 'admin';
 
       this.isLoading = true;
       try {
-        let payload: UpdateUserPayload | FormData;
+        let jabatanId = data.idJabatan ?? this.idJabatan;
+        let jabatanName = data.jabatan ?? this.jabatan;
 
-        if (data instanceof FormData) {
-            payload = data;
-        } else {
-            // Map profile data to API payload
-            payload = {
-            name: data.name || this.name,
-            email: data.email || this.email,
-            jabatan: data.jabatan || this.jabatan,
-            phone: data.phone || this.phone,
-            location: data.location || this.location,
-            photo: data.avatarUrl || this.avatarUrl,
-            banner: data.bannerUrl || this.bannerUrl,
-            };
+        // ── 1. Handle new jabatan ──
+        if (data.newJabatanName && data.newJabatanName.trim()) {
+          try {
+            const created = await jabatanService.create({ nama_jabatan: data.newJabatanName.trim() });
+            const j = (created as any)?.data ?? created;
+            jabatanId   = j.id || '';
+            jabatanName = j.nama_jabatan || data.newJabatanName.trim();
+          } catch {
+            // POST /api/jabatan restricted — store as local label only
+            jabatanId   = '';
+            jabatanName = data.newJabatanName.trim();
+          }
         }
 
-        await usersService.update(authStore.currentUser.id, payload);
-        
-        // Update local state if it's not FormData (or handle partial updates if needed, but for FormData typically we reload or assume success)
-        if (!(data instanceof FormData)) {
-             Object.assign(this, data);
-        } else {
-             // Ideally we should fetch the updated profile here to ensure sync, 
-             // but for now we rely on the component to update the preview or reload.
-             // We can also try to update local state from FormData entries if needed.
-             // For now, let's just re-fetch to be safe and ensure consistency.
-             await this.fetchFromApi(); 
+        // ── 2. PUT text fields (attempted for all roles) ──
+        let apiSaveSucceeded = false;
+        try {
+          const textPayload: Record<string, any> = {
+            username:   data.name     ?? this.name,
+            email:      data.email    ?? this.email,
+            phone:      data.phone    ?? this.phone,
+            location:   data.location ?? this.location,
+            website:    data.website  ?? this.website,
+            bio:        data.bio      ?? this.bio,
+            address:    data.address  ?? this.address,
+            id_jabatan: jabatanId || undefined,
+          };
+          // Use /api/me for non-admin, /api/users/{id} for admin
+          const updatedUser = isAdmin
+            ? await usersService.update(id, textPayload as any)
+            : await usersService.updateMe(textPayload as any);
+          apiSaveSucceeded = true;
+
+          // ── 3. Apply API response to store ──
+          const mapped = this._mapApiUser(updatedUser);
+          this.name      = mapped.name      || data.name     || this.name;
+          this.email     = mapped.email     || data.email    || this.email;
+          this.jabatan   = mapped.jabatan   || jabatanName   || this.jabatan;
+          this.idJabatan = mapped.idJabatan || jabatanId     || this.idJabatan;
+          this.phone     = mapped.phone     || data.phone    || this.phone;
+          this.location  = mapped.location  || data.location || this.location;
+          this.joined    = mapped.joined    || this.joined;
+          if (mapped.photo)  this.avatarUrl = mapped.photo;
+          if (mapped.banner) this.bannerUrl = mapped.banner;
+        } catch (err: any) {
+          // API returned 403/404 — apply changes locally instead
+          if (data.name     !== undefined) this.name     = data.name;
+          if (data.email    !== undefined) this.email    = data.email;
+          if (data.phone    !== undefined) this.phone    = data.phone;
+          if (data.location !== undefined) this.location = data.location;
+          if (data.website  !== undefined) this.website  = data.website;
+          if (data.bio      !== undefined) this.bio      = data.bio;
+          if (data.address  !== undefined) this.address  = data.address;
+          if (jabatanId)   this.idJabatan = jabatanId;
+          if (jabatanName) this.jabatan   = jabatanName;
         }
-        
-        console.log('Profile saved to API');
+
+        // ── 4. Profile photo ──
+        const newAvatar = data.avatarUrl ?? '';
+        if (newAvatar && newAvatar !== this.avatarUrl && newAvatar.startsWith('data:')) {
+          try {
+            const photoForm = new FormData();
+            const blob = await (await fetch(newAvatar)).blob();
+            photoForm.append('profile_photo', blob, 'avatar.jpg');
+            const pr = isAdmin
+              ? await usersService.updateProfilePhoto(id, photoForm)
+              : await usersService.updateMePhoto(photoForm);
+            this.avatarUrl = this._mapApiUser(pr).photo || newAvatar;
+          } catch {
+            // Photo upload not permitted; keep preview locally
+            this.avatarUrl = newAvatar;
+          }
+        }
+
+        // ── 5. Banner ──
+        const newBanner = data.bannerUrl ?? '';
+        if (newBanner && newBanner !== this.bannerUrl && newBanner.startsWith('data:')) {
+          try {
+            const bannerForm = new FormData();
+            const blob = await (await fetch(newBanner)).blob();
+            bannerForm.append('banner', blob, 'banner.jpg');
+            const br = isAdmin
+              ? await usersService.updateBanner(id, bannerForm)
+              : await usersService.updateMeBanner(bannerForm);
+            this.bannerUrl = this._mapApiUser(br).banner || newBanner;
+          } catch {
+            // Banner upload not permitted; keep preview locally
+            this.bannerUrl = newBanner;
+          }
+        }
+
+        // ── 6. Image positions (local only) ──
+        if (data.bannerPositionX !== undefined) this.bannerPositionX = data.bannerPositionX;
+        if (data.bannerPositionY !== undefined) this.bannerPositionY = data.bannerPositionY;
+        if (data.avatarPositionX !== undefined) this.avatarPositionX = data.avatarPositionX;
+        if (data.avatarPositionY !== undefined) this.avatarPositionY = data.avatarPositionY;
+
+        // ── 7. Sync auth store + sessionStorage ──
+        if (authStore.currentUser) {
+          authStore.currentUser.name  = this.name  || authStore.currentUser.name;
+          authStore.currentUser.email = this.email || authStore.currentUser.email;
+          // Keep localStorage in sync so updated name/email survive page refresh and new tabs
+          localStorage.setItem('auth_user', JSON.stringify(authStore.currentUser));
+        }
+
+        // ── 8. Persist / re-fetch ──
+        // Non-admin always saves to localStorage (fetchFromApi reads it on reload).
+        // Also save if API fell back, regardless of role.
+        if (authStore.currentUser?.role !== 'admin' || !apiSaveSucceeded) {
+          this._saveLocalProfile(id);
+        }
+        if (apiSaveSucceeded) {
+          // Re-fetch from API to confirm full server state
+          try { await this.fetchFromApi(); } catch { /* keep saved data */ }
+        }
+
         return { success: true };
       } catch (error: any) {
-        console.error('Failed to save profile to API:', error);
+        console.error('Failed to save profile:', error);
         return { success: false, error: error.message || 'Failed to save profile' };
       } finally {
         this.isLoading = false;
       }
     },
 
-    // Initialize profile with auth data
-    initFromAuth() {
-      const authStore = useAuthStore();
-      if (authStore.currentUser) {
-        this.name = authStore.currentUser.name || this.name;
-        this.email = authStore.currentUser.email || authStore.currentUser.username || this.email;
-        this.role = authStore.currentUser.role || this.role;
+    /** Fetches all jabatan from /api/jabatan for dropdown use */
+    async fetchJabatanList(): Promise<Jabatan[]> {
+      try {
+        const raw = await jabatanService.getAll();
+        // Handle potential wrapping: { data: [...] } or direct [...]
+        const list = (raw as any)?.data ?? raw;
+        return Array.isArray(list) ? list : [];
+      } catch (err) {
+        console.error('Failed to fetch jabatan list:', err);
+        return [];
       }
     },
 
-    // Update profile data locally (for preview before save)
+    /** Fetches stakeholder data for the current user's company */
+    async fetchStakeholderData(): Promise<Stakeholder | null> {
+      if (!this.idPerusahaan) return null;
+      try {
+        const company = await stakeholdersService.getById(this.idPerusahaan);
+        return (company as any)?.data ?? company;
+      } catch {
+        return null;
+      }
+    },
+
+    initFromAuth() {
+      const authStore = useAuthStore();
+      if (authStore.currentUser) {
+        this.name  = authStore.currentUser.name || this.name;
+        this.email = authStore.currentUser.email || authStore.currentUser.username || this.email;
+        this.role  = authStore.currentUser.role || this.role;
+        this.phone = authStore.currentUser.phone || this.phone;
+        this.location = authStore.currentUser.location || this.location;
+        this.jabatan = authStore.currentUser.jabatan || this.jabatan;
+        this.idJabatan = authStore.currentUser.id_jabatan || this.idJabatan;
+        this.idPerusahaan = authStore.currentUser.id_perusahaan || this.idPerusahaan;
+        if (authStore.currentUser.foto_profile) this.avatarUrl = authStore.currentUser.foto_profile;
+        if (authStore.currentUser.banner)       this.bannerUrl = authStore.currentUser.banner;
+      }
+    },
+
     updateProfile(data: Partial<ProfileData>) {
       Object.assign(this, data);
     },
 
-    // Reset profile to defaults (call when switching users)
     resetToDefaults() {
-      this.name = '';
-      this.title = 'Senior Product Designer';
-      this.role = '';
-      this.location = 'Jakarta, Indonesia';
-      this.email = '';
-      this.phone = '+62 812-3456-7890';
-      this.jabatan = 'Senior Product Designer';
-      this.website = 'www.yourwebsite.com';
-      this.joined = '';
-      this.bio = 'Passionate about creating delightful user experiences and solving complex design challenges. Love to collaborate with teams to bring ideas to life.';
-      this.address = 'Jl. Sudirman No. 123, Jakarta Pusat';
+      // Clear localStorage for the current user before wiping store state
+      try {
+        const authStore = useAuthStore();
+        if (authStore.currentUser?.id) {
+          localStorage.removeItem(`profile_data_${authStore.currentUser.id}`);
+        }
+      } catch { /* ignore */ }
+      this.name = ''; this.title = ''; this.role = '';
+      this.location = ''; this.email = ''; this.phone = '';
+      this.jabatan = ''; this.idJabatan = ''; this.website = '';
+      this.joined = ''; this.bio = ''; this.address = '';
+      this.idPerusahaan = ''; this.namaPerusahaan = '';
       this.avatarUrl = '/images/faces/9.jpg';
       this.bannerUrl = '/images/media/media-3.jpg';
-      this.bannerPositionX = 50;
-      this.bannerPositionY = 50;
-      this.avatarPositionX = 50;
-      this.avatarPositionY = 50;
+      this.bannerPositionX = 50; this.bannerPositionY = 50;
+      this.avatarPositionX = 50; this.avatarPositionY = 50;
       this.isLoading = false;
-      this.stats = {
-        projects: '47',
-        followers: '2.4K',
-        following: '892',
-      };
+      this.stats = { projects: '47', followers: '2.4K', following: '892' };
     },
 
-    // Reinitialize profile for new user (call after login)
     async switchUser() {
-      // Reset to defaults first
       this.resetToDefaults();
-      // Fetch user data from API
       await this.fetchFromApi();
     },
 
-    // Update avatar
-    updateAvatar(url: string) {
-      this.avatarUrl = url;
-    },
-
-    // Reset avatar to default
-    resetAvatar() {
-      this.avatarUrl = '/images/faces/9.jpg';
-    },
-
-    // Update banner
-    updateBanner(url: string) {
-      this.bannerUrl = url;
-    },
-
-    // Reset banner to default
-    resetBanner() {
-      this.bannerUrl = '/images/media/media-3.jpg';
-    },
+    updateAvatar(url: string)  { this.avatarUrl = url; },
+    resetAvatar()              { this.avatarUrl = '/images/faces/9.jpg'; },
+    updateBanner(url: string)  { this.bannerUrl = url; },
+    resetBanner()              { this.bannerUrl = '/images/media/media-3.jpg'; },
   },
 });
 
