@@ -511,6 +511,5 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 <!-- All styles live in src/assets/css/style2.css - STAKEHOLDER PROFILE SETTINGS section -->
 

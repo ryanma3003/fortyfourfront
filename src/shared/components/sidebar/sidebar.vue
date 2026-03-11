@@ -867,4 +867,3 @@ onBeforeMount(() => {
 </script>
 
 <!-- All sidebar-v2 styles live in src/assets/css/style2.css -->
-<style src="../../../assets/css/style2.css"></style>

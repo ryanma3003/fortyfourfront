@@ -922,7 +922,6 @@ export default {
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */

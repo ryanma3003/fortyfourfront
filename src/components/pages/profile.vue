@@ -171,5 +171,4 @@ const accountDetails = computed(() => [
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 <!-- All profile styles live in src/assets/css/style2.css -->

@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useAuthStore } from "../../stores/auth";
@@ -539,5 +539,4 @@ export default {
   </Teleport>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 

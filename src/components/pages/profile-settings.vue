@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
@@ -557,7 +557,7 @@ const roleOptions = ['admin', 'User'];
                   </div>
                 </div>
               </div>
-              <!-- New Jabatan input — expands into its own full-width row -->
+              <!-- New Jabatan input � expands into its own full-width row -->
               <transition name="slide-down">
                 <div v-if="selectedJabatan === 'NEW'" class="col-12">
                   <div class="form-group-split" @click.stop>
@@ -803,6 +803,5 @@ const roleOptions = ['admin', 'User'];
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 
 <!-- All styles live in src/assets/css/style2.css - PROFILE SETTINGS PAGE section -->

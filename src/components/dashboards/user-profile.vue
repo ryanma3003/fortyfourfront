@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
@@ -394,4 +394,3 @@ const saveRole = async () => {
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>

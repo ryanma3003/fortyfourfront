@@ -199,7 +199,6 @@ const formatValue = (value) => {
 
 </script>
 
-<style src="../assets/css/style2.css"></style>
 <style scoped>
 /* ── IKAS Table ─────────────────────────────────────────── */
 .table-wrapper { 

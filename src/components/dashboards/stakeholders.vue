@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
@@ -81,7 +81,7 @@ export default {
       });
     });
 
-    // ✅ Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
+    // ? Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
     watch(selectedSubSektorId, (newId) => {
       if (newId && subSektorList.value.length) {
         const matched = subSektorList.value.find(ss => String(ss.id) === String(newId));
@@ -114,7 +114,7 @@ export default {
       }
     };
 
-    // ✅ Helper: Dapatkan nama sektor induk dari nama sub sektor
+    // ? Helper: Dapatkan nama sektor induk dari nama sub sektor
     const getSektorFromSubSektor = (subSektorName: string): string => {
       if (!subSektorName || !subSektorList.value.length) return "-";
       const matched = subSektorList.value.find(ss => getSubSektorName(ss) === subSektorName);
@@ -268,7 +268,7 @@ export default {
       // Load sektor & sub sektor
       await loadAllSubSektors();
 
-      // ✅ Auto-detect sub sektor ID: utamakan dari sub_sektor.id (nested), fallback nama
+      // ? Auto-detect sub sektor ID: utamakan dari sub_sektor.id (nested), fallback nama
       if (item.sub_sektor?.id) {
         selectedSubSektorId.value = item.sub_sektor.id;
       } else if (item.sektor) {
@@ -943,7 +943,7 @@ export default {
                   </div>
                 </div>
 
-                <!-- ✅ SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
+                <!-- ? SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
                   <div class="form-group-split">
                     <div class="form-group-split-label-card">
@@ -1127,7 +1127,7 @@ export default {
                   </div>
                 </div>
 
-                <!-- ✅ SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
+                <!-- ? SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
                   <div class="form-group-split">
                     <div class="form-group-split-label-card">
@@ -1269,7 +1269,6 @@ export default {
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */

@@ -299,4 +299,3 @@ onMounted(async () => {
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>

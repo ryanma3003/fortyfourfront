@@ -235,7 +235,6 @@ const companyDetails = computed(() => {
 });
 </script>
 
-<style src="../../assets/css/style2.css"></style>
 <style scoped>
 /* ─────────────────────────────────────────────
    KEYFRAMES
