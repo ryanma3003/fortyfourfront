@@ -569,7 +569,7 @@ export default {
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
                         <router-link
-                          :to="`/csirt/${item.id}`"
+                          :to="`/csirt/${item.id}?from=csirt-admin`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light"
                           title="Lihat Profil">
                           <i class="ri-eye-line"></i>

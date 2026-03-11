@@ -265,7 +265,7 @@
             aria-expanded="false"
           >
             <div>
-              <img :src="avatarUrl" alt="img" class="header-link-icon" />
+              <img :src="fotoProfileUrl" alt="img" class="header-link-icon" />
             </div>
           </a>
           <!-- End::header-link|dropdown-toggle -->
@@ -285,7 +285,7 @@
                   <span
                     class="avatar avatar-sm bg-primary-transparent avatar-rounded"
                   >
-                    <img :src="avatarUrl" alt="" />
+                    <img :src="fotoProfileUrl" alt="" />
                   </span>
                 </div>
                 <div>
@@ -603,7 +603,7 @@ onMounted(() => {
 });
 
 // Reactive profile data
-const { avatarUrl } = storeToRefs(profileStore);
+const { fotoProfileUrl } = storeToRefs(profileStore);
 const displayName = computed(() => profileStore.displayName);
 const displayEmail = computed(() => profileStore.displayEmail);
 

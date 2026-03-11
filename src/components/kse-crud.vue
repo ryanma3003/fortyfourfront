@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useKseStore } from '@/stores/kse';
 import { useStakeholdersStore } from '@/stores/stakeholders';
+import { csirtService } from '@/services/csirt.service';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 import RespondentFormKse from '@/views/assessment/RespondentFormKse.vue';
 import KseView from '@/components/kse.vue';
@@ -13,32 +14,110 @@ const kseStore          = useKseStore();
 const stakeholdersStore = useStakeholdersStore();
 
 // ── Query params ──────────────────────────────────────────────
-const currentSlug        = computed(() => String(route.query.slug        || ''));
-const currentSource      = computed(() => String(route.query.source      || ''));
+const seId               = computed(() => String(route.query.seId || ''));
+const currentSlug        = computed(() => String(route.query.slug || ''));
+const currentSource      = computed(() => String(route.query.source || ''));
 const stakeholderSlug    = computed(() => String(route.query.stakeholder || currentSlug.value));
 const viewMode           = computed(() => route.query.mode === 'view');
 
+const effectiveSlug = computed(() => {
+  if (currentSlug.value) return currentSlug.value;
+  if (!seId.value) return '';
+
+  // Reverse lookup: check if we have a local respondent with this seId
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('kse_respondent_')) {
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        if (String(data.seId) === String(seId.value)) {
+          return key.replace('kse_respondent_', '');
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse local storage for seId lookup', e);
+  }
+
+  // Fallback to purely synthetic API slug
+  return `${stakeholderSlug.value}_kse_se_${seId.value}`;
+});
+
 // ── Step: 1 = Data Responden, 2 = Penilaian KSE ─────────────
 const currentStep = ref(1);
+const seDataLoaded = ref(false);
 
 // ── Init ──────────────────────────────────────────────────────
 onMounted(async () => {
+  // Determine starting step IMMEDIATELY (before any async work)
+  // so Vue never renders the wrong step
+  const isFromCsirt = currentSource.value === 'csirt';
+  if (viewMode.value) {
+    currentStep.value = 2;
+  } else if (seId.value) {
+    currentStep.value = 2; // Always step 2 if editing an SE
+  } else if (!seId.value && !isFromCsirt) {
+    const profileKey = `kse_respondent_${effectiveSlug.value}`;
+    if (localStorage.getItem(profileKey)) {
+      currentStep.value = 2;
+    }
+  }
+  // else: isFromCsirt → show step 1 first
+
   kseStore.initialize();
   if (!stakeholdersStore.initialized) {
     await stakeholdersStore.initialize();
   }
 
-  // View mode or profile already saved → go straight to step 2
-  const profileKey = `kse_respondent_${currentSlug.value}`;
-  if (viewMode.value || localStorage.getItem(profileKey)) {
-    currentStep.value = 2;
+  // If we have an seId, fetch SE data from API and pre-fill localStorage for sub-components
+  if (seId.value) {
+    try {
+      const se = await csirtService.getSeById(seId.value);
+      if (se) {
+        // Find stakeholder from store for company info
+        const stakeholder = stakeholdersStore.getStakeholderBySlug(stakeholderSlug.value);
+
+        // Pre-fill respondent profile from API data
+        const profileKey = `kse_respondent_${effectiveSlug.value}`;
+        localStorage.setItem(profileKey, JSON.stringify({
+          namaPerusahaan  : stakeholder?.nama_perusahaan || '',
+          jenisUsaha      : stakeholder?.sub_sektor?.nama_sub_sektor || stakeholder?.sektor || '',
+          namaSistem      : se.nama_se || '',
+          alamat          : stakeholder?.alamat || '',
+          email           : stakeholder?.email || '',
+          nomorTelepon    : stakeholder?.telepon || '',
+          tanggalPengisian: new Date().toISOString().split('T')[0],
+          ip_se           : se.ip_se || '',
+          as_number_se    : se.as_number_se || '',
+          pengelola_se    : se.pengelola_se || '',
+          fitur_se        : se.fitur_se || '',
+          fromCsirt       : currentSource.value === 'csirt',
+          seId            : se.id,
+          id_csirt        : se.id_csirt || '',
+          id_perusahaan   : se.id_perusahaan || stakeholder?.id || '',
+          id_sub_sektor   : se.id_sub_sektor || stakeholder?.sub_sektor?.id || '',
+        }));
+
+        // Also load penilaian answers from API into KSE store
+        kseStore.updateStakeholderInfo(
+          effectiveSlug.value,
+          se.nama_se || '',
+          stakeholder?.sub_sektor?.nama_sub_sektor || ''
+        );
+        kseStore.loadAnswersFromApi(effectiveSlug.value, se);
+
+        seDataLoaded.value = true;
+      }
+    } catch (e) {
+      console.warn('Failed to load SE data from API:', e);
+    }
   }
 });
 
 // ── Stakeholder info ──────────────────────────────────────────
 const currentStakeholder = computed(() => {
-  if (currentSlug.value) {
-    return stakeholdersStore.getStakeholderBySlug(currentSlug.value);
+  if (stakeholderSlug.value) {
+    return stakeholdersStore.getStakeholderBySlug(stakeholderSlug.value);
   }
   return null;
 });
@@ -49,8 +128,8 @@ const pageData = computed(() => ({
     label: currentStakeholder.value
       ? `KSE ${currentStakeholder.value.nama_perusahaan}`
       : 'KSE',
-    path: currentSlug.value
-      ? `/stakeholders/${currentSlug.value}`
+    path: stakeholderSlug.value
+      ? `/stakeholders/${stakeholderSlug.value}`
       : '/stakeholders',
   },
   currentpage : currentStep.value === 1 ? 'Data Responden' : 'Input Data',
@@ -63,11 +142,19 @@ const handleFormSubmit = () => {
 };
 
 const handleEditData = () => {
-  currentStep.value = 1;
+  if (currentSource.value === 'csirt') {
+    currentStep.value = 1; // CSIRT flow: go back to respondent info
+  } else {
+    // KSE List flow: stay on step 2, the store is already unlocked by kse.vue
+    currentStep.value = 2; 
+  }
 };
 
 const backToKse = () => {
-  if (stakeholderSlug.value) {
+  if (currentSource.value === 'csirt') {
+    // Came from CSIRT dashboard → go back
+    router.back();
+  } else if (stakeholderSlug.value) {
     router.push({ path: '/kse', query: { slug: stakeholderSlug.value } });
   } else {
     router.push('/stakeholders');
@@ -79,7 +166,7 @@ const backToKse = () => {
   <Pageheader :propData="pageData" />
 
   <!-- No slug warning -->
-  <div v-if="!currentSlug" class="row">
+  <div v-if="!effectiveSlug && !seId" class="row">
     <div class="col-12">
       <div class="alert alert-warning">
         <i class="ri-alert-line me-2"></i>
@@ -125,8 +212,9 @@ const backToKse = () => {
     <!-- ── Step 1: Respondent Form ── -->
     <template v-if="currentStep === 1">
       <RespondentFormKse
-        :slug="currentSlug"
+        :slug="effectiveSlug"
         :stakeholder-slug="stakeholderSlug"
+        :se-id="seId"
         @submit="handleFormSubmit"
         @cancel="backToKse"
       />
@@ -136,7 +224,8 @@ const backToKse = () => {
     <template v-else-if="currentStep === 2">
       <KseView
         :embedded="true"
-        :slug="currentSlug"
+        :slug="effectiveSlug"
+        :se-id="seId"
         @back="backToKse"
         @edit="handleEditData"
       />

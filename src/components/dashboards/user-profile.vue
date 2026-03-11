@@ -137,8 +137,8 @@ const displayLocation = computed(() =>
 const displayJoined = computed(() =>
   isCurrentUser.value ? profileStore.displayJoined : formatJoinedDate(user.value?.joined)
 );
-const displayAvatar = computed(() =>
-  isCurrentUser.value ? profileStore.avatarUrl : user.value?.photo || "/images/faces/15.jpg"
+const displayFotoProfile = computed(() =>
+  isCurrentUser.value ? profileStore.fotoProfileUrl : user.value?.photo || "/images/faces/15.jpg"
 );
 const displayBanner = computed(() =>
   isCurrentUser.value ? profileStore.bannerUrl : user.value?.banner || "/images/media/media-21.jpg"
@@ -249,9 +249,9 @@ const saveRole = async () => {
               ></div>
 
               <div class="profile-content-body">
-                <div class="profile-avatar-container">
-                  <div class="profile-avatar-wrap">
-                    <img :src="displayAvatar" alt="Profile Avatar" class="profile-avatar-img" />
+                <div class="profile-foto-profile-container">
+                  <div class="profile-foto-profile-wrap">
+                    <img :src="displayFotoProfile" alt="Profile Foto" class="profile-foto-profile-img" />
                   </div>
                 </div>
                 <div class="profile-info-block">

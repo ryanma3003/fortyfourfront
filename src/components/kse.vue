@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { stakeholdersData } from '../data/dummydata';
 import { kseCategories, type KseCategory, getMaxTotalBobot } from '../data/kse-data';
 import { useKseStore } from '../stores/kse';
+import { csirtService } from '../services/csirt.service';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 
 import { toast } from 'vue3-toastify';
@@ -20,7 +21,7 @@ const kseStore = useKseStore();
 
 // When used inside kse-crud.vue stepper, embedded=true hides the Pageheader
 // and uses emit events instead of router.push for navigation
-const props = withDefaults(defineProps<{ embedded?: boolean; slug?: string }>(), { embedded: false, slug: '' });
+const props = withDefaults(defineProps<{ embedded?: boolean; slug?: string; seId?: string }>(), { embedded: false, slug: '', seId: '' });
 const emit = defineEmits<{ (e: 'back'): void; (e: 'edit'): void; }>();
 
 const currentSlug = computed(() => props.slug || String(route.query.slug || ''));
@@ -33,7 +34,7 @@ const currentPage = ref(1);
 const questionsPerPage = 5;
 
 // Initialize store
-onMounted(() => {
+onMounted(async () => {
   kseStore.initialize();
   
   // Update stakeholder info if we have a slug
@@ -43,6 +44,39 @@ onMounted(() => {
       currentStakeholder.value.nama_perusahaan || '',
       currentStakeholder.value.sub_sektor?.nama_sub_sektor || currentStakeholder.value.sektor || ''
     );
+  }
+
+  // Load penilaian answers from API if we have an seId
+  // (Only do this if NOT embedded, because kse-crud handles it and we don't want to re-lock an unlocked form on step navigation)
+  if (!props.embedded) {
+    const resolvedSeId = props.seId || '';
+    if (resolvedSeId) {
+      try {
+        const se = await csirtService.getSeById(resolvedSeId);
+        if (se) {
+          kseStore.loadAnswersFromApi(currentSlug.value, se);
+        }
+      } catch (e) {
+        console.warn('KSE: Failed to load penilaian from API:', e);
+      }
+    } else {
+      // Fallback: try localStorage for seId (legacy / Tambah SE flow)
+      const profileKey = `kse_respondent_${currentSlug.value}`;
+      try {
+        const profileRaw = localStorage.getItem(profileKey);
+        if (profileRaw) {
+          const profile = JSON.parse(profileRaw);
+          if (profile?.seId) {
+            const se = await csirtService.getSeById(profile.seId);
+            if (se) {
+              kseStore.loadAnswersFromApi(currentSlug.value, se);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('KSE: Failed to load penilaian from API:', e);
+      }
+    }
   }
 });
 
@@ -229,12 +263,85 @@ const viewOnly  = computed(() => route.query.mode === 'view');
 const isLocked  = computed(() => viewOnly.value || !!kseData.value?.isSubmitted);
 
 // Save and Exit
-const saveAndExit = () => {
+const saveAndExit = async () => {
     const slug = currentSlug.value || 'default';
-    
+
+    // ── Map question numbers to SE enum field names ──────────────────────────
+    const questionToField: Record<string, string> = {
+      '1.1': 'nilai_investasi',
+      '1.2': 'anggaran_operasional',
+      '1.3': 'kepatuhan_peraturan',
+      '1.4': 'teknik_kriptografi',
+      '1.5': 'jumlah_pengguna',
+      '1.6': 'data_pribadi',
+      '1.7': 'klasifikasi_data',
+      '1.8': 'kekritisan_proses',
+      '1.9': 'dampak_kegagalan',
+      '1.10': 'potensi_kerugian_dan_dampak_negatif',
+    };
+
     if (isAllAnswered.value) {
         // Simpan & Selesai (Lock Data)
-        kseStore.submitData(slug); 
+        kseStore.submitData(slug);
+
+        // ── Sync KSE answers to SE API ────────────────────────────────────────
+        try {
+          const profileRaw = localStorage.getItem(`kse_respondent_${slug}`);
+          if (profileRaw) {
+            const profile = JSON.parse(profileRaw);
+
+            // Build penilaian payload from answers
+            const answers = kseStore.getKseData(slug).answers;
+            const penilaianPayload: Record<string, string> = {};
+            Object.entries(answers).forEach(([qNo, ans]) => {
+              const field = questionToField[qNo];
+              if (field && ans.selectedOption) {
+                penilaianPayload[field] = ans.selectedOption;
+              }
+            });
+            const kategoriSE = kseStore.getKseData(slug).kategoriSE;
+
+            if (profile?.fromCsirt && !profile?.seId) {
+              // First time: create the SE with all fields at once
+              const created = await csirtService.createSe({
+                id_csirt      : profile.id_csirt,
+                id_perusahaan : profile.id_perusahaan,
+                id_sub_sektor : profile.id_sub_sektor,
+                nama_se       : profile.namaSistem,
+                ip_se         : profile.ip_se       || '',
+                as_number_se  : profile.as_number_se || '',
+                pengelola_se  : profile.pengelola_se || '',
+                fitur_se      : profile.fitur_se     || '',
+                kategori_se   : kategoriSE,
+                ...penilaianPayload,
+              });
+              // Persist seId so subsequent edits use updateSe
+              const updated = { ...profile, seId: created.id, fromCsirt: false };
+              localStorage.setItem(`kse_respondent_${slug}`, JSON.stringify(updated));
+              // Also update kse_list entry with seId
+              const listKey = `kse_list_${stakeholderSlug.value}`;
+              try {
+                const list = JSON.parse(localStorage.getItem(listKey) || '[]');
+                const idx = list.findIndex((e: any) => e.id === slug);
+                if (idx !== -1) { list[idx].seId = created.id; localStorage.setItem(listKey, JSON.stringify(list)); }
+              } catch {}
+            } else if (profile?.seId) {
+              // Already created: patch both respondent fields and penilaian fields
+              await csirtService.updateSe(profile.seId, {
+                id_csirt      : profile.id_csirt,
+                nama_se       : profile.namaSistem,
+                ip_se         : profile.ip_se       || '',
+                as_number_se  : profile.as_number_se || '',
+                pengelola_se  : profile.pengelola_se || '',
+                fitur_se      : profile.fitur_se     || '',
+                kategori_se   : kategoriSE,
+                ...penilaianPayload
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('KSE → SE sync failed:', e);
+        }
 
         toast.success('Assessment berhasil diselesaikan dan disimpan', {
             theme: 'auto',
@@ -364,7 +471,13 @@ const editData = () => {
 
             <!-- Embedded Mode: Show Both Buttons -->
             <template v-else>
-              <template v-if="!isLocked">
+              <template v-if="viewOnly">
+                <div class="action-btn action-btn-info" style="justify-content:center;cursor:default;">
+                  <i class="ri-eye-line"></i>
+                  <span>Mode Lihat Saja</span>
+                </div>
+              </template>
+              <template v-else-if="!isLocked">
                 <button 
                   @click="saveAndExit" 
                   class="action-btn mb-3"

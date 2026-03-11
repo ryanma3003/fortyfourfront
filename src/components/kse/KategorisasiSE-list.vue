@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useKseStore } from '../../stores/kse';
 import { useStakeholdersStore } from '../../stores/stakeholders';
+import { csirtService } from '@/services/csirt.service';
+import type { SeCsirt } from '@/types/csirt.types';
 
 const route  = useRoute();
 const router = useRouter();
@@ -21,6 +23,9 @@ interface KseListEntry {
   id: string;          // compound key used in kseStore, e.g. `${slug}_kse_${ts}`
   namaSistem: string;
   createdAt: string;
+  fromApi?: boolean;   // true if entry came from backend API
+  seId?: string;       // original SE id from API
+  kategoriSe?: string; // category from API
 }
 
 const STORAGE_KEY = computed(() => `kse_list_${stakeholderSlug.value}`);
@@ -40,20 +45,59 @@ const addError        = ref('');
 onMounted(async () => {
   if (!stakeholdersStore.initialized) await stakeholdersStore.initialize();
   kseStore.initialize();
-  loadEntries();
+  await loadEntries();
 });
 
-function loadEntries() {
+async function loadEntries() {
+  // 1. Load local entries
+  let localEntries: KseListEntry[] = [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY.value);
-    kseEntries.value = raw ? JSON.parse(raw) : [];
-  } catch {
-    kseEntries.value = [];
+    localEntries = raw ? JSON.parse(raw) : [];
+  } catch { localEntries = []; }
+
+  // 2. Fetch SE from backend API for this company
+  let apiEntries: KseListEntry[] = [];
+  try {
+    const companyId = currentStakeholder.value?.id;
+    if (companyId) {
+      const allSe: SeCsirt[] = await csirtService.getAllSe();
+      const companySe = allSe.filter(se => String(se.id_perusahaan) === String(companyId));
+      apiEntries = companySe.map(se => {
+        // Match with local entry to preserve existing store data (like isSubmitted/answers)
+        const localMatch = localEntries.find(le => String(le.seId) === String(se.id));
+        const entryId = localMatch ? localMatch.id : `${stakeholderSlug.value}_kse_se_${se.id}`;
+        
+        return {
+          id: entryId,
+          namaSistem: se.nama_se || '',
+          createdAt: localMatch ? localMatch.createdAt : (se as any).created_at || new Date().toISOString(),
+          fromApi: true,
+          seId: String(se.id),
+          kategoriSe: se.kategori_se || '',
+        };
+      });
+
+      // Load penilaian into KSE store for each API entry
+      for (let i = 0; i < companySe.length; i++) {
+        // Important: use the resolved mapped ID so store data connects properly
+        kseStore.loadAnswersFromApi(apiEntries[i].id, companySe[i]);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load SE from API:', e);
   }
+
+  // 3. Merge: API entries first, then unique local entries
+  // Any local entry that was already matched & upgraded to an apiEntry above is ignored
+  const mappedIds = new Set(apiEntries.map(e => e.id));
+  const uniqueLocal = localEntries.filter(e => !mappedIds.has(e.id));
+  kseEntries.value = [...apiEntries, ...uniqueLocal];
 }
 
 function saveEntries() {
-  localStorage.setItem(STORAGE_KEY.value, JSON.stringify(kseEntries.value));
+  const localOnly = kseEntries.value.filter(e => !e.fromApi);
+  localStorage.setItem(STORAGE_KEY.value, JSON.stringify(localOnly));
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -72,7 +116,10 @@ function scoreOf(entry: KseListEntry): number {
 }
 
 function kategoriOf(entry: KseListEntry): string {
-  return getKseDetail(entry).kategoriSE;
+  const storeKat = getKseDetail(entry).kategoriSE;
+  if (storeKat && storeKat !== 'Belum Ditentukan') return storeKat;
+  if (entry.kategoriSe) return entry.kategoriSe;
+  return storeKat || 'Belum Ditentukan';
 }
 
 function isSubmitted(entry: KseListEntry): boolean {
@@ -150,19 +197,31 @@ function confirmAdd() {
 
 // ── View / Edit ───────────────────────────────────────────────
 function viewKse(entry: KseListEntry) {
-  router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse', stakeholder: stakeholderSlug.value, mode: 'view' } });
+  if (entry.fromApi && entry.seId) {
+    router.push({ path: '/kse-crud', query: { seId: entry.seId, stakeholder: stakeholderSlug.value, mode: 'view' } });
+  } else {
+    router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse', stakeholder: stakeholderSlug.value, mode: 'view' } });
+  }
 }
 
 function editKse(entry: KseListEntry) {
-  router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse', stakeholder: stakeholderSlug.value } });
+  if (entry.fromApi && entry.seId) {
+    router.push({ path: '/kse-crud', query: { seId: entry.seId, source: 'kse', stakeholder: stakeholderSlug.value } });
+  } else {
+    router.push({ path: '/kse-crud', query: { slug: entry.id, source: 'kse', stakeholder: stakeholderSlug.value } });
+  }
 }
 
 // ── Delete ────────────────────────────────────────────────────
 function openDelete(entry: KseListEntry) { deleteTarget.value = entry; showDeleteModal.value = true; }
 function closeDelete() { showDeleteModal.value = false; deleteTarget.value = null; }
 
-function confirmDelete() {
+async function confirmDelete() {
   if (!deleteTarget.value) return;
+  if (deleteTarget.value.fromApi && deleteTarget.value.seId) {
+    try { await csirtService.deleteSe(deleteTarget.value.seId as any); }
+    catch (e) { console.warn('Failed to delete SE from API:', e); }
+  }
   kseEntries.value = kseEntries.value.filter(e => e.id !== deleteTarget.value!.id);
   kseStore.resetStakeholderData(deleteTarget.value.id);
   saveEntries();
@@ -492,8 +551,7 @@ function progressClass(pct: number): string {
     </div>
   </div>
 
-  <!-- ══ ADD MODAL ══════════════════════════════════════════════ -->
-  <teleport to="body">
+  <!-- ══ ADD MODAL ══════════════════════════════════════════════ -->  <teleport to="body">
     <transition name="kse-modal-fade">
       <div v-if="showAddModal" class="kse-modal-overlay" @click.self="closeAdd">
         <div class="kse-modal-box">
@@ -580,6 +638,7 @@ function progressClass(pct: number): string {
       </div>
     </transition>
   </teleport>
+
 </template>
 
 <style src="../../assets/css/style2.css"></style>

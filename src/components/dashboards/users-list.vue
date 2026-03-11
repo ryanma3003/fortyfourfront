@@ -79,7 +79,7 @@ export default {
             ...userObj,
             jabatan: profileStore.jabatan || userObj.jabatan,
             name: profileStore.name || userObj.name,
-            photo: profileStore.avatarUrl || userObj.photo,
+            photo: profileStore.fotoProfileUrl || userObj.photo,
           };
         }
         return userObj;

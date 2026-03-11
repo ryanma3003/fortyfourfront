@@ -10,6 +10,7 @@ import { useRouter } from "vue-router";
 import { picService } from "../../services/pic.service";
 import type { Pic } from "../../types/pic.types";
 import { useCsirtStore } from "../../stores/csirt";
+import { csirtService } from "../../services/csirt.service";
 import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
@@ -149,7 +150,7 @@ const penilaian = computed(() => {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,
       svgColor: "secondary",
       title: "KSE",
-      value: (hasKseData || kseData.isSubmitted || kseData.totalBobot > 0 || kseData.lastUpdated !== '' || (kseData.kategoriSE && kseData.kategoriSE !== 'Belum Dikategorikan')) ? "Sudah Terdaftar" : "Belum Diisi"
+      value: seCount.value > 0 ? "Sudah Terdaftar" : "Belum Terdaftar"
     },
     {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
@@ -168,6 +169,20 @@ const relatedCsirtId = computed(() => {
   );
   return csirt ? (csirt.id as any) : null;
 });
+
+// SE count for KSE status card
+const seCount = ref(0);
+const loadSeCount = async (csirtId: string | number | null) => {
+  if (!csirtId) { seCount.value = 0; return; }
+  try {
+    const list = await csirtService.getSeByCsirtId(csirtId);
+    seCount.value = list.length;
+  } catch {
+    seCount.value = 0;
+  }
+};
+
+watch(relatedCsirtId, (id) => { loadSeCount(id); }, { immediate: true });
 
 
 
