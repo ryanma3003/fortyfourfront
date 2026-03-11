@@ -4,6 +4,11 @@
 
   <aside class="app-sidebar sticky sidebar-v2" id="sidebar">
 
+    <!-- Video background -->
+    <video class="sb2-bg-video" autoplay muted loop playsinline>
+      <source src="/video/BG2.webm" type="video/webm" />
+    </video>
+
     <!-- Decorative background orbs -->
     <div class="sb2-orb sb2-orb-1" aria-hidden="true"></div>
     <div class="sb2-orb sb2-orb-2" aria-hidden="true"></div>
@@ -862,4 +867,3 @@ onBeforeMount(() => {
 </script>
 
 <!-- All sidebar-v2 styles live in src/assets/css/style2.css -->
-<style src="../../../assets/css/style2.css"></style>

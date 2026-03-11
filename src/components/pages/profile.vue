@@ -13,12 +13,12 @@ const {
   phone,
   bio,
   stats,
-  avatarUrl,
+  fotoProfileUrl,
   bannerUrl,
   bannerPositionX,
   bannerPositionY,
-  avatarPositionX,
-  avatarPositionY,
+  fotoProfilePositionX,
+  fotoProfilePositionY,
   name,
   title,
   role,
@@ -104,13 +104,13 @@ const accountDetails = computed(() => [
             ></div>
 
             <div class="profile-content-body">
-              <div class="profile-avatar-container">
-                <div class="profile-avatar-wrap">
+              <div class="profile-foto-profile-container">
+                <div class="profile-foto-profile-wrap">
                   <img
-                    :src="avatarUrl"
-                    alt="Profile Avatar"
-                    class="profile-avatar-img"
-                    :style="{ objectPosition: `${avatarPositionX ?? 50}% ${avatarPositionY ?? 50}%` }"
+                    :src="fotoProfileUrl"
+                    alt="Profile Foto"
+                    class="profile-foto-profile-img"
+                    :style="{ objectPosition: `${fotoProfilePositionX ?? 50}% ${fotoProfilePositionY ?? 50}%` }"
                   />
                 </div>
               </div>
@@ -171,5 +171,4 @@ const accountDetails = computed(() => [
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 <!-- All profile styles live in src/assets/css/style2.css -->

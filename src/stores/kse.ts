@@ -1,6 +1,33 @@
 // stores/kse.ts
 import { defineStore } from 'pinia';
 import { kseCategories, getKategoriSE } from '../data/kse-data';
+import type { SeCsirt } from '../types/csirt.types';
+
+// Reverse mapping: API field name → question number
+const fieldToQuestion: Record<string, string> = {
+  nilai_investasi: '1.1',
+  anggaran_operasional: '1.2',
+  kepatuhan_peraturan: '1.3',
+  teknik_kriptografi: '1.4',
+  jumlah_pengguna: '1.5',
+  data_pribadi: '1.6',
+  klasifikasi_data: '1.7',
+  kekritisan_proses: '1.8',
+  dampak_kegagalan: '1.9',
+  potensi_kerugian_dan_dampak_negatif: '1.10',
+};
+
+// Build a lookup: questionNo → { optionKey → bobot }
+const questionBobotMap: Record<string, Record<string, number>> = {};
+kseCategories.forEach(cat => {
+  cat.questions.forEach(q => {
+    questionBobotMap[q.no] = {
+      A: q.options.A.bobot,
+      B: q.options.B.bobot,
+      C: q.options.C.bobot,
+    };
+  });
+});
 
 export interface KseAnswer {
   questionNo: string;
@@ -185,6 +212,44 @@ export const useKseStore = defineStore('kse', {
     unlockData(slug: string) {
       this.ensureStakeholderData(slug);
       this.kseDataMap[slug].isSubmitted = false;
+      this.saveToStorage();
+    },
+
+    /**
+     * Load penilaian answers from API SE data.
+     * Reverse-maps API fields (e.g. nilai_investasi: 'A') to KSE question answers.
+     */
+    loadAnswersFromApi(slug: string, seData: SeCsirt) {
+      this.ensureStakeholderData(slug);
+      const data = this.kseDataMap[slug];
+
+      let hasChanges = false;
+
+      Object.entries(fieldToQuestion).forEach(([field, questionNo]) => {
+        const optionKey = (seData as any)[field] as string | undefined;
+        if (optionKey && (optionKey === 'A' || optionKey === 'B' || optionKey === 'C')) {
+          const bobot = questionBobotMap[questionNo]?.[optionKey] ?? 0;
+          
+          // Overwrite the local answer to forcefully sync with the True API source of truth
+          if (data.answers[questionNo]?.selectedOption !== optionKey) {
+            data.answers[questionNo] = {
+              questionNo,
+              selectedOption: optionKey as 'A' | 'B' | 'C',
+              bobot,
+            };
+            hasChanges = true;
+          }
+        }
+      });
+
+      if (hasChanges) {
+        this.recalculate(slug);
+      }
+
+      // Any SE that exists in the backend API was created via 'Simpan & Selesai'.
+      // Therefore, it must be considered fully submitted (Final).
+      data.isSubmitted = true;
+
       this.saveToStorage();
     },
   },

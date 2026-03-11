@@ -19,7 +19,7 @@ class AuthService {
      */
     async login(payload: LoginPayload): Promise<AuthResponse> {
         return api.post<AuthResponse>('/api/login', {
-            username: payload.email,
+            username: payload.username,
             password: payload.password,
         });
     }

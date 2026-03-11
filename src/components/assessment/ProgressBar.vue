@@ -60,6 +60,9 @@ onMounted(() => {
     <!-- HEADER (V9 Linear Modern / V10 Fluid) -->
     <!-- ROTATING BACKGROUND LAYER -->
     <div class="pb-rotating-bg">
+      <video class="bg-video-fluid" autoplay loop muted playsinline>
+        <source src="/video/naruto.webm" type="video/webm" />
+      </video>
       <!-- WAVE EFFECT (SVG SINE WAVES) -->
       <svg class="waves-container" viewBox="0 24 150 28" preserveAspectRatio="none" shape-rendering="auto">
         <defs>
@@ -250,8 +253,8 @@ onMounted(() => {
   border-radius: 16px;
   /* Make sure container clips the fluid bg */
   overflow: hidden; 
-  /* Base background */
-  background: #ffffff;
+  /* Base background transparent so GIF shows */
+  background: transparent;
   box-shadow: 
     0 4px 20px -5px rgba(0,0,0,0.1),
     0 0 0 1px rgba(0,0,0,0.05);
@@ -264,7 +267,27 @@ onMounted(() => {
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.85); /* White semi-transparent */
+}
+
+.bg-video-fluid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Semi-transparent overlay so text stays readable */
+.pb-rotating-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.38);
+  z-index: 2;
 }
 
 
@@ -310,7 +333,8 @@ onMounted(() => {
 }
 
 /* Dark Mode Adaptation */
-[data-theme-mode="dark"] .pb-rotating-bg { background: #0f172a; }
+[data-theme-mode="dark"] .pb-rotating-bg { background-color: #0f172a; }
+[data-theme-mode="dark"] .pb-rotating-bg::after { background: rgba(15, 23, 42, 0.45); }
 
 /* CONTENT LAYER (Sits on top of fluid) */
 .pb-content-layer {
@@ -381,8 +405,9 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(6px);
   padding: 4px 0 10px;
   border-radius: 100px;
   width: fit-content;
@@ -391,7 +416,7 @@ onMounted(() => {
   color: #475569;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 .active-dot-glass {
   width: 5px; height: 5px;
@@ -407,6 +432,7 @@ onMounted(() => {
   color: #1e293b;
   margin: 2px 0 0;
   line-height: 1.2;
+  text-shadow: 0 1px 6px rgba(255,255,255,0.85), 0 0 12px rgba(255,255,255,0.6);
 }
 .linear-sub-glass {
   font-family: 'Inter', sans-serif;
@@ -422,9 +448,10 @@ onMounted(() => {
   font-size: 28px;
   font-weight: 800;
   /* Deep Blue/Purple for contrast against light bg */
-  color: #334155; 
+  color: #1e293b; 
   letter-spacing: -0.03em;
   line-height: 1;
+  text-shadow: 0 1px 8px rgba(255,255,255,0.9), 0 0 16px rgba(255,255,255,0.7);
 }
 .linear-unit-glass {
   font-family: 'Inter', sans-serif;
@@ -441,21 +468,24 @@ onMounted(() => {
   border-top: 1px solid rgba(0,0,0,0.05);
 }
 
-.lin-step-label-glass { color: #000000; font-weight: 600; margin-right: 2px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;}
-.lin-step-cur-glass { color: #144491; font-weight: 700; }
-.lin-step-div-glass { color: #000000; }
-.lin-step-tot-glass { color: #144491; font-weight: 600; }
+.lin-step-label-glass { color: #1e293b; font-weight: 700; margin-right: 2px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; text-shadow: 0 1px 4px rgba(255,255,255,0.8);}
+.lin-step-cur-glass { color: #144491; font-weight: 700; text-shadow: 0 1px 4px rgba(255,255,255,0.8); }
+.lin-step-div-glass { color: #1e293b; text-shadow: 0 1px 4px rgba(255,255,255,0.8); }
+.lin-step-tot-glass { color: #144491; font-weight: 600; text-shadow: 0 1px 4px rgba(255,255,255,0.8); }
 
 .linear-save-glass {
   display: flex;
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: #64748b;
+  color: #334155;
   font-weight: 600;
-  background: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(6px);
   padding: 4px 8px;
   border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.5);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
 }
 .lin-check-glass { font-size: 13px; color: #10B981; }
 
@@ -764,7 +794,7 @@ onMounted(() => {
 
 /* ========== COMPREHENSIVE DARK MODE ========== */
 [data-theme-mode="dark"] .pb-wrapper {
-  background: #0f172a;
+  background: transparent;
   box-shadow: 0 4px 20px -5px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
 }
 [data-theme-mode="dark"] .pb-track {
@@ -790,5 +820,91 @@ onMounted(() => {
 [data-theme-mode="dark"] .parallax-waves > use:nth-child(3) { fill: rgba(148,163,184,0.05); }
 [data-theme-mode="dark"] .parallax-waves > use:nth-child(4) { fill: rgba(96,165,250,0.04); }
 
+/* ========== RESPONSIVE ========== */
+
+/* Tablet */
+@media (max-width: 768px) {
+  .pb-content-layer {
+    padding: 10px 14px;
+  }
+  .linear-title-glass {
+    font-size: 14px;
+  }
+  .linear-val-glass {
+    font-size: 22px;
+  }
+  .linear-unit-glass {
+    font-size: 12px;
+  }
+  .count-sub {
+    font-size: 11px;
+  }
+  .linear-badge-glass {
+    font-size: 9px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .pb-content-layer {
+    padding: 8px 10px;
+  }
+  .pb-linear-scaffold {
+    gap: 2px;
+  }
+  .linear-title-glass {
+    font-size: 12px;
+  }
+  .linear-val-glass {
+    font-size: 18px;
+  }
+  .linear-unit-glass {
+    font-size: 11px;
+  }
+  .linear-badge-glass {
+    font-size: 8px;
+    padding: 2px 0 6px;
+  }
+  .count-sub {
+    font-size: 10px;
+  }
+  .linear-right {
+    gap: 4px;
+  }
+  .pb-footer-linear {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .linear-prog-info {
+    font-size: 10px;
+  }
+  .linear-save-glass {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+  .pb-track-wrapper {
+    padding-right: 12px;
+  }
+  .footer-glass {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+}
+
+/* Extra small */
+@media (max-width: 360px) {
+  .pb-content-layer {
+    padding: 6px 8px;
+  }
+  .linear-val-glass {
+    font-size: 16px;
+  }
+  .linear-title-glass {
+    font-size: 11px;
+  }
+  .pb-linear-scaffold {
+    align-items: center;
+  }
+}
 
 </style>

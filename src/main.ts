@@ -1,6 +1,6 @@
 // main.ts
 import './style.scss';
-// dashboard styles → src/components/dashboards/style2.css (loaded via <style src>)
+import './assets/css/style2.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router/index';

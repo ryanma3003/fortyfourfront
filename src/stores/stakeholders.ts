@@ -29,6 +29,18 @@ export const useStakeholdersStore = defineStore('stakeholders', {
     },
 
     actions: {
+        /** Normalise a backend-returned image path to a full URL.
+         *  Handles: full https URLs, relative storage/ paths, bare filenames. */
+        formatImageUrl(path: string | undefined | null): string {
+            if (!path) return '';
+            if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('/images/')) return path;
+            if (path.startsWith('http://') || path.startsWith('https://')) return path;
+            // Relative path → prepend backend base URL
+            const baseUrl = (import.meta.env.VITE_STORAGE_BASE_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+            const cleanPath = path.replace(/^\//, '');
+            return baseUrl ? `${baseUrl}/${cleanPath}` : `/${cleanPath}`;
+        },
+
         /**
          * Initialize stakeholders from backend API
          */
@@ -43,7 +55,8 @@ export const useStakeholdersStore = defineStore('stakeholders', {
                 console.log('Stakeholders from backend:', data);
                 this.stakeholders = data.map(s => ({
                     ...s,
-                    slug: s.slug || this.generateSlug(s.nama_perusahaan)
+                    slug: s.slug || this.generateSlug(s.nama_perusahaan),
+                    photo: this.formatImageUrl(s.photo),
                 }));
                 this.initialized = true;
                 this.loading = false;
@@ -66,7 +79,8 @@ export const useStakeholdersStore = defineStore('stakeholders', {
                 const data = await stakeholdersService.getAll();
                 this.stakeholders = data.map(s => ({
                     ...s,
-                    slug: s.slug || this.generateSlug(s.nama_perusahaan)
+                    slug: s.slug || this.generateSlug(s.nama_perusahaan),
+                    photo: this.formatImageUrl(s.photo),
                 }));
                 this.loading = false;
             } catch (error: any) {

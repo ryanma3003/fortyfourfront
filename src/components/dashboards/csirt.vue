@@ -9,18 +9,10 @@ import TableComponent from "../../shared/components/@spk/table-reuseble/table-co
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import { useAuthStore } from "../../stores/auth";
 import { useCsirtStore } from "../../stores/csirt";
+import { useKseStore } from "../../stores/kse";
 import { useRouter } from "vue-router";
-import "../../assets/css/style2.css";
 
 export default {
-    data() {   
-        return {
-            dataToPass: {
-                activepage: "CSIRT",
-            },
-            searchValue2: ref(""),
-        };
-    },
     components: {
         Pageheader,
         SimpleCardComponent,
@@ -43,7 +35,9 @@ export default {
 
         const headers = [
             { text: "Nama Personel" },
-            { text: "Jabatan" },
+            { text: "CSIRT" },
+            { text: "Jabatan CSIRT" },
+            { text: "Jabatan Perusahaan" },
             { text: "Keahlian" },
             { text: "Sertifikasi" },
             { text: "Aksi" },
@@ -74,19 +68,20 @@ export default {
 
         // Async data loading from API
         const loadCSIRTs = async () => {
-            if (!csirtId.value) {
-                items.value = [];
-                seItems.value = [];
-                return;
-            }
             loading.value = true;
             try {
-                const [sdmData, seData] = await Promise.all([
-                    csirtService.getSdmByCsirtId(csirtId.value),
-                    csirtService.getSeByCsirtId(csirtId.value),
-                ]);
-                items.value = sdmData;
-                seItems.value = seData;
+                if (csirtId.value) {
+                    const [sdmRes, seRes] = await Promise.all([
+                        csirtService.getSdmByCsirtId(csirtId.value),
+                        csirtService.getSeByCsirtId(csirtId.value)
+                    ]);
+                    
+                    items.value = sdmRes || [];
+                    seItems.value = seRes || [];
+                } else {
+                    items.value = [];
+                    seItems.value = [];
+                }
             } catch (err) {
                 console.error('Failed to load SDM/SE:', err);
                 items.value = [];
@@ -111,15 +106,30 @@ export default {
         });
 
         const dataToPass = computed(() => {
-            const parent = currentCsirt.value 
-                ? stakeholdersStore.stakeholders.find(s => Number(s.id) === currentCsirt.value?.id_perusahaan || (s.id as any) === currentCsirt.value?.id_perusahaan) 
-                : null;
-            
+            const from = String(route.query.from || '');
+
+            if (from === 'csirt-admin') {
+                return {
+                    currentpage: "CSIRT",
+                    title: { label: "CSIRT Admin", path: "/csirt-admin" },
+                    activepage: "CSIRT",
+                };
+            }
+
+            // Parent stakeholder: either from query.stakeholder (profile-stakeholders nav)
+            // or derived from currentCsirt.id_perusahaan
+            const parent = newStakeholder.value
+                ?? (currentCsirt.value
+                    ? stakeholdersStore.stakeholders.find(s =>
+                        Number(s.id) === currentCsirt.value?.id_perusahaan ||
+                        (s.id as any) === currentCsirt.value?.id_perusahaan)
+                    : null);
+
             return {
                 currentpage: "CSIRT",
                 title: parent ? {
                     label: `Profile ${parent.nama_perusahaan}`,
-                    path: `/profile-stakeholders/${parent.slug}`
+                    path: `/stakeholders/${parent.slug}`
                 } : { label: "Dashboards", path: "/dashboards" },
                 activepage: "CSIRT",
             };
@@ -134,7 +144,7 @@ export default {
             }
         };
 
-        // ─── TOAST ────────────────────────────────────────────────────────────
+        // --- TOAST ------------------------------------------------------------
         const showToast = ref(false);
         const toastMessage = ref("");
         const toastType = ref<"success" | "error">("success");
@@ -146,7 +156,7 @@ export default {
             setTimeout(() => { showToast.value = false; }, 3500);
         };
 
-        // ─── SDM CRUD ─────────────────────────────────────────────────────────
+        // --- SDM CRUD ---------------------------------------------------------
         const showCreateSdmModal = ref(false);
         const showEditSdmModal   = ref(false);
         const showDeleteSdmModal = ref(false);
@@ -154,6 +164,7 @@ export default {
         const currentDeleteSdm  = ref<SdmCsirt | null>(null);
 
         const sdmFormData = ref<Partial<SdmCsirt>>({
+            id_csirt: "",
             nama_personel: "",
             jabatan_csirt: "",
             jabatan_perusahaan: "",
@@ -165,6 +176,10 @@ export default {
         const validateSdmForm = (): boolean => {
             sdmFormErrors.value = {};
             let valid = true;
+            if (!sdmFormData.value.id_csirt) {
+                sdmFormErrors.value.id_csirt = "CSIRT wajib dipilih";
+                valid = false;
+            }
             if (!sdmFormData.value.nama_personel?.trim()) {
                 sdmFormErrors.value.nama_personel = "Nama personel wajib diisi";
                 valid = false;
@@ -177,16 +192,16 @@ export default {
         };
 
         const openCreateSdmModal = () => {
-            sdmFormData.value = { nama_personel: "", jabatan_csirt: "", jabatan_perusahaan: "", skill: "", sertifikasi: "" };
+            sdmFormData.value = { id_csirt: csirtId.value || "", nama_personel: "", jabatan_csirt: "", jabatan_perusahaan: "", skill: "", sertifikasi: "" };
             sdmFormErrors.value = {};
             showCreateSdmModal.value = true;
         };
 
         const createSdm = async () => {
-            if (!validateSdmForm() || !csirtId.value) return;
+            if (!validateSdmForm()) return;
             try {
                 await csirtService.createSdm({
-                    id_csirt: Number(csirtId.value),
+                    id_csirt: sdmFormData.value.id_csirt!,
                     nama_personel: sdmFormData.value.nama_personel!,
                     jabatan_csirt: sdmFormData.value.jabatan_csirt!,
                     jabatan_perusahaan: sdmFormData.value.jabatan_perusahaan || "",
@@ -204,6 +219,9 @@ export default {
         const openEditSdmModal = (item: any) => {
             currentEditSdm.value = item as SdmCsirt;
             sdmFormData.value = { ...item };
+            if (!sdmFormData.value.id_csirt) {
+                sdmFormData.value.id_csirt = csirtId.value;
+            }
             sdmFormErrors.value = {};
             showEditSdmModal.value = true;
         };
@@ -212,6 +230,7 @@ export default {
             if (!validateSdmForm() || !currentEditSdm.value) return;
             try {
                 await csirtService.updateSdm(currentEditSdm.value.id, {
+                    id_csirt: sdmFormData.value.id_csirt!,
                     nama_personel: sdmFormData.value.nama_personel!,
                     jabatan_csirt: sdmFormData.value.jabatan_csirt!,
                     jabatan_perusahaan: sdmFormData.value.jabatan_perusahaan || "",
@@ -243,8 +262,7 @@ export default {
             }
         };
 
-        // ─── SE CRUD ──────────────────────────────────────────────────────────
-        const showCreateSeModal = ref(false);
+        // --- SE CRUD ----------------------------------------------------------
         const showEditSeModal   = ref(false);
         const showDeleteSeModal = ref(false);
         const currentEditSe    = ref<SeCsirt | null>(null);
@@ -274,35 +292,77 @@ export default {
             return valid;
         };
 
-        const openCreateSeModal = () => {
-            seFormData.value = { nama_se: "", ip_se: "", as_number_se: "", pengelola_se: "", fitur_se: "", kategori_se: "Tinggi" };
-            seFormErrors.value = {};
-            showCreateSeModal.value = true;
+        // Langsung ke KSE respondent form tanpa modal
+        const goToAddSe = () => {
+            if (!csirtId.value) return;
+            const p = currentCsirt.value?.perusahaan;
+            const companySlug = String(
+                stakeholdersStore.stakeholders.find(
+                    s => Number(s.id) === Number(currentCsirt.value?.id_perusahaan || p?.id)
+                )?.slug || ''
+            );
+            const kseId = `${companySlug}_kse_${Date.now()}`;
+
+            // KSE list placeholder (namaSistem will be filled on respondent form)
+            const kseListKey = `kse_list_${companySlug}`;
+            const existingList = (() => { try { return JSON.parse(localStorage.getItem(kseListKey) || '[]'); } catch { return []; } })();
+            existingList.unshift({ id: kseId, namaSistem: '', createdAt: new Date().toISOString() });
+            localStorage.setItem(kseListKey, JSON.stringify(existingList));
+
+            // Pre-fill CSIRT company data; SE fields left blank for user to fill on respondent form
+            localStorage.setItem(`kse_respondent_${kseId}`, JSON.stringify({
+                namaPerusahaan  : p?.nama_perusahaan || '',
+                jenisUsaha      : p?.sub_sektor?.nama_sub_sektor || '',
+                namaSistem      : '',
+                alamat          : p?.alamat  || '',
+                email           : p?.email   || '',
+                nomorTelepon    : p?.telepon || '',
+                tanggalPengisian: new Date().toISOString().split('T')[0],
+                ip_se           : '',
+                as_number_se    : '',
+                pengelola_se    : '',
+                fitur_se        : '',
+                fromCsirt       : true,
+                id_csirt        : csirtId.value,
+                id_perusahaan   : String(currentCsirt.value?.id_perusahaan || p?.id || ''),
+                id_sub_sektor   : String(p?.sub_sektor?.id || ''),
+            }));
+
+            const kseStore = useKseStore();
+            kseStore.initialize();
+            kseStore.updateStakeholderInfo(kseId, '', p?.sub_sektor?.nama_sub_sektor || '');
+
+            router.push({ path: '/kse-crud', query: { slug: kseId, source: 'csirt', stakeholder: companySlug } });
         };
 
-        const createSe = async () => {
-            if (!validateSeForm() || !csirtId.value) return;
-            try {
-                await csirtService.createSe({
-                    id_csirt: Number(csirtId.value),
-                    nama_se: seFormData.value.nama_se!,
-                    ip_se: seFormData.value.ip_se!,
-                    as_number_se: seFormData.value.as_number_se || "",
-                    pengelola_se: seFormData.value.pengelola_se || "",
-                    fitur_se: seFormData.value.fitur_se || "",
-                    kategori_se: seFormData.value.kategori_se || "Tinggi",
-                });
-                await loadCSIRTs();
-                showCreateSeModal.value = false;
-                showNotification("SE berhasil ditambahkan!", "success");
-            } catch {
-                showNotification("Gagal menambahkan SE.", "error");
-            }
+        // Navigate to KSE page in view-only mode (Lihat Detail)
+        const viewSeDetail = (se: SeCsirt) => {
+            const p = currentCsirt.value?.perusahaan;
+            const companySlug = String(
+                stakeholdersStore.stakeholders.find(
+                    s => String(s.id) === String(currentCsirt.value?.id_perusahaan || p?.id)
+                )?.slug || sessionStorage.getItem('currentStakeholder') || ''
+            );
+            router.push({ path: '/kse-crud', query: { seId: String(se.id), stakeholder: companySlug, mode: 'view' } });
+        };
+
+        // Navigate to KSE page in edit mode (Edit SE � data responden + penilaian)
+        const editSePenilaian = (se: SeCsirt) => {
+            const p = currentCsirt.value?.perusahaan;
+            const companySlug = String(
+                stakeholdersStore.stakeholders.find(
+                    s => String(s.id) === String(currentCsirt.value?.id_perusahaan || p?.id)
+                )?.slug || sessionStorage.getItem('currentStakeholder') || ''
+            );
+            router.push({ path: '/kse-crud', query: { seId: String(se.id), source: 'csirt', stakeholder: companySlug } });
         };
 
         const openEditSeModal = (item: any) => {
             currentEditSe.value = item as SeCsirt;
             seFormData.value = { ...item };
+            if (!seFormData.value.id_csirt) {
+                seFormData.value.id_csirt = csirtId.value;
+            }
             seFormErrors.value = {};
             showEditSeModal.value = true;
         };
@@ -311,6 +371,7 @@ export default {
             if (!validateSeForm() || !currentEditSe.value) return;
             try {
                 await csirtService.updateSe(currentEditSe.value.id, {
+                    id_csirt: seFormData.value.id_csirt!,
                     nama_se: seFormData.value.nama_se!,
                     ip_se: seFormData.value.ip_se!,
                     as_number_se: seFormData.value.as_number_se || "",
@@ -343,7 +404,7 @@ export default {
             }
         };
 
-        // ─── TAMBAH CSIRT ──────────────────────────────────────────────────────
+        // --- TAMBAH CSIRT ------------------------------------------------------
         const showAddCsirtModal    = ref(false);
         const csirtFormLoading     = ref(false);
         const csirtFormError       = ref('');
@@ -404,21 +465,22 @@ export default {
                     // Navigate to the newly created CSIRT
                     const created = result.data as any;
                     if (created?.id) router.push(`/csirt/${created.id}`);
-                    else router.push(`/profile-stakeholders/${newStakeholder.value!.slug}`);
+                    else router.push(`/stakeholders/${newStakeholder.value!.slug}`);
                 }, 1500);
             } else {
                 csirtFormError.value = result.error || 'Gagal mendaftarkan CSIRT.';
             }
         };
 
-        // ─── PROFILE CRUD ──────────────────────────────────────────────────────
+        // --- PROFILE CRUD ------------------------------------------------------
         const showEditProfileModal = ref(false);
-        const profileFormData = ref<Partial<CsirtMember>>({
+        const profileFormData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null }>({
             nama_csirt: "",
             telepon_csirt: "",
             web_csirt: "",
             file_rfc2350: "",
             file_public_key_pgp: "",
+            photo_csirt_file: null,
         });
         const profileFormErrors = ref<Record<string, string>>({});
 
@@ -434,10 +496,15 @@ export default {
 
         const openEditProfileModal = () => {
             if (currentCsirt.value) {
-                profileFormData.value = { ...currentCsirt.value };
+                profileFormData.value = { ...currentCsirt.value, photo_csirt_file: null };
                 profileFormErrors.value = {};
                 showEditProfileModal.value = true;
             }
+        };
+
+        const onProfilePhotoChange = (event: Event) => {
+            const input = event.target as HTMLInputElement;
+            profileFormData.value.photo_csirt_file = input.files?.[0] ?? null;
         };
 
         const updateProfile = async () => {
@@ -447,6 +514,7 @@ export default {
                     nama_csirt   : profileFormData.value.nama_csirt!,
                     telepon_csirt: profileFormData.value.telepon_csirt || "",
                     web_csirt    : profileFormData.value.web_csirt || "",
+                    photo_csirt  : profileFormData.value.photo_csirt_file ?? undefined,
                 });
                 await csirtStore.refresh();
                 showEditProfileModal.value = false;
@@ -473,6 +541,7 @@ export default {
         return {
 
             isAdmin,
+            csirtStore,
             newStakeholder,
             // Tambah CSIRT
             showAddCsirtModal,
@@ -513,15 +582,14 @@ export default {
             openDeleteSdmModal,
             deleteSdm,
             // SE CRUD
-            showCreateSeModal,
-            showEditSeModal,
+            goToAddSe,
+            viewSeDetail,
+            editSePenilaian,
             showDeleteSeModal,
             currentEditSe,
             currentDeleteSe,
             seFormData,
             seFormErrors,
-            openCreateSeModal,
-            createSe,
             openEditSeModal,
             updateSe,
             openDeleteSeModal,
@@ -533,6 +601,7 @@ export default {
             openEditProfileModal,
             updateProfile,
             handleFileUpload,
+            onProfilePhotoChange,
         };
 
     },
@@ -587,7 +656,7 @@ export default {
                     </button>
                     <button v-if="isAdmin && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
                         <i class="ri-edit-2-line fs-14"></i>
-                        <span>Edit Profile</span>
+                        <span>Edit CSIRT</span>
                     </button>
                 </div>
             </div>
@@ -628,6 +697,23 @@ export default {
                         </div>
                     </div>
                     <div class="col-12 col-md-5 col-sm-12 mt-4 mt-md-0">
+                        <!-- Stats strip: SDM & SE counts -->
+                        <div class="d-flex gap-3 mb-3">
+                            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-primary-transparent flex-fill">
+                                <i class="ri-group-line fs-20 text-primary"></i>
+                                <div>
+                                    <div class="fw-bold fs-18 text-primary">{{ items.length }}</div>
+                                    <div class="text-muted fs-11">SDM Terdaftar</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-success-transparent flex-fill">
+                                <i class="ri-server-line fs-20 text-success"></i>
+                                <div>
+                                    <div class="fw-bold fs-18 text-success">{{ seItems.length }}</div>
+                                    <div class="text-muted fs-11">SE Terdaftar</div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="card bg-light border-0 shadow-none mb-0">
                             <div class="card-body">
                                 <h6 class="fw-bold mb-3 fs-13 d-flex align-items-center gap-2">
@@ -652,7 +738,7 @@ export default {
     </div>
 </div>
 
-<!-- ═══════ Tabel SDM ═══════ -->
+<!-- ------- Tabel SDM ------- -->
 <div class="row" v-if="currentCsirt">
     <div class="col-xl-12">
         <SimpleCardComponent title="Tabel Daftar SDM CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
@@ -688,7 +774,11 @@ export default {
                             <td class="align-middle">
                                 <div class="fw-semibold text-primary">{{ row.nama_personel }}</div>
                             </td>
+                            <td class="align-middle">
+                                <span class="badge bg-info-transparent rounded-pill px-2">{{ row.csirt?.nama_csirt || '-' }}</span>
+                            </td>
                             <td class="align-middle">{{ row.jabatan_csirt }}</td>
+                            <td class="align-middle text-muted small">{{ row.jabatan_perusahaan }}</td>
                             <td class="align-middle text-muted small">{{ row.skill }}</td>
                             <td class="align-middle">
                                 <span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span>
@@ -702,7 +792,7 @@ export default {
                                         <i class="ri-delete-bin-3-line"></i>
                                     </button>
                                 </div>
-                                <span v-else class="text-muted small">—</span>
+                                <span v-else class="text-muted small">�</span>
                             </td>
                         </template>
                     </TableComponent>
@@ -712,13 +802,13 @@ export default {
     </div>
 </div>
 
-<!-- ═══════ Tabel SE ═══════ -->
+<!-- ------- Tabel SE ------- -->
 <div class="row" v-if="currentCsirt">
     <div class="col-xl-12">
         <SimpleCardComponent title="Tabel Daftar SE-CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
             <!-- Toolbar -->
             <template #showheader>
-                <button v-if="isAdmin" @click="openCreateSeModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
+                <button v-if="isAdmin" @click="goToAddSe" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
                     <i class="ri-add-circle-line fs-15"></i>
                     <span>Tambah SE</span>
                 </button>
@@ -751,20 +841,25 @@ export default {
                             <td class="align-middle">{{ row.pengelola_se }}</td>
                             <td class="align-middle small text-muted">{{ row.fitur_se }}</td>
                             <td class="align-middle">
-                                <span :class="['badge rounded-pill px-3', getKategoriBadgeClass(row.kategori_se)]">
+                                <span v-if="row.kategori_se" :class="['badge rounded-pill px-3', getKategoriBadgeClass(row.kategori_se)]">
                                     {{ row.kategori_se }}
+                                </span>
+                                <span v-else class="badge bg-secondary-transparent rounded-pill px-3 text-muted">
+                                    Belum Diisi
                                 </span>
                             </td>
                             <td class="text-center align-middle">
-                                <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
-                                    <button @click="openEditSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
+                                <div class="d-flex gap-1 justify-content-center">
+                                    <button @click="viewSeDetail(row)" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Detail Penilaian">
+                                        <i class="ri-eye-line"></i>
+                                    </button>
+                                    <button v-if="isAdmin" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
                                         <i class="ri-edit-2-line"></i>
                                     </button>
-                                    <button @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                    <button v-if="isAdmin" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
                                         <i class="ri-delete-bin-3-line"></i>
                                     </button>
                                 </div>
-                                <span v-else class="text-muted small">—</span>
                             </td>
                         </template>
                     </TableComponent>
@@ -774,9 +869,9 @@ export default {
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- ------------------------------------------------------------------ -->
 <!-- MODAL: Tambah SDM -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- ------------------------------------------------------------------ -->
 <div v-if="showCreateSdmModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateSdmModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
         <div class="modal-content border-0 bg-transparent">
@@ -791,6 +886,26 @@ export default {
                 <div class="card-body p-4 bg-white">
                     <form @submit.prevent="createSdm">
                         <div class="row gy-3">
+                            <!-- CSIRT -->
+                            <div class="col-xl-12">
+                                <label class="form-label fw-medium d-flex align-items-center mb-1">
+                                    <span class="text-dark">CSIRT</span> <span class="text-danger ms-1">*</span>
+                                </label>
+                                <div class="form-group-split-input-card d-flex align-items-center gap-2 p-2 border rounded-3 bg-light" style="cursor: pointer;">
+                                    <div class="form-item-icon stat-icon-blue d-flex align-items-center justify-content-center p-2 rounded-2">
+                                        <i class="ri-building-2-line fs-5"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <select class="form-item-input bg-transparent border-0 w-100 p-0 fs-14" v-model="sdmFormData.id_csirt"
+                                            :class="{ 'is-invalid': sdmFormErrors.id_csirt }"
+                                            style="outline: none; box-shadow: none;">
+                                            <option value="">-- Pilih CSIRT --</option>
+                                            <option v-for="c in csirtStore.csirts" :key="c.id" :value="c.id">{{ c.nama_csirt }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div v-if="sdmFormErrors.id_csirt" class="text-danger mt-1 fs-12">{{ sdmFormErrors.id_csirt }}</div>
+                            </div>
                             <!-- Nama Personel -->
                             <div class="col-xl-12">
                                 <label class="form-label fw-medium d-flex align-items-center mb-1">
@@ -1019,167 +1134,6 @@ export default {
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!-- MODAL: Tambah SE -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div v-if="showCreateSeModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateSeModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-        <div class="modal-content border-0 bg-transparent">
-            <div class="card custom-card gradient-header-card w-100 mb-0">
-                <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
-                    <div class="d-flex align-items-center">
-                        <i class="ri-server-line text-white me-2 fs-18"></i>
-                        <div class="card-title text-white mb-0">Tambah SE-CSIRT</div>
-                    </div>
-                    <button type="button" class="btn-close btn-close-white" @click="showCreateSeModal = false"></button>
-                </div>
-                <div class="card-body p-4 bg-white">
-                    <form @submit.prevent="createSe">
-                        <div class="row gy-3">
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-server-line me-1 text-primary"></i>Nama SE <span class="text-danger">*</span>
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.nama_se"
-                                    :class="{ 'is-invalid': seFormErrors.nama_se }"
-                                    placeholder="Contoh: Firewall Utama" />
-                                <div v-if="seFormErrors.nama_se" class="invalid-feedback">{{ seFormErrors.nama_se }}</div>
-                            </div>
-                            <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-wifi-line me-1 text-primary"></i>IP SE <span class="text-danger">*</span>
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.ip_se"
-                                    :class="{ 'is-invalid': seFormErrors.ip_se }"
-                                    placeholder="Contoh: 192.168.1.1" />
-                                <div v-if="seFormErrors.ip_se" class="invalid-feedback">{{ seFormErrors.ip_se }}</div>
-                            </div>
-                            <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-router-line me-1 text-primary"></i>AS Number
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.as_number_se"
-                                    placeholder="Contoh: AS12345" />
-                            </div>
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-user-settings-line me-1 text-primary"></i>Pengelola
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.pengelola_se"
-                                    placeholder="Contoh: PT Maju Jaya" />
-                            </div>
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-tools-line me-1 text-primary"></i>Fitur
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.fitur_se"
-                                    placeholder="Contoh: Firewall, Intrusion Detection" />
-                            </div>
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-shield-check-line me-1 text-primary"></i>Kategori
-                                </label>
-                                <select class="form-select" v-model="seFormData.kategori_se">
-                                    <option value="Strategis">Strategis</option>
-                                    <option value="Tinggi">Tinggi</option>
-                                    <option value="Rendah">Rendah</option>
-                                </select>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="card-footer bg-light d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-outline-danger" @click="showCreateSeModal = false">
-                        <i class="ri-close-line me-1"></i>Batal
-                    </button>
-                    <button type="button" class="btn btn-secondary" @click="createSe">
-                        <i class="ri-save-line me-1"></i>Simpan
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL: Edit SE -->
-<div v-if="showEditSeModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditSeModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-        <div class="modal-content border-0 bg-transparent">
-            <div class="card custom-card gradient-header-card w-100 mb-0">
-                <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
-                    <div class="d-flex align-items-center">
-                        <i class="ri-edit-2-line text-white me-2 fs-18"></i>
-                        <div class="card-title text-white mb-0">Edit SE-CSIRT</div>
-                    </div>
-                    <button type="button" class="btn-close btn-close-white" @click="showEditSeModal = false"></button>
-                </div>
-                <div class="card-body p-4 bg-white">
-                    <form @submit.prevent="updateSe">
-                        <div class="row gy-3">
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-server-line me-1 text-primary"></i>Nama SE <span class="text-danger">*</span>
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.nama_se"
-                                    :class="{ 'is-invalid': seFormErrors.nama_se }"
-                                    placeholder="Contoh: Firewall Utama" />
-                                <div v-if="seFormErrors.nama_se" class="invalid-feedback">{{ seFormErrors.nama_se }}</div>
-                            </div>
-                            <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-wifi-line me-1 text-primary"></i>IP SE <span class="text-danger">*</span>
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.ip_se"
-                                    :class="{ 'is-invalid': seFormErrors.ip_se }"
-                                    placeholder="Contoh: 192.168.1.1" />
-                                <div v-if="seFormErrors.ip_se" class="invalid-feedback">{{ seFormErrors.ip_se }}</div>
-                            </div>
-                            <div class="col-xl-6">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-router-line me-1 text-primary"></i>AS Number
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.as_number_se"
-                                    placeholder="Contoh: AS12345" />
-                            </div>
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-user-settings-line me-1 text-primary"></i>Pengelola
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.pengelola_se"
-                                    placeholder="Contoh: PT Maju Jaya" />
-                            </div>
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-tools-line me-1 text-primary"></i>Fitur
-                                </label>
-                                <input type="text" class="form-control" v-model="seFormData.fitur_se"
-                                    placeholder="Contoh: Firewall, Intrusion Detection" />
-                            </div>
-                            <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-shield-check-line me-1 text-primary"></i>Kategori
-                                </label>
-                                <select class="form-select" v-model="seFormData.kategori_se">
-                                    <option value="Strategis">Strategis</option>
-                                    <option value="Tinggi">Tinggi</option>
-                                    <option value="Rendah">Rendah</option>
-                                </select>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="card-footer bg-light d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-outline-danger" @click="showEditSeModal = false">
-                        <i class="ri-arrow-left-line me-1"></i>Batal
-                    </button>
-                    <button type="button" class="btn btn-secondary" @click="updateSe">
-                        <i class="ri-save-line me-1"></i>Simpan Perubahan
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- MODAL: Hapus SE -->
 <div v-if="showDeleteSeModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showDeleteSeModal = false">
@@ -1209,9 +1163,9 @@ export default {
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!-- MODAL: Edit Profile CSIRT -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- ------------------------------------------------------------------ -->
+<!-- MODAL: Edit CSIRT -->
+<!-- ------------------------------------------------------------------ -->
 <div v-if="showEditProfileModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditProfileModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal modal-lg">
         <div class="modal-content border-0 bg-transparent">
@@ -1219,13 +1173,28 @@ export default {
                 <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
                     <div class="d-flex align-items-center">
                         <i class="ri-edit-2-line text-white me-2 fs-18"></i>
-                        <div class="card-title text-white mb-0">Edit Profil CSIRT</div>
+                        <div class="card-title text-white mb-0">Edit CSIRT</div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" @click="showEditProfileModal = false"></button>
                 </div>
                 <div class="card-body p-4 bg-white">
                     <form @submit.prevent="updateProfile">
                         <div class="row gy-3">
+                            <!-- Logo / Photo CSIRT -->
+                            <div class="col-xl-12">
+                                <label class="form-label fw-medium">
+                                    <i class="ri-image-line me-1 text-primary"></i>Logo / Photo CSIRT
+                                </label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <div v-if="profileFormData.photo_csirt" class="flex-shrink-0" style="width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #dee2e6;">
+                                        <img :src="profileFormData.photo_csirt" class="w-100 h-100" style="object-fit:contain;" alt="Logo CSIRT" />
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <input type="file" ref="profilePhotoFile" class="form-control" @change="onProfilePhotoChange" accept="image/*" />
+                                        <div class="text-muted small mt-1">Kosongkan jika tidak ingin mengganti foto</div>
+                                    </div>
+                                </div>
+                            </div>
                             <!-- Nama CSIRT -->
                             <div class="col-xl-12">
                                 <label class="form-label fw-medium">
@@ -1301,9 +1270,9 @@ export default {
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- ------------------------------------------------------------------ -->
 <!-- MODAL: Daftarkan CSIRT Baru -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- ------------------------------------------------------------------ -->
 <div v-if="showAddCsirtModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showAddCsirtModal = false">
     <div class="modal-dialog modal-dialog-centered custom-modal">
         <div class="modal-content border-0 bg-transparent">

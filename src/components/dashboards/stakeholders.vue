@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
@@ -9,6 +9,7 @@ import "vue3-easy-data-table/dist/style.css";
 import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
+import { useCsirtStore } from "../../stores/csirt";
 import { useListPage } from "../../composables/useListPage";
 import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
 import type { SubSektor, Sektor } from "../../services/sektor.service";
@@ -31,6 +32,7 @@ export default {
     const stakeholdersStore = useStakeholdersStore();
     const ikasStore = useIkasStore();
     const kseStore = useKseStore();
+    const csirtStore = useCsirtStore();
     const isAdmin = computed(() => authStore.isAdmin);
 
     const loading = computed(() => stakeholdersStore.loading);
@@ -79,7 +81,7 @@ export default {
       });
     });
 
-    // ✅ Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
+    // ? Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
     watch(selectedSubSektorId, (newId) => {
       if (newId && subSektorList.value.length) {
         const matched = subSektorList.value.find(ss => String(ss.id) === String(newId));
@@ -112,7 +114,7 @@ export default {
       }
     };
 
-    // ✅ Helper: Dapatkan nama sektor induk dari nama sub sektor
+    // ? Helper: Dapatkan nama sektor induk dari nama sub sektor
     const getSektorFromSubSektor = (subSektorName: string): string => {
       if (!subSektorName || !subSektorList.value.length) return "-";
       const matched = subSektorList.value.find(ss => getSubSektorName(ss) === subSektorName);
@@ -266,7 +268,7 @@ export default {
       // Load sektor & sub sektor
       await loadAllSubSektors();
 
-      // ✅ Auto-detect sub sektor ID: utamakan dari sub_sektor.id (nested), fallback nama
+      // ? Auto-detect sub sektor ID: utamakan dari sub_sektor.id (nested), fallback nama
       if (item.sub_sektor?.id) {
         selectedSubSektorId.value = item.sub_sektor.id;
       } else if (item.sektor) {
@@ -318,10 +320,16 @@ export default {
       }
     };
 
-    onMounted(() => {
+    onMounted(async () => {
       loadStakeholders();
       ikasStore.initialize();
       kseStore.initialize();
+      await csirtStore.initialize();
+      // If CSIRTs exist but SDM/SE lists are empty (e.g., global endpoint failed on prior load),
+      // force a refresh so hasCompleteCsirt reflects the actual backend state.
+      if (csirtStore.csirts.length > 0 && (csirtStore.sdmList.length === 0 || csirtStore.seList.length === 0)) {
+        await csirtStore.refresh();
+      }
     });
 
     const fileInput = ref<HTMLInputElement | null>(null);
@@ -404,36 +412,35 @@ export default {
       const val = data.total_rata_rata;
       return val !== null && val !== 0 && val !== 'NA';
     };
-    const hasKse = (slug: string): boolean => {
-      const data = kseStore.kseDataMap[slug];
-      if (!data) return false;
-      return data.isSubmitted || Object.values(data.answers).some((a: any) => a.selectedOption !== null);
+    const hasCompleteCsirt = (id_perusahaan: string | number): boolean => {
+      return csirtStore.hasCompleteCsirt(id_perusahaan);
     };
 
     const countIkasOnly = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && !hasKse(s.slug)).length
+      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && !hasCompleteCsirt(s.id)).length
     );
-    const countKseOnly = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => !hasIkas(s.slug) && hasKse(s.slug)).length
+    const countCsirtOnly = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => !hasIkas(s.slug) && hasCompleteCsirt(s.id)).length
     );
     const countBoth = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && hasKse(s.slug)).length
+      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && hasCompleteCsirt(s.id)).length
     );
     const countIkas = computed(() =>
       stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug)).length
     );
-    const countKse = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasKse(s.slug)).length
+    const countCsirt = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => hasCompleteCsirt(s.id)).length
     );
 
     return {
       countIkasOnly,
-      countKseOnly,
+      countCsirtOnly,
       countBoth,
       countIkas,
-      countKse,
+      countCsirt,
       isAdmin,
       stakeholdersStore,
+      csirtStore,
       loading,
       searchQuery,
       searchValue2,
@@ -516,7 +523,7 @@ export default {
         return variants[idx];
       },
       hasIkas,
-      hasKse,
+      hasCompleteCsirt,
     };
   },
 };
@@ -612,7 +619,7 @@ export default {
               <div class="stat-card">
                 <div class="stat-icon stat-icon-teal"><i class="ri-shield-check-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ countKseOnly }}</div>
+                  <div class="stat-value">{{ countCsirtOnly }}</div>
                   <div class="stat-label">CSIRT Saja</div>
                 </div>
               </div>
@@ -772,9 +779,9 @@ export default {
                           </span>
                           <span class="badge-label">IKAS</span>
                         </div>
-                        <div class="status-badge" :class="hasKse(item.slug) ? 'badge-done' : 'badge-pending'" title="CSIRT">
+                        <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="CSIRT">
                           <span class="badge-icon-dot">
-                            <i :class="hasKse(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                            <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
                           </span>
                           <span class="badge-label">CSIRT</span>
                         </div>
@@ -936,7 +943,7 @@ export default {
                   </div>
                 </div>
 
-                <!-- ✅ SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
+                <!-- ? SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
                   <div class="form-group-split">
                     <div class="form-group-split-label-card">
@@ -1120,7 +1127,7 @@ export default {
                   </div>
                 </div>
 
-                <!-- ✅ SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
+                <!-- ? SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
                 <div class="col-xl-6 col-lg-6 col-md-6">
                   <div class="form-group-split">
                     <div class="form-group-split-label-card">
@@ -1262,7 +1269,6 @@ export default {
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */

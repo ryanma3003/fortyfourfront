@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useAuthStore } from "../../stores/auth";
@@ -79,7 +79,7 @@ export default {
             ...userObj,
             jabatan: profileStore.jabatan || userObj.jabatan,
             name: profileStore.name || userObj.name,
-            photo: profileStore.avatarUrl || userObj.photo,
+            photo: profileStore.fotoProfileUrl || userObj.photo,
           };
         }
         return userObj;
@@ -539,5 +539,4 @@ export default {
   </Teleport>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 

@@ -7,17 +7,17 @@ import PasswordInput from '@/shared/UI/passwordInput.vue';
 const router = useRouter();
 const authStore = useAuthStore();
 
-const email = ref('');
+const username = ref('');
 const password = ref('');
 const rememberMe = ref(false);
 
 const handleLogin = async () => {
-    if (!email.value || !password.value) {
+    if (!username.value || !password.value) {
         return;
     }
 
     const result = await authStore.authenticateUser({
-        email: email.value,
+        username: username.value,
         password: password.value,
     });
     
@@ -64,8 +64,8 @@ const updatePassword = (val: string) => {
                             </div>
                             <div class="row gy-3">
                                 <div class="col-xl-12">
-                                    <label for="signin-email" class="form-label text-default">Email</label>
-                                    <input v-model="email" type="email" class="form-control" id="signin-email" placeholder="Enter Email">
+                                    <label for="signin-username" class="form-label text-default">Username</label>
+                                    <input v-model="username" type="text" class="form-control" id="signin-username" placeholder="Enter Username">
                                 </div>
                                 <div class="col-xl-12 mb-2">
                                     <label for="signin-password"

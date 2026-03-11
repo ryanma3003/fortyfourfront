@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
@@ -8,10 +8,10 @@ import { usersService } from "../../services/users.service";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 // Constants
-const DEFAULT_AVATAR = " ";
+const DEFAULT_FOTO_PROFILE = " ";
 const DEFAULT_BANNER = " ";
 const MAX_BANNER_SIZE = 2 * 1024 * 1024;
-const MAX_AVATAR_SIZE = 1 * 1024 * 1024;
+const MAX_FOTO_PROFILE_SIZE = 1 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 32;
 
@@ -84,17 +84,17 @@ const selectedJabatan = ref(""); // id or "NEW"
 const newJabatanName = ref("");
 
 // Image State
-const avatarInput = ref<HTMLInputElement | null>(null);
-const avatarPreview = ref("");
+const fotoProfileInput = ref<HTMLInputElement | null>(null);
+const fotoProfilePreview = ref("");
 const bannerInput = ref<HTMLInputElement | null>(null);
 const bannerPreview = ref("");
 const bannerPosition = ref({ x: 50, y: 50 });
-const avatarPosition = ref({ x: 50, y: 50 });
+const fotoProfilePosition = ref({ x: 50, y: 50 });
 const bannerContainer = ref<HTMLElement | null>(null);
-const avatarContainer = ref<HTMLElement | null>(null);
+const fotoProfileContainer = ref<HTMLElement | null>(null);
 
 // Unified Drag State
-const dragState = ref({ type: '' as 'banner' | 'avatar' | '', startX: 0, startY: 0, initialX: 0, initialY: 0 });
+const dragState = ref({ type: '' as 'banner' | 'foto_profile' | '', startX: 0, startY: 0, initialX: 0, initialY: 0 });
 
 // Password State (only used in self-edit mode)
 const passwordData = ref({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -188,19 +188,19 @@ const resetForm = () => {
   // Set jabatan dropdown selection
   selectedJabatan.value = profileStore.idJabatan || '';
   newJabatanName.value = '';
-  avatarPreview.value = profileStore.avatarUrl;
+  fotoProfilePreview.value = profileStore.fotoProfileUrl;
   bannerPreview.value = profileStore.bannerUrl;
   bannerPosition.value = { x: profileStore.bannerPositionX ?? 50, y: profileStore.bannerPositionY ?? 50 };
-  avatarPosition.value = { x: profileStore.avatarPositionX ?? 50, y: profileStore.avatarPositionY ?? 50 };
+  fotoProfilePosition.value = { x: profileStore.fotoProfilePositionX ?? 50, y: profileStore.fotoProfilePositionY ?? 50 };
 };
 
 // Unified Drag Handlers
 const getClientPos = (e: MouseEvent | TouchEvent) => 'touches' in e ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
 
-const startDrag = (type: 'banner' | 'avatar', e: MouseEvent | TouchEvent) => {
+const startDrag = (type: 'banner' | 'foto_profile', e: MouseEvent | TouchEvent) => {
   e.preventDefault();
   const pos = getClientPos(e);
-  const current = type === 'banner' ? bannerPosition.value : avatarPosition.value;
+  const current = type === 'banner' ? bannerPosition.value : fotoProfilePosition.value;
   dragState.value = { type, startX: pos.x, startY: pos.y, initialX: current.x, initialY: current.y };
   document.addEventListener('mousemove', onDrag);
   document.addEventListener('mouseup', stopDrag);
@@ -210,13 +210,13 @@ const startDrag = (type: 'banner' | 'avatar', e: MouseEvent | TouchEvent) => {
 
 const onDrag = (e: MouseEvent | TouchEvent) => {
   if (!dragState.value.type) return;
-  const container = dragState.value.type === 'banner' ? bannerContainer.value : avatarContainer.value;
+  const container = dragState.value.type === 'banner' ? bannerContainer.value : fotoProfileContainer.value;
   if (!container) return;
   const pos = getClientPos(e);
   const rect = container.getBoundingClientRect();
   const deltaX = ((pos.x - dragState.value.startX) / rect.width) * 100;
   const deltaY = ((pos.y - dragState.value.startY) / rect.height) * 100;
-  const target = dragState.value.type === 'banner' ? bannerPosition : avatarPosition;
+  const target = dragState.value.type === 'banner' ? bannerPosition : fotoProfilePosition;
   target.value = {
     x: Math.max(0, Math.min(100, dragState.value.initialX - deltaX)),
     y: Math.max(0, Math.min(100, dragState.value.initialY - deltaY))
@@ -225,10 +225,10 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
 
 const stopDrag = () => {
   if (dragState.value.type && !isAdminEditMode) {
-    const pos = dragState.value.type === 'banner' ? bannerPosition.value : avatarPosition.value;
+    const pos = dragState.value.type === 'banner' ? bannerPosition.value : fotoProfilePosition.value;
     profileStore.updateProfile(dragState.value.type === 'banner' 
       ? { bannerPositionX: pos.x, bannerPositionY: pos.y }
-      : { avatarPositionX: pos.x, avatarPositionY: pos.y }
+      : { fotoProfilePositionX: pos.x, fotoProfilePositionY: pos.y }
     );
   }
   dragState.value.type = '';
@@ -239,19 +239,19 @@ const stopDrag = () => {
 };
 
 // Image Handlers
-const triggerAvatarUpload = () => avatarInput.value?.click();
+const triggerFotoProfileUpload = () => fotoProfileInput.value?.click();
 const triggerBannerUpload = () => bannerInput.value?.click();
 
-const handleImageUpload = async (type: 'avatar' | 'banner', event: Event) => {
+const handleImageUpload = async (type: 'foto_profile' | 'banner', event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
   imageError.value = "";
-  const maxSize = type === 'avatar' ? MAX_AVATAR_SIZE : MAX_BANNER_SIZE;
-  const config = type === 'avatar' ? { width: 400, quality: 0.7 } : { width: 1200, quality: 0.8 };
+  const maxSize = type === 'foto_profile' ? MAX_FOTO_PROFILE_SIZE : MAX_BANNER_SIZE;
+  const config = type === 'foto_profile' ? { width: 400, quality: 0.7 } : { width: 1200, quality: 0.8 };
   if (file.size > maxSize) imageError.value = `Ukuran ${type} maksimal ${maxSize / 1024 / 1024}MB. Gambar akan dikompresi otomatis.`;
   try {
     const compressed = await compressImage(file, config.width, config.quality);
-    if (type === 'avatar') avatarPreview.value = compressed;
+    if (type === 'foto_profile') fotoProfilePreview.value = compressed;
     else bannerPreview.value = compressed;
     imageError.value = "";
   } catch (error) {
@@ -274,12 +274,12 @@ const saveProfile = async () => {
       website:  formData.value.website,
       bio:      formData.value.bio,
       address:  formData.value.address,
-      avatarUrl: avatarPreview.value, 
+      fotoProfileUrl: fotoProfilePreview.value, 
       bannerUrl: bannerPreview.value,
       bannerPositionX: bannerPosition.value.x, 
       bannerPositionY: bannerPosition.value.y,
-      avatarPositionX: avatarPosition.value.x, 
-      avatarPositionY: avatarPosition.value.y,
+      fotoProfilePositionX: fotoProfilePosition.value.x, 
+      fotoProfilePositionY: fotoProfilePosition.value.y,
     };
 
     // Handle jabatan: existing ID or new name
@@ -355,7 +355,7 @@ const handleCancel = () => {
 
 // Computed for drag state
 const isDraggingBanner = computed(() => dragState.value.type === 'banner');
-const isDraggingAvatar = computed(() => dragState.value.type === 'avatar');
+const isDraggingFotoProfile = computed(() => dragState.value.type === 'foto_profile');
 const displayPerusahaan = computed(() => profileStore.namaPerusahaan || 'Belum terkait');
 const displaySektor = computed(() => profileStore.namaSubSektor || 'Belum terkait');
 
@@ -407,7 +407,7 @@ const roleOptions = ['admin', 'User'];
         </div>
 
         <div class="card-body p-4">
-          <!--  HERO CARD (banner + avatar + info)  -->
+          <!--  HERO CARD (banner + foto_profile + info)  -->
           <div class="card custom-card hero-card-shell mb-4">
             <!-- Banner Image -->
             <div
@@ -441,34 +441,34 @@ const roleOptions = ['admin', 'User'];
 
             <!-- Profile Content Body -->
             <div class="profile-content-body">
-              <!-- Avatar Container -->
-              <div class="profile-avatar-container">
+              <!-- Foto Profile Container -->
+              <div class="profile-foto-profile-container">
                 <div
-                  ref="avatarContainer"
-                  class="profile-avatar-wrap"
-                  :class="{ 'dragging': isDraggingAvatar, 'draggable': !isAdminEditMode }"
-                  :style="{ cursor: isAdminEditMode ? 'default' : (isDraggingAvatar ? 'grabbing' : 'grab') }"
-                  @mousedown="!isAdminEditMode && startDrag('avatar', $event)"
-                  @touchstart="!isAdminEditMode && startDrag('avatar', $event)"
+                  ref="fotoProfileContainer"
+                  class="profile-foto-profile-wrap"
+                  :class="{ 'dragging': isDraggingFotoProfile, 'draggable': !isAdminEditMode }"
+                  :style="{ cursor: isAdminEditMode ? 'default' : (isDraggingFotoProfile ? 'grabbing' : 'grab') }"
+                  @mousedown="!isAdminEditMode && startDrag('foto_profile', $event)"
+                  @touchstart="!isAdminEditMode && startDrag('foto_profile', $event)"
                 >
                   <img
-                    :src="avatarPreview"
-                    alt="Avatar"
-                    class="profile-avatar-img"
-                    :style="{ objectPosition: `${avatarPosition.x}% ${avatarPosition.y}%` }"
+                    :src="fotoProfilePreview"
+                    alt="Foto Profile"
+                    class="profile-foto-profile-img"
+                    :style="{ objectPosition: `${fotoProfilePosition.x}% ${fotoProfilePosition.y}%` }"
                   />
-                  <!-- Avatar Drag Indicator -->
-                  <div v-if="!isAdminEditMode" class="avatar-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" style="top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2); border-radius: 50%;">
+                  <!-- Foto Profile Drag Indicator -->
+                  <div v-if="!isAdminEditMode" class="foto-profile-drag-indicator position-absolute d-flex align-items-center justify-content-center pointer-events-none" style="top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2); border-radius: 50%;">
                     <i class="ri-drag-move-2-fill text-white fs-20"></i>
                   </div>
                 </div>
-                <!-- Avatar Upload Button -->
-                <div v-if="!isAdminEditMode" class="avatar-upload-btn">
-                  <button @click.stop="triggerAvatarUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
+                <!-- Foto Profile Upload Button -->
+                <div v-if="!isAdminEditMode" class="foto-profile-upload-btn">
+                  <button @click.stop="triggerFotoProfileUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
                     <i class="ri-camera-line"></i>
                   </button>
                 </div>
-                <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('avatar', $event)" />
+                <input ref="fotoProfileInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('foto_profile', $event)" />
               </div>
 
               <!-- Info Block -->
@@ -557,7 +557,7 @@ const roleOptions = ['admin', 'User'];
                   </div>
                 </div>
               </div>
-              <!-- New Jabatan input — expands into its own full-width row -->
+              <!-- New Jabatan input � expands into its own full-width row -->
               <transition name="slide-down">
                 <div v-if="selectedJabatan === 'NEW'" class="col-12">
                   <div class="form-group-split" @click.stop>
@@ -803,6 +803,5 @@ const roleOptions = ['admin', 'User'];
   </div>
 </template>
 
-<style src="../../assets/css/style2.css"></style>
 
 <!-- All styles live in src/assets/css/style2.css - PROFILE SETTINGS PAGE section -->

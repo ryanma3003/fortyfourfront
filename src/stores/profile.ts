@@ -20,7 +20,7 @@ export interface ProfileData {
   joined: string;
   bio: string;
   address: string;
-  avatarUrl: string;
+  fotoProfileUrl: string;
   bannerUrl: string;
   // Stakeholder / Perusahaan
   idPerusahaan: string;
@@ -31,8 +31,8 @@ export interface ProfileData {
   // Image position properties (percentage values 0-100)
   bannerPositionX: number;
   bannerPositionY: number;
-  avatarPositionX: number;
-  avatarPositionY: number;
+  fotoProfilePositionX: number;
+  fotoProfilePositionY: number;
   // Loading state
   isLoading: boolean;
   stats: {
@@ -56,16 +56,16 @@ export const useProfileStore = defineStore('profile', {
     joined: '',
     bio: '',
     address: '',
-    avatarUrl: '/images/faces/9.jpg',
-    bannerUrl: '/images/media/media-3.jpg',
+    fotoProfileUrl: '',
+    bannerUrl: '',
     idPerusahaan: '',
     namaPerusahaan: '',
     idSubSektor: '',
     namaSubSektor: '',
     bannerPositionX: 50,
     bannerPositionY: 50,
-    avatarPositionX: 50,
-    avatarPositionY: 50,
+    fotoProfilePositionX: 50,
+    fotoProfilePositionY: 50,
     isLoading: false,
     stats: { projects: '47', followers: '2.4K', following: '892' },
   }),
@@ -103,15 +103,29 @@ export const useProfileStore = defineStore('profile', {
 
       const formatImageUrl = (path: string | undefined | null) => {
         if (!path) return '';
-        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('/images/')) {
-            return path;
+        if (path.startsWith('data:') || path.startsWith('/images/')) return path;
+
+        // If backend returns a full URL, ensure /storage/ prefix is present
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          try {
+            const url = new URL(path);
+            const parts = url.pathname.split('/').filter(Boolean);
+            // Bare filename with no directory → missing /storage/
+            if (parts.length === 1) {
+              url.pathname = `/uploads/${parts[0]}`;
+              return url.toString();
+            }
+          } catch { /* ignore */ }
+          return path;
         }
-        
-        // We'll import `config` locally if needed, or simply use `import.meta.env`
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
-        const cleanBaseUrl = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+
+        // Relative path: prepend VITE_STORAGE_BASE_URL (or VITE_API_BASE_URL) so
+        // images are fetched directly from the backend, not via Vite proxy.
+        const baseUrl = (import.meta.env.VITE_STORAGE_BASE_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
         const cleanPath = path.replace(/^\//, '');
-        return cleanBaseUrl ? `${cleanBaseUrl}/${cleanPath}` : `/${cleanPath}`;
+        // Bare filename (no slash) → stored in Laravel's public/storage disk
+        const storagePath = !cleanPath.includes('/') ? `uploads/${cleanPath}` : cleanPath;
+        return baseUrl ? `${baseUrl}/${storagePath}` : `/${storagePath}`;
       };
 
       return {
@@ -129,64 +143,7 @@ export const useProfileStore = defineStore('profile', {
       };
     },
 
-    /** Persist non-admin profile fields to localStorage (keyed by userId) */
-    _saveLocalProfile(userId: string) {
-      const data = {
-        name:            this.name,
-        email:           this.email,
-        jabatan:         this.jabatan,
-        idJabatan:       this.idJabatan,
-        phone:           this.phone,
-        location:        this.location,
-        website:         this.website,
-        bio:             this.bio,
-        address:         this.address,
-        joined:          this.joined,
-        avatarUrl:       this.avatarUrl,
-        bannerUrl:       this.bannerUrl,
-        idPerusahaan:    this.idPerusahaan,
-        namaPerusahaan:  this.namaPerusahaan,
-        idSubSektor:     this.idSubSektor,
-        namaSubSektor:   this.namaSubSektor,
-        bannerPositionX: this.bannerPositionX,
-        bannerPositionY: this.bannerPositionY,
-        avatarPositionX: this.avatarPositionX,
-        avatarPositionY: this.avatarPositionY,
-      };
-      try {
-        localStorage.setItem(`profile_data_${userId}`, JSON.stringify(data));
-      } catch { /* ignore storage errors */ }
-    },
 
-    /** Restore non-admin profile fields from localStorage */
-    _loadLocalProfile(userId: string): boolean {
-      try {
-        const raw = localStorage.getItem(`profile_data_${userId}`);
-        if (!raw) return false;
-        const data = JSON.parse(raw);
-        if (data.name)            this.name            = data.name;
-        if (data.email)           this.email           = data.email;
-        if (data.jabatan)         this.jabatan         = data.jabatan;
-        if (data.idJabatan)       this.idJabatan       = data.idJabatan;
-        if (data.phone)           this.phone           = data.phone;
-        if (data.location)        this.location        = data.location;
-        if (data.website)         this.website         = data.website;
-        if (data.bio)             this.bio             = data.bio;
-        if (data.address)         this.address         = data.address;
-        if (data.joined)          this.joined          = data.joined;
-        if (data.avatarUrl)       this.avatarUrl       = data.avatarUrl;
-        if (data.bannerUrl)       this.bannerUrl       = data.bannerUrl;
-        if (data.idPerusahaan)    this.idPerusahaan    = data.idPerusahaan;
-        if (data.namaPerusahaan)  this.namaPerusahaan  = data.namaPerusahaan;
-        if (data.idSubSektor)     this.idSubSektor     = data.idSubSektor;
-        if (data.namaSubSektor)   this.namaSubSektor   = data.namaSubSektor;
-        if (data.bannerPositionX !== undefined) this.bannerPositionX = data.bannerPositionX;
-        if (data.bannerPositionY !== undefined) this.bannerPositionY = data.bannerPositionY;
-        if (data.avatarPositionX !== undefined) this.avatarPositionX = data.avatarPositionX;
-        if (data.avatarPositionY !== undefined) this.avatarPositionY = data.avatarPositionY;
-        return true;
-      } catch { return false; }
-    },
 
     /* ── API actions ── */
 
@@ -207,7 +164,7 @@ export const useProfileStore = defineStore('profile', {
           this.jabatan    = mapped.jabatan;
           this.idJabatan  = mapped.idJabatan;
           this.joined     = mapped.joined;
-          this.avatarUrl  = mapped.photo  || '/images/faces/9.jpg';
+          this.fotoProfileUrl  = mapped.photo  || '/images/faces/9.jpg';
           this.bannerUrl  = mapped.banner || '/images/media/media-3.jpg';
           this.idPerusahaan = mapped.idPerusahaan;
 
@@ -252,18 +209,6 @@ export const useProfileStore = defineStore('profile', {
           }
 
           this.initFromAuth();
-          this._loadLocalProfile(userId);
-
-          // Recover stakeholder data using dropdown (accessible to all users)
-          if (this.idPerusahaan && !this.namaPerusahaan) {
-            try {
-              const dropdownList = await stakeholdersService.getDropdown();
-              const found = dropdownList.find(c => c.id.toString() === this.idPerusahaan.toString());
-              if (found) {
-                this.namaPerusahaan = found.nama_perusahaan || '';
-              }
-            } catch { /* ignore */ }
-          }
         } finally {
           this.isLoading = false;
         }
@@ -282,7 +227,7 @@ export const useProfileStore = defineStore('profile', {
         this.jabatan    = mapped.jabatan;
         this.idJabatan  = mapped.idJabatan;
         this.joined     = mapped.joined;
-        this.avatarUrl  = mapped.photo  || '/images/faces/9.jpg';
+        this.fotoProfileUrl  = mapped.photo  || '/images/faces/9.jpg';
         this.bannerUrl  = mapped.banner || '/images/media/media-3.jpg';
         this.idPerusahaan = mapped.idPerusahaan;
 
@@ -365,7 +310,6 @@ export const useProfileStore = defineStore('profile', {
         }
 
         // ── 2. PUT text fields (attempted for all roles) ──
-        let apiSaveSucceeded = false;
         try {
           const textPayload: Record<string, any> = {
             username:   data.name     ?? this.name,
@@ -381,7 +325,6 @@ export const useProfileStore = defineStore('profile', {
           const updatedUser = isAdmin
             ? await usersService.update(id, textPayload as any)
             : await usersService.updateMe(textPayload as any);
-          apiSaveSucceeded = true;
 
           // ── 3. Apply API response to store ──
           const mapped = this._mapApiUser(updatedUser);
@@ -392,7 +335,7 @@ export const useProfileStore = defineStore('profile', {
           this.phone     = mapped.phone     || data.phone    || this.phone;
           this.location  = mapped.location  || data.location || this.location;
           this.joined    = mapped.joined    || this.joined;
-          if (mapped.photo)  this.avatarUrl = mapped.photo;
+          if (mapped.photo)  this.fotoProfileUrl = mapped.photo;
           if (mapped.banner) this.bannerUrl = mapped.banner;
         } catch (err: any) {
           // API returned 403/404 — apply changes locally instead
@@ -408,19 +351,18 @@ export const useProfileStore = defineStore('profile', {
         }
 
         // ── 4. Profile photo ──
-        const newAvatar = data.avatarUrl ?? '';
-        if (newAvatar && newAvatar !== this.avatarUrl && newAvatar.startsWith('data:')) {
+        const newFotoProfile = data.fotoProfileUrl ?? '';
+        if (newFotoProfile && newFotoProfile !== this.fotoProfileUrl && newFotoProfile.startsWith('data:')) {
           try {
             const photoForm = new FormData();
-            const blob = await (await fetch(newAvatar)).blob();
-            photoForm.append('profile_photo', blob, 'avatar.jpg');
-            const pr = isAdmin
-              ? await usersService.updateProfilePhoto(id, photoForm)
-              : await usersService.updateMePhoto(photoForm);
-            this.avatarUrl = this._mapApiUser(pr).photo || newAvatar;
-          } catch {
-            // Photo upload not permitted; keep preview locally
-            this.avatarUrl = newAvatar;
+            const blob = await (await fetch(newFotoProfile)).blob();
+            photoForm.append('profile_photo', blob, 'foto_profile.jpg');
+            const pr = await usersService.updateProfilePhoto(id, photoForm);
+            console.log("UPLOAD RESPONSE:", pr);
+            this.fotoProfileUrl = this._mapApiUser(pr).photo || newFotoProfile;
+          } catch (photoErr) {
+            console.error('Photo upload failed:', photoErr);
+            this.fotoProfileUrl = newFotoProfile;
           }
         }
 
@@ -431,12 +373,11 @@ export const useProfileStore = defineStore('profile', {
             const bannerForm = new FormData();
             const blob = await (await fetch(newBanner)).blob();
             bannerForm.append('banner', blob, 'banner.jpg');
-            const br = isAdmin
-              ? await usersService.updateBanner(id, bannerForm)
-              : await usersService.updateMeBanner(bannerForm);
+            const br = await usersService.updateBanner(id, bannerForm);
+            console.log("UPLOAD RESPONSE:", br);
             this.bannerUrl = this._mapApiUser(br).banner || newBanner;
-          } catch {
-            // Banner upload not permitted; keep preview locally
+          } catch (bannerErr) {
+            console.error('Banner upload failed:', bannerErr);
             this.bannerUrl = newBanner;
           }
         }
@@ -444,27 +385,17 @@ export const useProfileStore = defineStore('profile', {
         // ── 6. Image positions (local only) ──
         if (data.bannerPositionX !== undefined) this.bannerPositionX = data.bannerPositionX;
         if (data.bannerPositionY !== undefined) this.bannerPositionY = data.bannerPositionY;
-        if (data.avatarPositionX !== undefined) this.avatarPositionX = data.avatarPositionX;
-        if (data.avatarPositionY !== undefined) this.avatarPositionY = data.avatarPositionY;
+        if (data.fotoProfilePositionX !== undefined) this.fotoProfilePositionX = data.fotoProfilePositionX;
+        if (data.fotoProfilePositionY !== undefined) this.fotoProfilePositionY = data.fotoProfilePositionY;
 
-        // ── 7. Sync auth store + sessionStorage ──
+        // ── 7. Sync auth store ──
         if (authStore.currentUser) {
           authStore.currentUser.name  = this.name  || authStore.currentUser.name;
           authStore.currentUser.email = this.email || authStore.currentUser.email;
-          // Keep localStorage in sync so updated name/email survive page refresh and new tabs
-          localStorage.setItem('auth_user', JSON.stringify(authStore.currentUser));
         }
 
-        // ── 8. Persist / re-fetch ──
-        // Non-admin always saves to localStorage (fetchFromApi reads it on reload).
-        // Also save if API fell back, regardless of role.
-        if (authStore.currentUser?.role !== 'admin' || !apiSaveSucceeded) {
-          this._saveLocalProfile(id);
-        }
-        if (apiSaveSucceeded) {
-          // Re-fetch from API to confirm full server state
-          try { await this.fetchFromApi(); } catch { /* keep saved data */ }
-        }
+        // ── 8. Re-fetch from API to confirm full server state ──
+        try { await this.fetchFromApi(); } catch { /* keep saved data */ }
 
         return { success: true };
       } catch (error: any) {
@@ -510,7 +441,7 @@ export const useProfileStore = defineStore('profile', {
         this.jabatan = authStore.currentUser.jabatan || this.jabatan;
         this.idJabatan = authStore.currentUser.id_jabatan || this.idJabatan;
         this.idPerusahaan = authStore.currentUser.id_perusahaan || this.idPerusahaan;
-        if (authStore.currentUser.foto_profile) this.avatarUrl = authStore.currentUser.foto_profile;
+        if (authStore.currentUser.foto_profile) this.fotoProfileUrl = authStore.currentUser.foto_profile;
         if (authStore.currentUser.banner)       this.bannerUrl = authStore.currentUser.banner;
       }
     },
@@ -520,22 +451,16 @@ export const useProfileStore = defineStore('profile', {
     },
 
     resetToDefaults() {
-      // Clear localStorage for the current user before wiping store state
-      try {
-        const authStore = useAuthStore();
-        if (authStore.currentUser?.id) {
-          localStorage.removeItem(`profile_data_${authStore.currentUser.id}`);
-        }
-      } catch { /* ignore */ }
+
       this.name = ''; this.title = ''; this.role = '';
       this.location = ''; this.email = ''; this.phone = '';
       this.jabatan = ''; this.idJabatan = ''; this.website = '';
       this.joined = ''; this.bio = ''; this.address = '';
       this.idPerusahaan = ''; this.namaPerusahaan = '';
-      this.avatarUrl = '/images/faces/9.jpg';
+      this.fotoProfileUrl = '/images/faces/9.jpg';
       this.bannerUrl = '/images/media/media-3.jpg';
       this.bannerPositionX = 50; this.bannerPositionY = 50;
-      this.avatarPositionX = 50; this.avatarPositionY = 50;
+      this.fotoProfilePositionX = 50; this.fotoProfilePositionY = 50;
       this.isLoading = false;
       this.stats = { projects: '47', followers: '2.4K', following: '892' };
     },
@@ -545,8 +470,8 @@ export const useProfileStore = defineStore('profile', {
       await this.fetchFromApi();
     },
 
-    updateAvatar(url: string)  { this.avatarUrl = url; },
-    resetAvatar()              { this.avatarUrl = '/images/faces/9.jpg'; },
+    updateFotoProfile(url: string)  { this.fotoProfileUrl = url; },
+    resetFotoProfile()              { this.fotoProfileUrl = '/images/faces/9.jpg'; },
     updateBanner(url: string)  { this.bannerUrl = url; },
     resetBanner()              { this.bannerUrl = '/images/media/media-3.jpg'; },
   },
