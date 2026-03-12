@@ -140,6 +140,10 @@ export const useProfileStore = defineStore('profile', {
         photo:          formatImageUrl(u.photo || u.foto_profile),
         banner:         formatImageUrl(u.banner),
         idPerusahaan:   u.id_perusahaan                     || '',
+        bannerPositionX: u.banner_position_x !== null && u.banner_position_x !== undefined ? Number(u.banner_position_x) : 50,
+        bannerPositionY: u.banner_position_y !== null && u.banner_position_y !== undefined ? Number(u.banner_position_y) : 50,
+        fotoProfilePositionX: u.foto_profile_position_x !== null && u.foto_profile_position_x !== undefined ? Number(u.foto_profile_position_x) : 50,
+        fotoProfilePositionY: u.foto_profile_position_y !== null && u.foto_profile_position_y !== undefined ? Number(u.foto_profile_position_y) : 50,
       };
     },
 
@@ -167,6 +171,10 @@ export const useProfileStore = defineStore('profile', {
           this.fotoProfileUrl  = mapped.photo  || '/images/faces/9.jpg';
           this.bannerUrl  = mapped.banner || '/images/media/media-3.jpg';
           this.idPerusahaan = mapped.idPerusahaan;
+          this.bannerPositionX = mapped.bannerPositionX;
+          this.bannerPositionY = mapped.bannerPositionY;
+          this.fotoProfilePositionX = mapped.fotoProfilePositionX;
+          this.fotoProfilePositionY = mapped.fotoProfilePositionY;
 
           // Extract perusahaan/sub-sektor from /api/me response if available
           const meData = (response as any)?.user ?? (response as any)?.data ?? response;
@@ -230,6 +238,10 @@ export const useProfileStore = defineStore('profile', {
         this.fotoProfileUrl  = mapped.photo  || '/images/faces/9.jpg';
         this.bannerUrl  = mapped.banner || '/images/media/media-3.jpg';
         this.idPerusahaan = mapped.idPerusahaan;
+        this.bannerPositionX = mapped.bannerPositionX;
+        this.bannerPositionY = mapped.bannerPositionY;
+        this.fotoProfilePositionX = mapped.fotoProfilePositionX;
+        this.fotoProfilePositionY = mapped.fotoProfilePositionY;
 
 
 
@@ -320,6 +332,10 @@ export const useProfileStore = defineStore('profile', {
             bio:        data.bio      ?? this.bio,
             address:    data.address  ?? this.address,
             id_jabatan: jabatanId || undefined,
+            banner_position_x: data.bannerPositionX ?? this.bannerPositionX,
+            banner_position_y: data.bannerPositionY ?? this.bannerPositionY,
+            foto_profile_position_x: data.fotoProfilePositionX ?? this.fotoProfilePositionX,
+            foto_profile_position_y: data.fotoProfilePositionY ?? this.fotoProfilePositionY,
           };
           // Use /api/me for non-admin, /api/users/{id} for admin
           const updatedUser = isAdmin

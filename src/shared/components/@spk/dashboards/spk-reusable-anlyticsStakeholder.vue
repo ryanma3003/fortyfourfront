@@ -66,6 +66,8 @@ const accentColorClass: Record<string, string> = {
 
 const isBelum = (v: string) => v === "Belum Diisi" || v === "Belum Terdaftar";
 const isRegistered = (v: string) => v === "Terdaftar" || v === "Sudah Terdaftar";
+const isAktif = (v: string) => v === "Aktif";
+const isSedangSetup = (v: string) => v === "Sedang Setup";
 const isNumeric = (v: string) => !isNaN(parseFloat(v)) && isFinite(Number(v));
 const isLevelText = (v: string) => /^Level\s+\d/i.test(v);
 const isKseKategori = (v: string) => ['Strategis', 'Tinggi', 'Rendah'].includes(v);
@@ -169,7 +171,28 @@ const scorePercent = (title: string, value: string) => {
               </span>
             </template>
 
-            <!-- Belum Diisi -->
+            <!-- Aktif (CSIRT lengkap: CSIRT + SDM + SE) -->
+            <template v-else-if="isAktif(item.value)">
+              <span class="as-badge as-badge-aktif">
+                <i class="ri-shield-check-fill me-1"></i>Aktif
+              </span>
+            </template>
+
+            <!-- Sedang Setup (CSIRT ada tapi SDM/SE belum) -->
+            <template v-else-if="isSedangSetup(item.value)">
+              <span class="as-badge as-badge-setup">
+                <i class="ri-settings-3-line me-1"></i>Sedang Setup
+              </span>
+            </template>
+
+            <!-- Belum Terdaftar / Belum Diisi -->
+            <template v-else-if="isBelum(item.value)">
+              <span class="as-badge as-badge-empty">
+                <i class="ri-time-line me-1"></i>{{ item.value }}
+              </span>
+            </template>
+
+            <!-- Fallback -->
             <template v-else>
               <span class="as-badge as-badge-empty">
                 <i class="ri-time-line me-1"></i>Belum Diisi
@@ -397,6 +420,19 @@ html[data-theme-mode="dark"] .kse-rendah,    html.dark .kse-rendah    { backgrou
   color: #94a3b8;
   border: 1px solid #e2e8f0;
 }
+.as-badge-aktif {
+  background: linear-gradient(135deg,#d1fae5,#a7f3d0);
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+  box-shadow: 0 1px 4px rgba(16,185,129,0.2);
+}
+.as-badge-setup {
+  background: linear-gradient(135deg,#fef9c3,#fde68a);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+html[data-theme-mode="dark"] .as-badge-aktif, html.dark .as-badge-aktif { background: rgba(16,185,129,0.18); color: #34d399; border-color: rgba(52,211,153,0.3); }
+html[data-theme-mode="dark"] .as-badge-setup, html.dark .as-badge-setup { background: rgba(161,98,7,0.15); color: #fbbf24; border-color: rgba(251,191,36,0.3); }
 
 /*  Arrow button (top-right)  */
 .as-arrow {

@@ -34,11 +34,24 @@ export const useStakeholdersStore = defineStore('stakeholders', {
         formatImageUrl(path: string | undefined | null): string {
             if (!path) return '';
             if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('/images/')) return path;
-            if (path.startsWith('http://') || path.startsWith('https://')) return path;
+            if (path.startsWith('http://') || path.startsWith('https://')) {
+                // Full URL — if the path component is a bare filename (no directory), prepend /uploads/
+                try {
+                    const url = new URL(path);
+                    const parts = url.pathname.split('/').filter(Boolean);
+                    if (parts.length === 1) {
+                        url.pathname = `/uploads/${parts[0]}`;
+                        return url.toString();
+                    }
+                } catch { /* ignore */ }
+                return path;
+            }
             // Relative path → prepend backend base URL
             const baseUrl = (import.meta.env.VITE_STORAGE_BASE_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
             const cleanPath = path.replace(/^\//, '');
-            return baseUrl ? `${baseUrl}/${cleanPath}` : `/${cleanPath}`;
+            // Bare filename (no slash) → stored in uploads/ directory
+            const storagePath = !cleanPath.includes('/') ? `uploads/${cleanPath}` : cleanPath;
+            return baseUrl ? `${baseUrl}/${storagePath}` : `/${storagePath}`;
         },
 
         /**

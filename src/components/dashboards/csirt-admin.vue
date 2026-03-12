@@ -49,7 +49,7 @@ export default {
       web_csirt: "",
       telepon_csirt: "",
       id_perusahaan: 0,
-      img_csirt: "",
+      photo_csirt: "",
     });
 
     const formErrors = ref<Record<string, string>>({});
@@ -160,7 +160,7 @@ export default {
         web_csirt: "",
         telepon_csirt: "",
         id_perusahaan: 0,
-        img_csirt: "",
+        photo_csirt: "",
       };
       formErrors.value = {};
       selectedCountryCode.value = "+62";
@@ -176,7 +176,7 @@ export default {
         web_csirt: formData.value.web_csirt!,
         telepon_csirt: formData.value.telepon_csirt!,
         id_perusahaan: formData.value.id_perusahaan!,
-        img_csirt: formData.value.img_csirt || "",
+        photo_csirt: formData.value.photo_csirt || "",
       };
 
       const result = await csirtStore.createCsirt(payload);
@@ -205,7 +205,7 @@ export default {
         nama_csirt: formData.value.nama_csirt!,
         web_csirt: formData.value.web_csirt!,
         telepon_csirt: formData.value.telepon_csirt!,
-        img_csirt: formData.value.img_csirt,
+        photo_csirt: formData.value.photo_csirt,
       };
 
       const result = await csirtStore.updateCsirtById(currentEditItem.value.id, payload);
@@ -278,7 +278,7 @@ export default {
         const reader = new FileReader();
         reader.onload = (e) => {
           if (e.target?.result) {
-            formData.value.img_csirt = e.target.result as string;
+            formData.value.photo_csirt = e.target.result as string;
           }
         };
         reader.readAsDataURL(file);
@@ -286,7 +286,7 @@ export default {
     };
 
     const removeImage = () => {
-      formData.value.img_csirt = "";
+      formData.value.photo_csirt = "";
       if (fileInput.value) {
         fileInput.value.value = "";
       }
@@ -550,7 +550,7 @@ export default {
                     <td class="align-middle">
                       <div class="d-flex align-items-center gap-3">
                         <div class="company-avatar" :class="getAvatarClass(item.nama_csirt.charAt(0).toUpperCase())">
-                          <img v-if="item.img_csirt" :src="item.img_csirt" :alt="item.nama_csirt" class="company-avatar-img" />
+                          <img v-if="item.photo_csirt" :src="item.photo_csirt" :alt="item.nama_csirt" class="company-avatar-img" />
                           <span v-else class="company-avatar-letter">{{ item.nama_csirt.charAt(0).toUpperCase() }}</span>
                         </div>
                         <div class="company-name-wrap">
@@ -664,14 +664,14 @@ export default {
                     <div 
                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
                       :style="{ 
-                        backgroundImage: formData.img_csirt ? `url(${formData.img_csirt})` : 'none',
-                        backgroundColor: formData.img_csirt ? 'transparent' : '#e9ecef',
+                        backgroundImage: formData.photo_csirt ? `url(${formData.photo_csirt})` : 'none',
+                        backgroundColor: formData.photo_csirt ? 'transparent' : '#e9ecef',
                         backgroundSize: 'cover',
                         backgroundPosition: 'center'
                       }"
                     >
                       <!-- Empty State -->
-                      <div v-if="!formData.img_csirt" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
+                      <div v-if="!formData.photo_csirt" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada logo</span>
                       </div>
@@ -687,9 +687,9 @@ export default {
                       <div class="d-flex flex-wrap gap-2 mb-2">
                         <button type="button" class="btn btn-primary btn-sm" @click="triggerFileInput">
                           <i class="ri-upload-2-line me-1"></i>
-                          {{ formData.img_csirt ? 'Ganti Logo' : 'Upload Logo' }}
+                          {{ formData.photo_csirt ? 'Ganti Logo' : 'Upload Logo' }}
                         </button>
-                        <button v-if="formData.img_csirt" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
+                        <button v-if="formData.photo_csirt" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
                           <i class="ri-delete-bin-line me-1"></i>Hapus
                         </button>
                       </div>
@@ -788,14 +788,14 @@ export default {
                     <div 
                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
                       :style="{ 
-                        backgroundImage: formData.img_csirt ? `url(${formData.img_csirt})` : 'none',
-                        backgroundColor: formData.img_csirt ? 'transparent' : '#e9ecef',
+                        backgroundImage: formData.photo_csirt ? `url(${formData.photo_csirt})` : 'none',
+                        backgroundColor: formData.photo_csirt ? 'transparent' : '#e9ecef',
                         backgroundSize: 'cover',
                         backgroundPosition: 'center'
                       }"
                     >
                       <!-- Empty State -->
-                      <div v-if="!formData.img_csirt" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
+                      <div v-if="!formData.photo_csirt" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada logo</span>
                       </div>
@@ -811,9 +811,9 @@ export default {
                       <div class="d-flex flex-wrap gap-2 mb-2">
                         <button type="button" class="btn btn-primary btn-sm" @click="triggerFileInput">
                           <i class="ri-upload-2-line me-1"></i>
-                          {{ formData.img_csirt ? 'Ganti Logo' : 'Upload Logo' }}
+                          {{ formData.photo_csirt ? 'Ganti Logo' : 'Upload Logo' }}
                         </button>
-                        <button v-if="formData.img_csirt" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
+                        <button v-if="formData.photo_csirt" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
                           <i class="ri-delete-bin-line me-1"></i>Hapus
                         </button>
                       </div>

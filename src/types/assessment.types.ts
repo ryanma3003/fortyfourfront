@@ -65,9 +65,6 @@ export interface AssessmentProgress {
 
 // Respondent Profile
 export interface RespondentProfile {
-    instansi: string;
-    namaSistem: string;
-    jenisSistem: 'IT' | 'OT' | 'IT & OT';
     sektor: string;
     alamat: string;
     email: string;
@@ -77,8 +74,6 @@ export interface RespondentProfile {
     tahunPengukuran: string;
     targetLevel: 1 | 2 | 3 | 4 | 5;
     targetNilai: string;
-    acuanManajemenRisiko: string;
-    acuanKeamananSiber: string;
     tanggalPengisian: string;
     createdAt: number;
     updatedAt: number;

@@ -13,6 +13,7 @@ import { useCsirtStore } from "../../stores/csirt";
 import { useListPage } from "../../composables/useListPage";
 import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
 import type { SubSektor, Sektor } from "../../services/sektor.service";
+import { csirtService } from "../../services/csirt.service";
 
 
 
@@ -311,8 +312,36 @@ export default {
     const deleteStakeholder = async () => {
       if (!currentDeleteItem.value) return;
 
-      const result = await stakeholdersStore.deleteStakeholderById(currentDeleteItem.value.id);
+      const stakeholderId = currentDeleteItem.value.id;
+
+      // Cascade delete: SDMs → SEs → CSIRTs → perusahaan
+      // Fetch fresh from API to avoid stale store data; filter by perusahaan UUID.
+      try {
+        const allCsirts = await csirtService.getMembers();
+        const companyCsirts = allCsirts.filter(
+          c => String(c.perusahaan?.id) === String(stakeholderId) ||
+               String(c.id_perusahaan)  === String(stakeholderId)
+        );
+        for (const csirt of companyCsirts) {
+          const [sdms, ses] = await Promise.all([
+            csirtService.getSdmByCsirtId(csirt.id),
+            csirtService.getSeByCsirtId(csirt.id),
+          ]);
+          await Promise.all([
+            ...sdms.map(sdm => csirtService.deleteSdm(sdm.id)),
+            ...ses.map(se  => csirtService.deleteSe(se.id)),
+          ]);
+          await csirtService.delete(csirt.id);
+        }
+      } catch (err) {
+        console.warn('Cascade delete CSIRT failed:', err);
+        showNotification('Gagal menghapus data CSIRT terkait: ' + (err as any)?.message, 'error');
+        return;
+      }
+
+      const result = await stakeholdersStore.deleteStakeholderById(stakeholderId);
       if (result.success) {
+        await csirtStore.refresh();
         showDeleteModal.value = false;
         showNotification("Stakeholder berhasil dihapus!", "success");
       } else {
