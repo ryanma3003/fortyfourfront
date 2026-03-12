@@ -1,11 +1,10 @@
-<script lang="ts">
+ï»¿<script lang="ts">
 import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
 import { ref, onMounted, watch, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { csirtService } from "../../services/csirt.service";
 import type { SdmCsirt, SeCsirt, CsirtMember } from "../../types/csirt.types";
 import { useRoute } from "vue-router";
-import TableComponent from "../../shared/components/@spk/table-reuseble/table-component.vue";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import { useAuthStore } from "../../stores/auth";
 import { useCsirtStore } from "../../stores/csirt";
@@ -16,7 +15,6 @@ export default {
     components: {
         Pageheader,
         SimpleCardComponent,
-        TableComponent
     },
     setup() {
         const stakeholdersStore = useStakeholdersStore();
@@ -346,7 +344,7 @@ export default {
             router.push({ path: '/kse-crud', query: { seId: String(se.id), stakeholder: companySlug, mode: 'view' } });
         };
 
-        // Navigate to KSE page in edit mode (Edit SE — data responden + penilaian)
+        // Navigate to KSE page in edit mode (Edit SE ï¿½ data responden + penilaian)
         const editSePenilaian = (se: SeCsirt) => {
             const p = currentCsirt.value?.perusahaan;
             const companySlug = String(
@@ -474,13 +472,15 @@ export default {
 
         // --- PROFILE CRUD ------------------------------------------------------
         const showEditProfileModal = ref(false);
-        const profileFormData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null }>({
+        const profileFormData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null }>({
             nama_csirt: "",
             telepon_csirt: "",
             web_csirt: "",
             file_rfc2350: "",
             file_public_key_pgp: "",
             photo_csirt_file: null,
+            file_rfc2350_file: null,
+            file_public_key_pgp_file: null,
         });
         const profileFormErrors = ref<Record<string, string>>({});
 
@@ -496,7 +496,7 @@ export default {
 
         const openEditProfileModal = () => {
             if (currentCsirt.value) {
-                profileFormData.value = { ...currentCsirt.value, photo_csirt_file: null };
+                profileFormData.value = { ...currentCsirt.value, photo_csirt_file: null, file_rfc2350_file: null, file_public_key_pgp_file: null };
                 profileFormErrors.value = {};
                 showEditProfileModal.value = true;
             }
@@ -510,11 +510,14 @@ export default {
         const updateProfile = async () => {
             if (!validateProfileForm() || !currentCsirt.value) return;
             try {
-                await csirtService.update(Number(currentCsirt.value.id), {
-                    nama_csirt   : profileFormData.value.nama_csirt!,
-                    telepon_csirt: profileFormData.value.telepon_csirt || "",
-                    web_csirt    : profileFormData.value.web_csirt || "",
-                    photo_csirt  : profileFormData.value.photo_csirt_file ?? undefined,
+                await csirtService.update(currentCsirt.value.id, {
+                    id_perusahaan       : currentCsirt.value.id_perusahaan ?? currentCsirt.value.perusahaan?.id,
+                    nama_csirt          : profileFormData.value.nama_csirt!,
+                    telepon_csirt       : profileFormData.value.telepon_csirt || "",
+                    web_csirt           : profileFormData.value.web_csirt || "",
+                    photo_csirt         : profileFormData.value.photo_csirt_file ?? undefined,
+                    file_rfc2350        : profileFormData.value.file_rfc2350_file ?? undefined,
+                    file_public_key_pgp : profileFormData.value.file_public_key_pgp_file ?? undefined,
                 });
                 await csirtStore.refresh();
                 showEditProfileModal.value = false;
@@ -528,11 +531,10 @@ export default {
             const target = event.target as HTMLInputElement;
             if (target.files && target.files.length > 0) {
                 const file = target.files[0];
-                const fakeUrl = URL.createObjectURL(file);
                 if (type === 'rfc') {
-                    profileFormData.value.file_rfc2350 = fakeUrl;
+                    profileFormData.value.file_rfc2350_file = file;
                 } else if (type === 'pgp') {
-                    profileFormData.value.file_public_key_pgp = fakeUrl;
+                    profileFormData.value.file_public_key_pgp_file = file;
                 }
                 showNotification(`${file.name} berhasil dipilih`, "success");
             }
@@ -607,14 +609,50 @@ export default {
     },
 };
 </script>
-<style>
-.profile-csirt-img{
-  max-width: 100%;
-  max-height: 100%;
+<style scoped>
+.profile-photo-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  max-width: 220px;
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%);
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
+  border: 1px solid #efefef;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.profile-photo-wrapper:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 4px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.profile-csirt-img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  margin: 0 auto;
+  padding: 12px;
   display: block;
-  border-radius: 8px;
+  border-radius: 12px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .profile-photo-wrapper {
+    max-width: 180px;
+    margin: 0 auto 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-photo-wrapper {
+    max-width: 150px;
+  }
 }
 </style>
 
@@ -667,7 +705,7 @@ export default {
                 </div>
                 <div v-else class="row align-items-center">
                     <div class="col-12 col-md-2 text-center">
-                        <div class="company-avatar avatar-blue shadow-sm mb-3 mb-md-0 mx-auto" style="width: 140px; height: 140px; border-radius: 12px;">
+                        <div class="profile-photo-wrapper" style="width: 140px; height: 140px; margin: 0 auto 12px;">
                             <img :src="currentCsirt.photo_csirt" class="img-fluid profile-csirt-img" alt="Logo CSIRT"/>
                         </div>
                     </div>
@@ -753,6 +791,7 @@ export default {
             <!-- Loading state -->
             <div v-if="loading" class="skeleton-loading p-4">
                 <div class="skeleton-row" v-for="n in 3" :key="n">
+                    <div class="skel skel-no"></div>
                     <div class="skel skel-avatar"></div>
                     <div class="skel skel-name"></div>
                     <div class="skel skel-badge"></div>
@@ -762,40 +801,98 @@ export default {
 
             <!-- Table -->
             <template v-else>
-                <div class="stakeholder-table-wrap">
-                    <TableComponent 
-                        :headers="headers" 
-                        :rows="items" 
-                        tableClass="table stakeholder-table text-nowrap mb-0" 
-                        theadClass="stakeholder-thead"
-                        tbodyClass="stakeholder-tbody"
-                    >
-                        <template #cell="{ row }">
-                            <td class="align-middle">
-                                <div class="fw-semibold text-primary">{{ row.nama_personel }}</div>
-                            </td>
-                            <td class="align-middle">
-                                <span class="badge bg-info-transparent rounded-pill px-2">{{ row.csirt?.nama_csirt || '-' }}</span>
-                            </td>
-                            <td class="align-middle">{{ row.jabatan_csirt }}</td>
-                            <td class="align-middle text-muted small">{{ row.jabatan_perusahaan }}</td>
-                            <td class="align-middle text-muted small">{{ row.skill }}</td>
-                            <td class="align-middle">
-                                <span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span>
-                            </td>
-                            <td class="text-center align-middle">
-                                <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
-                                    <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
-                                        <i class="ri-edit-2-line"></i>
-                                    </button>
-                                    <button @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
-                                        <i class="ri-delete-bin-3-line"></i>
-                                    </button>
-                                </div>
-                                <span v-else class="text-muted small">—</span>
-                            </td>
-                        </template>
-                    </TableComponent>
+                <div class="table-responsive stakeholder-table-wrap">
+                    <table class="table stakeholder-table text-nowrap mb-0" style="table-layout:fixed;width:100%">
+                        <colgroup>
+                            <col style="width:50px">
+                            <col style="width:160px">
+                            <col style="width:130px">
+                            <col style="width:140px">
+                            <col style="width:145px">
+                            <col style="width:130px">
+                            <col style="width:130px">
+                            <col style="width:120px">
+                        </colgroup>
+                        <thead class="stakeholder-thead">
+                            <tr>
+                                <th class="th-no">No</th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-user-line text-primary"></i>
+                                        <span>Nama Personel</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-shield-line text-primary"></i>
+                                        <span>CSIRT</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-briefcase-line text-primary"></i>
+                                        <span>Jabatan CSIRT</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-building-line text-primary"></i>
+                                        <span>Jabatan Perusahaan</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-tools-line text-primary"></i>
+                                        <span>Keahlian</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-award-line text-primary"></i>
+                                        <span>Sertifikasi</span>
+                                    </div>
+                                </th>
+                                <th class="text-center th-actions-sm">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-if="!items.length">
+                                <td colspan="8" class="text-center py-5">
+                                    <div class="empty-state">
+                                        <div class="empty-icon-ring mb-3">
+                                            <div class="empty-icon-inner">
+                                                <i class="ri-group-line"></i>
+                                            </div>
+                                        </div>
+                                        <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada SDM</h6>
+                                        <p class="text-muted fs-13 mb-0">Tambahkan data SDM CSIRT terlebih dahulu</p>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-for="(row, i) in items" :key="row.id" class="stakeholder-row">
+                                <td class="align-middle text-center">
+                                    <span class="row-number">{{ i + 1 }}</span>
+                                </td>
+                                <td class="align-middle fw-semibold">{{ row.nama_personel }}</td>
+                                <td class="align-middle"><span class="badge bg-info-transparent rounded-pill px-2">{{ row.csirt?.nama_csirt || '-' }}</span></td>
+                                <td class="align-middle">{{ row.jabatan_csirt }}</td>
+                                <td class="align-middle small text-muted">{{ row.jabatan_perusahaan }}</td>
+                                <td class="align-middle small text-muted">{{ row.skill }}</td>
+                                <td class="align-middle"><span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span></td>
+                                <td class="text-center align-middle">
+                                    <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
+                                        <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
+                                            <i class="ri-edit-2-line"></i>
+                                        </button>
+                                        <button @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                            <i class="ri-delete-bin-3-line"></i>
+                                        </button>
+                                    </div>
+                                    <span v-else class="text-muted small">&#x2212;</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </template>
         </SimpleCardComponent>
@@ -817,6 +914,7 @@ export default {
             <!-- Loading state -->
             <div v-if="loading" class="skeleton-loading p-4">
                 <div class="skeleton-row" v-for="n in 3" :key="n">
+                    <div class="skel skel-no"></div>
                     <div class="skel skel-avatar"></div>
                     <div class="skel skel-name"></div>
                     <div class="skel skel-badge"></div>
@@ -826,43 +924,107 @@ export default {
 
             <!-- Table -->
             <template v-else>
-                <div class="stakeholder-table-wrap">
-                    <TableComponent 
-                        :headers="seHeaders" 
-                        :rows="seItems" 
-                        tableClass="table stakeholder-table text-nowrap mb-0" 
-                        theadClass="stakeholder-thead"
-                        tbodyClass="stakeholder-tbody"
-                    >
-                        <template #cell="{ row }">
-                            <td class="align-middle fw-semibold">{{ row.nama_se }}</td>
-                            <td class="align-middle"><code class="text-primary">{{ row.ip_se }}</code></td>
-                            <td class="align-middle"><span class="badge bg-light text-muted">{{ row.as_number_se }}</span></td>
-                            <td class="align-middle">{{ row.pengelola_se }}</td>
-                            <td class="align-middle small text-muted">{{ row.fitur_se }}</td>
-                            <td class="align-middle">
-                                <span v-if="row.kategori_se" :class="['badge rounded-pill px-3', getKategoriBadgeClass(row.kategori_se)]">
-                                    {{ row.kategori_se }}
-                                </span>
-                                <span v-else class="badge bg-secondary-transparent rounded-pill px-3 text-muted">
-                                    Belum Diisi
-                                </span>
-                            </td>
-                            <td class="text-center align-middle">
-                                <div class="d-flex gap-1 justify-content-center">
-                                    <button @click="viewSeDetail(row)" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Detail Penilaian">
-                                        <i class="ri-eye-line"></i>
-                                    </button>
-                                    <button v-if="isAdmin" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
-                                        <i class="ri-edit-2-line"></i>
-                                    </button>
-                                    <button v-if="isAdmin" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
-                                        <i class="ri-delete-bin-3-line"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </template>
-                    </TableComponent>
+                <div class="table-responsive stakeholder-table-wrap">
+                    <table class="table stakeholder-table text-nowrap mb-0" style="table-layout:fixed;width:100%">
+                        <colgroup>
+                            <col style="width:50px">
+                            <col style="width:160px">
+                            <col style="width:130px">
+                            <col style="width:140px">
+                            <col style="width:145px">
+                            <col style="width:130px">
+                            <col style="width:130px">
+                            <col style="width:120px">
+                        </colgroup>
+                        <thead class="stakeholder-thead">
+                            <tr>
+                                <th class="th-no">No</th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-server-line text-primary"></i>
+                                        <span>Nama SE</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-router-line text-primary"></i>
+                                        <span>IP SE</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-global-line text-primary"></i>
+                                        <span>AS Number</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-user-line text-primary"></i>
+                                        <span>Pengelola</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-settings-line text-primary"></i>
+                                        <span>Fitur</span>
+                                    </div>
+                                </th>
+                                <th>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-price-tag-3-line text-primary"></i>
+                                        <span>Kategori</span>
+                                    </div>
+                                </th>
+                                <th class="text-center th-actions-sm">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-if="!seItems.length">
+                                <td colspan="8" class="text-center py-5">
+                                    <div class="empty-state">
+                                        <div class="empty-icon-ring mb-3">
+                                            <div class="empty-icon-inner">
+                                                <i class="ri-server-line"></i>
+                                            </div>
+                                        </div>
+                                        <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada SE</h6>
+                                        <p class="text-muted fs-13 mb-0">Tambahkan data Sistem Elektronik terlebih dahulu</p>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-for="(row, i) in seItems" :key="row.id" class="stakeholder-row">
+                                <td class="align-middle text-center">
+                                    <span class="row-number">{{ i + 1 }}</span>
+                                </td>
+                                <td class="align-middle fw-semibold">{{ row.nama_se }}</td>
+                                <td class="align-middle"><code class="text-primary">{{ row.ip_se }}</code></td>
+                                <td class="align-middle"><span class="badge bg-light text-muted">{{ row.as_number_se }}</span></td>
+                                <td class="align-middle">{{ row.pengelola_se }}</td>
+                                <td class="align-middle small text-muted">{{ row.fitur_se }}</td>
+                                <td class="align-middle">
+                                    <span v-if="row.kategori_se" :class="['badge rounded-pill px-3', getKategoriBadgeClass(row.kategori_se)]">
+                                        {{ row.kategori_se }}
+                                    </span>
+                                    <span v-else class="badge bg-secondary-transparent rounded-pill px-3 text-muted">
+                                        Belum Diisi
+                                    </span>
+                                </td>
+                                <td class="text-center align-middle">
+                                    <div class="d-flex gap-1 justify-content-center">
+                                        <button @click="viewSeDetail(row)" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Detail Penilaian">
+                                            <i class="ri-eye-line"></i>
+                                        </button>
+                                        <button v-if="isAdmin" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
+                                            <i class="ri-edit-2-line"></i>
+                                        </button>
+                                        <button v-if="isAdmin" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                            <i class="ri-delete-bin-3-line"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </template>
         </SimpleCardComponent>
@@ -1233,8 +1395,8 @@ export default {
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>
-                                <div v-if="profileFormData.file_rfc2350?.startsWith('blob:')" class="text-success small mt-1">
-                                    <i class="ri-check-line"></i> File siap diupload (Simulasi)
+                                <div v-if="profileFormData.file_rfc2350_file" class="text-success small mt-1">
+                                    <i class="ri-check-line"></i> {{ profileFormData.file_rfc2350_file.name }} siap diupload
                                 </div>
                             </div>
                             <!-- Public Key PGP -->
@@ -1250,8 +1412,8 @@ export default {
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>
-                                <div v-if="profileFormData.file_public_key_pgp?.startsWith('blob:')" class="text-success small mt-1">
-                                    <i class="ri-check-line"></i> File siap diupload (Simulasi)
+                                <div v-if="profileFormData.file_public_key_pgp_file" class="text-success small mt-1">
+                                    <i class="ri-check-line"></i> {{ profileFormData.file_public_key_pgp_file.name }} siap diupload
                                 </div>
                             </div>
                         </div>

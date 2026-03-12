@@ -233,7 +233,6 @@ const handleEditData = () => {
                 {{ allQuestionsAnswered ? 'Simpan dan Selesai' : 'Simpan Sementara' }}
               </button>
               <button 
-                v-if="allQuestionsAnswered"
                 class="btn btn-primary w-100" 
                 @click="emit('edit')"
               >

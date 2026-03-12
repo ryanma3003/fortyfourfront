@@ -156,7 +156,7 @@ const penilaian = computed(() => {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
       svgColor: "success",
       title: "CSIRT",
-      value: relatedCsirtId.value ? "Terdaftar" : "Belum Terdaftar"
+      value: getCsirtStatus()
     }
   ];
 });
@@ -170,19 +170,56 @@ const relatedCsirtId = computed(() => {
   return csirt ? (csirt.id as any) : null;
 });
 
-// SE count for KSE status card
+// Get CSIRT object (not just ID) for status checking
+const relatedCsirt = computed(() => {
+  if (!currentStakeholder.value) return null;
+  const csirt = csirtStore.csirts.find(
+    (c) => String(c.id_perusahaan) === String(currentStakeholder.value?.id)
+      || c.perusahaan?.id === String(currentStakeholder.value?.id)
+  );
+  return csirt || null;
+});
+
+// Determine CSIRT status based on 3 conditions
+const getCsirtStatus = (): string => {
+  // No CSIRT record at all
+  if (!relatedCsirt.value) {
+    return "Belum Terdaftar";
+  }
+
+  // CSIRT exists — check SDM CSIRT personnel and SE
+  const hasSdm = sdmCount.value > 0;
+  const hasSe = seCount.value > 0;
+
+  // CSIRT + SDM + SE all present → fully active
+  if (hasSdm && hasSe) {
+    return "Aktif";
+  }
+
+  // CSIRT exists but SDM or SE (or both) are missing
+  return "Sedang Setup";
+};
+
+// SE count and SDM count for CSIRT status check
 const seCount = ref(0);
-const loadSeCount = async (csirtId: string | number | null) => {
-  if (!csirtId) { seCount.value = 0; return; }
+const sdmCount = ref(0);
+
+const loadCsirtCounts = async (csirtId: string | number | null) => {
+  if (!csirtId) { seCount.value = 0; sdmCount.value = 0; return; }
   try {
-    const list = await csirtService.getSeByCsirtId(csirtId);
-    seCount.value = list.length;
+    const [seList, sdmList] = await Promise.all([
+      csirtService.getSeByCsirtId(csirtId),
+      csirtService.getSdmByCsirtId(csirtId as number),
+    ]);
+    seCount.value = seList.length;
+    sdmCount.value = sdmList.length;
   } catch {
     seCount.value = 0;
+    sdmCount.value = 0;
   }
 };
 
-watch(relatedCsirtId, (id) => { loadSeCount(id); }, { immediate: true });
+watch(relatedCsirtId, (id) => { loadCsirtCounts(id); }, { immediate: true });
 
 
 
@@ -745,6 +782,20 @@ html.dark .hero-card-shell {
                         :csirtId="relatedCsirtId ?? undefined"
                         :stakeholderSlug="currentStakeholder.slug"
                       />
+
+                      <!-- Isi IKAS button (admin only, when not filled) -->
+                      <div v-if="isAdmin && (!ikasDataMap[stakeholderSlug.value]?.total_kategori || ikasDataMap[stakeholderSlug.value]?.total_kategori === 'INPUT BELUM LENGKAP')" class="col-12 mb-3">
+                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
+                          <div class="d-flex align-items-center gap-2">
+                            <i class="ri-information-line fs-16"></i>
+                            <span class="fs-13">IKAS belum diisi untuk perusahaan ini.</span>
+                          </div>
+                          <button @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                            <i class="ri-add-circle-line fs-14"></i>
+                            <span>Isi IKAS</span>
+                          </button>
+                        </div>
+                      </div>
 
                       <!-- Daftarkan CSIRT button (admin only, when not yet registered) -->
                       <div v-if="isAdmin && !relatedCsirtId" class="col-12 mb-3">

@@ -41,24 +41,23 @@ export const csirtService = {
     /**
      * Update a CSIRT member by ID
      */
-    async update(id: number, payload: Partial<CreateCsirtPayload> & { photo_csirt?: File | null }): Promise<CsirtMember> {
-        if (payload.photo_csirt instanceof File) {
-            const form = new FormData();
-            if (payload.nama_csirt)    form.append('nama_csirt',    payload.nama_csirt);
-            if (payload.web_csirt)     form.append('web_csirt',     payload.web_csirt);
-            if (payload.telepon_csirt) form.append('telepon_csirt', payload.telepon_csirt);
-            form.append('photo_csirt', payload.photo_csirt);
-            if (payload.file_rfc2350        instanceof File) form.append('file_rfc2350',        payload.file_rfc2350);
-            if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
-            return api.patch<CsirtMember>(`/api/csirt/${id}`, form);
-        }
-        return api.patch<CsirtMember>(`/api/csirt/${id}`, payload);
+    async update(id: string | number, payload: Partial<CreateCsirtPayload> & { photo_csirt?: File | null }): Promise<CsirtMember> {
+        // Go backend: PUT /api/csirt/{id} with multipart/form-data
+        const form = new FormData();
+        if (payload.id_perusahaan != null) form.append('id_perusahaan', String(payload.id_perusahaan));
+        if (payload.nama_csirt)    form.append('nama_csirt',    payload.nama_csirt);
+        if (payload.web_csirt)     form.append('web_csirt',     payload.web_csirt);
+        if (payload.telepon_csirt) form.append('telepon_csirt', payload.telepon_csirt);
+        if (payload.photo_csirt instanceof File) form.append('photo_csirt', payload.photo_csirt);
+        if (payload.file_rfc2350        instanceof File) form.append('file_rfc2350',        payload.file_rfc2350);
+        if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
+        return api.put<CsirtMember>(`/api/csirt/${id}`, form);
     },
 
     /**
      * Delete a CSIRT member by ID
      */
-    async delete(id: number): Promise<void> {
+    async delete(id: string | number): Promise<void> {
         return api.delete(`/api/csirt/${id}`);
     },
 

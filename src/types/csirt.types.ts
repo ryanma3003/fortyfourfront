@@ -12,6 +12,7 @@ export interface CsirtMember {
     file_rfc2350: string;
     file_public_key_pgp: string;
     photo_csirt: string;
+    status?: string; // Status field: "Aktif", "Sedang Setup", etc.
     /** Legacy field alias kept for old dummy data */
     img_csirt?: string;
     slug?: string;

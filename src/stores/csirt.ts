@@ -163,7 +163,7 @@ export const useCsirtStore = defineStore('csirt', {
             this.error = null;
 
             try {
-                const updated = await csirtService.update(Number(id), updates as any);
+                const updated = await csirtService.update(id, updates as any);
                 await this.refresh();
                 this.loading = false;
                 return { success: true, data: updated };
@@ -183,7 +183,7 @@ export const useCsirtStore = defineStore('csirt', {
             this.error = null;
 
             try {
-                await csirtService.delete(Number(id));
+                await csirtService.delete(id);
                 const index = this.csirts.findIndex(c => String(c.id) === String(id));
                 if (index !== -1) {
                     this.csirts.splice(index, 1);

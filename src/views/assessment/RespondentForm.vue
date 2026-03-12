@@ -11,7 +11,6 @@ const emit = defineEmits<{
 }>();
 
 // Dropdown options
-const jenisSistemOptions = ['IT', 'OT', 'IT & OT'];
 const sektorOptions = [
   'Administrasi Pemerintahan',
   'Energi dan Sumber Daya Mineral',
@@ -33,9 +32,6 @@ const targetLevelOptions = [
 
 // Form state
 const formData = reactive<Partial<RespondentProfile>>({
-  instansi: '',
-  namaSistem: '',
-  jenisSistem: 'IT',
   sektor: 'Kesehatan',
   alamat: '',
   email: '',
@@ -45,8 +41,7 @@ const formData = reactive<Partial<RespondentProfile>>({
   tahunPengukuran: new Date().getFullYear().toString(),
   targetLevel: 3,
   targetNilai: '2.51 - 3.50',
-  acuanManajemenRisiko: '',
-  acuanKeamananSiber: '',
+
   tanggalPengisian: new Date().toISOString().split('T')[0]
 });
 
@@ -66,10 +61,6 @@ onMounted(() => {
 // Validation rules
 const validateField = (field: string, value: any): string => {
   switch (field) {
-    case 'instansi':
-      return value.trim() === '' ? 'Instansi wajib diisi' : '';
-    case 'namaSistem':
-      return value.trim() === '' ? 'Nama sistem wajib diisi' : '';
     case 'alamat':
       return value.trim() === '' ? 'Alamat wajib diisi' : '';
     case 'email':
@@ -92,10 +83,6 @@ const validateField = (field: string, value: any): string => {
       return '';
     case 'targetNilai':
       return value.trim() === '' ? 'Target nilai wajib diisi' : '';
-    case 'acuanManajemenRisiko':
-      return value.trim() === '' ? 'Acuan manajemen risiko wajib diisi' : '';
-    case 'acuanKeamananSiber':
-      return value.trim() === '' ? 'Acuan keamanan siber wajib diisi' : '';
     default:
       return '';
   }
@@ -103,17 +90,13 @@ const validateField = (field: string, value: any): string => {
 
 // List of required fields
 const requiredFields = [
-  'instansi',
-  'namaSistem',
   'alamat',
   'email',
   'nomorTelepon',
   'namaResponden',
   'jabatanResponden',
   'tahunPengukuran',
-  'targetNilai',
-  'acuanManajemenRisiko',
-  'acuanKeamananSiber'
+  'targetNilai'
 ];
 
 // Validate all fields
@@ -150,9 +133,6 @@ const handleFieldBlur = (field: string) => {
 // Save form data to store
 const saveFormData = () => {
   const profile: RespondentProfile = {
-    instansi: formData.instansi || '',
-    namaSistem: formData.namaSistem || '',
-    jenisSistem: formData.jenisSistem || 'IT',
     sektor: formData.sektor || '',
     alamat: formData.alamat || '',
     email: formData.email || '',
@@ -162,8 +142,6 @@ const saveFormData = () => {
     tahunPengukuran: formData.tahunPengukuran || '',
     targetLevel: formData.targetLevel || 3,
     targetNilai: formData.targetNilai || '',
-    acuanManajemenRisiko: formData.acuanManajemenRisiko || '',
-    acuanKeamananSiber: formData.acuanKeamananSiber || '',
     tanggalPengisian: formData.tanggalPengisian || '',
     createdAt: formData.createdAt || Date.now(),
     updatedAt: Date.now()
@@ -208,74 +186,32 @@ const startAssessment = () => {
           <!-- Form -->
           <form @submit.prevent="startAssessment">
             <div class="row">
-              <!-- Instansi -->
+              <!-- Nama Responden -->
               <div class="col-md-6 mb-3">
-                <label class="form-label">Instansi / Penyelenggara Sistem Elektronik <span class="text-danger">*</span></label>
-                <input 
-                  type="text" 
-                  class="form-control" 
-                  :class="{ 'is-invalid': errors.instansi }"
-                  v-model="formData.instansi"
-                  @blur="handleFieldBlur('instansi')"
-                  placeholder="Contoh: Kementerian XYZ"
-                />
-                <div v-if="errors.instansi" class="invalid-feedback">{{ errors.instansi }}</div>
-              </div>
-
-              <!-- Nama Sistem -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Nama Sistem Elektronik <span class="text-danger">*</span></label>
+                <label class="form-label">Nama Responden <span class="text-danger">*</span></label>
                 <input 
                   type="text" 
                   class="form-control"
-                  :class="{ 'is-invalid': errors.namaSistem }"
-                  v-model="formData.namaSistem"
-                  @blur="handleFieldBlur('namaSistem')"
-                  placeholder="Contoh: Sistem Informasi ABC"
+                  :class="{ 'is-invalid': errors.namaResponden }"
+                  v-model="formData.namaResponden"
+                  @blur="handleFieldBlur('namaResponden')"
+                  placeholder="Nama lengkap responden"
                 />
-                <div v-if="errors.namaSistem" class="invalid-feedback">{{ errors.namaSistem }}</div>
+                <div v-if="errors.namaResponden" class="invalid-feedback">{{ errors.namaResponden }}</div>
               </div>
 
-              <!-- Jenis Sistem -->
+              <!-- Jabatan Responden -->
               <div class="col-md-6 mb-3">
-                <label class="form-label">Jenis Sistem Elektronik <span class="text-danger">*</span></label>
-                <select 
-                  class="form-select"
-                  v-model="formData.jenisSistem"
-                  @change="handleFieldBlur('jenisSistem')"
-                >
-                  <option v-for="option in jenisSistemOptions" :key="option" :value="option">
-                    {{ option }}
-                  </option>
-                </select>
-              </div>
-
-              <!-- Sektor -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Sektor <span class="text-danger">*</span></label>
-                <select 
-                  class="form-select"
-                  v-model="formData.sektor"
-                  @change="handleFieldBlur('sektor')"
-                >
-                  <option v-for="option in sektorOptions" :key="option" :value="option">
-                    {{ option }}
-                  </option>
-                </select>
-              </div>
-
-              <!-- Alamat -->
-              <div class="col-12 mb-3">
-                <label class="form-label">Alamat <span class="text-danger">*</span></label>
-                <textarea 
+                <label class="form-label">Jabatan Responden <span class="text-danger">*</span></label>
+                <input 
+                  type="text" 
                   class="form-control"
-                  :class="{ 'is-invalid': errors.alamat }"
-                  v-model="formData.alamat"
-                  @blur="handleFieldBlur('alamat')"
-                  rows="2"
-                  placeholder="Alamat lengkap instansi"
-                ></textarea>
-                <div v-if="errors.alamat" class="invalid-feedback">{{ errors.alamat }}</div>
+                  :class="{ 'is-invalid': errors.jabatanResponden }"
+                  v-model="formData.jabatanResponden"
+                  @blur="handleFieldBlur('jabatanResponden')"
+                  placeholder="Contoh: Manager IT"
+                />
+                <div v-if="errors.jabatanResponden" class="invalid-feedback">{{ errors.jabatanResponden }}</div>
               </div>
 
               <!-- Email -->
@@ -306,32 +242,43 @@ const startAssessment = () => {
                 <div v-if="errors.nomorTelepon" class="invalid-feedback">{{ errors.nomorTelepon }}</div>
               </div>
 
-              <!-- Nama Responden -->
+              <!-- Sektor -->
               <div class="col-md-6 mb-3">
-                <label class="form-label">Nama Responden <span class="text-danger">*</span></label>
-                <input 
-                  type="text" 
-                  class="form-control"
-                  :class="{ 'is-invalid': errors.namaResponden }"
-                  v-model="formData.namaResponden"
-                  @blur="handleFieldBlur('namaResponden')"
-                  placeholder="Nama lengkap responden"
-                />
-                <div v-if="errors.namaResponden" class="invalid-feedback">{{ errors.namaResponden }}</div>
+                <label class="form-label">Sektor <span class="text-danger">*</span></label>
+                <select 
+                  class="form-select"
+                  v-model="formData.sektor"
+                  @change="handleFieldBlur('sektor')"
+                >
+                  <option v-for="option in sektorOptions" :key="option" :value="option">
+                    {{ option }}
+                  </option>
+                </select>
               </div>
 
-              <!-- Jabatan Responden -->
+              <!-- Tanggal Pengisian -->
               <div class="col-md-6 mb-3">
-                <label class="form-label">Jabatan Responden <span class="text-danger">*</span></label>
+                <label class="form-label">Tanggal Pengisian <span class="text-danger">*</span></label>
                 <input 
-                  type="text" 
+                  type="date" 
                   class="form-control"
-                  :class="{ 'is-invalid': errors.jabatanResponden }"
-                  v-model="formData.jabatanResponden"
-                  @blur="handleFieldBlur('jabatanResponden')"
-                  placeholder="Contoh: Manager IT"
+                  v-model="formData.tanggalPengisian"
+                  @change="handleFieldBlur('tanggalPengisian')"
                 />
-                <div v-if="errors.jabatanResponden" class="invalid-feedback">{{ errors.jabatanResponden }}</div>
+              </div>
+
+              <!-- Alamat -->
+              <div class="col-12 mb-3">
+                <label class="form-label">Alamat <span class="text-danger">*</span></label>
+                <textarea 
+                  class="form-control"
+                  :class="{ 'is-invalid': errors.alamat }"
+                  v-model="formData.alamat"
+                  @blur="handleFieldBlur('alamat')"
+                  rows="2"
+                  placeholder="Alamat lengkap instansi"
+                ></textarea>
+                <div v-if="errors.alamat" class="invalid-feedback">{{ errors.alamat }}</div>
               </div>
 
               <!-- Tahun Pengukuran -->
@@ -375,45 +322,6 @@ const startAssessment = () => {
                   placeholder="Contoh: 2.51 - 3.50"
                 />
                 <div v-if="errors.targetNilai" class="invalid-feedback">{{ errors.targetNilai }}</div>
-              </div>
-
-              <!-- Acuan Manajemen Risiko -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Acuan Manajemen Risiko yang Digunakan <span class="text-danger">*</span></label>
-                <input 
-                  type="text" 
-                  class="form-control"
-                  :class="{ 'is-invalid': errors.acuanManajemenRisiko }"
-                  v-model="formData.acuanManajemenRisiko"
-                  @blur="handleFieldBlur('acuanManajemenRisiko')"
-                  placeholder="Contoh: ISO 27005, NIST RMF"
-                />
-                <div v-if="errors.acuanManajemenRisiko" class="invalid-feedback">{{ errors.acuanManajemenRisiko }}</div>
-              </div>
-
-              <!-- Acuan Keamanan Siber -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Acuan Keamanan Siber yang Digunakan <span class="text-danger">*</span></label>
-                <input 
-                  type="text" 
-                  class="form-control"
-                  :class="{ 'is-invalid': errors.acuanKeamananSiber }"
-                  v-model="formData.acuanKeamananSiber"
-                  @blur="handleFieldBlur('acuanKeamananSiber')"
-                  placeholder="Contoh: ISO 27001, NIST CSF"
-                />
-                <div v-if="errors.acuanKeamananSiber" class="invalid-feedback">{{ errors.acuanKeamananSiber }}</div>
-              </div>
-
-              <!-- Tanggal Pengisian -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Tanggal Pengisian <span class="text-danger">*</span></label>
-                <input 
-                  type="date" 
-                  class="form-control"
-                  v-model="formData.tanggalPengisian"
-                  @change="handleFieldBlur('tanggalPengisian')"
-                />
               </div>
             </div>
 
