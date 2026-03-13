@@ -5,7 +5,9 @@ import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
 import { usersService } from "../../services/users.service";
 import { roleService, type Role } from "../../services/role.service";
+import { jabatanService } from "../../services/jabatan.service";
 import { stakeholdersService } from "../../services/stakeholders.service";
+import { formatImageUrl } from "../../utils/media";
 import type { User } from "../../types/user.types";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
@@ -24,9 +26,21 @@ const rolesData = ref<Role[]>([]);
 const isAdmin = computed(() => authStore.isAdmin);
 const slug = computed(() => route.params.slug as string);
 
-// Edit Role Modal
+// Edit Modal State
 const showEditModal = ref(false);
-const selectedRole = ref("");
+const editFormData = ref({
+  name: "",
+  email: "",
+  phone: "",
+  location: "",
+  jabatan: "",
+  id_jabatan: "",
+  role: "",
+  bio: "",
+  address: "",
+  website: ""
+});
+const jabatanList = ref<any[]>([]);
 const isSaving = ref(false);
 const showToast = ref(false);
 const toastMessage = ref("");
@@ -48,12 +62,14 @@ const formatJoinedDate = (dateString: string | undefined): string => {
 const loadUser = async () => {
   loading.value = true;
   try {
-    const [users, roles] = await Promise.all([
+    const [users, roles, jabatans] = await Promise.all([
       usersService.getAll(),
       roleService.getAll(),
+      jabatanService.getAll(),
     ]);
 
     rolesData.value = roles;
+    jabatanList.value = jabatans;
 
     const foundUser = users.find((u: any) =>
       u.slug === slug.value || u.username === slug.value || u.id?.toString() === slug.value
@@ -66,14 +82,19 @@ const loadUser = async () => {
         username: foundUser.username || "",
         name: foundUser.name || foundUser.username || "Unknown",
         email: foundUser.email || "",
-        jabatan: foundUser.jabatan || foundUser.id_jabatan || "",
+        jabatan: foundUser.jabatan_name || foundUser.jabatan || "",
         role: foundUser.role || foundUser.role_name || "user",
         phone: foundUser.phone || "",
         location: foundUser.location || "",
         joined: foundUser.joined || foundUser.created_at || "",
-        photo: foundUser.photo || "",
-        banner: foundUser.banner || "",
-      };
+        photo: formatImageUrl(foundUser.photo || foundUser.foto_profile),
+        banner: formatImageUrl(foundUser.banner),
+        // Add additional fields used in edit modal
+        bio: foundUser.bio || "",
+        address: foundUser.address || foundUser.alamat || "",
+        website: foundUser.website || "",
+        id_jabatan: foundUser.id_jabatan || ""
+      } as any;
 
       if (authStore.currentUser?.username === foundUser.username) {
         isCurrentUser.value = true;
@@ -170,31 +191,68 @@ const showNotification = (message: string, type: "success" | "error" = "success"
 
 const openEditModal = () => {
   if (user.value) {
-    selectedRole.value = user.value.role;
+    editFormData.value = {
+      name: user.value.name,
+      email: user.value.email,
+      phone: user.value.phone,
+      location: user.value.location,
+      jabatan: user.value.jabatan,
+      id_jabatan: (user.value as any).id_jabatan || "",
+      role: user.value.role,
+      bio: (user.value as any).bio || "",
+      address: (user.value as any).address || "",
+      website: (user.value as any).website || ""
+    };
     showEditModal.value = true;
   }
 };
 
-const saveRole = async () => {
+const saveUserData = async () => {
   if (!user.value) return;
   isSaving.value = true;
   try {
     const roleObj = rolesData.value.find(
-      (r) => r.name.toLowerCase() === selectedRole.value.toLowerCase()
+      (r) => r.name.toLowerCase() === editFormData.value.role.toLowerCase()
     );
 
+    const payload = {
+      name: editFormData.value.name,
+      email: editFormData.value.email,
+      phone: editFormData.value.phone,
+      location: editFormData.value.location,
+      jabatan: editFormData.value.jabatan,
+      id_jabatan: editFormData.value.id_jabatan,
+      role: editFormData.value.role,
+      bio: editFormData.value.bio,
+      address: editFormData.value.address,
+      website: editFormData.value.website
+    };
+
+    // 1. Update user info
+    await usersService.update(user.value.id, payload);
+
+    // 2. Assign role session if role changed or roleObj found
     if (roleObj) {
       await roleService.assignToUser(user.value.id, roleObj.id);
-    } else {
-      await usersService.update(user.value.id, { role: selectedRole.value });
     }
 
-    user.value = { ...user.value, role: selectedRole.value };
+    // Update local state
+    user.value = { 
+      ...user.value, 
+      ...payload
+    };
+    
+    // Refresh jabatan display name if id_jabatan changed
+    const foundJab = jabatanList.value.find(j => j.id.toString() === editFormData.value.id_jabatan.toString());
+    if (foundJab) {
+      user.value.jabatan = foundJab.nama_jabatan;
+    }
+
     showEditModal.value = false;
-    showNotification("Role berhasil diperbarui!", "success");
+    showNotification("Data user berhasil diperbarui!", "success");
   } catch (error) {
-    console.error("Failed to update role:", error);
-    showNotification("Gagal memperbarui role!", "error");
+    console.error("Failed to update user:", error);
+    showNotification("Gagal memperbarui data user!", "error");
   } finally {
     isSaving.value = false;
   }
@@ -221,10 +279,18 @@ const saveRole = async () => {
               <div class="header-subtitle mt-1">Informasi akun &amp; data pribadi pengguna</div>
             </div>
           </div>
-          <router-link to="/users" class="btn-back-profile">
-            <i class="ri-arrow-left-line"></i>
-            <span class="d-none d-sm-inline">Kembali</span>
-          </router-link>
+          <div class="d-flex gap-2">
+            <router-link v-if="isCurrentUser" to="/profile/settings" class="btn btn-primary-light btn-sm rounded-pill px-3">
+              <i class="ri-edit-line me-1"></i>Sunting Profil
+            </router-link>
+            <button v-else-if="isAdmin" @click="openEditModal" class="btn btn-warning-light btn-sm rounded-pill px-3">
+              <i class="ri-user-settings-line me-1"></i>Edit Data User
+            </button>
+            <router-link to="/users" class="btn-back-profile">
+              <i class="ri-arrow-left-line"></i>
+              <span class="d-none d-sm-inline">Kembali</span>
+            </router-link>
+          </div>
         </div>
 
         <div class="card-body p-4">
@@ -371,21 +437,60 @@ const saveRole = async () => {
               <span class="text-muted fs-13">{{ user.username }}</span>
             </div>
           </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Nama Lengkap</label>
+              <input type="text" v-model="editFormData.name" class="form-control" placeholder="Nama Lengkap" />
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Email</label>
+              <input type="email" v-model="editFormData.email" class="form-control" placeholder="Email" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Telepon</label>
+              <input type="text" v-model="editFormData.phone" class="form-control" placeholder="Nomor Telepon" />
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Lokasi</label>
+              <input type="text" v-model="editFormData.location" class="form-control" placeholder="Lokasi (Kota/Provinsi)" />
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Jabatan</label>
+            <select v-model="editFormData.id_jabatan" class="form-select">
+              <option value="">Pilih Jabatan</option>
+              <option v-for="jab in jabatanList" :key="jab.id" :value="jab.id">{{ jab.nama_jabatan }}</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Website</label>
+            <input type="text" v-model="editFormData.website" class="form-control" placeholder="URL Website" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Bio Singkat</label>
+            <textarea v-model="editFormData.bio" class="form-control" rows="3" placeholder="Ceritakan sedikit tentang user"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Alamat Lengkap</label>
+            <textarea v-model="editFormData.address" class="form-control" rows="2" placeholder="Alamat lengkap"></textarea>
+          </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
-            <select v-model="selectedRole" class="form-select">
+            <select v-model="editFormData.role" class="form-select">
               <option v-for="role in rolesData" :key="role.id" :value="role.name">{{ role.name }}</option>
               <template v-if="!rolesData.length">
                 <option value="admin">Admin</option>
                 <option value="user">User</option>
               </template>
             </select>
-            <small class="text-muted">Pilih role untuk user ini.</small>
+            <small class="text-muted">Tentukan tingkat hak akses user.</small>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="showEditModal = false">Batal</button>
-          <button type="button" class="btn btn-primary" :disabled="isSaving" @click="saveRole">
+          <button type="button" class="btn btn-primary" :disabled="isSaving" @click="saveUserData">
             <i class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan" }}
           </button>
         </div>

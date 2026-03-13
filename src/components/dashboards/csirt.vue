@@ -58,11 +58,23 @@ export default {
         const route = useRoute();
 
         // DERIVED DATA
-        const csirtId = computed(() => String(route.params.id || ''));
+        const csirtSlug = computed(() => String(route.params.id || ''));
 
-        const currentCsirt = computed<CsirtMember | undefined>(() =>
-            csirtStore.csirts.find(c => String(c.id) === csirtId.value)
-        );
+        const currentCsirt = computed<CsirtMember | undefined>(() => {
+            const slug = csirtSlug.value;
+            const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            return csirtStore.csirts.find(c => {
+                if (String(c.id) === slug) return true;
+                if (c.slug === slug) return true;
+                const csirtPart = c.slug || toSlug(c.nama_csirt);
+                const perusahaanName = (c as any).perusahaan?.nama_perusahaan;
+                const perusahaanPart = perusahaanName ? toSlug(perusahaanName) : '';
+                const combined = perusahaanPart ? `${csirtPart}-${perusahaanPart}` : csirtPart;
+                return combined === slug || csirtPart === slug;
+            });
+        });
+
+        const csirtId = computed(() => currentCsirt.value?.id || csirtSlug.value);
 
         // Async data loading from API
         const loadCSIRTs = async () => {
@@ -413,13 +425,14 @@ export default {
             web_csirt           : '',
             telepon_csirt       : '',
             photo_csirt         : null as File | null,
+            photo_csirt_preview : '',
             file_rfc2350        : null as File | null,
             file_public_key_pgp : null as File | null,
         });
         const csirtFormErrors = ref<Record<string, string>>({});
 
         const openAddCsirtModal = () => {
-            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', photo_csirt: null, file_rfc2350: null, file_public_key_pgp: null };
+            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', photo_csirt: null, photo_csirt_preview: '', file_rfc2350: null, file_public_key_pgp: null };
             csirtFormErrors.value = {};
             csirtFormError.value = '';
             csirtFormSuccess.value = false;
@@ -428,14 +441,31 @@ export default {
 
         const onCsirtFileChange = (event: Event, field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp') => {
             const input = event.target as HTMLInputElement;
-            csirtFormData.value[field] = input.files?.[0] ?? null;
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                csirtFormData.value[field] = file;
+                if (field === 'photo_csirt') {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        csirtFormData.value.photo_csirt_preview = e.target?.result as string;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+        };
+
+        const onAddCsirtPhotoChange = (event: Event) => onCsirtFileChange(event, 'photo_csirt');
+
+        const removeAddCsirtPhoto = () => {
+            csirtFormData.value.photo_csirt = null;
+            csirtFormData.value.photo_csirt_preview = "";
         };
 
         const validateCsirtForm = (): boolean => {
             csirtFormErrors.value = {};
             if (!csirtFormData.value.nama_csirt.trim())
                 csirtFormErrors.value.nama_csirt = 'Nama CSIRT wajib diisi';
-            if (!csirtFormData.value.photo_csirt)
+            if (!csirtFormData.value.photo_csirt && !csirtFormData.value.photo_csirt_preview)
                 csirtFormErrors.value.photo_csirt = 'Logo / Photo CSIRT wajib diunggah';
             return Object.keys(csirtFormErrors.value).length === 0;
         };
@@ -504,7 +534,20 @@ export default {
 
         const onProfilePhotoChange = (event: Event) => {
             const input = event.target as HTMLInputElement;
-            profileFormData.value.photo_csirt_file = input.files?.[0] ?? null;
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                profileFormData.value.photo_csirt_file = file;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    profileFormData.value.photo_csirt = e.target?.result as string;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        const removeProfilePhoto = () => {
+            profileFormData.value.photo_csirt = "";
+            profileFormData.value.photo_csirt_file = null;
         };
 
         const updateProfile = async () => {
@@ -604,6 +647,9 @@ export default {
             updateProfile,
             handleFileUpload,
             onProfilePhotoChange,
+            removeProfilePhoto,
+            onAddCsirtPhotoChange,
+            removeAddCsirtPhoto,
         };
 
     },
@@ -1344,18 +1390,45 @@ export default {
                         <div class="row gy-3">
                             <!-- Logo / Photo CSIRT -->
                             <div class="col-xl-12">
-                                <label class="form-label fw-medium">
-                                    <i class="ri-image-line me-1 text-primary"></i>Logo / Photo CSIRT
-                                </label>
-                                <div class="d-flex align-items-center gap-3">
-                                    <div v-if="profileFormData.photo_csirt" class="flex-shrink-0" style="width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #dee2e6;">
-                                        <img :src="profileFormData.photo_csirt" class="w-100 h-100" style="object-fit:contain;" alt="Logo CSIRT" />
+                                <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
+                                    <!-- Photo Preview -->
+                                    <div 
+                                      class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
+                                      :style="{ 
+                                        backgroundColor: profileFormData.photo_csirt ? 'transparent' : '#f8f9fa',
+                                        width: '180px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                      }"
+                                    >
+                                      <img v-if="profileFormData.photo_csirt" :src="profileFormData.photo_csirt" class="w-100 h-100 p-2" style="object-fit:contain;" alt="Logo CSIRT" />
+                                      <!-- Empty State -->
+                                      <div v-if="!profileFormData.photo_csirt" class="position-absolute w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
+                                        <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
+                                        <span class="fs-11">Belum ada logo</span>
+                                      </div>
                                     </div>
+                                    <input ref="profilePhotoFile" type="file" accept="image/jpeg,image/png,image/gif" class="d-none" @change="onProfilePhotoChange" />
+                                    
+                                    <!-- Photo Info & Actions -->
                                     <div class="flex-grow-1">
-                                        <input type="file" ref="profilePhotoFile" class="form-control" @change="onProfilePhotoChange" accept="image/*" />
-                                        <div class="text-muted small mt-1">Kosongkan jika tidak ingin mengganti foto</div>
+                                      <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
+                                        <i class="ri-image-2-line text-primary"></i>
+                                        Logo CSIRT
+                                      </h6>
+                                      <div class="d-flex flex-wrap gap-2 mb-2">
+                                        <button type="button" class="btn btn-primary btn-sm" @click="$refs.profilePhotoFile.click()">
+                                          <i class="ri-upload-2-line me-1"></i>
+                                          {{ profileFormData.photo_csirt ? 'Ganti Logo' : 'Upload Logo' }}
+                                        </button>
+                                        <button v-if="profileFormData.photo_csirt" type="button" class="btn btn-outline-danger btn-sm" @click="removeProfilePhoto">
+                                          <i class="ri-delete-bin-line me-1"></i>Hapus
+                                        </button>
+                                      </div>
+                                      <div class="d-flex align-items-center gap-3 fs-11 text-muted">
+                                        <span><i class="ri-file-type-line me-1"></i>JPEG, PNG, GIF</span>
+                                        <span><i class="ri-upload-cloud-line me-1"></i>Max 5MB</span>
+                                      </div>
                                     </div>
-                                </div>
+                                  </div>
                             </div>
                             <!-- Nama CSIRT -->
                             <div class="col-xl-12">
@@ -1483,10 +1556,46 @@ export default {
                             </div>
                             <!-- Photo CSIRT -->
                             <div class="col-12">
-                                <label class="form-label fw-medium">Logo / Photo CSIRT <span class="text-danger">*</span></label>
-                                <input type="file" class="form-control" :class="{ 'is-invalid': csirtFormErrors.photo_csirt }" accept="image/*"
-                                    @change="onCsirtFileChange($event, 'photo_csirt')" />
-                                <div v-if="csirtFormErrors.photo_csirt" class="invalid-feedback">{{ csirtFormErrors.photo_csirt }}</div>
+                                <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
+                                    <!-- Photo Preview -->
+                                    <div 
+                                      class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
+                                      :style="{ 
+                                        backgroundColor: csirtFormData.photo_csirt_preview ? 'transparent' : '#f8f9fa',
+                                        width: '180px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                      }"
+                                    >
+                                      <img v-if="csirtFormData.photo_csirt_preview" :src="csirtFormData.photo_csirt_preview" class="w-100 h-100 p-2" style="object-fit:contain;" alt="Logo CSIRT" />
+                                      <!-- Empty State -->
+                                      <div v-if="!csirtFormData.photo_csirt_preview" class="position-absolute w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
+                                        <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
+                                        <span class="fs-11">Belum ada logo</span>
+                                      </div>
+                                    </div>
+                                    <input ref="addCsirtPhotoInput" type="file" accept="image/jpeg,image/png,image/gif" class="d-none" @change="onAddCsirtPhotoChange" />
+                                    
+                                    <!-- Photo Info & Actions -->
+                                    <div class="flex-grow-1">
+                                      <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
+                                        <i class="ri-image-2-line text-primary"></i>
+                                        Logo CSIRT
+                                      </h6>
+                                      <div class="d-flex flex-wrap gap-2 mb-2">
+                                        <button type="button" class="btn btn-primary btn-sm" @click="$refs.addCsirtPhotoInput.click()">
+                                          <i class="ri-upload-2-line me-1"></i>
+                                          {{ csirtFormData.photo_csirt_preview ? 'Ganti Logo' : 'Upload Logo' }}
+                                        </button>
+                                        <button v-if="csirtFormData.photo_csirt_preview" type="button" class="btn btn-outline-danger btn-sm" @click="removeAddCsirtPhoto">
+                                          <i class="ri-delete-bin-line me-1"></i>Hapus
+                                        </button>
+                                      </div>
+                                      <div class="d-flex align-items-center gap-3 fs-11 text-muted">
+                                        <span><i class="ri-file-type-line me-1"></i>JPEG, PNG, GIF</span>
+                                        <span><i class="ri-upload-cloud-line me-1"></i>Max 5MB</span>
+                                      </div>
+                                    </div>
+                                </div>
+                                <div v-if="csirtFormErrors.photo_csirt" class="text-danger mt-1 fs-12">{{ csirtFormErrors.photo_csirt }}</div>
                             </div>
                             <!-- RFC 2350 -->
                             <div class="col-md-6">

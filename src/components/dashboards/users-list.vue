@@ -6,6 +6,7 @@ import { useProfileStore } from "../../stores/profile";
 import { usersService } from "../../services/users.service";
 import { roleService, type Role } from "../../services/role.service";
 import { useListPage } from "../../composables/useListPage";
+import { formatImageUrl } from "../../utils/media";
 
 
 interface User {
@@ -69,7 +70,7 @@ export default {
           name: (u as any).name || (u as any).username || 'Unknown',
           jabatan: (u as any).jabatan || '',
           role: (u as any).role || (u as any).role_name || 'user',
-          photo: (u as any).photo,
+          photo: formatImageUrl((u as any).photo || (u as any).foto_profile),
           joined: (u as any).joined || (u as any).created_at
         };
 

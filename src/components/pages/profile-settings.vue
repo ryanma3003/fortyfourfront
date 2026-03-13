@@ -11,7 +11,7 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 const DEFAULT_FOTO_PROFILE = " ";
 const DEFAULT_BANNER = " ";
 const MAX_BANNER_SIZE = 2 * 1024 * 1024;
-const MAX_FOTO_PROFILE_SIZE = 1 * 1024 * 1024;
+const MAX_FOTO_PROFILE_SIZE = 2 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 32;
 
@@ -421,9 +421,9 @@ const roleOptions = ['admin', 'User'];
               <!-- Banner Edit Buttons -->
               <div v-if="!isAdminEditMode" class="position-absolute top-0 end-0 p-3 p-md-4" style="z-index:10">
                 <div class="d-flex gap-2">
-                  <button @click.stop="triggerBannerUpload" class="btn-edit-profile btn-primary">
+                  <button @click.stop="triggerBannerUpload" class="btn-edit-profile btn-primary" title="Maks 2MB">
                     <i class="ri-image-edit-line"></i>
-                    <span class="d-none d-sm-inline">Ganti Banner</span>
+                    <span class="d-none d-sm-inline">Ganti Banner (Maks 2MB)</span>
                   </button>
                   <button v-if="bannerPreview !== DEFAULT_BANNER" @click.stop="removeBanner" class="btn-edit-profile btn-danger">
                     <i class="ri-delete-bin-line"></i>
@@ -464,7 +464,7 @@ const roleOptions = ['admin', 'User'];
                 </div>
                 <!-- Foto Profile Upload Button -->
                 <div v-if="!isAdminEditMode" class="foto-profile-upload-btn">
-                  <button @click.stop="triggerFotoProfileUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto">
+                  <button @click.stop="triggerFotoProfileUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto (Maks 2MB)">
                     <i class="ri-camera-line"></i>
                   </button>
                 </div>
@@ -557,7 +557,7 @@ const roleOptions = ['admin', 'User'];
                   </div>
                 </div>
               </div>
-              <!-- New Jabatan input — expands into its own full-width row -->
+              <!-- New Jabatan input ï¿½ expands into its own full-width row -->
               <transition name="slide-down">
                 <div v-if="selectedJabatan === 'NEW'" class="col-12">
                   <div class="form-group-split" @click.stop>
