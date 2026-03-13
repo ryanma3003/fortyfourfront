@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
 import { ref, onMounted, watch, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
