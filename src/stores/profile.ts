@@ -4,6 +4,7 @@ import { useAuthStore } from './auth';
 import { usersService } from '@/services/users.service';
 import { jabatanService } from '@/services/jabatan.service';
 import { stakeholdersService } from '@/services/stakeholders.service';
+import { formatImageUrl } from '@/utils/media';
 import type { Jabatan } from '@/types/jabatan.types';
 import type { Stakeholder } from '@/types/stakeholders.types';
 
@@ -95,38 +96,9 @@ export const useProfileStore = defineStore('profile', {
   },
 
   actions: {
-    /* ── helpers ── */
-
     /** Map raw API response → normalised field names */
     _mapApiUser(raw: any) {
       const u = raw?.user ?? raw?.data ?? raw;
-
-      const formatImageUrl = (path: string | undefined | null) => {
-        if (!path) return '';
-        if (path.startsWith('data:') || path.startsWith('/images/')) return path;
-
-        // If backend returns a full URL, ensure /storage/ prefix is present
-        if (path.startsWith('http://') || path.startsWith('https://')) {
-          try {
-            const url = new URL(path);
-            const parts = url.pathname.split('/').filter(Boolean);
-            // Bare filename with no directory → missing /storage/
-            if (parts.length === 1) {
-              url.pathname = `/uploads/${parts[0]}`;
-              return url.toString();
-            }
-          } catch { /* ignore */ }
-          return path;
-        }
-
-        // Relative path: prepend VITE_STORAGE_BASE_URL (or VITE_API_BASE_URL) so
-        // images are fetched directly from the backend, not via Vite proxy.
-        const baseUrl = (import.meta.env.VITE_STORAGE_BASE_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-        const cleanPath = path.replace(/^\//, '');
-        // Bare filename (no slash) → stored in Laravel's public/storage disk
-        const storagePath = !cleanPath.includes('/') ? `uploads/${cleanPath}` : cleanPath;
-        return baseUrl ? `${baseUrl}/${storagePath}` : `/${storagePath}`;
-      };
 
       return {
         name:           u.name          || u.username       || '',
@@ -373,7 +345,11 @@ export const useProfileStore = defineStore('profile', {
             const photoForm = new FormData();
             const blob = await (await fetch(newFotoProfile)).blob();
             photoForm.append('profile_photo', blob, 'foto_profile.jpg');
-            const pr = await usersService.updateProfilePhoto(id, photoForm);
+
+            const pr = isAdmin
+              ? await usersService.updateProfilePhoto(id, photoForm)
+              : await usersService.updateMePhoto(photoForm);
+
             console.log("UPLOAD RESPONSE:", pr);
             this.fotoProfileUrl = this._mapApiUser(pr).photo || newFotoProfile;
           } catch (photoErr) {
@@ -389,7 +365,11 @@ export const useProfileStore = defineStore('profile', {
             const bannerForm = new FormData();
             const blob = await (await fetch(newBanner)).blob();
             bannerForm.append('banner', blob, 'banner.jpg');
-            const br = await usersService.updateBanner(id, bannerForm);
+
+            const br = isAdmin
+              ? await usersService.updateBanner(id, bannerForm)
+              : await usersService.updateMeBanner(bannerForm);
+
             console.log("UPLOAD RESPONSE:", br);
             this.bannerUrl = this._mapApiUser(br).banner || newBanner;
           } catch (bannerErr) {

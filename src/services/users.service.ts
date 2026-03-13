@@ -108,7 +108,7 @@ class UsersService {
      * @param formData FormData containing 'profile_photo' file field
      */
     async updateMePhoto(formData: FormData): Promise<User> {
-        return api.post<User>('/api/me/profile-photo', formData);
+        return api.post<User>('/api/me/media', formData);
     }
 
     /**
@@ -116,7 +116,7 @@ class UsersService {
      * @param formData FormData containing 'banner' file field
      */
     async updateMeBanner(formData: FormData): Promise<User> {
-        return api.post<User>('/api/me/banner', formData);
+        return api.post<User>('/api/me/media', formData);
     }
 }
 

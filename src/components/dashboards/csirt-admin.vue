@@ -4,6 +4,8 @@ import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
 import { useCsirtStore } from "../../stores/csirt";
+import { useStakeholdersStore } from "../../stores/stakeholders";
+import { csirtService } from "../../services/csirt.service";
 import type { CsirtMember, CreateCsirtPayload } from "../../types/csirt.types";
 import EasyDataTable from "vue3-easy-data-table";
 import "vue3-easy-data-table/dist/style.css";
@@ -24,6 +26,7 @@ export default {
   setup() {
     const authStore = useAuthStore();
     const csirtStore = useCsirtStore();
+    const stakeholdersStore = useStakeholdersStore();
     const isAdmin = computed(() => authStore.isAdmin);
 
     const loading = computed(() => csirtStore.loading);
@@ -44,12 +47,17 @@ export default {
     const currentDeleteItem = ref<CsirtMember | null>(null);
 
     // Form state
-    const formData = ref<Partial<CsirtMember>>({
+    const formData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null }>({
       nama_csirt: "",
       web_csirt: "",
       telepon_csirt: "",
       id_perusahaan: 0,
       photo_csirt: "",
+      file_rfc2350: "",
+      file_public_key_pgp: "",
+      photo_csirt_file: null,
+      file_rfc2350_file: null,
+      file_public_key_pgp_file: null,
     });
 
     const formErrors = ref<Record<string, string>>({});
@@ -57,6 +65,7 @@ export default {
     // Phone state for modals
     const selectedCountryCode = ref("+62");
     const phoneNumber = ref("");
+    const searchStakeholder = ref("");
     
 // Phone formatting - format: XXX-XXXX-XXXX
     const formatPhoneNumber = (value: string): string => {
@@ -102,6 +111,7 @@ export default {
     ];
 
     const loadCsirtMembers = async () => {
+      await stakeholdersStore.initialize();
       await csirtStore.initialize();
     };
 
@@ -130,6 +140,11 @@ export default {
     const validateForm = (): boolean => {
       formErrors.value = {};
       let isValid = true;
+
+      if (!formData.value.id_perusahaan) {
+        formErrors.value.id_perusahaan = "Perusahaan wajib dipilih";
+        isValid = false;
+      }
 
       if (!formData.value.nama_csirt?.trim()) {
         formErrors.value.nama_csirt = "Nama CSIRT wajib diisi";
@@ -161,10 +176,16 @@ export default {
         telepon_csirt: "",
         id_perusahaan: 0,
         photo_csirt: "",
+        file_rfc2350: "",
+        file_public_key_pgp: "",
+        photo_csirt_file: null,
+        file_rfc2350_file: null,
+        file_public_key_pgp_file: null,
       };
       formErrors.value = {};
       selectedCountryCode.value = "+62";
       phoneNumber.value = "";
+      searchStakeholder.value = "";
       showCreateModal.value = true;
     };
 
@@ -176,7 +197,9 @@ export default {
         web_csirt: formData.value.web_csirt!,
         telepon_csirt: formData.value.telepon_csirt!,
         id_perusahaan: formData.value.id_perusahaan!,
-        photo_csirt: formData.value.photo_csirt || "",
+        photo_csirt: formData.value.photo_csirt_file || formData.value.photo_csirt || "",
+        file_rfc2350: formData.value.file_rfc2350_file || formData.value.file_rfc2350 || "",
+        file_public_key_pgp: formData.value.file_public_key_pgp_file || formData.value.file_public_key_pgp || "",
       };
 
       const result = await csirtStore.createCsirt(payload);
@@ -189,23 +212,46 @@ export default {
       }
     };
 
+    const editLoading = ref(false);
+
     // UPDATE
-    const openEditModal = (item: CsirtMember) => {
+    const openEditModal = async (item: CsirtMember) => {
       currentEditItem.value = item;
-      formData.value = { ...item };
+      formData.value = { 
+        ...item,
+        photo_csirt_file: null,
+        file_rfc2350_file: null,
+        file_public_key_pgp_file: null,
+      };
       formErrors.value = {};
       parsePhoneNumber(item.telepon_csirt);
       showEditModal.value = true;
+
+      // Fetch full CSIRT to get nested perusahaan.id (UUID for dropdown)
+      editLoading.value = true;
+      try {
+        const full = await csirtService.getMemberById(item.id as any);
+        if (full?.perusahaan?.id) {
+          formData.value.id_perusahaan = full.perusahaan.id as any;
+        }
+      } catch {
+        // fallback: keep whatever id_perusahaan was on the list item
+      } finally {
+        editLoading.value = false;
+      }
     };
 
     const updateCsirt = async () => {
       if (!validateForm() || !currentEditItem.value) return;
 
       const payload: Partial<CreateCsirtPayload> = {
+        id_perusahaan: formData.value.id_perusahaan!,
         nama_csirt: formData.value.nama_csirt!,
         web_csirt: formData.value.web_csirt!,
         telepon_csirt: formData.value.telepon_csirt!,
-        photo_csirt: formData.value.photo_csirt,
+        photo_csirt: formData.value.photo_csirt_file || formData.value.photo_csirt || "",
+        file_rfc2350: formData.value.file_rfc2350_file || formData.value.file_rfc2350 || "",
+        file_public_key_pgp: formData.value.file_public_key_pgp_file || formData.value.file_public_key_pgp || "",
       };
 
       const result = await csirtStore.updateCsirtById(currentEditItem.value.id, payload);
@@ -276,6 +322,7 @@ export default {
         }
 
         const reader = new FileReader();
+        formData.value.photo_csirt_file = file;
         reader.onload = (e) => {
           if (e.target?.result) {
             formData.value.photo_csirt = e.target.result as string;
@@ -287,16 +334,86 @@ export default {
 
     const removeImage = () => {
       formData.value.photo_csirt = "";
+      formData.value.photo_csirt_file = null;
       if (fileInput.value) {
         fileInput.value.value = "";
       }
     };
 
+    const handleFileUpload = (event: Event, type: 'rfc' | 'pgp') => {
+      const target = event.target as HTMLInputElement;
+      if (target.files && target.files.length > 0) {
+        const file = target.files[0];
+        if (type === 'rfc') {
+          formData.value.file_rfc2350_file = file;
+        } else if (type === 'pgp') {
+          formData.value.file_public_key_pgp_file = file;
+        }
+        showNotification(`${file.name} berhasil dipilih`, "success");
+      }
+    };
+
+    // Status SDM & SE per CSIRT
+    const csirtStatus = (csirtId: string) => {
+      const id = String(csirtId);
+      const sdmCount = csirtStore.sdmList.filter(
+        s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id
+      ).length;
+      const seAll = csirtStore.seList.filter(
+        s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id
+      );
+      const seCount = seAll.length;
+      const seIncomplete = seAll.filter(
+        s => !s.kategori_se || s.kategori_se === 'Belum Lengkap'
+      ).length;
+      return { sdmCount, seCount, seIncomplete };
+    };
+
+    // Count CSIRT yang benar-benar lengkap (memiliki SDM dan SE lengkap)
+    const completeCSIRTCount = computed(() => {
+      return csirtStore.csirts.filter(csirt => {
+        const id = String(csirt.id);
+        // Check if has SDM
+        const hasSdm = csirtStore.sdmList.some(
+          s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id
+        );
+        // Check if has SE yang lengkap (not 'Belum Lengkap')
+        const hasCompleteSe = csirtStore.seList.some(se =>
+          (String(se.id_csirt) === id || String((se as any).csirt?.id) === id) &&
+          se.kategori_se && se.kategori_se !== 'Belum Lengkap'
+        );
+        return hasSdm && hasCompleteSe;
+      }).length;
+    });
+
+    // Filter stakeholders to show only those without CSIRT in create modal
+    const availableStakeholders = computed(() => {
+      return stakeholdersStore.stakeholders.filter(stakeholder => {
+        const hasExistingCsirt = csirtStore.csirts.some(c =>
+          String(c.id_perusahaan) === String(stakeholder.id) ||
+          String((c as any).perusahaan?.id) === String(stakeholder.id)
+        );
+        return !hasExistingCsirt;
+      });
+    });
+
+    // Filter available stakeholders by search
+    const filteredAvailableStakeholders = computed(() => {
+      const query = searchStakeholder.value.toLowerCase().trim();
+      if (!query) return availableStakeholders.value;
+      return availableStakeholders.value.filter(s =>
+        s.nama_perusahaan.toLowerCase().includes(query) ||
+        s.sub_sektor?.nama_sub_sektor.toLowerCase().includes(query)
+      );
+    });
+
     return {
       isAdmin,
+      stakeholdersStore,
       csirtStore,
       loading,
       searchQuery,
+      availableStakeholders,
       searchValue2,
       headers,
       sortField,
@@ -329,13 +446,19 @@ export default {
       triggerFileInput,
       onFileChange,
       removeImage,
+      handleFileUpload,
+      searchStakeholder,
+      filteredAvailableStakeholders,
       ALLOWED_EXTENSIONS,
       MAX_FILE_SIZE_MB,
       ALLOWED_FORMATS,
       selectedCountryCode,
       phoneNumber,
       handlePhoneInput,
+      editLoading,
       handleCountryCodeChange,
+      csirtStatus,
+      completeCSIRTCount,
       getAvatarClass: (letter: string) => {
         const variants = [
           'avatar-blue', 'avatar-indigo', 'avatar-violet', 'avatar-purple',
@@ -344,6 +467,13 @@ export default {
         ];
         const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
         return variants[idx];
+      },
+      toCsirtSlug: (item: CsirtMember) => {
+        const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const csirtPart = item.slug || toSlug(item.nama_csirt);
+        const perusahaanName = (item as any).perusahaan?.nama_perusahaan;
+        const perusahaanPart = perusahaanName ? toSlug(perusahaanName) : '';
+        return perusahaanPart ? `${csirtPart}-${perusahaanPart}` : csirtPart;
       },
     };
   },
@@ -412,21 +542,28 @@ export default {
                 <div class="stat-icon stat-icon-blue"><i class="ri-shield-user-line"></i></div>
                 <div>
                   <div class="stat-value">{{ filteredData.length }}</div>
-                  <div class="stat-label">Total CSIRT</div>
+                  <div class="stat-label">Total CSIRT Terdaftar dari {{ stakeholdersStore.stakeholders.length }} stakeholder</div>
                 </div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon stat-icon-teal"><i class="ri-global-line"></i></div>
+                <div class="stat-icon stat-icon-teal"><i class="ri-user-3-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ new Set(filteredData.map((d) => d.web_csirt)).size }}</div>
-                  <div class="stat-label">Website Aktif</div>
+                  <div class="stat-value">{{ completeCSIRTCount }}</div>
+                  <div class="stat-label">CSIRT Lengkap dengan SDM dan SE</div>
                 </div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon stat-icon-violet"><i class="ri-phone-line"></i></div>
+                <div class="stat-icon stat-icon-teal"><i class="ri-user-3-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ filteredData.filter(d => d.telepon_csirt).length }}</div>
-                  <div class="stat-label">Kontak Tersedia</div>
+                  <div class="stat-value">{{ csirtStore.sdmList.length }}</div>
+                  <div class="stat-label">Total SDM</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-violet"><i class="ri-server-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ csirtStore.seList.length }}</div>
+                  <div class="stat-label">Total SE</div>
                 </div>
               </div>
             </div>
@@ -451,11 +588,11 @@ export default {
 
             <!-- Table -->
             <div class="table-responsive stakeholder-table-wrap">
-              <table class="table stakeholder-table text-nowrap mb-0">
+              <table class="table stakeholder-table mb-0" style="table-layout:fixed;width:100%">
                 <thead class="stakeholder-thead">
                   <tr>
-                    <th class="th-no">No</th>
-                    <th class="sortable fw-semibold th-name-wide">
+                    <th class="th-no" style="width:50px">No</th>
+                    <th class="sortable fw-semibold" style="width:18%">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-shield-line text-primary"></i>
                         <span class="column-label" @click="toggleSort('nama_csirt')" title="Click to toggle sort">Nama CSIRT</span>
@@ -487,7 +624,13 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="sortable fw-semibold th-sektor">
+                    <th class="fw-semibold" style="width:18%">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-building-2-line text-primary"></i>
+                        <span>Stakeholder</span>
+                      </div>
+                    </th>
+                    <th class="sortable fw-semibold" style="width:16%">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-global-line text-primary"></i>
                         <span class="column-label" @click="toggleSort('web_csirt')" title="Click to toggle sort">Website</span>
@@ -517,18 +660,24 @@ export default {
                         </div>
                       </div>
                     </th>
-                    <th class="th-email">
+                    <th class="fw-semibold" style="width:13%">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-phone-line text-primary"></i>
                         <span>Telepon</span>
                       </div>
                     </th>
-                    <th class="text-center th-actions-md">Aksi</th>
+                    <th class="fw-semibold" style="width:160px;white-space:nowrap">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-bar-chart-box-line text-primary"></i>
+                        <span>Status</span>
+                      </div>
+                    </th>
+                    <th class="text-center fw-semibold" style="width:100px">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="5" class="text-center py-5">
+                    <td colspan="7" class="text-center py-5">
                       <div class="empty-state">
                         <div class="empty-icon-ring mb-3">
                           <div class="empty-icon-inner">
@@ -559,17 +708,69 @@ export default {
                       </div>
                     </td>
                     <td class="align-middle">
-                      <a :href="item.web_csirt" target="_blank" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none">
+                      <template v-if="item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan))">
+                        <div class="d-flex align-items-center gap-2">
+                          <div>
+                            <span class="company-name d-block">
+                              {{ (item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan)))?.nama_perusahaan }}
+                            </span>
+                            <span class="text-muted fs-12">
+                              {{ (item.perusahaan?.sub_sektor || stakeholdersStore.getStakeholderById(String(item.id_perusahaan))?.sub_sektor)?.nama_sub_sektor }}
+                            </span>
+                          </div>
+                        </div>
+                      </template>
+                      <span v-else class="text-muted fs-12">—</span>
+                    </td>
+                    <td class="align-middle" style="white-space:nowrap">
+                      <a :href="item.web_csirt" target="_blank" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;display:inline-block!important">
                         <span class="email-text">{{ item.web_csirt }}</span>
                       </a>
                     </td>
-                    <td class="align-middle">
+                    <td class="align-middle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                       <span class="text-muted">{{ item.telepon_csirt }}</span>
+                    </td>
+                    <td class="align-middle" style="white-space:normal;min-width:140px">
+                      <div class="d-flex flex-column gap-1">
+                        <!-- SDM badge -->
+                        <div class="d-flex align-items-center gap-1">
+                          <span class="badge fs-11 d-flex align-items-center gap-1"
+                            :class="csirtStatus(item.id).sdmCount > 0 ? 'bg-success-transparent text-success' : 'bg-danger-transparent text-danger'">
+                            <i :class="csirtStatus(item.id).sdmCount > 0 ? 'ri-user-3-line' : 'ri-user-unfollow-line'"></i>
+                            SDM:
+                            <template v-if="csirtStatus(item.id).sdmCount > 0">
+                              {{ csirtStatus(item.id).sdmCount }} personel
+                            </template>
+                            <template v-else>Belum Ada</template>
+                          </span>
+                        </div>
+                        <!-- SE badge -->
+                        <div class="d-flex align-items-center gap-1">
+                          <span class="badge fs-11 d-flex align-items-center gap-1"
+                            :class="csirtStatus(item.id).seCount === 0
+                              ? 'bg-danger-transparent text-danger'
+                              : csirtStatus(item.id).seIncomplete > 0
+                                ? 'bg-warning-transparent text-warning'
+                                : 'bg-success-transparent text-success'">
+                            <i :class="csirtStatus(item.id).seCount === 0
+                              ? 'ri-server-line'
+                              : csirtStatus(item.id).seIncomplete > 0
+                                ? 'ri-error-warning-line'
+                                : 'ri-server-fill'"></i>
+                            SE:
+                            <template v-if="csirtStatus(item.id).seCount === 0">Belum Ada</template>
+                            <template v-else-if="csirtStatus(item.id).seIncomplete > 0">
+                              {{ csirtStatus(item.id).seCount }} ({{ csirtStatus(item.id).seIncomplete }} blm lengkap)
+                            </template>
+                            <template v-else>{{ csirtStatus(item.id).seCount }} SE</template>
+                          </span>
+                        </div>
+                      </div>
                     </td>
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
                         <router-link
-                          :to="`/csirt/${item.id}?from=csirt-admin`"
+                          :to="`/csirt/${toCsirtSlug(item)}`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light"
                           title="Lihat Profil">
                           <i class="ri-eye-line"></i>
@@ -664,14 +865,13 @@ export default {
                     <div 
                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
                       :style="{ 
-                        backgroundImage: formData.photo_csirt ? `url(${formData.photo_csirt})` : 'none',
-                        backgroundColor: formData.photo_csirt ? 'transparent' : '#e9ecef',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
+                        backgroundColor: formData.photo_csirt ? 'transparent' : '#f8f9fa',
+                        width: '180px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'
                       }"
                     >
+                      <img v-if="formData.photo_csirt" :src="formData.photo_csirt" class="w-100 h-100 p-2" style="object-fit:contain;" alt="Logo CSIRT" />
                       <!-- Empty State -->
-                      <div v-if="!formData.photo_csirt" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
+                      <div v-if="!formData.photo_csirt" class="position-absolute w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada logo</span>
                       </div>
@@ -698,6 +898,35 @@ export default {
                         <span><i class="ri-upload-cloud-line me-1"></i>Max {{ MAX_FILE_SIZE_MB }}MB</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <!-- Perusahaan -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-building-2-line me-1 text-primary"></i>Perusahaan / Stakeholder <span class="text-danger">*</span>
+                  </label>
+                  <!-- Search Stakeholder -->
+                  <div class="mb-2">
+                    <input type="text" v-model="searchStakeholder" class="form-control form-control-sm" 
+                      placeholder="Cari nama perusahaan atau sektor..." 
+                      style="max-width:100%" />
+                    <small class="text-muted d-block mt-1">
+                      {{ filteredAvailableStakeholders.length }} dari {{ availableStakeholders.length }} stakeholder
+                    </small>
+                  </div>
+                  <select class="form-select" v-model="formData.id_perusahaan" :class="{ 'is-invalid': formErrors.id_perusahaan }">
+                    <option value="0" disabled>-- Pilih Perusahaan / Stakeholder --</option>
+                    <option v-for="s in filteredAvailableStakeholders" :key="s.id" :value="s.id">{{ s.nama_perusahaan }}</option>
+                  </select>
+                  <div v-if="filteredAvailableStakeholders.length === 0 && searchStakeholder" class="form-text text-danger fs-12 mt-1">
+                    <i class="ri-close-circle-line me-1"></i> Tidak ada stakeholder yang cocok
+                  </div>
+                  <div v-if="formErrors.id_perusahaan" class="invalid-feedback">
+                    {{ formErrors.id_perusahaan }}
+                  </div>
+                  <div v-if="availableStakeholders.length < stakeholdersStore.stakeholders.length" class="form-text text-muted fs-12 mt-1">
+                    <i class="ri-information-line me-1"></i> Beberapa stakeholder sudah memiliki CSIRT
                   </div>
                 </div>
 
@@ -746,6 +975,42 @@ export default {
                   </div>
                   <div v-if="formErrors.telepon_csirt" class="invalid-feedback d-block">
                     {{ formErrors.telepon_csirt }}
+                  </div>
+                </div>
+
+                <!-- Dokumen RFC 2350 -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-file-pdf-line me-1 text-primary"></i>RFC 2350
+                  </label>
+                  <div class="input-group w-100 gap-4">
+                    <input type="text" class="form-control" v-model="formData.file_rfc2350"
+                      placeholder="Link atau pilih file" />
+                    <input type="file" ref="createRfcFile" class="d-none" @change="handleFileUpload($event, 'rfc')" accept=".pdf" />
+                    <button class="btn btn-primary-light" type="button" @click="$refs.createRfcFile.click()">
+                      <i class="ri-upload-2-line me-1"></i>Upload
+                    </button>
+                  </div>
+                  <div v-if="formData.file_rfc2350_file" class="text-success small mt-1">
+                    <i class="ri-check-line"></i> {{ formData.file_rfc2350_file.name }} siap diupload
+                  </div>
+                </div>
+
+                <!-- Public Key PGP -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-key-2-line me-1 text-primary"></i>Public Key PGP
+                  </label>
+                  <div class="input-group w-100 gap-4">
+                    <input type="text" class="form-control" v-model="formData.file_public_key_pgp"
+                      placeholder="Link atau pilih file" />
+                    <input type="file" ref="createPgpFile" class="d-none" @change="handleFileUpload($event, 'pgp')" accept=".asc,.txt,.key" />
+                    <button class="btn btn-secondary-light" type="button" @click="$refs.createPgpFile.click()">
+                      <i class="ri-upload-2-line me-1"></i>Upload
+                    </button>
+                  </div>
+                  <div v-if="formData.file_public_key_pgp_file" class="text-success small mt-1">
+                    <i class="ri-check-line"></i> {{ formData.file_public_key_pgp_file.name }} siap diupload
                   </div>
                 </div>
               </div>
@@ -788,14 +1053,13 @@ export default {
                     <div 
                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
                       :style="{ 
-                        backgroundImage: formData.photo_csirt ? `url(${formData.photo_csirt})` : 'none',
-                        backgroundColor: formData.photo_csirt ? 'transparent' : '#e9ecef',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
+                        backgroundColor: formData.photo_csirt ? 'transparent' : '#f8f9fa',
+                        width: '180px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center'
                       }"
                     >
+                      <img v-if="formData.photo_csirt" :src="formData.photo_csirt" class="w-100 h-100 p-2" style="object-fit:contain;" alt="Logo CSIRT" />
                       <!-- Empty State -->
-                      <div v-if="!formData.photo_csirt" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
+                      <div v-if="!formData.photo_csirt" class="position-absolute w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
                         <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
                         <span class="fs-11">Belum ada logo</span>
                       </div>
@@ -822,6 +1086,24 @@ export default {
                         <span><i class="ri-upload-cloud-line me-1"></i>Max {{ MAX_FILE_SIZE_MB }}MB</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <!-- Perusahaan -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-building-2-line me-1 text-primary"></i>Perusahaan / Stakeholder <span class="text-danger">*</span>
+                  </label>
+                  <div v-if="editLoading" class="form-control d-flex align-items-center gap-2 text-muted">
+                    <span class="spinner-border spinner-border-sm"></span>
+                    <span>Memuat data perusahaan...</span>
+                  </div>
+                  <select v-else class="form-select" v-model="formData.id_perusahaan" :class="{ 'is-invalid': formErrors.id_perusahaan }" disabled>
+                    <option value="0" disabled>-- Pilih Perusahaan / Stakeholder --</option>
+                    <option v-for="s in stakeholdersStore.stakeholders" :key="s.id" :value="s.id">{{ s.nama_perusahaan }}</option>
+                  </select>
+                  <div v-if="formErrors.id_perusahaan" class="invalid-feedback">
+                    {{ formErrors.id_perusahaan }}
                   </div>
                 </div>
 
@@ -870,6 +1152,42 @@ export default {
                   </div>
                   <div v-if="formErrors.telepon_csirt" class="invalid-feedback d-block">
                     {{ formErrors.telepon_csirt }}
+                  </div>
+                </div>
+
+                <!-- Dokumen RFC 2350 -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-file-pdf-line me-1 text-primary"></i>RFC 2350
+                  </label>
+                  <div class="input-group w-100 gap-4">
+                    <input type="text" class="form-control" v-model="formData.file_rfc2350"
+                      placeholder="Link atau pilih file" />
+                    <input type="file" ref="editRfcFile" class="d-none" @change="handleFileUpload($event, 'rfc')" accept=".pdf" />
+                    <button class="btn btn-primary-light" type="button" @click="$refs.editRfcFile.click()">
+                      <i class="ri-upload-2-line me-1"></i>Upload
+                    </button>
+                  </div>
+                  <div v-if="formData.file_rfc2350_file" class="text-success small mt-1">
+                    <i class="ri-check-line"></i> {{ formData.file_rfc2350_file.name }} siap diupload
+                  </div>
+                </div>
+
+                <!-- Public Key PGP -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-key-2-line me-1 text-primary"></i>Public Key PGP
+                  </label>
+                  <div class="input-group w-100 gap-4">
+                    <input type="text" class="form-control" v-model="formData.file_public_key_pgp"
+                      placeholder="Link atau pilih file" />
+                    <input type="file" ref="editPgpFile" class="d-none" @change="handleFileUpload($event, 'pgp')" accept=".asc,.txt,.key" />
+                    <button class="btn btn-secondary-light" type="button" @click="$refs.editPgpFile.click()">
+                      <i class="ri-upload-2-line me-1"></i>Upload
+                    </button>
+                  </div>
+                  <div v-if="formData.file_public_key_pgp_file" class="text-success small mt-1">
+                    <i class="ri-check-line"></i> {{ formData.file_public_key_pgp_file.name }} siap diupload
                   </div>
                 </div>
 
