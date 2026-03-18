@@ -59,7 +59,7 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/kse", icon: Svgicons.Todoicon, title: "Kategorisasi SE", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
   {
-    path: "/csirt", icon: Svgicons.Taskicon, title: "CSIRT", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
+    path: "/csirt", icon: Svgicons.Csirticon, title: "CSIRT", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
   {
     path: "/roles", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"

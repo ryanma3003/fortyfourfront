@@ -23,13 +23,34 @@ export default {
         const router = useRouter();
         const isAdmin = computed(() => authStore.isAdmin);
 
-        // slug passed from profile-stakeholders when CSIRT not yet registered
+        // For user role: check if the logged-in user owns this CSIRT (same id_perusahaan)
+        const isOwner = computed(() => {
+            if (isAdmin.value) return false; // admin uses isAdmin flag
+            if (!authStore.currentUser?.id_perusahaan) return false;
+            if (!currentCsirt.value) return false;
+            const csirtCompanyId = String(currentCsirt.value.id_perusahaan || (currentCsirt.value as any).perusahaan?.id || '');
+            return csirtCompanyId === String(authStore.currentUser.id_perusahaan);
+        });
+
+        // Allow CRUD for admin or owner
+        const canEdit = computed(() => isAdmin.value || isOwner.value);
+
+        // For CSIRT Creation: target stakeholder
         const newStakeholderSlug = computed(() => String(route.query.stakeholder || ''));
-        const newStakeholder = computed(() =>
-            newStakeholderSlug.value
-                ? stakeholdersStore.getStakeholderBySlug(newStakeholderSlug.value)
-                : undefined
-        );
+        const newStakeholder = computed(() => {
+            if (newStakeholderSlug.value) {
+                return stakeholdersStore.getStakeholderBySlug(newStakeholderSlug.value);
+            }
+            if (!isAdmin.value && authStore.currentUser?.id_perusahaan) {
+                return stakeholdersStore.getStakeholderById(String(authStore.currentUser.id_perusahaan));
+            }
+            return undefined;
+        });
+
+        const canCreateCsirt = computed(() => {
+            if (currentCsirt.value) return false;
+            return !!newStakeholder.value && (isAdmin.value || String(newStakeholder.value.id) === String(authStore.currentUser?.id_perusahaan));
+        });
 
         const headers = [
             { text: "Nama Personel" },
@@ -51,17 +72,22 @@ export default {
             { text: "Aksi" },
         ];
 
-        const items = ref<SdmCsirt[]>([]);
-        const seItems = ref<SeCsirt[]>([]);
-        const loading = ref(false);
-
         const route = useRoute();
-
-        // DERIVED DATA
         const csirtSlug = computed(() => String(route.params.id || ''));
 
         const currentCsirt = computed<CsirtMember | undefined>(() => {
             const slug = csirtSlug.value;
+
+            // User role: auto-resolve CSIRT from id_perusahaan when no slug in URL
+            if (!slug && !isAdmin.value && authStore.currentUser?.id_perusahaan) {
+                return csirtStore.csirts.find(c =>
+                    String(c.id_perusahaan) === String(authStore.currentUser!.id_perusahaan) ||
+                    String((c as any).perusahaan?.id) === String(authStore.currentUser!.id_perusahaan)
+                );
+            }
+
+            if (!slug) return undefined;
+
             const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
             return csirtStore.csirts.find(c => {
                 if (String(c.id) === slug) return true;
@@ -76,38 +102,50 @@ export default {
 
         const csirtId = computed(() => currentCsirt.value?.id || csirtSlug.value);
 
+        // SDM & SE Lists from Store
+        const items = computed(() => {
+            const id = String(csirtId.value);
+            return csirtStore.sdmList.filter(item => 
+                String(item.id_csirt) === id || String((item as any).csirt?.id) === id
+            );
+        });
+
+        const seItems = computed(() => {
+            const id = String(csirtId.value);
+            return csirtStore.seList.filter(item => 
+                String(item.id_csirt) === id || String((item as any).csirt?.id) === id
+            );
+        });
+
+        const loading = ref(false);
+
         // Async data loading from API
         const loadCSIRTs = async () => {
             loading.value = true;
             try {
-                if (csirtId.value) {
-                    const [sdmRes, seRes] = await Promise.all([
-                        csirtService.getSdmByCsirtId(csirtId.value),
-                        csirtService.getSeByCsirtId(csirtId.value)
-                    ]);
-                    
-                    items.value = sdmRes || [];
-                    seItems.value = seRes || [];
-                } else {
-                    items.value = [];
-                    seItems.value = [];
-                }
+                // Use the store refresh to load everything including SDM/SE lists
+                await csirtStore.refresh();
             } catch (err) {
-                console.error('Failed to load SDM/SE:', err);
-                items.value = [];
-                seItems.value = [];
+                console.error('Failed to load CSIRT data:', err);
             } finally {
                 loading.value = false;
             }
         };
 
         onMounted(async () => {
-            loadCSIRTs();
             if (!stakeholdersStore.initialized) {
                 await stakeholdersStore.initialize();
             }
             if (!csirtStore.initialized) {
                 await csirtStore.initialize();
+            } else {
+                // If already initialized, at least trigger refreshing SDM/SE lists
+                await loadCSIRTs();
+            }
+            
+            // Auto open create modal if requested from dashboard
+            if (route.query.action === 'create' && canCreateCsirt.value) {
+                openAddCsirtModal();
             }
         });
 
@@ -122,6 +160,15 @@ export default {
                 return {
                     currentpage: "CSIRT",
                     title: { label: "CSIRT Admin", path: "/csirt-admin" },
+                    activepage: "CSIRT",
+                };
+            }
+
+            // User role: breadcrumb back to user dashboard
+            if (!isAdmin.value) {
+                return {
+                    currentpage: "CSIRT",
+                    title: { label: "Dashboard", path: "/dashboards" },
                     activepage: "CSIRT",
                 };
             }
@@ -465,8 +512,6 @@ export default {
             csirtFormErrors.value = {};
             if (!csirtFormData.value.nama_csirt.trim())
                 csirtFormErrors.value.nama_csirt = 'Nama CSIRT wajib diisi';
-            if (!csirtFormData.value.photo_csirt && !csirtFormData.value.photo_csirt_preview)
-                csirtFormErrors.value.photo_csirt = 'Logo / Photo CSIRT wajib diunggah';
             return Object.keys(csirtFormErrors.value).length === 0;
         };
 
@@ -488,12 +533,14 @@ export default {
             csirtFormLoading.value = false;
             if (result.success) {
                 csirtFormSuccess.value = true;
+                // Refresh store to include the new CSIRT
+                await csirtStore.refresh();
                 setTimeout(() => {
                     showAddCsirtModal.value = false;
                     // Navigate to the newly created CSIRT
                     const created = result.data as any;
                     if (created?.id) router.push(`/csirt/${created.id}`);
-                    else router.push(`/stakeholders/${newStakeholder.value!.slug}`);
+                    else if (newStakeholder.value) router.push(`/stakeholders/${newStakeholder.value.slug}`);
                 }, 1500);
             } else {
                 csirtFormError.value = result.error || 'Gagal mendaftarkan CSIRT.';
@@ -586,6 +633,9 @@ export default {
         return {
 
             isAdmin,
+            isOwner,
+            canEdit,
+            canCreateCsirt,
             csirtStore,
             newStakeholder,
             // Tambah CSIRT
@@ -734,11 +784,11 @@ export default {
                     </div>
                 </div>
                 <div class="header-actions d-flex gap-2">
-                    <button v-if="isAdmin && !currentCsirt && newStakeholder" @click="openAddCsirtModal" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
+                    <button v-if="canCreateCsirt" @click="openAddCsirtModal" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
                         <i class="ri-add-circle-line fs-14"></i>
                         <span>Tambah CSIRT</span>
                     </button>
-                    <button v-if="isAdmin && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
+                    <button v-if="canEdit && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
                         <i class="ri-edit-2-line fs-14"></i>
                         <span>Edit CSIRT</span>
                     </button>
@@ -746,8 +796,17 @@ export default {
             </div>
 
             <div class="card-body">
-                <div v-if="!currentCsirt" class="alert alert-warning">
-                    Data CSIRT tidak ditemukan
+                <div v-if="!currentCsirt" class="text-center py-5">
+                    <div class="empty-state">
+                        <div class="avatar avatar-xxl bg-primary-transparent rounded-circle mb-3">
+                            <i class="ri-shield-line fs-32 text-primary"></i>
+                        </div>
+                        <h5 class="fw-bold mb-2">CSIRT Belum Terdaftar</h5>
+                        <p class="text-muted mb-4">Perusahaan / instansi ini belum memiliki profil CSIRT.</p>
+                        <button v-if="canCreateCsirt" @click="openAddCsirtModal" class="btn btn-primary d-inline-flex align-items-center gap-2">
+                            <i class="ri-add-circle-line"></i> Daftarkan CSIRT
+                        </button>
+                    </div>
                 </div>
                 <div v-else class="row align-items-center">
                     <div class="col-12 col-md-2 text-center">
@@ -828,7 +887,7 @@ export default {
         <SimpleCardComponent title="Tabel Daftar SDM CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
             <!-- Toolbar -->
             <template #showheader>
-                <button v-if="isAdmin" @click="openCreateSdmModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
+                <button v-if="canEdit" @click="openCreateSdmModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
                     <i class="ri-add-circle-line fs-15"></i>
                     <span>Tambah SDM</span>
                 </button>
@@ -926,7 +985,7 @@ export default {
                                 <td class="align-middle small text-muted">{{ row.skill }}</td>
                                 <td class="align-middle"><span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span></td>
                                 <td class="text-center align-middle">
-                                    <div v-if="isAdmin" class="d-flex gap-1 justify-content-center">
+                                    <div v-if="canEdit" class="d-flex gap-1 justify-content-center">
                                         <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
                                             <i class="ri-edit-2-line"></i>
                                         </button>
@@ -951,7 +1010,7 @@ export default {
         <SimpleCardComponent title="Tabel Daftar SE-CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
             <!-- Toolbar -->
             <template #showheader>
-                <button v-if="isAdmin" @click="goToAddSe" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
+                <button v-if="canEdit" @click="goToAddSe" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
                     <i class="ri-add-circle-line fs-15"></i>
                     <span>Tambah SE</span>
                 </button>
@@ -1060,10 +1119,10 @@ export default {
                                         <button @click="viewSeDetail(row)" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Detail Penilaian">
                                             <i class="ri-eye-line"></i>
                                         </button>
-                                        <button v-if="isAdmin" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
+                                        <button v-if="canEdit" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
                                             <i class="ri-edit-2-line"></i>
                                         </button>
-                                        <button v-if="isAdmin" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <button v-if="canEdit" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
                                             <i class="ri-delete-bin-3-line"></i>
                                         </button>
                                     </div>

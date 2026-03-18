@@ -4,18 +4,6 @@
     <div class="main-header-container container-fluid">
       <!-- Start::header-content-left -->
       <div class="header-content-left">
-        <!-- Start::header-element -->
-        <!--<div class="header-element">
-                    <div class="horizontal-logo">
-                        <router-link to="/dashboards/sales" class="header-logo">
-                            <img src="/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo">
-                            <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
-                            <img src="/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
-                            <img src="/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
-                        </router-link>
-                    </div>
-                </div> -->
-        <!-- End::header-element -->
 
         <!-- Start::header-element -->
         <div class="header-element mx-lg-0 mx-2">
@@ -29,6 +17,17 @@
           ></a>
         </div>
         <!-- End::header-element -->
+
+        <div class="header-element">
+            <div class="horizontal-logo">
+                  <router-link to="/dashboards/sales" class="header-logo">
+                    <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
+                    <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
+                    <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
+                    <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle-dark"  class="sb2-logo-mini" />
+                  </router-link>
+            </div>
+        </div>
 
         <div class="header-element header-search d-md-block d-none">
           <div class="autoComplete_wrapper">
@@ -137,8 +136,8 @@
         </li>
         <!-- End::header-element -->
 
-        <!-- Start::header-element -->
-        <li class="header-element notifications-dropdown d-block dropdown">
+        <!-- Start::header-element (Admin Only) -->
+        <li v-if="authStore.isAdmin" class="header-element notifications-dropdown d-block dropdown">
           <!-- Start::header-link|dropdown-toggle -->
           <a
             href="javascript:void(0);"
@@ -175,7 +174,7 @@
                 stroke-width="16"
               />
             </svg>
-            <span
+            <span v-if="notifStore.unreadCount > 0"
               class="header-icon-pulse bg-secondary rounded pulse pulse-secondary"
             ></span>
           </a>
@@ -187,11 +186,12 @@
           >
             <div class="p-3 bg-primary text-fixed-white">
               <div class="d-flex align-items-center justify-content-between">
-                <p class="mb-0 fs-16">Notifications</p>
+                <p class="mb-0 fs-16">Notifikasi <span v-if="notifStore.unreadCount > 0" class="badge bg-light text-primary ms-1">{{ notifStore.unreadCount }}</span></p>
                 <a
                   href="javascript:void(0);"
                   class="badge bg-light text-default border"
-                  >Clear All</a
+                  @click="notifStore.markAllAsRead()"
+                  >Tandai Dibaca</a
                 >
               </div>
             </div>
@@ -200,53 +200,50 @@
               class="list-unstyled mb-0"
               id="header-notification-scroll"
             >
-              <li
-                :class="`dropdown-item position-relative ${idx.liClass}`"
-                v-for="idx in Notifications"
-                :key="idx.id"
-              >
-                <router-link
-                  to="/applications/chat/"
-                  class="stretched-link"
-                ></router-link>
-                <div class="d-flex align-items-start gap-3">
-                  <div class="lh-1">
-                    <span
-                      class="avatar avatar-sm avatar-rounded bg-primary-transparent"
-                    >
-                      <img v-if="idx.avatar" :src="idx.avatar" alt="" />
-                      <i v-if="idx.icon" class="ri-notification-line fs-16"></i>
-                    </span>
-                  </div>
-                  <div class="flex-fill">
-                    <span class="d-block fw-semibold">{{ idx.title }}</span>
-                    <span class="d-block text-muted fs-12">{{
-                      idx.description
-                    }}</span>
-                  </div>
-                  <div class="text-end">
-                    <span class="d-block mb-1 fs-12 text-muted">{{
-                      idx.time
-                    }}</span>
-                    <span
-                      :class="`d-block text-primary ${
-                        idx.isUnread ? '' : 'd-none'
-                      } `"
-                      ><i class="ri-circle-fill fs-9"></i
-                    ></span>
-                  </div>
-                </div>
-              </li>
-            </PerfectScrollbar>
-            <div class="p-5 empty-item1 d-none">
-              <div class="text-center">
-                <span
-                  class="avatar avatar-xl avatar-rounded bg-secondary-transparent"
+              <!-- Real-time events from store -->
+              <template v-if="notifStore.recentForDropdown.length > 0">
+                <li
+                  class="dropdown-item position-relative"
+                  v-for="evt in notifStore.recentForDropdown"
+                  :key="evt.id"
+                  :class="{ 'bg-primary-transparent': !evt.isRead }"
                 >
-                  <i class="ri-notification-off-line fs-2"></i>
-                </span>
-                <h6 class="fw-medium mt-3">No New Notifications</h6>
-              </div>
+                  <div class="d-flex align-items-start gap-3">
+                    <div class="lh-1">
+                      <span class="avatar avatar-sm avatar-rounded"
+                        :class="evt.type === 'created' ? 'bg-success-transparent' : evt.type === 'updated' ? 'bg-info-transparent' : 'bg-danger-transparent'">
+                        <i :class="evt.type === 'created' ? 'ri-add-circle-line fs-16' : evt.type === 'updated' ? 'ri-edit-box-line fs-16' : 'ri-delete-bin-line fs-16'"></i>
+                      </span>
+                    </div>
+                    <div class="flex-fill" style="min-width: 0;">
+                      <span class="d-block fw-semibold fs-13" style="white-space: normal; line-height: 1.4;">
+                        {{ evt.user?.name || 'Sistem' }}
+                        <span class="fw-normal text-muted">{{ evt.type === 'created' ? 'menambahkan' : evt.type === 'updated' ? 'memperbarui' : 'menghapus' }}</span>
+                        {{ evt.entity_name || evt.entity || 'data' }}
+                      </span>
+                      <span class="d-block text-muted fs-12 mt-1" style="white-space: normal;">{{ evt.message }}</span>
+                    </div>
+                    <div class="text-end flex-shrink-0">
+                      <span class="d-block mb-1 fs-11 text-muted">{{ evt.timeAgoStr }}</span>
+                      <span v-if="!evt.isRead" class="d-block text-primary"><i class="ri-circle-fill fs-8"></i></span>
+                    </div>
+                  </div>
+                </li>
+              </template>
+            </PerfectScrollbar>
+            <div v-if="notifStore.recentForDropdown.length === 0" class="p-5 text-center">
+              <span class="avatar avatar-xl avatar-rounded bg-secondary-transparent">
+                <i class="ri-notification-off-line fs-2"></i>
+              </span>
+              <h6 class="fw-medium mt-3">Tidak Ada Notifikasi</h6>
+            </div>
+            <div class="p-2 text-center border-top">
+              <router-link
+                to="/notif"
+                class="text-primary fw-semibold fs-13 text-decoration-none d-block py-1"
+              >
+                Lihat Semua Notifikasi <i class="ri-arrow-right-s-line align-middle"></i>
+              </router-link>
             </div>
           </div>
           <!-- End::main-header-dropdown -->
@@ -588,18 +585,24 @@ import { switcherStore } from "../../../stores/switcher";
 import { MENUITEMS } from "../../../data/sidebar/nav";
 import { useAuthStore } from "../../../stores/auth";
 import { useProfileStore } from "../../../stores/profile";
+import { useNotificationStore } from "../../../stores/notifications";
 import Quantity from "../../UI/quantity.vue";
 
 // Stores
 const switcher = switcherStore();
 const authStore = useAuthStore();
 const profileStore = useProfileStore();
+const notifStore = useNotificationStore();
 const { logUserOut } = authStore;
 const router = useRouter();
 
 // Load profile data on mount - use switchUser to handle proper initialization
 onMounted(() => {
   profileStore.switchUser();
+  // Initialize SSE notification system
+  if (authStore.authenticated) {
+    notifStore.init();
+  }
 });
 
 // Reactive profile data
@@ -621,6 +624,7 @@ const colorthemeFn = (value: string) => {
 };
 
 const handleLogout = async () => {
+  notifStore.disconnect();
   await logUserOut();
   router.push("/");
 };

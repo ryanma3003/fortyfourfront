@@ -68,6 +68,11 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../views/admin/Dashboard.vue"),
             },
             {
+              path: 'notif',
+              name: "Notif",
+              component: () => import("../components/dashboards/notif.vue"),
+            },
+            {
               path: 'users',
               name: "Users List",
               component: () => import("../components/dashboards/users-list.vue"),
@@ -76,6 +81,11 @@ const routes: RouteRecordRaw[] = [
               path: 'users/:slug',
               name: 'Profile User',
               component: () => import("../components/dashboards/user-profile.vue"),
+            },
+            {
+              path: '/users/edit/:slug',
+              name: 'Edit User Profile',
+              component: () => import("../components/pages/user-profile-settings.vue"),
             },
             {
               path: 'roles',
@@ -399,11 +409,6 @@ const routes: RouteRecordRaw[] = [
           path: `applications`,
           name: 'Applications',
           children: [
-            {
-              path: 'chat',
-              name: "Chat",
-              component: () => import("../components/applications/chat.vue"),
-            },
             {
               path: 'email',
               name: "Email",
