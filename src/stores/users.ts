@@ -1,6 +1,7 @@
 // stores/users.ts
 import { defineStore } from 'pinia';
 import { usersService } from '@/services/users.service';
+import { stakeholdersService } from '@/services/stakeholders.service';
 import type { User, CreateUserPayload, UpdateUserPayload } from '@/types/user.types';
 
 export const useUsersStore = defineStore('users', {
@@ -146,13 +147,30 @@ export const useUsersStore = defineStore('users', {
 
     /**
      * Delete a user by id
+     * Also deletes associated company (perusahaan) if it exists (cascade delete)
      */
     async deleteUserById(id: string) {
       this.loading = true;
       this.error = null;
 
       try {
+        // Find the user to get their associated company
+        const userToDelete = this.users.find(u => u.id === id);
+        const userIdPerusahaan = userToDelete?.id_perusahaan;
+
+        // Delete user
         await usersService.delete(id);
+
+        // If user has an associated company, delete it as well (cascade delete)
+        if (userIdPerusahaan) {
+          try {
+            await stakeholdersService.delete(userIdPerusahaan);
+            console.log(`Company (${userIdPerusahaan}) deleted along with user (${id})`);
+          } catch (companyError) {
+            console.warn('Failed to delete associated company:', companyError);
+            // Continue even if company deletion fails
+          }
+        }
 
         const index = this.users.findIndex(u => u.id === id);
         if (index !== -1) {

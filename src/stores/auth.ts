@@ -73,7 +73,7 @@ function mapToCurrentUser(data: any): CurrentUser {
     location: u.location || u.alamat || "",
     jabatan: u.jabatan || u.jabatan_name || "",
     id_jabatan: u.id_jabatan || "",
-    id_perusahaan: u.id_perusahaan || "",
+    id_perusahaan: u.id_perusahaan || u.perusahaan_id || u.perusahaan?.id || "",
     foto_profile: formatImageUrl(u.photo || u.foto_profile),
     banner: formatImageUrl(u.banner),
   };
@@ -228,6 +228,13 @@ export const useAuthStore = defineStore("auth", {
       const profileStore = useProfileStore();
       profileStore.resetToDefaults();
 
+      // Disconnect SSE notifications
+      try {
+        const { useNotificationStore } = await import('./notifications');
+        const notifStore = useNotificationStore();
+        notifStore.disconnect();
+      } catch { /* ignore if store not loaded */ }
+
       await authService.logout();
 
       localStorage.removeItem(AUTH_USER_KEY);
@@ -295,3 +302,4 @@ export const useAuthStore = defineStore("auth", {
     },
   },
 });
+       

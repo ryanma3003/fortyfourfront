@@ -14,6 +14,8 @@ import { useListPage } from "../../composables/useListPage";
 import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
 import type { SubSektor, Sektor } from "../../services/sektor.service";
 import { csirtService } from "../../services/csirt.service";
+import { usersService } from "../../services/users.service";
+import type { User } from "../../types/user.types";
 
 
 
@@ -46,12 +48,15 @@ export default {
 
     const searchValue2 = ref("");
 
-    // CRUD state
+    // User data and filter
+    const usersData = ref<User[]>([]);
+    const userFilter = ref<'all' | 'hasUser' | 'noUser'>('all');
     const showCreateModal   = ref(false);
     const showEditModal     = ref(false);
     const showDeleteModal   = ref(false);
     const currentEditItem   = ref<Stakeholder | null>(null);
     const currentDeleteItem = ref<Stakeholder | null>(null);
+    const sektorFilter = ref<string | number>("");
 
     // Form state
     const formData = ref<Partial<Stakeholder>>({
@@ -137,6 +142,15 @@ export default {
       await stakeholdersStore.initialize();
     };
 
+    const loadUsers = async () => {
+      try {
+        usersData.value = await usersService.getAll();
+      } catch (error) {
+        console.error('Failed to load users:', error);
+        usersData.value = [];
+      }
+    };
+
     // Helper: ambil nama sub sektor dari item
     const getItemSubSektorName = (item: Stakeholder): string => {
       return item.sub_sektor?.nama_sub_sektor || item.sektor || "";
@@ -153,6 +167,24 @@ export default {
             i.email.toLowerCase().includes(q)
         );
       }
+      
+      // Filter by user status
+      if (userFilter.value === 'hasUser') {
+        data = data.filter(i => hasUser(i.id));
+      } else if (userFilter.value === 'noUser') {
+        data = data.filter(i => !hasUser(i.id));
+      }
+
+      // Filter by sektor (parent id)
+      if (sektorFilter.value !== "") {
+        data = data.filter(i => {
+          const itemSubSektor = i.sub_sektor || subSektorList.value.find(ss => getSubSektorName(ss) === i.sektor);
+          if (!itemSubSektor) return false;
+          const parentId = getSubSektorParentId(itemSubSektor);
+          return parentId !== undefined && String(parentId) === String(sektorFilter.value);
+        });
+      }
+      
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
         let aVal = "";
@@ -351,6 +383,8 @@ export default {
 
     onMounted(async () => {
       loadStakeholders();
+      await loadUsers();
+      await loadAllSubSektors();
       ikasStore.initialize();
       kseStore.initialize();
       await csirtStore.initialize();
@@ -445,6 +479,19 @@ export default {
       return csirtStore.hasCompleteCsirt(id_perusahaan);
     };
 
+    // Check if stakeholder has a user associated with it
+    const hasUser = (stakeholderId: string | number): boolean => {
+      return usersData.value.some(u => String(u.id_perusahaan) === String(stakeholderId));
+    };
+
+    const countStakeholderWithUser = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => hasUser(s.id)).length
+    );
+
+    const countStakeholderNoUser = computed(() =>
+      stakeholdersStore.stakeholders.filter(s => !hasUser(s.id)).length
+    );
+
     const countIkasOnly = computed(() =>
       stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && !hasCompleteCsirt(s.id)).length
     );
@@ -467,6 +514,11 @@ export default {
       countBoth,
       countIkas,
       countCsirt,
+      countStakeholderWithUser,
+      countStakeholderNoUser,
+      userFilter,
+      sektorFilter,
+      hasUser,
       isAdmin,
       stakeholdersStore,
       csirtStore,
@@ -591,6 +643,7 @@ export default {
             </div>
           </div>
           <div class="d-flex gap-2 align-items-center flex-wrap header-inner">
+
             <div class="search-container position-relative">
               <i class="ri-search-line card-search-icon"></i>
               <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
@@ -656,13 +709,92 @@ export default {
 
             <!-- Controls Bar -->
             <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
-              <div class="d-flex align-items-center gap-2">
-                <span class="text-muted fs-13">Tampilkan</span>
-                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                </select>
-                <span class="text-muted fs-13">per halaman</span>
+              <!-- Left Section: Filter + Items Per Page -->
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                
+                <!-- Sektor Filter Dropdown -->
+                <div class="d-flex align-items-center gap-2">
+                  <span class="text-muted fs-13">Sektor:</span>
+                  <div class="dropdown">
+                    <button 
+                      class="btn btn-sm btn-primary dropdown-toggle text-white" 
+                      type="button"
+                      data-bs-toggle="dropdown"
+                    >
+                      <i class="ri-government-line me-1"></i>
+                      {{ sektorFilter === "" ? "Semua Sektor" : (sektorList.find(s => String(s.id) === String(sektorFilter))?.nama_sektor || "Sektor") }}
+                    </button>
+                    <ul class="dropdown-menu shadow-sm">
+                      <li>
+                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = ''">
+                          Semua Sektor
+                        </a>
+                      </li>
+                      <li v-for="s in sektorList" :key="s.id">
+                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = s.id">
+                          {{ s.nama_sektor }}
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- User Filter Dropdown -->
+                <div class="d-flex align-items-center gap-2 border-start ps-3 ms-1">
+                  <span class="text-muted fs-13">Filter:</span>
+
+                  <div class="dropdown">
+                    <button 
+                      class="btn btn-sm btn-primary dropdown-toggle" 
+                      type="button"
+                      data-bs-toggle="dropdown"
+                    >
+                      <i class="ri-filter-line me-1"></i>
+                      {{
+                        userFilter === 'all'
+                          ? 'Semua (' + filteredData.length + ')'
+                          : userFilter === 'hasUser'
+                          ? 'Ada User (' + countStakeholderWithUser + ')'
+                          : 'Tanpa User (' + countStakeholderNoUser + ')'
+                      }}
+                    </button>
+
+                    <ul class="dropdown-menu">
+                      <li>
+                        <a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">
+                          <i class="ri-filter-line me-1"></i>
+                          Semua ({{ filteredData.length }})
+                        </a>
+                      </li>
+
+                      <li>
+                        <a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">
+                          <i class="ri-check-line me-1 text-success"></i>
+                          Ada User ({{ countStakeholderWithUser }})
+                        </a>
+                      </li>
+
+                      <li>
+                        <a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">
+                          <i class="ri-close-line me-1 text-warning"></i>
+                          Tanpa User ({{ countStakeholderNoUser }})
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                
+                <!-- Items Per Page -->
+                            <div class="d-flex align-items-center gap-2">
+                  <span class="text-muted fs-13">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                  <span class="text-muted fs-13">Perhalaman</span>
+                </div>
               </div>
+              
+              <!-- Right Section: Add Button -->
               <button v-if="isAdmin"
                 @click="openCreateModal"
                 class="btn btn-warning d-flex align-items-center gap-2"
