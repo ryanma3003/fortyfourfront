@@ -104,6 +104,8 @@ class ApiClient {
             ...customHeaders as Record<string, string>,
         };
 
+
+
         // If body is FormData, let fetch set the Content-Type with boundary
         if (isFormData) {
             delete headers['Content-Type'];
@@ -119,6 +121,8 @@ class ApiClient {
             credentials: 'include', // Enable HTTP-only cookie support
             body: isFormData || isUrlEncoded ? body : (body ? JSON.stringify(body) : undefined),
         };
+
+
 
         try {
             const response = await fetch(url, options);

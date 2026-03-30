@@ -160,11 +160,8 @@ onMounted(() => {
           <span class="lin-step-tot-glass">{{ totalPages }}</span>
         </div>
 
-        <div class="linear-save-glass">
-          <i class="ri-check-line lin-check-glass"></i>
-          <span class="text-success fs-11 fw-medium">
-          <i class="ri-checkbox-circle-line me-1"></i> Disimpan otomatis
-        </span>
+        <div class="linear-save-glass" style="visibility: hidden;">
+          <!-- Disimpan otomatis removed as requested -->
         </div>
       </div>
     </div>
@@ -276,7 +273,7 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center 30%; /* Lowered from center to center 25% to bring Naruto down */
   z-index: 0;
   pointer-events: none;
 }
@@ -405,18 +402,15 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(6px);
   padding: 4px 0 10px;
   border-radius: 100px;
   width: fit-content;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  color: #475569;
+  color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: none; /* Removed shadow */
 }
 .active-dot-glass {
   width: 5px; height: 5px;
@@ -432,7 +426,7 @@ onMounted(() => {
   color: #1e293b;
   margin: 2px 0 0;
   line-height: 1.2;
-  text-shadow: 0 1px 6px rgba(255,255,255,0.85), 0 0 12px rgba(255,255,255,0.6);
+  text-shadow: 0 1px 6px rgba(255,255,255,0.85);
 }
 .linear-sub-glass {
   font-family: 'Inter', sans-serif;

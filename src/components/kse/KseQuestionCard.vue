@@ -2,11 +2,18 @@
 import type { KseQuestion } from '../../data/kse-data';
 import { ref } from 'vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   question: KseQuestion;
   selectedOption?: 'A' | 'B' | 'C' | null;
   readonly?: boolean;
-}>();
+  displayMode?: 'grid' | 'list';
+  fontSize?: 'small' | 'medium' | 'large';
+  iconSize?: 'small' | 'medium' | 'large';
+}>(), {
+  displayMode: 'grid',
+  fontSize: 'medium',
+  iconSize: 'medium'
+});
 
 const emit = defineEmits<{
   (e: 'answer', questionNo: string, optionKey: 'A' | 'B' | 'C', bobot: number): void;
@@ -47,8 +54,13 @@ const getOptionColorClass = (key: string) => {
 
 <template>
   <div 
-    class="question-card" 
-    :class="{ 'is-answered': selectedOption }"
+    class="card question-card border-0 mb-0 shadow-sm transition-all duration-300"
+    :class="[
+      displayMode === 'grid' ? 'mode-grid' : 'mode-list',
+      `font-${fontSize}`,
+      `icon-${iconSize}`,
+      { 'is-readonly': readonly }
+    ]"
   >
     <!-- Answered accent border -->
     <div class="card-accent" :class="{ 'accent-active': selectedOption }" />
@@ -74,7 +86,7 @@ const getOptionColorClass = (key: string) => {
         <h6 class="question-hero">{{ question.pertanyaan }}</h6>
         
         <!-- Insight Box -->
-        <div class="insight-box">
+        <div v-if="displayMode === 'grid' || displayMode === 'list'" class="insight-box">
           <div class="insight-content">
             <div class="insight-icon">
               <i class="ri-lightbulb-flash-fill"></i>
@@ -89,7 +101,7 @@ const getOptionColorClass = (key: string) => {
       </div>
 
       <!-- Options -->
-      <div class="options-container">
+      <div class="options-container" :class="{ 'is-list-row': displayMode === 'list' }">
         <div 
           v-for="(option, key) in question.options" 
           :key="key"
@@ -99,7 +111,7 @@ const getOptionColorClass = (key: string) => {
             { 
               'selected': selectedOption === key,
               'not-selected': selectedOption && selectedOption !== key,
-              'readonly': readonly,
+              'readonly': readonly
             }
           ]"
           :style="{ '--delay': `${Object.keys(question.options).indexOf(String(key)) * 80}ms` }"
@@ -133,7 +145,8 @@ const getOptionColorClass = (key: string) => {
             <div class="option-bobot">
               <span class="bobot-badge">
                 <i class="ri-star-s-fill bobot-star"></i>
-                <span>{{ option.bobot }}</span>
+                <span v-if="displayMode === 'grid'">{{ option.bobot }}</span>
+                <span v-else class="fs-10">{{ option.bobot }}</span>
               </span>
             </div>
             
@@ -165,6 +178,86 @@ const getOptionColorClass = (key: string) => {
   overflow: hidden;
   transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
   margin-bottom: 20px;
+}
+
+/* ========== GRID MODE (GRID) ========== */
+.mode-grid.question-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+.mode-grid .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+}
+.mode-grid .options-container {
+  margin-top: auto;
+}
+.mode-grid .insight-box {
+  margin-bottom: 20px;
+}
+
+/* ========== LIST MODE (SINGLE COLUMN) ========== */
+.mode-list.question-card {
+  margin-bottom: 0;
+  border-radius: 16px;
+}
+.mode-list .card-body {
+  padding: 24px 28px;
+}
+.mode-list .question-hero {
+  font-size: 1.05rem;
+  margin-bottom: 16px;
+}
+
+/* ========== SIZING SYSTEM ========== */
+
+/* Font Sizes */
+.font-small .question-hero { font-size: 0.85rem !important; }
+.font-small .option-label { font-size: 0.8rem !important; }
+.font-small .insight-content { font-size: 0.75rem !important; }
+.font-small .option-item { padding: 8px 12px; min-height: 40px; }
+
+.font-medium .question-hero { font-size: 1rem !important; }
+.font-medium .option-label { font-size: 0.9rem !important; }
+.font-medium .insight-content { font-size: 0.85rem !important; }
+.font-medium .option-item { padding: 12px 14px; min-height: 48px; }
+
+.font-large .question-hero { font-size: 1.15rem !important; }
+.font-large .option-label { font-size: 1.05rem !important; }
+.font-large .insight-content { font-size: 0.95rem !important; }
+.font-large .option-item { padding: 16px 18px; min-height: 56px; }
+
+/* Icon Sizes */
+.icon-small .question-number { min-width: 20px; height: auto; font-size: 10px; padding: 4px 10px; }
+.icon-small .insight-icon { width: 28px; height: 28px; min-width: 28px; font-size: 14px; }
+.icon-small .insight-icon i { font-size: 14px; }
+.icon-small .option-key { width: 28px; height: 28px; font-size: 12px; }
+.icon-small .bobot-star { font-size: 10px; }
+
+.icon-medium .question-number { min-width: 24px; height: auto; font-size: 12px; padding: 6px 14px; }
+.icon-medium .insight-icon { width: 34px; height: 34px; min-width: 34px; font-size: 17px; }
+.icon-medium .insight-icon i { font-size: 18px; }
+.icon-medium .option-key { width: 36px; height: 36px; font-size: 14px; }
+.icon-medium .bobot-star { font-size: 12px; }
+
+.icon-large .question-number { min-width: 32px; height: auto; font-size: 14px; padding: 8px 18px; }
+.icon-large .insight-icon { width: 42px; height: 42px; min-width: 42px; font-size: 22px; }
+.icon-large .insight-icon i { font-size: 24px; }
+.icon-large .option-key { width: 44px; height: 44px; font-size: 18px; }
+.icon-large .bobot-star { font-size: 16px; }
+
+/* ========== DARK MODE ========== */
+.mode-compact .option-item .option-key {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+.mode-compact .option-item .option-label {
+  font-size: 13px;
 }
 
 .question-card:hover {

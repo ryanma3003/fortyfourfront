@@ -192,7 +192,7 @@ const goToEditPage = () => {
             <router-link v-if="isCurrentUser" to="/profile/settings" class="btn btn-primary-light btn-sm rounded-pill px-3">
               <i class="ri-edit-line me-1"></i>Sunting Profil
             </router-link>
-            <button v-else-if="isAdmin" @click="goToEditPage" class="btn btn-warning-light btn-sm rounded-pill px-3">
+            <button v-else-if="isAdmin" @click="goToEditPage" class="btn btn-warning btn-sm rounded-pill px-3">
               <i class="ri-user-settings-line me-1"></i>Edit Data User
             </button>
             <router-link to="/users" class="btn-back-profile">

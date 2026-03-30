@@ -60,7 +60,7 @@ onMounted(() => {
                     <div class="col-xxl-7 col-xl-7 col-lg-7 col-md-12 col-sm-12 col-12">
                         <div>
                             <div class="mb-3">
-                                <router-link to="/dashboards/sales">
+                                <router-link to="/">
                                     <img src="/images/brand-logos/desktop-logo.png" alt="" class="authentication-brand">
                                     <img src="/images/brand-logos/desktop-dark.png" alt="" class="authentication-brand dark">
                                 </router-link>

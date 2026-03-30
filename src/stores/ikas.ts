@@ -6,6 +6,8 @@ import {
   getQuestionIdsForSubdomain,
   calculateSubdomainScore
 } from '@/data/assessment/assessment-ikas-mapping';
+import { ikasService } from '@/services/ikas.service';
+import type { IkasPayload, IkasResponse } from '@/types/ikas.types';
 
 // Interface untuk data IKAS per domain
 
@@ -154,6 +156,13 @@ export const useIkasStore = defineStore('ikas', {
     ikasDataMap: {} as Record<string, IkasData>,
     initialized: false,
     ikasVersion: 0, // incremented on every save — lets other components react to changes
+
+    // Backend API state
+    backendIkasId: null as string | null, // ID of the IKAS record on backend
+    backendSynced: false, // Whether data has been synced with backend
+    domainIds: {} as Record<string, string>, // Maps domain name -> backend ID
+    apiLoading: false,
+    apiError: null as string | null,
   }),
 
   getters: {
@@ -262,26 +271,18 @@ export const useIkasStore = defineStore('ikas', {
   },
 
   actions: {
-    // Initialize dari localStorage
+    // Initialize (No longer uses localStorage)
     initialize() {
       if (this.initialized) return;
 
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        try {
-          this.ikasDataMap = JSON.parse(stored);
-        } catch (e) {
-          console.error('Failed to parse stored IKAS data:', e);
-          this.ikasDataMap = {};
-        }
-      }
+      // Local storage fallback removed. Data strictly relies on backend fetch.
       this.initialized = true;
       this.ikasVersion++; // signal watchers that store is now loaded
     },
 
-    // Save ke localStorage
+    // Save ke localStorage (Removed, now purely in-memory pending backend sync)
     saveToStorage() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.ikasDataMap));
+      // localStorage.setItem(STORAGE_KEY, JSON.stringify(this.ikasDataMap));
       this.ikasVersion++; // signal all watchers that IKAS data has changed
     },
 
@@ -480,6 +481,216 @@ export const useIkasStore = defineStore('ikas', {
       // Recalculate domain averages and total
       this.recalculate(slug);
       this.saveToStorage();
+    },
+
+    // ──────────────────────────────────────────────────────────────
+    // Backend API Actions
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Submit IKAS data to backend.
+     * Collects respondent info + domain scores and POST/PUT to /api/maturity/ikas
+     */
+    async submitToBackend(
+      slug: string,
+      respondentData: {
+        id_perusahaan: string;
+        responden: string;
+        jabatan: string;
+        telepon: string;
+        tanggal: string;
+        target_nilai: number;
+      }
+    ): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      this.apiError = null;
+
+      try {
+        this.ensureStakeholderData(slug);
+        const data = this.ikasDataMap[slug];
+
+        const payload: IkasPayload = {
+          id_perusahaan: respondentData.id_perusahaan,
+          responden: respondentData.responden,
+          jabatan: respondentData.jabatan,
+          telepon: respondentData.telepon,
+          tanggal: respondentData.tanggal,
+          target_nilai: respondentData.target_nilai,
+          identifikasi: {
+            nilai_subdomain1: Number(data.identifikasi.nilai_subdomain1) || 0,
+            nilai_subdomain2: Number(data.identifikasi.nilai_subdomain2) || 0,
+            nilai_subdomain3: Number(data.identifikasi.nilai_subdomain3) || 0,
+            nilai_subdomain4: Number(data.identifikasi.nilai_subdomain4) || 0,
+            nilai_subdomain5: Number(data.identifikasi.nilai_subdomain5) || 0,
+          },
+          proteksi: {
+            nilai_subdomain1: Number(data.proteksi.nilai_subdomain1) || 0,
+            nilai_subdomain2: Number(data.proteksi.nilai_subdomain2) || 0,
+            nilai_subdomain3: Number(data.proteksi.nilai_subdomain3) || 0,
+            nilai_subdomain4: Number(data.proteksi.nilai_subdomain4) || 0,
+            nilai_subdomain5: Number(data.proteksi.nilai_subdomain5) || 0,
+            nilai_subdomain6: Number(data.proteksi.nilai_subdomain6) || 0,
+          },
+          deteksi: {
+            nilai_subdomain1: Number(data.deteksi.nilai_subdomain1) || 0,
+            nilai_subdomain2: Number(data.deteksi.nilai_subdomain2) || 0,
+            nilai_subdomain3: Number(data.deteksi.nilai_subdomain3) || 0,
+          },
+          gulih: {
+            nilai_subdomain1: Number(data.tanggulih.nilai_subdomain1) || 0,
+            nilai_subdomain2: Number(data.tanggulih.nilai_subdomain2) || 0,
+            nilai_subdomain3: Number(data.tanggulih.nilai_subdomain3) || 0,
+            nilai_subdomain4: Number(data.tanggulih.nilai_subdomain4) || 0,
+          },
+        };
+
+        let response: IkasResponse;
+
+        if (this.backendIkasId) {
+          // Update existing record
+          response = await ikasService.updateIkas(this.backendIkasId, payload);
+        } else {
+          // Create new record
+          response = await ikasService.createIkas(payload);
+          this.backendIkasId = (response as any).id || null;
+        }
+
+        this.backendSynced = true;
+        this.apiLoading = false;
+        console.log('[IKAS Store] Backend submit success:', response);
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Backend submit failed:', error);
+        this.apiError = error.message || 'Gagal menyimpan ke server';
+        this.apiLoading = false;
+        return { success: false, error: this.apiError || undefined };
+      }
+    },
+
+    /**
+     * Fetch existing IKAS data from backend by perusahaan ID
+     * and populate the local store.
+     */
+    async fetchFromBackend(
+      slug: string,
+      perusahaanId: string
+    ): Promise<{ success: boolean; exists: boolean; error?: string }> {
+      this.apiLoading = true;
+      this.apiError = null;
+
+      try {
+        const response = await ikasService.getIkasByPerusahaan(perusahaanId);
+
+        if (!response) {
+          this.apiLoading = false;
+          return { success: true, exists: false };
+        }
+
+        // Populate local store from backend data
+        this.ensureStakeholderData(slug);
+        const data = this.ikasDataMap[slug];
+
+        // Map backend response to local data structure
+        if (response.identifikasi) {
+          data.identifikasi.nilai_subdomain1 = response.identifikasi.nilai_subdomain1 || 0;
+          data.identifikasi.nilai_subdomain2 = response.identifikasi.nilai_subdomain2 || 0;
+          data.identifikasi.nilai_subdomain3 = response.identifikasi.nilai_subdomain3 || 0;
+          data.identifikasi.nilai_subdomain4 = response.identifikasi.nilai_subdomain4 || 0;
+          data.identifikasi.nilai_subdomain5 = response.identifikasi.nilai_subdomain5 || 0;
+        }
+        if (response.proteksi) {
+          data.proteksi.nilai_subdomain1 = response.proteksi.nilai_subdomain1 || 0;
+          data.proteksi.nilai_subdomain2 = response.proteksi.nilai_subdomain2 || 0;
+          data.proteksi.nilai_subdomain3 = response.proteksi.nilai_subdomain3 || 0;
+          data.proteksi.nilai_subdomain4 = response.proteksi.nilai_subdomain4 || 0;
+          data.proteksi.nilai_subdomain5 = response.proteksi.nilai_subdomain5 || 0;
+          data.proteksi.nilai_subdomain6 = response.proteksi.nilai_subdomain6 || 0;
+        }
+        if (response.deteksi) {
+          data.deteksi.nilai_subdomain1 = response.deteksi.nilai_subdomain1 || 0;
+          data.deteksi.nilai_subdomain2 = response.deteksi.nilai_subdomain2 || 0;
+          data.deteksi.nilai_subdomain3 = response.deteksi.nilai_subdomain3 || 0;
+        }
+        if (response.gulih) {
+          data.tanggulih.nilai_subdomain1 = response.gulih.nilai_subdomain1 || 0;
+          data.tanggulih.nilai_subdomain2 = response.gulih.nilai_subdomain2 || 0;
+          data.tanggulih.nilai_subdomain3 = response.gulih.nilai_subdomain3 || 0;
+          data.tanggulih.nilai_subdomain4 = response.gulih.nilai_subdomain4 || 0;
+        }
+
+        this.backendIkasId = (response as any).id || null;
+        this.backendSynced = true;
+
+        // Recalculate averages from fetched data
+        this.recalculate(slug);
+        this.saveToStorage();
+
+        this.apiLoading = false;
+        console.log('[IKAS Store] Fetched from backend:', response);
+        return { success: true, exists: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Fetch from backend failed:', error);
+        this.apiError = error.message || 'Gagal mengambil data dari server';
+        this.apiLoading = false;
+        return { success: false, exists: false, error: this.apiError || undefined };
+      }
+    },
+
+    /**
+     * Initialize domains on the backend (POST the 4 main domains).
+     * Returns map of domain name -> backend ID.
+     */
+    async initDomainsOnBackend(): Promise<Record<string, string>> {
+      const domainNames = ['Identifikasi', 'Proteksi', 'Deteksi', 'Penanggulangan & Pemulihan'];
+
+      try {
+        // First try to get existing domains
+        const existing = await ikasService.getDomains();
+        if (existing && existing.length > 0) {
+          const map: Record<string, string> = {};
+          existing.forEach(d => { map[d.nama_domain] = d.id; });
+          this.domainIds = map;
+          return map;
+        }
+
+        // If no domains exist, create them
+        const map: Record<string, string> = {};
+        for (const name of domainNames) {
+          const resp = await ikasService.createDomain({ nama_domain: name });
+          map[name] = resp.id;
+        }
+        this.domainIds = map;
+        return map;
+      } catch (error: any) {
+        console.error('[IKAS Store] Failed to init domains:', error);
+        return {};
+      }
+    },
+
+    /**
+     * Submit identifikasi scores to the backend via POST /api/identifikasi.
+     */
+    async submitIdentifikasi(slug: string): Promise<{ success: boolean; error?: string }> {
+      try {
+        this.ensureStakeholderData(slug);
+        const iden = this.ikasDataMap[slug].identifikasi;
+
+        const payload = {
+          nilai_identifikasi: Number(iden.nilai_identifikasi) || 0,
+          nilai_subdomain1: Number(iden.nilai_subdomain1) || 0,
+          nilai_subdomain2: Number(iden.nilai_subdomain2) || 0,
+          nilai_subdomain3: Number(iden.nilai_subdomain3) || 0,
+          nilai_subdomain4: Number(iden.nilai_subdomain4) || 0,
+          nilai_subdomain5: Number(iden.nilai_subdomain5) || 0,
+        };
+
+        await ikasService.createIdentifikasi(payload);
+        console.log('[IKAS Store] Identifikasi submitted successfully');
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Identifikasi submit failed:', error);
+        return { success: false, error: error.message || 'Gagal menyimpan identifikasi' };
+      }
     },
   },
 });
