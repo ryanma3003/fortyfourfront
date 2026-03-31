@@ -73,7 +73,7 @@ onMounted(() => {
                                     </div>
                                 </div>
                                 <div class="col-xl-12 d-grid mt-2">
-                                    <router-link to="/dashboards/sales"
+                                    <router-link to="/"
                                         class="btn btn-lg btn-primary">Unlock</router-link>
                                 </div>
                             </div>
@@ -90,7 +90,7 @@ onMounted(() => {
         <div class="col-xxl-3 col-xl-3 col-lg-12 d-xl-block d-none px-0">
             <div class="authentication-cover overflow-hidden">
                 <div class="authentication-cover-logo">
-                    <router-link to="/dashboards/sales">
+                    <router-link to="/">
                         <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="desktop-dark">
                     </router-link>
                 </div>

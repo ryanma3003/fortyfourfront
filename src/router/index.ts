@@ -25,10 +25,6 @@ const routes: RouteRecordRaw[] = [
     component: Maindashboard,
     children:
       [
-        // {
-        //   path: '',
-        //   redirect: '/dashboards/sales',
-        // },
         //Dashboard
         //Dashboard
         {
@@ -138,12 +134,24 @@ const routes: RouteRecordRaw[] = [
           name: 'Csirt',
           component: () => import("../components/dashboards/csirt.vue"),
         },
+        {
+          path: `profile-resiko`,
+          name: 'Profile Resiko',
+          meta: { requiresStakeholder: true },
+          component: () => import("../components/pages/profile-resiko.vue"),
+        },
+        {
+          path: `survey-resiko`,
+          name: 'Survey Resiko',
+          meta: { requiresStakeholder: true },
+          component: () => import("../components/resiko-crud.vue"),
+        },
 
         //children: [
         //   {
         //     path: 'sales',
         //     name: "Sales",
-        //     component: () => import("../components/dashboards/sales.vue"),
+
         //   },
         //   {
         //     path: 'analytics',

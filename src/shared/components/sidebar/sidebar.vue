@@ -130,6 +130,7 @@ import {
   ref,
   watchEffect,
   computed,
+  onUnmounted,
 } from "vue";
 import { MENUITEMS as staticMenuData } from "../../../data/sidebar/nav.ts";
 import { useRoute, useRouter } from "vue-router";
@@ -189,6 +190,9 @@ const router = useRouter();
 const route = useRoute();
 
 const isChatOpen = ref(false);
+
+let observer = null;
+let toggledObserver = null;
 
 // Computed property for dynamic dashboard route based on user role
 const dashboardRoute = computed(() => {
@@ -562,12 +566,13 @@ function mainContentFn() {
 }
 
 function leftArrowFn() {
-  // Used to move the slide of the menu in Horizontal and also remove the arrows after click  if there was no space
-  // Used to Slide the menu to Left side
   let slideLeft = document.querySelector(".slide-left");
   let slideRight = document.querySelector(".slide-right");
   let menuNav = document.querySelector(".main-menu");
   let mainContainer1 = document.querySelector(".main-sidebar");
+  
+  if (!menuNav || !mainContainer1) return;
+
   let marginRightValue = Math.ceil(
     Number(window.getComputedStyle(menuNav).marginInlineStart.split("px")[0])
   );
@@ -581,19 +586,19 @@ function leftArrowFn() {
         Number(menuNav.style.marginInlineStart.split("px")[0]) +
         Math.abs(mainContainer1Width) +
         "px";
-      slideRight.classList.remove("d-none");
+      if (slideRight) slideRight.classList.remove("d-none");
     } else if (marginRightValue >= 0) {
       menuNav.style.marginInlineStart = "0px";
-      slideLeft.classList.add("d-none");
-      slideRight.classList.remove("d-none");
+      if (slideLeft) slideLeft.classList.add("d-none");
+      if (slideRight) slideRight.classList.remove("d-none");
     } else {
       menuNav.style.marginInlineStart = "0px";
-      slideLeft.classList.add("d-none");
-      slideRight.classList.remove("d-none");
+      if (slideLeft) slideLeft.classList.add("d-none");
+      if (slideRight) slideRight.classList.remove("d-none");
     }
   } else {
     menuNav.style.marginInlineStart = "0px";
-    slideLeft.classList.add("d-none");
+    if (slideLeft) slideLeft.classList.add("d-none");
   }
 
   let element = document.querySelector(".main-menu > .slide.open");
@@ -611,6 +616,9 @@ function rightArrowFn() {
   let slideRight = document.querySelector(".slide-right");
   let menuNav = document.querySelector(".main-menu");
   let mainContainer1 = document.querySelector(".main-sidebar");
+  
+  if (!menuNav || !mainContainer1) return;
+
   let marginRightValue = Math.ceil(
     Number(window.getComputedStyle(menuNav).marginInlineStart.split("px")[0])
   );
@@ -623,13 +631,13 @@ function rightArrowFn() {
         !(Math.abs(check) > Math.abs(marginRightValue) + mainContainer1Width)
       ) {
         mainContainer1Width = Math.abs(check) - Math.abs(marginRightValue);
-        slideRight.classList.add("d-none");
+        if (slideRight) slideRight.classList.add("d-none");
       }
       menuNav.style.marginInlineStart =
         Number(menuNav.style.marginInlineStart.split("px")[0]) -
         Math.abs(mainContainer1Width) +
         "px";
-      slideLeft.classList.remove("d-none");
+      if (slideLeft) slideLeft.classList.remove("d-none");
     }
   }
 
@@ -650,23 +658,23 @@ function checkHoriMenu() {
   let slideRight = document.querySelector(".slide-right");
 
   // Show/Hide the arrows
-  if (mainMenu && menuNav && slideRight && slideLeft) {
+  if (mainMenu && menuNav) {
     let marginRightValue = Math.ceil(
       Number(window.getComputedStyle(mainMenu).marginInlineStart.split("px")[0])
     );
     if (mainMenu.scrollWidth > menuNav.offsetWidth) {
-      slideRight?.classList.remove("d-none");
-      slideLeft?.classList.add("d-none");
+      if (slideRight) slideRight.classList.remove("d-none");
+      if (slideLeft) slideLeft.classList.add("d-none");
     } else {
-      slideRight?.classList.add("d-none");
-      slideLeft?.classList.add("d-none");
+      if (slideRight) slideRight.classList.add("d-none");
+      if (slideLeft) slideLeft.classList.add("d-none");
       mainMenu.style.marginLeft = "0px";
       mainMenu.style.marginRight = "0px";
     }
     if (marginRightValue == 0) {
-      slideLeft?.classList.add("d-none");
+      if (slideLeft) slideLeft.classList.add("d-none");
     } else {
-      slideLeft?.classList.remove("d-none");
+      if (slideLeft) slideLeft.classList.remove("d-none");
     }
   }
 }
@@ -686,7 +694,10 @@ function handleAttributeChange(mutationsList) {
 
       if (newValue === "horizontal") {
         closeMenuFn();
-        document.querySelector(".main-menu").style.marginInlineStart = "0px";
+        const mainMenu = document.querySelector(".main-menu");
+        if (mainMenu) {
+          mainMenu.style.marginInlineStart = "0px";
+        }
       }
     }
   }
@@ -749,6 +760,7 @@ function menuscrollFn() {
     if (
       !menuPosition &&
       preventpagejump.value &&
+      preventpagejump.value.style &&
       navLayout &&
       window.innerWidth >= 992
     ) {
@@ -815,9 +827,11 @@ onMounted(() => {
   });
   let mainContent = document.querySelector(".main-content");
   // Adding the mainContentFn after the component created.
-  mainContent.addEventListener("click", mainContentFn, {
-    passive: true,
-  });
+  if (mainContent) {
+    mainContent.addEventListener("click", mainContentFn, {
+      passive: true,
+    });
+  }
   // Used to check on mounting face to close the menu.
   if (window.innerWidth < 992) {
     document.documentElement.setAttribute("data-toggled", "close");
@@ -831,9 +845,9 @@ onMounted(() => {
   const targetElement = document.documentElement;
 
   // Create a MutationObserver instance
-  const observer = new MutationObserver(handleAttributeChange);
+  observer = new MutationObserver(handleAttributeChange);
   // Create a MutationObserver instance to watch data-toggled
-  const toggledObserver = new MutationObserver(handleToggledChange);
+  toggledObserver = new MutationObserver(handleToggledChange);
   toggledObserver.observe(targetElement, { attributes: true });
 
   function handleToggledChange(mutationsList) {
@@ -861,8 +875,21 @@ onMounted(() => {
   observer.observe(targetElement, config);
 });
 
-onBeforeMount(() => {
+onUnmounted(() => {
   window.removeEventListener("resize", menuResizeFn);
+  window.removeEventListener("scroll", menuscrollFn);
+  
+  let mainContent = document.querySelector(".main-content");
+  if (mainContent) {
+    mainContent.removeEventListener("click", mainContentFn);
+  }
+
+  if (observer) {
+    observer.disconnect();
+  }
+  if (toggledObserver) {
+    toggledObserver.disconnect();
+  }
 });
 </script>
 

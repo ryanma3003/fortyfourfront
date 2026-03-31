@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { useRouter } from "vue-router";
 
 const props = defineProps({
@@ -20,6 +20,13 @@ const handleIkas = () => {
     router.push({ path: "/ikas", query: { slug: props.stakeholderSlug } });
   } else {
     router.push("/ikas");
+  }
+};
+const handleResiko = () => {
+  if (props.stakeholderSlug) {
+    router.push({ path: "/profile-resiko", query: { slug: props.stakeholderSlug } });
+  } else {
+    router.push("/profile-resiko");
   }
 };
 const handleCsirt = () => {
@@ -46,6 +53,8 @@ const subLabel: Record<string, string> = {
   IKAS: "Indeks Keamanan Siber",
   KSE: "Kapasitas SDM & Ekosistem",
   CSIRT: "Status Tim Respons Insiden",
+  Resiko: "Profile Manajemen Resiko",
+  "Survey Resiko": "Profile Manajemen Resiko",
 };
 
 const iconColorClass: Record<string, string> = {
@@ -113,7 +122,7 @@ const scorePercent = (title: string, value: string) => {
   <div
     v-for="(item, index) in analyticData"
     :key="index"
-    class="col-xxl-4 col-lg-4 col-md-6 mb-4"
+    class="col-xxl-3 col-lg-3 col-md-6 mb-4"
   >
     <div :class="['as-card', accentColorClass[item.svgColor] ?? 'accent-blue']">
 
@@ -225,6 +234,14 @@ const scorePercent = (title: string, value: string) => {
           >
             <i class="ri-arrow-right-up-line"></i>
           </button>
+          <button
+            v-else-if="item.title === 'Resiko' || item.title === 'Survey Resiko'"
+            class="as-arrow"
+            @click="handleResiko"
+            title="Lihat Detail"
+          >
+            <i class="ri-arrow-right-up-line"></i>
+          </button>
         </div>
 
         <!-- Footer divider + sub label + CTA -->
@@ -246,6 +263,11 @@ const scorePercent = (title: string, value: string) => {
             v-else-if="item.title === 'KSE'"
             class="as-detail-btn"
             @click="handleKse"
+          >Lihat Detail <i class="ri-arrow-right-line ms-1"></i></button>
+          <button
+            v-else-if="item.title === 'Resiko' || item.title === 'Survey Resiko'"
+            class="as-detail-btn"
+            @click="handleResiko"
           >Lihat Detail <i class="ri-arrow-right-line ms-1"></i></button>
         </div>
       </div>

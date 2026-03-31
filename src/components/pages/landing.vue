@@ -264,7 +264,7 @@ const breakpoints1 = reactive({
                     <!-- Start::header-element -->
                     <div class="header-element">
                         <div class="horizontal-logo">
-                            <router-link to="/dashboards/sales" class="header-logo">
+                            <router-link to="/" class="header-logo">
                                 <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="toggle-logo">
                                 <img src="/images/brand-logos/toggle-dark.png" alt="logo" class="toggle-dark">
                             </router-link>
@@ -330,7 +330,7 @@ const breakpoints1 = reactive({
                     <nav class="main-menu-container nav nav-pills sub-open">
                         <div class="landing-logo-container">
                             <div class="horizontal-logo">
-                                <router-link to="/dashboards/sales" class="header-logo">
+                                <router-link to="/" class="header-logo">
                                     <img src="/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo">
                                     <img src="/images/brand-logos/desktop-dark.png" alt="logo" class="desktop-dark">
                                 </router-link>
@@ -493,7 +493,7 @@ const breakpoints1 = reactive({
                             <span class="d-block fs-18">Keep track of important business metrics and optimize processes
                                 to drive growth and improve efficiency.</span>
                             <div class="btn-list banner-buttons">
-                                <router-link to="/dashboards/sales" class="btn btn-primary btn-lg rounded-pill btn-w-lg">
+                                <router-link to="/" class="btn btn-primary btn-lg rounded-pill btn-w-lg">
                                     Get Started
                                     for free</router-link>
                                 <a class="btn btn-lg btn-light border rounded-pill btn-w-lg"
@@ -619,7 +619,7 @@ const breakpoints1 = reactive({
                                 <br> Purchase now or try the demo to see it in action!</span>
                         </div>
                         <div class="btn-list">
-                            <router-link to="/dashboards/sales"
+                            <router-link to="/"
                                 class="btn btn-danger btn-lg btn-w-md d-inline-flex align-items-center">View Demo<i
                                     class="ti ti-arrow-narrow-right ms-2"></i></router-link>
                             <button class="btn btn-success btn-lg btn-w-md d-inline-flex align-items-center">Buy Now<i
@@ -1001,7 +1001,7 @@ const breakpoints1 = reactive({
                 <div class="row justify-content-center gy-3">
                     <div class="col-xl-4">
                         <p class="fw-semibold mb-3 brand-image">
-                            <router-link to="/dashboards/sales">
+                            <router-link to="/">
                                 <img src="/images/brand-logos/desktop-dark.png" alt="">
                             </router-link>
                         </p>

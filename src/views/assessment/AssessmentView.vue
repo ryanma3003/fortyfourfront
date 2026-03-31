@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAssessmentStore } from '@/stores/assessment';
+import { useIkasStore } from '@/stores/ikas';
+import { useStakeholdersStore } from '@/stores/stakeholders';
 import { assessmentData } from '@/data/assessment/assessment-data';
 import QuestionCard from '@/components/assessment/QuestionCard.vue';
 import ProgressBar from '@/components/assessment/ProgressBar.vue';
@@ -10,7 +13,12 @@ import Swal from 'sweetalert2';
 import { toast } from 'vue3-toastify';
 import 'vue3-toastify/dist/index.css';
 
+const route = useRoute();
 const assessmentStore = useAssessmentStore();
+const ikasStore = useIkasStore();
+const stakeholdersStore = useStakeholdersStore();
+
+const currentSlug = computed(() => String(route.query.slug || ''));
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false });
 
@@ -123,19 +131,64 @@ const allQuestionsAnswered = computed(() => {
 });
 
 // Handle "Simpan Sementara" or "Simpan dan Selesai"
-const handleSaveAction = () => {
+const handleSaveAction = async () => {
     if (allQuestionsAnswered.value) {
         // Simpan dan Selesai
         assessmentStore.completeAssessment();
-        
-        toast.success('Assessment berhasil disimpan', {
-            theme: 'auto',
-            icon: true,
-            hideProgressBar: true,
-            autoClose: 2000,
-            position: 'top-right',
-        });
 
+        // Sync scores to backend API
+        const slug = currentSlug.value;
+        const stakeholder = slug ? stakeholdersStore.getStakeholderBySlug(slug) : null;
+        const profile = assessmentStore.respondentProfile;
+
+        if (stakeholder?.id && profile) {
+          try {
+            // Submit full IKAS data (with latest scores) to backend
+            const result = await ikasStore.submitToBackend(slug, {
+              id_perusahaan: stakeholder.id,
+              responden: profile.namaResponden || '',
+              jabatan: profile.jabatanResponden || '',
+              telepon: profile.nomorTelepon || '',
+              tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+              target_nilai: profile.targetLevel || 3,
+            });
+
+            // Also submit identifikasi scores
+            await ikasStore.submitIdentifikasi(slug);
+
+            if (result.success) {
+              toast.success('Assessment berhasil disimpan ke server', {
+                theme: 'auto',
+                icon: true,
+                hideProgressBar: true,
+                autoClose: 2000,
+                position: 'top-right',
+              });
+              
+              // Only go back on success
+              setTimeout(() => {
+                   emit('back'); // Go back to summary/list
+              }, 1500);
+            } else {
+              toast.error(`Gagal menyimpan ke server: ${result.error || 'Server tidak merespon'}`, {
+                autoClose: 4000,
+                position: 'top-right',
+              });
+            }
+          } catch (error) {
+            console.error('[AssessmentView] Backend sync error:', error);
+            toast.error('Terjadi kesalahan saat menghubungi server', {
+              autoClose: 4000,
+              position: 'top-right',
+            });
+          }
+        } else {
+          toast.error('Data Form Responden tidak lengkap', {
+            autoClose: 4000,
+            position: 'top-right',
+          });
+        }
+        
         setTimeout(() => {
              emit('back'); // Go back to summary/list
         }, 1500);

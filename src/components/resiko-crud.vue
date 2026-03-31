@@ -1,60 +1,35 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useAssessmentStore } from '@/stores/assessment';
+import { useResikoStore } from '@/stores/resiko';
 import { useStakeholdersStore } from '@/stores/stakeholders';
-import { useIkasStore } from '@/stores/ikas';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
-import RespondentForm from '@/views/assessment/RespondentForm.vue';
-import AssessmentView from '@/views/assessment/AssessmentView.vue';
-
-import { toast } from 'vue3-toastify';
-import 'vue3-toastify/dist/index.css';
+import RespondentFormResiko from '@/views/assessment/RespondentFormResiko.vue';
+import ResikoView from '@/views/assessment/ResikoView.vue';
 
 const router = useRouter();
 const route = useRoute();
-const assessmentStore = useAssessmentStore();
+const resikoStore = useResikoStore();
 const stakeholdersStore = useStakeholdersStore();
-const ikasStore = useIkasStore();
 
-// Get current stakeholder slug and source from route query
 const currentSlug = computed(() => String(route.query.slug || ''));
-const currentSource = computed(() => String(route.query.source || ''));
-
-// Step management: 1 = Respondent Form, 2 = Assessment
 const currentStep = ref(1);
-const submitting = ref(false);
 
-// Initialize stores + try to fetch existing IKAS data from backend
 onMounted(async () => {
-  assessmentStore.initialize();
-  ikasStore.initialize();
-  
+  resikoStore.initialize();
   if (!stakeholdersStore.initialized) {
     await stakeholdersStore.initialize();
   }
-
-  // Set current stakeholder context in assessment store
+  
   if (currentSlug.value) {
-    assessmentStore.setCurrentStakeholder(currentSlug.value);
+    resikoStore.setCurrentStakeholder(currentSlug.value);
   }
 
-  // Try fetching existing IKAS data from backend
-  const stakeholder = currentStakeholder.value;
-  if (stakeholder?.id) {
-    const result = await ikasStore.fetchFromBackend(currentSlug.value, stakeholder.id);
-    if (result.exists) {
-      console.log('[IKAS CRUD] Loaded existing IKAS data from backend');
-    }
-  }
-
-  // Check if respondent profile exists, if yes skip to step 2
-  if (assessmentStore.hasRespondentProfile) {
+  if (resikoStore.hasRespondentProfile) {
     currentStep.value = 2;
   }
 });
 
-// Get current stakeholder info
 const currentStakeholder = computed(() => {
   if (currentSlug.value) {
     return stakeholdersStore.getStakeholderBySlug(currentSlug.value);
@@ -62,77 +37,30 @@ const currentStakeholder = computed(() => {
   return null;
 });
 
-// Dynamic page data based on stakeholder and source
 const pageData = computed(() => {
   return {
     title: { 
       label: currentStakeholder.value 
-        ? `IKAS ${currentStakeholder.value.nama_perusahaan}` 
-        : "IKAS Dashboard", 
+        ? `Survey Resiko - ${currentStakeholder.value.nama_perusahaan}` 
+        : "Survey Resiko", 
       path: currentSlug.value ? `/stakeholders/${currentSlug.value}` : '/stakeholders'
     },
     currentpage: currentStep.value === 1 ? "Data Responden" : "Input Data",
-    activepage: currentStep.value === 1 ? "Data Responden" : (assessmentStore.currentDomain?.name || 'Input Data'),
+    activepage: currentStep.value === 1 ? "Data Responden" : "Pertanyaan Survey",
   };
 });
 
-// Navigation Handlers
-const handleFormSubmit = async () => {
-  // Form is already saved to store by the component
-  const stakeholder = currentStakeholder.value;
-  const profile = assessmentStore.respondentProfile;
-
-  // Submit respondent info to backend API
-  if (stakeholder?.id && profile) {
-    submitting.value = true;
-    try {
-      const result = await ikasStore.submitToBackend(currentSlug.value, {
-        id_perusahaan: stakeholder.id,
-        responden: profile.namaResponden || '',
-        jabatan: profile.jabatanResponden || '',
-        telepon: profile.nomorTelepon || '',
-        tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
-        target_nilai: profile.targetLevel || 3,
-      });
-
-      if (result.success) {
-        toast.success('Data responden berhasil disimpan ke server', {
-          autoClose: 2000,
-          position: 'top-right',
-        });
-        currentStep.value = 2; // Proceed only if successful
-      } else {
-        console.warn('[IKAS CRUD] Backend submit failed:', result.error);
-        toast.error(`Gagal sinkron ke server: ${result.error || 'Server tidak merespon'}`, {
-          autoClose: 3000,
-          position: 'top-right',
-        });
-      }
-    } catch (error: any) {
-      console.error('[IKAS CRUD] Error submitting to backend:', error);
-      toast.error('Terjadi kesalahan saat menghubungi server', {
-        autoClose: 3000,
-        position: 'top-right',
-      });
-    } finally {
-      submitting.value = false;
-    }
-  } else {
-    // If no stakeholder/profile, don't proceed
-    toast.error('Data Form Responden tidak lengkap', {
-      autoClose: 3000,
-      position: 'top-right',
-    });
-  }
+const handleFormSubmit = () => {
+  currentStep.value = 2;
 };
 
 const handleEditData = () => {
   currentStep.value = 1;
 };
 
-const backToIkas = () => {
+const backToProfile = () => {
   if (currentSlug.value) {
-    router.push({ path: '/ikas', query: { slug: currentSlug.value } });
+    router.push({ path: '/profile-resiko', query: { slug: currentSlug.value } });
   } else {
     router.push('/stakeholders');
   }
@@ -142,23 +70,21 @@ const backToIkas = () => {
 <template>
   <Pageheader :propData="pageData" />
 
-  <!-- Show warning if no stakeholder -->
   <div v-if="!currentSlug" class="row">
     <div class="col-12">
-      <div class="alert alert-warning">
+      <div class="alert alert-warning shadow-sm border-0">
         <i class="ri-alert-line me-2"></i>
         Tidak ada stakeholder yang dipilih. Silakan kembali dan pilih stakeholder terlebih dahulu.
       </div>
     </div>
   </div>
 
-  <!-- Two-Step Wizard -->
   <template v-else>
     <!-- Step Indicator -->
     <div class="row mb-2">
       <div class="col-12">
-        <div class="card custom-card step-card">
-          <div class="card-body py-4">
+        <div class="card custom-card step-card shadow-none border">
+          <div class="card-body py-4 bg-white">
             <div class="d-flex align-items-center justify-content-center gap-3">
               <!-- Step 1 -->
               <div class="step-item" :class="{ active: currentStep === 1, completed: currentStep > 1 }">
@@ -177,7 +103,7 @@ const backToIkas = () => {
                 <div class="step-indicator">
                   <span class="fs-18">2</span>
                 </div>
-                <span class="step-label">Penilaian IKAS</span>
+                <span class="step-label">Survey Resiko</span>
               </div>
             </div>
           </div>
@@ -187,32 +113,29 @@ const backToIkas = () => {
 
     <!-- Step 1: Respondent Form -->
     <template v-if="currentStep === 1">
-      <RespondentForm 
-        :stakeholder="currentStakeholder"
+      <RespondentFormResiko 
         @submit="handleFormSubmit"
-        @cancel="backToIkas"
+        @cancel="backToProfile"
       />
     </template>
 
     <!-- Step 2: Assessment View -->
     <template v-else-if="currentStep === 2">
-      <AssessmentView 
+      <ResikoView 
         :embedded="true"
         @edit="handleEditData"
-        @back="backToIkas"
+        @back="backToProfile"
       />
     </template>
   </template>
 </template>
 
 <style scoped>
-/* Step Card Styling */
 .step-card {
   border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
 }
 
-/* Step Item Container */
 .step-item {
   display: flex;
   flex-direction: column;
@@ -242,7 +165,6 @@ const backToIkas = () => {
   font-weight: 600;
 }
 
-/* Step Indicator Badge */
 .step-indicator {
   width: 36px;
   height: 36px;
@@ -258,7 +180,6 @@ const backToIkas = () => {
   transition: all 0.3s ease;
 }
 
-/* Step Label */
 .step-label {
   font-size: 0.8rem;
   font-weight: 600;
@@ -267,7 +188,6 @@ const backToIkas = () => {
   transition: all 0.3s ease;
 }
 
-/* Divider Line */
 .step-divider {
   width: 40px;
   height: 2px;

@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, watch } from 'vue';
 import { useAssessmentStore } from '@/stores/assessment';
 import type { RespondentProfile } from '@/types/assessment.types';
+import type { Stakeholder } from '@/types/stakeholders.types';
 
 const assessmentStore = useAssessmentStore();
+
+const props = defineProps<{
+  stakeholder?: Stakeholder | null;
+}>();
 
 const emit = defineEmits<{
   (e: 'submit'): void;
@@ -41,7 +46,6 @@ const formData = reactive<Partial<RespondentProfile>>({
   tahunPengukuran: new Date().getFullYear().toString(),
   targetLevel: 3,
   targetNilai: '2.51 - 3.50',
-
   tanggalPengisian: new Date().toISOString().split('T')[0]
 });
 
@@ -51,10 +55,36 @@ const errors = reactive<Record<string, string>>({});
 // Auto-save indicator
 const saveIndicator = ref('');
 
-// Initialize form from store
+// Pre-fill from stakeholder data
+const prefillFromStakeholder = (stakeholder: Stakeholder) => {
+  if (stakeholder.sub_sektor?.nama_sub_sektor) {
+    formData.sektor = stakeholder.sub_sektor.nama_sub_sektor;
+  } else if (stakeholder.sektor) {
+    formData.sektor = stakeholder.sektor;
+  }
+  if (stakeholder.alamat) {
+    formData.alamat = stakeholder.alamat;
+  }
+  if (stakeholder.email) {
+    formData.email = stakeholder.email;
+  }
+};
+
+// Initialize form from store, then overlay stakeholder data
 onMounted(() => {
   if (assessmentStore.respondentProfile) {
     Object.assign(formData, assessmentStore.respondentProfile);
+  }
+  // Pre-fill from stakeholder (overrides stored data for these fields)
+  if (props.stakeholder) {
+    prefillFromStakeholder(props.stakeholder);
+  }
+});
+
+// Watch for stakeholder changes
+watch(() => props.stakeholder, (newVal) => {
+  if (newVal) {
+    prefillFromStakeholder(newVal);
   }
 });
 
@@ -186,6 +216,18 @@ const startAssessment = () => {
           <!-- Form -->
           <form @submit.prevent="startAssessment">
             <div class="row">
+              <!-- Instansi (Read-only from stakeholder) -->
+              <div class="col-12 mb-3" v-if="stakeholder">
+                <label class="form-label">Instansi / Perusahaan</label>
+                <input 
+                  type="text" 
+                  class="form-control bg-light"
+                  :value="stakeholder.nama_perusahaan"
+                  readonly
+                />
+                <small class="text-muted">Diambil otomatis dari data Perusahaan</small>
+              </div>
+
               <!-- Nama Responden -->
               <div class="col-md-6 mb-3">
                 <label class="form-label">Nama Responden <span class="text-danger">*</span></label>
@@ -214,17 +256,19 @@ const startAssessment = () => {
                 <div v-if="errors.jabatanResponden" class="invalid-feedback">{{ errors.jabatanResponden }}</div>
               </div>
 
-              <!-- Email -->
+              <!-- Email (pre-filled from stakeholder) -->
               <div class="col-md-6 mb-3">
                 <label class="form-label">Alamat Surel (Email) <span class="text-danger">*</span></label>
                 <input 
                   type="email" 
                   class="form-control"
-                  :class="{ 'is-invalid': errors.email }"
+                  :class="[{ 'is-invalid': errors.email }, stakeholder ? 'bg-light' : '']"
                   v-model="formData.email"
                   @blur="handleFieldBlur('email')"
                   placeholder="email@example.com"
+                  :readonly="!!stakeholder"
                 />
+                <small v-if="stakeholder" class="text-muted">Diambil dari data Perusahaan</small>
                 <div v-if="errors.email" class="invalid-feedback">{{ errors.email }}</div>
               </div>
 
@@ -242,18 +286,29 @@ const startAssessment = () => {
                 <div v-if="errors.nomorTelepon" class="invalid-feedback">{{ errors.nomorTelepon }}</div>
               </div>
 
-              <!-- Sektor -->
+              <!-- Sektor (pre-filled from stakeholder sub_sektor) -->
               <div class="col-md-6 mb-3">
                 <label class="form-label">Sektor <span class="text-danger">*</span></label>
-                <select 
-                  class="form-select"
-                  v-model="formData.sektor"
-                  @change="handleFieldBlur('sektor')"
-                >
-                  <option v-for="option in sektorOptions" :key="option" :value="option">
-                    {{ option }}
-                  </option>
-                </select>
+                <template v-if="stakeholder">
+                  <input 
+                    type="text" 
+                    class="form-control bg-light"
+                    :value="formData.sektor"
+                    readonly
+                  />
+                  <small class="text-muted">Diambil dari sub-sektor Perusahaan</small>
+                </template>
+                <template v-else>
+                  <select 
+                    class="form-select"
+                    v-model="formData.sektor"
+                    @change="handleFieldBlur('sektor')"
+                  >
+                    <option v-for="option in sektorOptions" :key="option" :value="option">
+                      {{ option }}
+                    </option>
+                  </select>
+                </template>
               </div>
 
               <!-- Tanggal Pengisian -->
@@ -267,17 +322,19 @@ const startAssessment = () => {
                 />
               </div>
 
-              <!-- Alamat -->
+              <!-- Alamat (pre-filled from stakeholder) -->
               <div class="col-12 mb-3">
                 <label class="form-label">Alamat <span class="text-danger">*</span></label>
                 <textarea 
                   class="form-control"
-                  :class="{ 'is-invalid': errors.alamat }"
+                  :class="[{ 'is-invalid': errors.alamat }, stakeholder ? 'bg-light' : '']"
                   v-model="formData.alamat"
                   @blur="handleFieldBlur('alamat')"
                   rows="2"
                   placeholder="Alamat lengkap instansi"
+                  :readonly="!!stakeholder"
                 ></textarea>
+                <small v-if="stakeholder" class="text-muted">Diambil dari data Perusahaan</small>
                 <div v-if="errors.alamat" class="invalid-feedback">{{ errors.alamat }}</div>
               </div>
 

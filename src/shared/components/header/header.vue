@@ -20,7 +20,7 @@
 
         <div class="header-element">
             <div class="horizontal-logo">
-                  <router-link to="/dashboards/sales" class="header-logo">
+                  <router-link :to="dashboardPath" class="header-logo">
                     <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
                     <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
                     <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
@@ -609,6 +609,7 @@ onMounted(() => {
 const { fotoProfileUrl } = storeToRefs(profileStore);
 const displayName = computed(() => profileStore.displayName);
 const displayEmail = computed(() => profileStore.displayEmail);
+const dashboardPath = computed(() => authStore.isAdmin ? '/dashboard' : '/dashboards');
 
 // Refs
 const isFullScreen = ref(false);

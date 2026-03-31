@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
                             <div class="col-xl-12 d-grid mt-3">
-                                <router-link to="/dashboards/sales" class="btn btn-lg btn-primary">Verify</router-link>
+                                <router-link to="/" class="btn btn-lg btn-primary">Verify</router-link>
                             </div>
                         </div>
                         <div class="text-center">
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
     <div class="col-xxl-3 col-xl-3 col-lg-12 d-xl-block d-none px-0">
         <div class="authentication-cover overflow-hidden">
             <div class="authentication-cover-logo">
-                <router-link to="/dashboards/sales">
+                <router-link to="/">
                     <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="desktop-dark">
                 </router-link>
             </div>

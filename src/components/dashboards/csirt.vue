@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
 import { ref, onMounted, watch, computed } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
@@ -599,6 +599,7 @@ export default {
 
         const updateProfile = async () => {
             if (!validateProfileForm() || !currentCsirt.value) return;
+            const oldId = currentCsirt.value.id;
             try {
                 await csirtService.update(currentCsirt.value.id, {
                     id_perusahaan       : currentCsirt.value.id_perusahaan ?? currentCsirt.value.perusahaan?.id,
@@ -612,6 +613,16 @@ export default {
                 await csirtStore.refresh();
                 showEditProfileModal.value = false;
                 showNotification("Profil CSIRT berhasil diperbarui!", "success");
+
+                // Redirect if name/slug changed
+                const updated = csirtStore.csirts.find(c => String(c.id) === String(oldId));
+                if (updated) {
+                    const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-$|\s+/g, '');
+                    const newSlug = updated.slug || toSlug(updated.nama_csirt);
+                    if (csirtSlug.value !== String(oldId) && csirtSlug.value !== newSlug) {
+                        router.push(`/csirt/${newSlug}`);
+                    }
+                }
             } catch {
                 showNotification("Gagal memperbarui profil CSIRT.", "error");
             }
