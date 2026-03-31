@@ -132,14 +132,13 @@ const accountDetails = computed(() => [
                     <i class="ri-pie-chart-line"></i>{{ displaySubSektor }}
                   </span>
                 </div>
-                <p class="profile-email-text mb-1">
-                  <i class="ri-mail-line me-1"></i>{{ displayEmail }}
+                <p class="profile-email-text mb-0">
+                  <i class="ri-mail-line me-2 text-primary"></i>{{ displayEmail }}
                 </p>
-                <div class="profile-meta-row">
-                  <span><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span>
-                  <span class="contact-bar-sep-inline"></span>
-                  <span><i class="ri-map-pin-line me-1"></i>{{ displayLocation }}</span>
-                </div>
+               <div class="profile-email-text d-flex gap-3">
+                <span><i class="ri-phone-line me-2 text-primary"></i>{{ displayPhone }}</span>
+                <span><i class="ri-map-pin-line me-2 text-primary"></i>{{ displayLocation }}</span>
+            </div>
               </div>
             </div>
           </div>
