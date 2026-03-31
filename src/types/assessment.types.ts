@@ -65,16 +65,13 @@ export interface AssessmentProgress {
 
 // Respondent Profile
 export interface RespondentProfile {
-    sektor: string;
-    alamat: string;
+    namaLengkap: string;
+    jabatan: string;
+    perusahaan: string;
     email: string;
     nomorTelepon: string;
-    namaResponden: string;
-    jabatanResponden: string;
-    tahunPengukuran: string;
-    targetLevel: 1 | 2 | 3 | 4 | 5;
-    targetNilai: string;
-    tanggalPengisian: string;
+    sektor: string;
+    sertifikat: string;
     createdAt: number;
     updatedAt: number;
 }

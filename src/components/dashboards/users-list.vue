@@ -4,21 +4,12 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useAuthStore } from "../../stores/auth";
 import { useProfileStore } from "../../stores/profile";
 import { usersService } from "../../services/users.service";
+import { stakeholdersService } from "../../services/stakeholders.service";
 import { roleService, type Role } from "../../services/role.service";
 import { useListPage } from "../../composables/useListPage";
 import { formatImageUrl } from "../../utils/media";
-
-
-interface User {
-  id: string;
-  slug: string;
-  username: string;
-  name: string;
-  jabatan: string;
-  role: string;
-  photo?: string;
-  joined?: string;
-}
+import type { User } from "../../types/user.types";
+import type { Stakeholder } from "../../types/stakeholders.types";
 
 export default {
   data() {
@@ -46,6 +37,7 @@ export default {
     // Data from API
     const usersData = ref<User[]>([]);
     const rolesData = ref<Role[]>([]);
+    const stakeholdersData = ref<Stakeholder[]>([]);
 
     // CRUD state
     const showEditModal    = ref(false);
@@ -68,10 +60,18 @@ export default {
           slug: (u as any).slug || (u as any).username || (u as any).id?.toString() || '',
           username: (u as any).username || (u as any).email || '',
           name: (u as any).name || (u as any).username || 'Unknown',
+          email: (u as any).email || '',
+          phone: (u as any).phone || '',
+          location: (u as any).location || '',
           jabatan: (u as any).jabatan || '',
           role: (u as any).role || (u as any).role_name || 'user',
+          joined: (u as any).joined || (u as any).created_at || '',
           photo: formatImageUrl((u as any).photo || (u as any).foto_profile),
-          joined: (u as any).joined || (u as any).created_at
+          id_perusahaan: (u as any).id_perusahaan || undefined,
+          id_jabatan: (u as any).id_jabatan || undefined,
+          jabatan_name: (u as any).jabatan_name || undefined,
+          role_name: (u as any).role_name || undefined,
+          foto_profile: (u as any).foto_profile || undefined
         };
 
         // If this is the current logged-in user, use profile store data
@@ -90,14 +90,16 @@ export default {
     const loadUsers = async () => {
       loading.value = true;
       try {
-        // Fetch users and roles from API in parallel
-        const [users, roles] = await Promise.all([
+        // Fetch users, roles, and stakeholders from API in parallel
+        const [users, roles, stakeholders] = await Promise.all([
           usersService.getAll(),
-          roleService.getAll()
+          roleService.getAll(),
+          stakeholdersService.getAll()
         ]);
         
         usersData.value = users as any;
         rolesData.value = roles;
+        stakeholdersData.value = stakeholders;
         
         // Load profile data
         await profileStore.switchUser();
@@ -129,6 +131,13 @@ export default {
     });
 
     const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
+
+    // Helper function to get company name by ID
+    const getCompanyName = (companyId: string | undefined): string => {
+      if (!companyId) return '-';
+      const company = stakeholdersData.value.find(s => s.id === companyId);
+      return company?.nama_perusahaan || '-';
+    };
 
     // EDIT ROLE
     const openEditModal = (item: User) => {
@@ -181,7 +190,22 @@ export default {
       if (!currentDeleteItem.value) return;
 
       try {
+        // Check if user has an associated company
+        const userIdPerusahaan = currentDeleteItem.value.id_perusahaan;
+        
+        // Delete user
         await usersService.delete(currentDeleteItem.value.id);
+        
+        // If user has an associated company, delete it as well (cascade delete)
+        if (userIdPerusahaan) {
+          try {
+            await stakeholdersService.delete(userIdPerusahaan);
+            console.log(`Company (${userIdPerusahaan}) deleted along with user`);
+          } catch (companyError) {
+            console.warn('Failed to delete associated company:', companyError);
+            // Continue even if company deletion fails
+          }
+        }
         
         // Remove from local data
         usersData.value = usersData.value.filter((u: any) => 
@@ -189,7 +213,8 @@ export default {
         );
         
         showDeleteModal.value = false;
-        showNotification("User berhasil dihapus!", "success");
+        const message = userIdPerusahaan ? "User dan Perusahaan berhasil dihapus!" : "User berhasil dihapus!";
+        showNotification(message, "success");
       } catch (error) {
         console.error('Failed to delete user:', error);
         showNotification("Gagal menghapus user!", "error");
@@ -213,7 +238,7 @@ export default {
       formData, showToast, toastMessage, toastType,
       rolesData, countAdmins, countRegular,
       openEditModal, updateUser, openDeleteModal, deleteUser,
-      getStatusClass, clearSearch, toggleSort, getAvatarColorClass,
+      getStatusClass, clearSearch, toggleSort, getAvatarColorClass, getCompanyName,
     };
   },
 };
@@ -345,6 +370,12 @@ export default {
                         <span>Jabatan</span>
                       </div>
                     </th>
+                    <th class="fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-building-line text-primary"></i>
+                        <span>Perusahaan</span>
+                      </div>
+                    </th>
                     <th class="sortable fw-semibold">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-shield-user-line text-primary"></i>
@@ -360,7 +391,7 @@ export default {
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="6" class="text-center py-5">
+                    <td colspan="7" class="text-center py-5">
                       <div class="empty-state">
                         <div class="empty-icon-ring mb-3">
                           <div class="empty-icon-inner">
@@ -397,6 +428,9 @@ export default {
                       <span class="badge bg-light text-dark border fs-12">
                         <i class="ri-briefcase-line me-1"></i>{{ item.jabatan }}
                       </span>
+                    </td>
+                    <td class="align-middle">
+                      <span class="text-muted fs-13">{{ getCompanyName(item.id_perusahaan) }}</span>
                     </td>
                     <td class="align-middle">
                       <span :class="['badge rounded-pill px-3 py-2 fs-12', getStatusClass(item.role)]">

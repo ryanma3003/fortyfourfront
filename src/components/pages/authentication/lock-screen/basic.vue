@@ -52,7 +52,7 @@ onMounted(() => {
                     <div class="card custom-card border-0 my-4">
                         <div class="card-body p-5">
                             <div class="mb-4">
-                                <router-link to="/dashboards/sales">
+                                <router-link to="/">
                                     <img src="/images/brand-logos/toggle-logo.png" alt="logo" class="desktop-dark">
                                 </router-link>
                             </div>
@@ -77,7 +77,7 @@ onMounted(() => {
                                     </div>
                                 </div>
                                 <div class="col-xl-12 d-grid mt-2">
-                                    <router-link to="/dashboards/sales"
+                                    <router-link to="/"
                                         class="btn btn-lg btn-primary">Unlock</router-link>
                                 </div>
                             </div>

@@ -176,6 +176,7 @@ export const useProfileStore = defineStore('profile', {
           if (authStore.currentUser) {
             authStore.currentUser.name  = mapped.name  || authStore.currentUser.name;
             authStore.currentUser.email = mapped.email || authStore.currentUser.email;
+            authStore.currentUser.id_perusahaan = mapped.idPerusahaan || authStore.currentUser.id_perusahaan;
           }
         } catch (err: any) {
           console.warn('GET /api/me failed, falling back to auth store:', err);
@@ -242,6 +243,7 @@ export const useProfileStore = defineStore('profile', {
           authStore.currentUser.name  = mapped.name  || authStore.currentUser.name;
           authStore.currentUser.email = mapped.email || authStore.currentUser.email;
           authStore.currentUser.role  = mapped.role  || authStore.currentUser.role;
+          authStore.currentUser.id_perusahaan = mapped.idPerusahaan || authStore.currentUser.id_perusahaan;
         }
       } catch (error: any) {
         console.error('Failed to fetch profile:', error);
@@ -388,6 +390,7 @@ export const useProfileStore = defineStore('profile', {
         if (authStore.currentUser) {
           authStore.currentUser.name  = this.name  || authStore.currentUser.name;
           authStore.currentUser.email = this.email || authStore.currentUser.email;
+          authStore.currentUser.id_perusahaan = this.idPerusahaan || authStore.currentUser.id_perusahaan;
         }
 
         // ── 8. Re-fetch from API to confirm full server state ──

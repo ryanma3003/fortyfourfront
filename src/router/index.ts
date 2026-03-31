@@ -25,10 +25,6 @@ const routes: RouteRecordRaw[] = [
     component: Maindashboard,
     children:
       [
-        // {
-        //   path: '',
-        //   redirect: '/dashboards/sales',
-        // },
         //Dashboard
         //Dashboard
         {
@@ -68,6 +64,11 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../views/admin/Dashboard.vue"),
             },
             {
+              path: 'notif',
+              name: "Notif",
+              component: () => import("../components/dashboards/notif.vue"),
+            },
+            {
               path: 'users',
               name: "Users List",
               component: () => import("../components/dashboards/users-list.vue"),
@@ -76,6 +77,11 @@ const routes: RouteRecordRaw[] = [
               path: 'users/:slug',
               name: 'Profile User',
               component: () => import("../components/dashboards/user-profile.vue"),
+            },
+            {
+              path: '/users/edit/:slug',
+              name: 'Edit User Profile',
+              component: () => import("../components/pages/user-profile-settings.vue"),
             },
             {
               path: 'roles',
@@ -128,12 +134,24 @@ const routes: RouteRecordRaw[] = [
           name: 'Csirt',
           component: () => import("../components/dashboards/csirt.vue"),
         },
+        {
+          path: `profile-resiko`,
+          name: 'Profile Resiko',
+          meta: { requiresStakeholder: true },
+          component: () => import("../components/pages/profile-resiko.vue"),
+        },
+        {
+          path: `survey-resiko`,
+          name: 'Survey Resiko',
+          meta: { requiresStakeholder: true },
+          component: () => import("../components/resiko-crud.vue"),
+        },
 
         //children: [
         //   {
         //     path: 'sales',
         //     name: "Sales",
-        //     component: () => import("../components/dashboards/sales.vue"),
+
         //   },
         //   {
         //     path: 'analytics',
@@ -399,11 +417,6 @@ const routes: RouteRecordRaw[] = [
           path: `applications`,
           name: 'Applications',
           children: [
-            {
-              path: 'chat',
-              name: "Chat",
-              component: () => import("../components/applications/chat.vue"),
-            },
             {
               path: 'email',
               name: "Email",

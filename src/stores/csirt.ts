@@ -183,11 +183,22 @@ export const useCsirtStore = defineStore('csirt', {
             this.error = null;
 
             try {
+                // 1. Manually delete all child SDM and SE to bypass SQL 'ON DELETE RESTRICT' errors
+                const sdms = this.sdmList.filter(s => String(s.id_csirt) === String(id) || String((s as any).csirt?.id) === String(id));
+                const ses = this.seList.filter(s => String(s.id_csirt) === String(id) || String((s as any).csirt?.id) === String(id));
+
+                await Promise.all([
+                    ...sdms.map(sdm => csirtService.deleteSdm(sdm.id).catch(e => console.warn('Failed to cascade delete SDM:', e))),
+                    ...ses.map(se => csirtService.deleteSe(se.id).catch(e => console.warn('Failed to cascade delete SE:', e)))
+                ]);
+
+                // 2. Delete the parent CSIRT
                 await csirtService.delete(id);
                 const index = this.csirts.findIndex(c => String(c.id) === String(id));
                 if (index !== -1) {
                     this.csirts.splice(index, 1);
                 }
+                
                 this.loading = false;
                 return { success: true };
             } catch (error: any) {

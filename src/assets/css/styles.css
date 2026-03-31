@@ -32610,14 +32610,14 @@ ul.pos-system-orders-list li:last-child {
   position: absolute;
   width: 8px;
   height: 8px;
-  inset-block-start: 0.9rem;
-  inset-inline-end: 0.4rem;
+  inset-block-start: 0.65rem;
+  inset-inline-end: 0.5rem;
 }
 
 @media (min-width: 576px) {
   .header-icon-pulse {
-    inset-block-start: 1.35rem;
-    inset-inline-end: 10px;
+    inset-block-start: 1.25rem;
+    inset-inline-end: 14px;
     size: 5px;
   }
 }
@@ -32824,7 +32824,7 @@ ul.pos-system-orders-list li:last-child {
 .main-header-container .header-link {
   display: flex;
   align-items: center;
-  padding: 1rem 0.5rem;
+  padding: 0.65rem 0.5rem;
   position: relative;
 }
 
@@ -32835,8 +32835,8 @@ ul.pos-system-orders-list li:last-child {
 }
 
 .main-header-container .header-link-icon {
-  width: 2.3rem;
-  height: 2.3rem;
+  width: 2rem;
+  height: 2rem;
   font-size: 1rem;
   fill: var(--header-icon-color);
   color: var(--header-icon-color);
@@ -32846,18 +32846,41 @@ ul.pos-system-orders-list li:last-child {
   border-radius: 50%;
   background-color: var(--custom-white);
   border: 1px solid var(--default-border);
+  object-fit: cover;
+}
+
+@media (min-width: 768px) {
+  .main-header-container .header-link-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.25rem;
+    padding: 7px;
+  }
+}
+
+.main-header-container img.header-link-icon {
+  padding: 0;
 }
 
 .header-link-icons {
-  width: 2.1rem;
-  height: 2.1rem;
-  font-size: 1rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.85rem;
   fill: var(--header-icon-color);
   color: var(--header-icon-color);
   transition: all ease 0.05s;
   position: relative;
-  padding: 7px;
+  padding: 5px;
   margin-left: 2px;
+}
+
+@media (min-width: 768px) {
+  .header-link-icons {
+    width: 2.1rem;
+    height: 2.1rem;
+    font-size: 1rem;
+    padding: 7px;
+  }
 }
 
 .main-header-container .dropdown-toggle {
@@ -33050,8 +33073,8 @@ ul.pos-system-orders-list li:last-child {
 }
 
 .header-profile-img {
-  width: 2rem;
-  height: 2rem;
+  width: 3.25rem;
+  height: 3.25rem;
 }
 
 /* End::header-search */

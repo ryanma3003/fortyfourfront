@@ -14,16 +14,18 @@ import { csirtService } from "../../services/csirt.service";
 import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
+import { useResikoStore } from "../../stores/resiko";
 
 const authStore = useAuthStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
+const resikoStore = useResikoStore();
 const csirtStore = useCsirtStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Use storeToRefs to get reactive refs — ensures computed() tracks store state changes
 const { ikasDataMap, ikasVersion } = storeToRefs(ikasStore);
-const { kseDataMap, kseVersion } = storeToRefs(kseStore);
+const { resikoVersion } = storeToRefs(resikoStore);
 
 // Import FilePond styles
 import "filepond/dist/filepond.min.css";
@@ -99,6 +101,7 @@ onMounted(async () => {
     }
     ikasStore.initialize();
     kseStore.initialize();
+    resikoStore.initialize();
     if (!csirtStore.initialized) {
         await csirtStore.initialize();
     }
@@ -125,19 +128,8 @@ const penilaian = computed(() => {
   // Read version signals so Vue tracks them as computed dependencies.
   // This forces re-evaluation whenever store data is loaded/saved.
   void ikasVersion.value;
-  void kseVersion.value;
+  void resikoVersion.value;
   const ikasData = ikasDataMap.value[slug] ?? ikasStore.getIkasData(slug);
-
-  // KSE entries are stored under compound keys like `${slug}_kse_${timestamp}`
-  // (created by KategorisasiSE-list.vue), NOT under the plain stakeholder slug.
-  // Check if any such entry exists with submitted or filled data.
-  const kseEntryKeys = Object.keys(kseDataMap.value).filter(k => k.startsWith(slug + '_kse_'));
-  const hasKseData = kseEntryKeys.some(k => {
-    const d = kseDataMap.value[k];
-    return d && (d.isSubmitted || d.totalBobot > 0 || d.lastUpdated !== '');
-  });
-  // Also check the legacy plain-slug key just in case
-  const kseData = kseDataMap.value[slug] ?? kseStore.getKseData(slug);
 
   return [
     {
@@ -157,7 +149,16 @@ const penilaian = computed(() => {
       svgColor: "success",
       title: "CSIRT",
       value: getCsirtStatus()
+    },
+    {
+      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 2L1 21h22L12 2zm1 14h-2v-2h2v2zm0-4h-2V8h2v4z"></path></svg>`,
+      svgColor: "danger",
+      title: "Survey Resiko",
+      value: resikoStore.progressMap[slug]?.status === 'COMPLETED' 
+        ? "Sudah Diisi" 
+        : (resikoStore.answersMap[slug] && Object.keys(resikoStore.answersMap[slug]).length > 0 ? "Dalam Proses" : "Belum Diisi")
     }
+    
   ];
 });
 
@@ -661,6 +662,31 @@ html.dark .hero-card-shell {
 }
 
 /* ─────────────────────────────────────────────
+   PIC TABLE UTILITIES
+   ───────────────────────────────────────────── */
+.header-icon-ring {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hover-up { transition: transform 0.2s ease; }
+.hover-up:hover { transform: translateY(-2px); }
+
+.hover-lift { transition: all 0.2s ease; }
+.hover-lift:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+
+.btn-primary-light { background: rgba(37,99,235,0.1); color: #2563eb; border: none; }
+.btn-primary-light:hover { background: #2563eb; color: #fff; }
+
+.btn-danger-light { background: rgba(220,38,38,0.1); color: #dc2626; border: none; }
+.btn-danger-light:hover { background: #dc2626; color: #fff; }
+
+.card-body1 {
+  padding: 0;
+  margin: 10px;
+}
+
+/* ─────────────────────────────────────────────
    RESPONSIVE
    ───────────────────────────────────────────── */
 @media (max-width: 1199px) {
@@ -784,7 +810,7 @@ html.dark .hero-card-shell {
                       />
 
                       <!-- Isi IKAS button (admin only, when not filled) -->
-                      <div v-if="isAdmin && (!ikasDataMap[stakeholderSlug.value]?.total_kategori || ikasDataMap[stakeholderSlug.value]?.total_kategori === 'INPUT BELUM LENGKAP')" class="col-12 mb-3">
+                      <div v-if="isAdmin && (!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP')" class="col-12 mb-3">
                         <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
                           <div class="d-flex align-items-center gap-2">
                             <i class="ri-information-line fs-16"></i>
@@ -811,79 +837,113 @@ html.dark .hero-card-shell {
                         </div>
                       </div>
 
+                      <!-- Survey Resiko button (admin only, when not yet completed) -->
+                      <div v-if="isAdmin && resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED'" class="col-12 mb-3">
+                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
+                          <div class="d-flex align-items-center gap-2">
+                            <i class="ri-error-warning-line fs-16"></i>
+                            <span class="fs-13">Survey Resiko belum lengkap untuk perusahaan ini.</span>
+                          </div>
+                          <button @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                            <i class="ri-add-circle-line fs-14"></i>
+                            <span>Isi Survey Resiko</span>
+                          </button>
+                        </div>
+                      </div>
+
+                     
+
      
                       <div class="col-12 mb-4">
-                        <div class="card custom-card">
-                          <div class="card-header d-flex align-items-center justify-content-between gap-3 bg-white border-bottom">
+                        <div class="card custom-card overflow-hidden shadow-sm">
+                          <div class="card-header d-flex align-items-center justify-content-between py-3 bg-white border-bottom border-light">
                             <div class="d-flex align-items-center gap-2">
-                              <div class="card-title mb-0 fw-semibold text-dark">PIC Perusahaan</div>
+                              <div class="header-icon-ring bg-primary-transparent me-1">
+                                <i class="ri-contacts-line text-primary fs-16"></i>
+                              </div>
+                              <div>
+                                <h6 class="card-title mb-0 fw-bold header-card-title text-dark">PIC Perusahaan</h6>
+                                <p class="text-muted fs-11 mb-0">Kelola kontak Person in Charge (PIC) perusahaan ini</p>
+                              </div>
                               <span class="pic-count-badge bg-primary-transparent text-primary ms-2">{{ friends.length }}</span>
                             </div>
-                            <button v-if="isAdmin" @click="router.push({ path: '/pic-add', query: { slug: currentStakeholder.slug, id_perusahaan: currentStakeholder.id } })" class="btn-sm btn-primary d-flex align-items-center gap-2 btn-edit-profile">
-                              <i class="ri-add-line"></i><span>Add PIC</span>
+                            <button v-if="isAdmin" @click="router.push({ path: '/pic-add', query: { slug: currentStakeholder.slug, id_perusahaan: currentStakeholder.id } })" class="btn btn-sm btn-primary d-flex align-items-center gap-2 px-3 py-2 rounded-pill shadow-sm hover-up">
+                              <i class="ri-add-line fs-14"></i><span class="fw-bold">Add PIC</span>
                             </button>
                           </div>
-                          <div class="card-body p-0">
-                            <div class="stakeholder-table-wrap" style="border:none;border-radius:0;box-shadow:none">
+                          
+                          <div class="card-body1 p-0">
+                            <div class="stakeholder-table-wrap border-0 rounded-0 shadow-none">
                               <table class="table stakeholder-table text-nowrap mb-0">
                                 <thead class="stakeholder-thead">
                                   <tr>
-                                    <th class="th-no">No</th>
+                                    <th class="th-no text-center">NO</th>
                                     <th>
                                       <div class="d-flex align-items-center gap-2">
-                                        <i class="ri-user-line text-primary"></i>Nama
+                                        <i class="ri-user-6-line text-muted"></i>NAMA PIC
                                       </div>
                                     </th>
                                     <th>
                                       <div class="d-flex align-items-center gap-2">
-                                        <i class="ri-phone-line text-primary"></i>Telepon
+                                        <i class="ri-phone-fill text-muted"></i>KONTAK TELEPON
                                       </div>
                                     </th>
-                                    <th v-if="isAdmin" class="text-center th-actions-sm">Aksi</th>
+                                    <th v-if="isAdmin" class="text-center th-actions-sm">AKSI</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr v-if="!friends.length && !isLoadingPics">
+                                  <!-- Skeleton / Loading State -->
+                                  <tr v-if="isLoadingPics">
                                     <td :colspan="isAdmin ? 4 : 3" class="text-center py-5">
-                                      <div class="empty-state">
-                                        <div class="empty-icon-ring mb-3">
-                                          <div class="empty-icon-inner"><i class="ri-contacts-line"></i></div>
-                                        </div>
-                                        <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada PIC</h6>
-                                        <p class="text-muted fs-13 mb-0">Belum ada data PIC untuk perusahaan ini.</p>
+                                      <div class="d-flex flex-column align-items-center">
+                                        <div class="spinner-border spinner-border-sm text-primary mb-2"></div>
+                                        <span class="text-muted fs-12 fw-medium">Memuat data PIC...</span>
                                       </div>
                                     </td>
                                   </tr>
-                                  <tr v-if="isLoadingPics">
-                                    <td :colspan="isAdmin ? 4 : 3" class="text-center py-4">
-                                      <div class="spinner-border spinner-border-sm text-primary me-2"></div>
-                                      <span class="text-muted fs-13">Memuat data PIC...</span>
+
+                                  <!-- Empty State -->
+                                  <tr v-else-if="!friends.length">
+                                    <td :colspan="isAdmin ? 4 : 3" class="text-center py-5">
+                                      <div class="empty-state py-4">
+                                        <div class="empty-icon-ring mb-3">
+                                          <div class="empty-icon-inner"><i class="ri-contacts-book-2-line"></i></div>
+                                        </div>
+                                        <h6 class="fw-bold mb-1 text-dark">Daftar PIC Kosong</h6>
+                                        <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 320px;">Belum ada data PIC yang terdaftar untuk stakeholder ini.</p>
+                                      </div>
                                     </td>
                                   </tr>
-                                  <tr v-for="(pic, index) in friends" :key="pic.id" class="stakeholder-row">
+
+                                  <!-- Data Rows -->
+                                  <tr v-else v-for="(pic, index) in friends" :key="pic.id" class="stakeholder-row">
                                     <td class="align-middle text-center">
-                                      <span class="row-number">{{ index + 1 }}</span>
+                                      <span class="row-number fw-semibold">{{ index + 1 }}</span>
                                     </td>
                                     <td class="align-middle">
                                       <div class="d-flex align-items-center gap-3">
-                                        <div class="company-avatar" :class="getPicAvatarClass(pic.nama || '')">
-                                          <span class="company-avatar-letter">{{ pic.nama?.charAt(0)?.toUpperCase() }}</span>
+                                        <div class="company-avatar shadow-sm border border-white" :class="getPicAvatarClass(pic.nama || '')">
+                                          <span class="company-avatar-letter text-uppercase">{{ pic.nama?.charAt(0) }}</span>
                                         </div>
-                                        <span class="company-name">{{ pic.nama }}</span>
+                                        <div class="d-flex flex-column">
+                                          <span class="company-name text-dark fw-bold mb-0 lh-1">{{ pic.nama }}</span>
+                                          <span class="text-muted fs-11 mt-1">Person in Charge</span>
+                                        </div>
                                       </div>
                                     </td>
                                     <td class="align-middle">
-                                      <span class="text-muted fs-13">
-                                        <i class="ri-phone-line me-1"></i>{{ pic.telepon }}
-                                      </span>
+                                      <div class="d-inline-flex align-items-center px-2 py-1 rounded-2 border border-light">
+                                        <i class="ri-phone-line me-2 text-primary fs-12"></i>
+                                        <span class="fw-bold fs-13 text-black">{{ pic.telepon }}</span>
+                                      </div>
                                     </td>
                                     <td v-if="isAdmin" class="text-center align-middle">
-                                      <div class="d-flex gap-1 justify-content-center">
-                                        <button @click="editPIC(pic)" class="btn btn-sm btn-icon btn-wave btn-warning-light" title="Edit">
-                                          <i class="ri-pencil-line"></i>
+                                      <div class="d-flex gap-2 justify-content-center">
+                                        <button @click="editPIC(pic)" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Data">
+                                          <i class="ri-pencil-fill"></i>
                                         </button>
-                                        <button @click="deletePIC(pic)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
-                                          <i class="ri-delete-bin-line"></i>
+                                        <button @click="deletePIC(pic)" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Data">
+                                          <i class="ri-delete-bin-5-line"></i>
                                         </button>
                                       </div>
                                     </td>
@@ -894,6 +954,7 @@ html.dark .hero-card-shell {
                           </div>
                         </div>
                       </div>
+
 
                       <!-- ═══════════  TENTANG PERUSAHAAN  ═══════════ -->
                       <div class="col-12 mb-4">

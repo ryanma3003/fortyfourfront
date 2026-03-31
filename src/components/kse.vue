@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { stakeholdersData } from '../data/dummydata';
-import { kseCategories, type KseCategory, getMaxTotalBobot } from '../data/kse-data';
+import { kseCategories } from '../data/kse-data';
 import { useKseStore } from '../stores/kse';
 import { csirtService } from '../services/csirt.service';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
@@ -13,7 +13,6 @@ import 'vue3-toastify/dist/index.css';
 // Components
 import KseQuestionCard from './kse/KseQuestionCard.vue';
 import ProgressBar from './assessment/ProgressBar.vue';
-import PaginationControl from './assessment/PaginationControl.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -31,7 +30,15 @@ const stakeholderSlug = computed(() => String(route.query.stakeholder || '') || 
 // Navigation state
 const currentCategoryId = ref<string>(kseCategories[0].id);
 const currentPage = ref(1);
-const questionsPerPage = 5;
+const displayMode = ref<'grid' | 'list'>('grid');
+const uiSize = ref<'small' | 'medium' | 'large'>('medium');
+
+const displayModeIcon = computed(() => {
+  switch (displayMode.value) {
+    case 'list': return 'ri-list-check';
+    default: return 'ri-grid-fill';
+  }
+});
 
 // Initialize store
 onMounted(async () => {
@@ -177,18 +184,10 @@ const currentCategory = computed(() => {
 // Pagination Logic
 const currentQuestions = computed(() => {
   const category = currentCategory.value;
-  if (!category) return [];
-  
-  const start = (currentPage.value - 1) * questionsPerPage;
-  const end = start + questionsPerPage;
-  return category.questions.slice(start, end);
+  return category?.questions || [];
 });
 
-const totalPagesInCategory = computed(() => {
-  const category = currentCategory.value;
-  if (!category) return 1;
-  return Math.ceil(category.questions.length / questionsPerPage);
-});
+const totalPagesInCategory = computed(() => 1);
 
 // Progress Logic
 const totalQuestions = computed(() => {
@@ -214,47 +213,7 @@ const handleAnswer = (questionNo: string, optionKey: 'A' | 'B' | 'C', bobot: num
 };
 
 // Navigation Handlers
-const prevPage = () => {
-    if (currentPage.value > 1) {
-        currentPage.value--;
-    } else {
-        // Go to previous category if exists
-        const currentIndex = kseCategories.findIndex(c => c.id === currentCategoryId.value);
-        if (currentIndex > 0) {
-            currentCategoryId.value = kseCategories[currentIndex - 1].id;
-             // Go to last page of previous category
-            const prevCategory = kseCategories[currentIndex - 1];
-            currentPage.value = Math.ceil(prevCategory.questions.length / questionsPerPage);
-        }
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-const nextPage = () => {
-    if (currentPage.value < totalPagesInCategory.value) {
-        currentPage.value++;
-    } else {
-        // Go to next category if exists
-        const currentIndex = kseCategories.findIndex(c => c.id === currentCategoryId.value);
-        if (currentIndex < kseCategories.length - 1) {
-            currentCategoryId.value = kseCategories[currentIndex + 1].id;
-            currentPage.value = 1;
-        }
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-const canGoPrevious = computed(() => {
-    const isFirstCategory = kseCategories[0].id === currentCategoryId.value;
-    const isFirstPage = currentPage.value === 1;
-    return !(isFirstCategory && isFirstPage);
-});
-
-const canGoNext = computed(() => {
-    const isLastCategory = kseCategories[kseCategories.length - 1].id === currentCategoryId.value;
-    const isLastPage = currentPage.value === totalPagesInCategory.value;
-    return !(isLastCategory && isLastPage);
-});
+// Navigation logic removed as buttons are no longer present
 
 
 
@@ -540,7 +499,7 @@ const editData = () => {
       <!-- Main Content -->
       <div class="col-lg-9 col-md-8">
         <div class="main-content-card">
-          <div class="main-content-header">
+          <div class="main-content-header d-flex align-items-center justify-content-between">
             <div class="main-header-title-row">
               <div class="main-header-icon">
                 <i class="ri-file-list-3-line"></i>
@@ -550,30 +509,112 @@ const editData = () => {
                 <p class="main-header-subtitle">Silakan lengkapi pertanyaan di bawah ini sesuai kondisi instansi.</p>
               </div>
             </div>
+
+            <!-- Display Mode Switcher -->
+            <div class="display-mode-switcher d-flex align-items-center gap-2">
+                <!-- Layout Selector -->
+                <div class="dropdown me-1">
+                    <button class="btn btn-light btn-sm d-flex align-items-center gap-2 px-3 rounded-pill border shadow-sm" type="button" data-bs-toggle="dropdown">
+                        <i :class="displayModeIcon" class="fs-14"></i>
+                        <span class="fs-12 fw-bold text-uppercase ls-1">Tampilan</span>
+                        <i class="ri-arrow-down-s-line fs-12 opacity-50"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2 rounded-3 animate__animated animate__fadeIn">
+                        <li>
+                            <a class="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2" 
+                               :class="{ 'active': displayMode === 'grid' }"
+                               href="javascript:void(0);" @click="displayMode = 'grid'">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="ri-grid-fill fs-16"></i> 
+                                    <span class="fs-13">Grid View</span>
+                                </div>
+                                <i v-if="displayMode === 'grid'" class="ri-check-line fs-14"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2" 
+                               :class="{ 'active': displayMode === 'list' }"
+                               href="javascript:void(0);" @click="displayMode = 'list'">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="ri-list-check fs-16"></i> 
+                                    <span class="fs-13">List View</span>
+                                </div>
+                                <i v-if="displayMode === 'list'" class="ri-check-line fs-14"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Size Settings Selector -->
+                <div class="dropdown">
+                    <button class="btn btn-light btn-sm d-flex align-items-center gap-2 px-3 rounded-pill border shadow-sm" type="button" data-bs-toggle="dropdown">
+                        <i class="ri-equalizer-line fs-14"></i>
+                        <span class="fs-12 fw-bold text-uppercase ls-1">Ukuran</span>
+                        <i class="ri-arrow-down-s-line fs-12 opacity-50"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2 rounded-3 animate__animated animate__fadeIn" style="min-width: 180px;">
+                        <li>
+                            <a class="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2" 
+                               :class="{ 'active': uiSize === 'small' }"
+                               href="javascript:void(0);" @click="uiSize = 'small'">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="ri-font-size-2" style="font-size: 14px;"></i> 
+                                    <span class="fs-13">Ukuran Kecil</span>
+                                </div>
+                                <i v-if="uiSize === 'small'" class="ri-check-line fs-14"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2" 
+                               :class="{ 'active': uiSize === 'medium' }"
+                               href="javascript:void(0);" @click="uiSize = 'medium'">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="ri-font-size-2" style="font-size: 16px;"></i> 
+                                    <span class="fs-13">Ukuran Normal</span>
+                                </div>
+                                <i v-if="uiSize === 'medium'" class="ri-check-line fs-14"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2" 
+                               :class="{ 'active': uiSize === 'large' }"
+                               href="javascript:void(0);" @click="uiSize = 'large'">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="ri-font-size-2" style="font-size: 18px;"></i> 
+                                    <span class="fs-13">Ukuran Besar</span>
+                                </div>
+                                <i v-if="uiSize === 'large'" class="ri-check-line fs-14"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
           </div>
 
           <div class="main-content-body">
-            <transition-group name="fade-list" tag="div">
-              <KseQuestionCard
-                v-for="question in currentQuestions"
+            <transition-group 
+              name="fade-list" 
+              tag="div" 
+              class="row g-4"
+            >
+              <div 
+                v-for="question in currentQuestions" 
                 :key="question.no"
-                :question="question"
-                :selectedOption="kseData?.answers?.[question.no]?.selectedOption"
-                :readonly="isLocked"
-                @answer="handleAnswer"
-              />
+                :class="displayMode === 'list' ? 'col-12' : 'col-lg-6'"
+              >
+                <KseQuestionCard 
+                  :question="question" 
+                  :displayMode="displayMode"
+                  :fontSize="uiSize"
+                  :iconSize="uiSize"
+                  :selectedOption="kseData?.answers?.[question.no]?.selectedOption"
+                  :readonly="isLocked"
+                  @answer="handleAnswer"
+                />
+              </div>
             </transition-group>
 
-            <div class="main-content-pagination">
-              <PaginationControl
-                :currentPage="currentPage"
-                :totalPages="totalPagesInCategory"
-                :canGoPrevious="canGoPrevious"
-                :canGoNext="canGoNext"
-                @previous="prevPage"
-                @next="nextPage"
-              />
-            </div>
+            <!-- Removed category navigation buttons as requested -->
           </div>
         </div>
       </div>
@@ -939,8 +980,8 @@ const editData = () => {
 }
 
 .fade-list-leave-active {
-  position: absolute;
-  width: 100%;
+  /* Simplified for grid compatibility */
+  opacity: 0;
 }
 
 /* ========== COMPREHENSIVE DARK MODE ========== */

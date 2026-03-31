@@ -45,4 +45,5 @@ export interface UpdateUserPayload {
     location?: string;
     photo?: string;
     banner?: string;
+    confirm_password?: string;
 }
