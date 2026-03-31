@@ -364,7 +364,6 @@ const roleOptions = ['admin', 'User'];
 </script>
 
 <template>
-  <Pageheader :propData="dataToPass" />
 
   <!-- Alerts - Toast Style -->
   <transition name="slide-toast">
@@ -391,10 +390,13 @@ const roleOptions = ['admin', 'User'];
 
   <!-- Main container (style-2 layout) -->
   <div class="row">
-    <div class="col-xl-12">
-      <div class="card custom-card gradient-header-card">
-        <!-- Page Header -->
-        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+    <div class="col-xxl-9 col-xl-10 col-lg-12 mx-auto">
+      
+      <Pageheader :propData="dataToPass" />
+
+      <!-- HEADER BAR -->
+      <div class="card custom-card gradient-header-card mb-4 shadow-sm border-0">
+        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header border-bottom-0 pb-3 pt-3">
           <div class="d-flex align-items-center gap-3">
             <div class="header-icon-box">
               <i class="ri-user-settings-line"></i>
@@ -405,10 +407,10 @@ const roleOptions = ['admin', 'User'];
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="card-body p-4">
-          <!--  HERO CARD (banner + foto_profile + info)  -->
-          <div class="card custom-card hero-card-shell mb-4">
+      <!--  HERO CARD (banner + foto_profile + info)  -->
+      <div class="card custom-card hero-card-shell mb-4 shadow-sm border-0 rounded-4 overflow-hidden">
             <!-- Banner Image -->
             <div
               ref="bannerContainer"
@@ -514,19 +516,18 @@ const roleOptions = ['admin', 'User'];
             </div>
           </div>
 
-          <!-- INFORMASI AKUN -->
-          <div class="card custom-card gradient-header-card mb-4">
-            <div class="card-header d-flex align-items-center gap-3 users-header">
-              <div class="header-icon-box" style="width:36px;height:36px">
-                <i class="ri-user-settings-line" style="font-size:1.3rem"></i>
-              </div>
-              <div>
-                <div class="card-title mb-0 text-white fw-bold header-card-title">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
-                <div class="header-subtitle mt-1">Edit data detail profil pengguna</div>
-              </div>
+      <!-- INFORMASI AKUN -->
+      <div class="card custom-card mb-4 shadow-sm border-0 rounded-4">
+        <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom py-3 px-4">
+          <div class="d-flex align-items-center gap-2">
+            <div class="avatar avatar-sm bg-primary-transparent rounded-circle">
+              <i class="ri-user-settings-line text-primary fs-18"></i>
             </div>
-          <div class="card-body p-4">
-            <div class="row g-3">
+            <div class="card-title mb-0 fw-bold text-dark fs-15">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
+            <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Edit data detail profil pengguna</div>
+          </div>
+        <div class="card-body p-4 p-md-5">
+          <div class="row g-4">
               <!-- Name -->
               <div class="col-xl-6 col-lg-6 col-md-6">
                 <div class="form-group-split" @click="focusInput(nameInput)">
@@ -669,25 +670,24 @@ const roleOptions = ['admin', 'User'];
                     <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan" }}
                   </button>
                 </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-          <!--  UBAH PASSWORD  -->
-          <div v-if="!isAdminEditMode" class="card custom-card gradient-header-card mb-0">
-            <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
-              <div class="d-flex align-items-center gap-3">
-                <div class="header-icon-box" style="width:36px;height:36px">
-                  <i class="ri-lock-password-line" style="font-size:1.3rem"></i>
-                </div>
-                <div>
-                  <div class="card-title mb-0 text-white fw-bold header-card-title">Ubah Password</div>
-                  <div class="header-subtitle mt-1">Ganti kata sandi akun Anda</div>
-                </div>
-              </div>
-              <i class="ri-arrow-down-s-line text-white fs-20"></i>
+      <!--  UBAH PASSWORD  -->
+      <div v-if="!isAdminEditMode" class="card custom-card mb-4 shadow-sm border-0 rounded-4">
+        <div class="card-header d-flex justify-content-between align-items-center gap-3 bg-white border-bottom py-3 px-4" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
+          <div class="d-flex align-items-center gap-2">
+            <div class="avatar avatar-sm bg-primary-transparent rounded-circle">
+              <i class="ri-lock-password-line text-primary fs-18"></i>
             </div>
+            <div class="card-title mb-0 fw-bold text-dark fs-15">Ubah Password</div>
+            <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Ganti kata sandi akun Anda</div>
+          </div>
+          <i class="ri-arrow-down-s-line text-muted fs-20 p-1 px-2 rounded hover-primary"></i>
+        </div>
           <div id="changePassword" class="collapse">
             <div class="card-body p-4">
               <div class="row gy-3">
@@ -788,17 +788,16 @@ const roleOptions = ['admin', 'User'];
                 </div>
               </div>
             </div>
-            <div class="card-footer border-top-0 pwd-footer">
-              <div class="d-flex justify-content-end">
-                <button @click="savePassword" class="btn-save-primary rounded-pill" style="padding: 10px 32px">
-                  <i class="ri-lock-line me-1"></i>Update Password
-                </button>
-              </div>
+          <div class="card-footer border-top-0 pwd-footer bg-light rounded-bottom-3">
+            <div class="d-flex justify-content-end">
+              <button @click="savePassword" class="btn-save-primary rounded-pill" style="padding: 10px 32px">
+                <i class="ri-lock-line me-1"></i>Update Password
+              </button>
             </div>
-          </div>
           </div>
         </div>
       </div>
+
     </div>
   </div>
 </template>

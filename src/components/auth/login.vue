@@ -10,7 +10,7 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 // State
-const user = ref({ username: "", password: "" });
+const user = ref({ identifier: "", password: "" });
 const showPassword = ref(false);
 const isLoading = ref(false);
 
@@ -118,10 +118,10 @@ onUnmounted(() => {
                 <div class="row gy-3">
                   <!-- Email -->
                   <div class="col-12">
-                    <label for="signin-username" class="form-label">Username</label>
+                    <label for="signin-ident" class="form-label">Username</label>
                     <div class="input-group input-group-modern">
                       <span class="input-group-text"><i class="ri-user-line"></i></span>
-                      <input type="text" class="form-control form-control-lg" id="signin-username" v-model="user.username" placeholder="Enter your username" autocomplete="username" />
+                      <input type="text" class="form-control form-control-lg" id="signin-username" v-model="user.identifier" placeholder="Enter your username" autocomplete="username" />
                     </div>
                   </div>
 

@@ -31102,13 +31102,14 @@ ul.search-results-list .dropdown li {
 }
 
 /* End:: Profile Settings */
-/* Start:: Main Content */
+/* Start:: Main Content azriel */
 .app-content .main-body-container {
   background-color: var(--custom-white);
-  padding: 1rem;
+  padding: 1.5rem;
   border-radius: 1rem;
   border: 1px solid var(--default-border);
   padding-block-end: 0;
+  width: 100%;
 }
 
 /* End:: Main Content */

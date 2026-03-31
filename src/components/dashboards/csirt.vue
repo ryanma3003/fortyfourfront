@@ -539,8 +539,8 @@ export default {
                     showAddCsirtModal.value = false;
                     // Navigate to the newly created CSIRT
                     const created = result.data as any;
-                    if (created?.id) router.push(`/csirt/${created.id}`);
-                    else if (newStakeholder.value) router.push(`/stakeholders/${newStakeholder.value.slug}`);
+                    if (created?.id) router.replace(`/csirt/${created.id}`);
+                    else if (newStakeholder.value) router.replace(`/stakeholders/${newStakeholder.value.slug}`);
                 }, 1500);
             } else {
                 csirtFormError.value = result.error || 'Gagal mendaftarkan CSIRT.';
@@ -620,7 +620,7 @@ export default {
                     const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-$|\s+/g, '');
                     const newSlug = updated.slug || toSlug(updated.nama_csirt);
                     if (csirtSlug.value !== String(oldId) && csirtSlug.value !== newSlug) {
-                        router.push(`/csirt/${newSlug}`);
+                        router.replace(`/csirt/${newSlug}`);
                     }
                 }
             } catch {
