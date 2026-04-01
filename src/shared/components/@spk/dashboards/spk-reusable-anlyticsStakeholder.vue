@@ -122,7 +122,7 @@ const scorePercent = (title: string, value: string) => {
   <div
     v-for="(item, index) in analyticData"
     :key="index"
-    class="col-xxl-3 col-lg-3 col-md-6 mb-4"
+    class="col-12 col-sm-6 col-md-6 col-lg-6 col-xl-3 col-xxl-3 mb-4 spk-card-col"
   >
     <div :class="['as-card', accentColorClass[item.svgColor] ?? 'accent-blue']">
 
@@ -139,7 +139,7 @@ const scorePercent = (title: string, value: string) => {
           </div>
 
           <!-- Text -->
-          <div class="flex-grow-1 min-w-0">
+          <div class="flex-grow-1" style="min-width: 0;">
             <p class="as-label mb-1">{{ item.title }}</p>
 
             <!-- Numeric value -->
@@ -487,13 +487,12 @@ html[data-theme-mode="dark"] .as-badge-setup, html.dark .as-badge-setup { backgr
   padding-top: 10px;
   border-top: 1px solid #eef3fb;
   gap: 8px;
+  flex-wrap: wrap; /* allow wrap on tight spaces */
 }
 .as-sublabel {
   font-size: 11px;
   color: #9bb5ce;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 .as-detail-btn {
   font-size: 11.5px;
@@ -508,6 +507,7 @@ html[data-theme-mode="dark"] .as-badge-setup, html.dark .as-badge-setup { backgr
   align-items: center;
   transition: color 0.18s, gap 0.18s;
   flex-shrink: 0;
+  margin-left: auto; /* keeps button on right when wrapped */
 }
 .as-detail-btn:hover { color: #1d4ed8; }
 .as-detail-btn:hover i { transform: translateX(2px); transition: transform 0.15s; }
@@ -555,5 +555,13 @@ html.dark .as-badge-empty {
   background: rgba(255,255,255,0.06);
   border-color: rgba(255,255,255,0.10);
   color: rgba(255,255,255,0.35);
+}
+
+/* Custom Responsive Rule: Force 2x2 grid on monitors up to 1600px (e.g. 1920px at 125% zoom) */
+@media (min-width: 576px) and (max-width: 1620px) {
+  .spk-card-col {
+    flex: 0 0 auto !important;
+    width: 50% !important;
+  }
 }
 </style>

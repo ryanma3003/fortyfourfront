@@ -982,7 +982,7 @@ export default {
             </div>
 
             <!-- Pagination -->
-            <div v-if="totalPages > 1" class="d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3">
+            <div v-if="totalPages > 1" class="pagination-container d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3">
               <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-light text-muted px-3 py-2">
                   <i class="ri-file-list-3-line me-1"></i>
@@ -1199,11 +1199,11 @@ export default {
               </div>
             </form>
           </div>
-          <div class="card-footer bg-light d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-danger" @click="showCreateModal = false">
+          <div class="card-footer bg-light d-flex flex-wrap justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-danger flex-fill flex-sm-grow-0" @click="showCreateModal = false">
               <i class="ri-close-line me-1"></i>Batal
             </button>
-            <button type="button" class="btn btn-secondary" @click="createStakeholder">
+            <button type="button" class="btn btn-secondary flex-fill flex-sm-grow-0" @click="createStakeholder">
               <i class="ri-save-line me-1"></i>Simpan
             </button>
           </div>
@@ -1381,19 +1381,16 @@ export default {
                   </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="col-12">
-                  <div class="d-flex justify-content-end gap-2">
-                    <button type="button" @click="showEditModal = false" class="btn btn-outline-danger">
-                      <i class="ri-arrow-left-line me-1"></i>Batal
-                    </button>
-                    <button type="submit" class="btn btn-secondary">
-                      <i class="ri-save-line me-1"></i> Simpan Perubahan
-                    </button>
-                  </div>
-                </div>
               </div>
             </form>
+          </div>
+          <div class="card-footer bg-light d-flex flex-wrap justify-content-end gap-2">
+            <button type="button" @click="showEditModal = false" class="btn btn-outline-danger flex-fill flex-sm-grow-0">
+              <i class="ri-arrow-left-line me-1"></i>Batal
+            </button>
+            <button type="button" @click="updateStakeholder" class="btn btn-secondary flex-fill flex-sm-grow-0">
+              <i class="ri-save-line me-1"></i><span class="d-none d-sm-inline"> Simpan Perubahan</span><span class="d-inline d-sm-none"> Simpan</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1433,6 +1430,71 @@ export default {
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */
+
+@media (max-width: 575.98px) {
+  .custom-modal {
+    margin: 10px auto;
+    width: calc(100% - 20px) !important;
+  }
+  
+  /* Prevent flex-centering cutoff bug for very tall modals on short screens */
+  .modal.fade.show.d-block .modal-dialog-centered {
+    align-items: flex-start !important;
+    min-height: calc(100% - 20px);
+  }
+
+  /* Make sure flex children can shrink */
+  .form-group-split-input-card {
+    min-width: 0;
+    overflow: hidden;
+    padding: 8px 12px !important; /* Compact padding for mobile */
+  }
+  
+  /* Compact label cards */
+  .form-group-split-label-card {
+    padding: 6px 12px !important;
+    gap: 8px !important;
+  }
+  
+  /* Shrink icons */
+  .form-group-split-label-card .form-item-icon {
+    width: 24px !important;
+    height: 24px !important;
+  }
+  .form-group-split-label-card .form-item-icon i {
+    font-size: 0.8rem !important;
+  }
+  
+  /* Shrink text */
+  .form-item-label { font-size: 11.5px !important; }
+  .form-item-input { 
+    font-size: 13px !important; 
+    padding: 2px 0 !important;
+    max-width: 100%;
+    text-overflow: ellipsis;
+  }
+  
+  /* Compact Photo preview */
+  .photo-preview-modal {
+    width: 60px !important;
+    height: 60px !important;
+  }
+  .photo-preview-modal i.ri-image-add-line {
+    font-size: 1.5rem !important;
+  }
+  
+  /* Form group spacing reductions */
+  .modal-dialog .card-body.p-4 { padding: 12px !important; }
+  .modal-dialog .card-header   { padding: 12px !important; }
+  
+  /* Text break for long modal headers */
+  .header-card-title, .header-subtitle {
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+}
+
 @media (min-width: 992px) {
   .modal.fade.show.d-block .modal-dialog {
     margin-left: calc(250px + ((100% - 250px - 1000px) / 2)) !important;

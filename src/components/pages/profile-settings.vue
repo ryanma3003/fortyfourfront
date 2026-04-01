@@ -526,6 +526,7 @@ const roleOptions = ['admin', 'User'];
             <div class="card-title mb-0 fw-bold text-dark fs-15">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
             <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Edit data detail profil pengguna</div>
           </div>
+        </div>
         <div class="card-body p-4 p-md-5">
           <div class="row g-4">
               <!-- Name -->
@@ -669,7 +670,6 @@ const roleOptions = ['admin', 'User'];
                     <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
                     <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan" }}
                   </button>
-                </div>
                 </div>
               </div>
             </div>

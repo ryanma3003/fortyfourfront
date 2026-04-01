@@ -493,14 +493,15 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
 
             <!-- Action Buttons -->
             <div class="col-12">
-              <div class="d-flex justify-content-end gap-2">
-                <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-4">
+              <div class="d-flex justify-content-end gap-2 mt-2">
+                <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-3 px-md-4 flex-fill flex-sm-grow-0">
                   <i class="ri-arrow-left-line me-1"></i>Batal
                 </button>
-                <button @click="saveChanges" :disabled="isSaving" class="btn-save-primary rounded-pill px-4">
+                <button @click="saveChanges" :disabled="isSaving" class="btn-save-primary rounded-pill px-3 px-md-4 flex-fill flex-sm-grow-0 text-nowrap">
                   <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
                   <i v-else class="ri-save-line me-1"></i>
-                  {{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
+                  <span class="d-none d-sm-inline">{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}</span>
+                  <span class="d-inline d-sm-none">{{ isSaving ? "Proses..." : "Simpan" }}</span>
                 </button>
               </div>
             </div>

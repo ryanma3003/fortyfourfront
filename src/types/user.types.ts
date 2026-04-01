@@ -11,6 +11,7 @@ export interface User {
     joined: string;
     photo?: string;
     banner?: string;
+    status?: string;
     // Backend specific fields
     id_jabatan?: string;
     jabatan_name?: string;

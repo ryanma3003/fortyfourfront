@@ -131,9 +131,11 @@ class ApiClient {
             // 401 Handling — attempt token refresh then retry once
             // -------------------------------------------------------
             if (response.status === 401 && !isRetry) {
-                // Never try to refresh the refresh endpoint itself
+                // Never try to refresh the refresh endpoint itself or auth endpoints
                 const isRefreshEndpoint = cleanEndpoint === 'api/refresh';
-                if (!isRefreshEndpoint) {
+                const isAuthEndpoint = ['api/login', 'api/register', 'api/mfa/setup', 'api/mfa/enable', 'api/mfa/verify'].includes(cleanEndpoint);
+
+                if (!isRefreshEndpoint && !isAuthEndpoint) {
                     let refreshed: boolean;
 
                     if (this.isRefreshing) {

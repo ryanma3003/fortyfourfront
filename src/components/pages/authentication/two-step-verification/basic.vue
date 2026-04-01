@@ -28,7 +28,7 @@ const setupError = ref('');
 // CODE INPUT STATE
 // =====================
 const inputs = ref<string[]>(['', '', '', '', '', '']);
-const inputRefs = ref<HTMLInputElement[]>([]);
+const inputRefs = ref<any[]>([]);
 const loading = ref(false);
 const error = ref('');
 
@@ -92,7 +92,7 @@ async function fetchMfaSetup() {
   try {
     const response = await authService.mfaSetup(authStore.setupToken!);
 
-    otpauthUrl.value = response.provisioning_uri?.trim() || '';
+    otpauthUrl.value = (response as any).provisioning_uri?.trim() || response.otpauth_url?.trim() || '';
     secret.value = response.secret || '';
 
   } catch (err: any) {
@@ -186,16 +186,16 @@ async function verifyCode() {
       router.push(redirectByRole());
     }
   } catch (err: any) {
-    if (err.response?.status === 401) {
+    if (err.status === 401 || err.response?.status === 401 || err.message?.includes('401')) {
       error.value = "The verification code you entered is incorrect."
     } else {
-      error.value = "Something went wrong. Please try again."
+      error.value = err.message || "Something went wrong. Please try again."
     }
     loading.value = false;
-    }
-    // Clear inputs on error
-    inputs.value = ['', '', '', '', '', ''];
-    nextTick(() => inputRefs.value[0]?.focus());
+  }
+  // Clear inputs on error
+  inputs.value = ['', '', '', '', '', ''];
+  nextTick(() => inputRefs.value[0]?.focus());
 }
 
 // =====================
@@ -276,7 +276,7 @@ const resendSetup = async () => {
               <div class="row gx-2 justify-content-center mb-4">
                 <div v-for="(_input, index) in inputs" :key="index" class="col-2 col-sm-2">
                   <input
-                    :ref="el => { if (el) inputRefs[index] = el as HTMLInputElement }"
+                    :ref="(el) => { if (el) inputRefs[index] = el }"
                     v-model="inputs[index]"
                     type="text"
                     class="form-control form-control-lg text-center fs-4 fw-bold p-0"

@@ -508,7 +508,7 @@ const companyDetails = computed(() => {
    ───────────────────────────────────────────── */
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
 }
 .info-grid-item {
@@ -571,11 +571,7 @@ const companyDetails = computed(() => {
   font-size: 13.5px;
   font-weight: 700;
   color: #1e3a5f;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.info-grid-value.wrap-text {
+  word-break: break-word;
   white-space: normal;
   line-height: 1.45;
 }
@@ -698,18 +694,23 @@ html.dark .hero-card-shell {
   .profile-hero-overlay { padding: 1.5rem; }
 }
 @media (max-width: 767px) {
-  .profile-hero { height: 220px; }
+  .profile-hero { height: 260px; }
   .profile-hero-name { font-size: 1.25rem; }
   .info-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 575px) {
-  .profile-hero { height: 180px; }
-  .profile-hero-name { font-size: 1.1rem; }
-  .info-grid { grid-template-columns: 1fr; }
-  .profile-hero-overlay { padding: 1rem 1.25rem; }
+  .profile-hero { height: 260px; }
+  .profile-hero-name { font-size: 1.2rem; word-break: break-word; }
+  .profile-hero-sektor { white-space: normal; line-height: 1.4; padding: 6px 14px; }
+  .info-grid { grid-template-columns: 1fr !important; }
+  .profile-hero-overlay { padding: 1rem 1.25rem; flex-direction: column; align-items: stretch; gap: 0.75rem; justify-content: flex-end; }
   .contact-bar { flex-direction: column; gap: 0.75rem; padding: 14px 16px; }
   .contact-bar-sep { display: none; }
   .contact-bar-item { width: 100%; justify-content: center; }
+  .contact-bar-text { word-break: break-word; white-space: normal; text-align: center; }
+  .header-card-title { word-break: break-word; white-space: normal; line-height: 1.3; }
+  .header-subtitle { word-break: break-word; white-space: normal; }
+  .btn-edit-profile { justify-content: center; padding: 0.6rem 1rem; width: 100%; }
 }
 </style>
 
@@ -774,7 +775,7 @@ html.dark .hero-card-shell {
                         class="btn-edit-profile"
                       >
                         <i class="ri-edit-line"></i>
-                        <span class="d-none d-sm-inline">Edit Profil</span>
+                        <span class="d-inline">Edit Profil</span>
                       </router-link>
                     </div>
                   </div>
@@ -811,12 +812,12 @@ html.dark .hero-card-shell {
 
                       <!-- Isi IKAS button (admin only, when not filled) -->
                       <div v-if="isAdmin && (!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP')" class="col-12 mb-3">
-                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
-                          <div class="d-flex align-items-center gap-2">
-                            <i class="ri-information-line fs-16"></i>
+                        <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 px-3">
+                          <div class="d-flex align-items-start align-items-sm-center gap-2">
+                            <i class="ri-information-line fs-16 mt-1 mt-sm-0 flex-shrink-0"></i>
                             <span class="fs-13">IKAS belum diisi untuk perusahaan ini.</span>
                           </div>
-                          <button @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                          <button @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 flex-shrink-0 w-100 w-sm-auto">
                             <i class="ri-add-circle-line fs-14"></i>
                             <span>Isi IKAS</span>
                           </button>
@@ -825,12 +826,12 @@ html.dark .hero-card-shell {
 
                       <!-- Daftarkan CSIRT button (admin only, when not yet registered) -->
                       <div v-if="isAdmin && !relatedCsirtId" class="col-12 mb-3">
-                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
-                          <div class="d-flex align-items-center gap-2">
-                            <i class="ri-shield-check-line fs-16"></i>
+                        <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 px-3">
+                          <div class="d-flex align-items-start align-items-sm-center gap-2">
+                            <i class="ri-shield-check-line fs-16 mt-1 mt-sm-0 flex-shrink-0"></i>
                             <span class="fs-13">CSIRT belum terdaftar untuk perusahaan ini.</span>
                           </div>
-                          <button @click="router.push({ path: '/csirt', query: { stakeholder: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                          <button @click="router.push({ path: '/csirt', query: { stakeholder: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 flex-shrink-0 w-100 w-sm-auto">
                             <i class="ri-add-circle-line fs-14"></i>
                             <span>Daftarkan CSIRT</span>
                           </button>
@@ -839,12 +840,12 @@ html.dark .hero-card-shell {
 
                       <!-- Survey Resiko button (admin only, when not yet completed) -->
                       <div v-if="isAdmin && resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED'" class="col-12 mb-3">
-                        <div class="alert alert-warning d-flex align-items-center justify-content-between py-2 px-3">
-                          <div class="d-flex align-items-center gap-2">
-                            <i class="ri-error-warning-line fs-16"></i>
+                        <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 px-3">
+                          <div class="d-flex align-items-start align-items-sm-center gap-2">
+                            <i class="ri-error-warning-line fs-16 mt-1 mt-sm-0 flex-shrink-0"></i>
                             <span class="fs-13">Survey Resiko belum lengkap untuk perusahaan ini.</span>
                           </div>
-                          <button @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center gap-1">
+                          <button @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 flex-shrink-0 w-100 w-sm-auto">
                             <i class="ri-add-circle-line fs-14"></i>
                             <span>Isi Survey Resiko</span>
                           </button>
@@ -856,24 +857,24 @@ html.dark .hero-card-shell {
      
                       <div class="col-12 mb-4">
                         <div class="card custom-card overflow-hidden shadow-sm">
-                          <div class="card-header d-flex align-items-center justify-content-between py-3 bg-white border-bottom border-light">
+                          <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
                             <div class="d-flex align-items-center gap-2">
-                              <div class="header-icon-ring bg-primary-transparent me-1">
+                              <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-contacts-line text-primary fs-16"></i>
                               </div>
                               <div>
                                 <h6 class="card-title mb-0 fw-bold header-card-title text-dark">PIC Perusahaan</h6>
                                 <p class="text-muted fs-11 mb-0">Kelola kontak Person in Charge (PIC) perusahaan ini</p>
                               </div>
-                              <span class="pic-count-badge bg-primary-transparent text-primary ms-2">{{ friends.length }}</span>
+                              <span class="pic-count-badge bg-primary-transparent text-primary ms-2 flex-shrink-0">{{ friends.length }}</span>
                             </div>
-                            <button v-if="isAdmin" @click="router.push({ path: '/pic-add', query: { slug: currentStakeholder.slug, id_perusahaan: currentStakeholder.id } })" class="btn btn-sm btn-primary d-flex align-items-center gap-2 px-3 py-2 rounded-pill shadow-sm hover-up">
+                            <button v-if="isAdmin" @click="router.push({ path: '/pic-add', query: { slug: currentStakeholder.slug, id_perusahaan: currentStakeholder.id } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-2 px-3 py-2 rounded-pill shadow-sm hover-up w-100 w-sm-auto flex-shrink-0">
                               <i class="ri-add-line fs-14"></i><span class="fw-bold">Add PIC</span>
                             </button>
                           </div>
                           
                           <div class="card-body1 p-0">
-                            <div class="stakeholder-table-wrap border-0 rounded-0 shadow-none">
+                            <div class="table-responsive stakeholder-table-wrap border-0 rounded-0 shadow-none">
                               <table class="table stakeholder-table text-nowrap mb-0">
                                 <thead class="stakeholder-thead">
                                   <tr>
@@ -970,7 +971,7 @@ html.dark .hero-card-shell {
                             <p class="text-muted fs-13 mb-3" style="line-height:1.7">{{ companyDescription }}</p>
 
                             <!-- Detail items -->
-                            <div class="info-grid" style="grid-template-columns:repeat(3, 1fr)">
+                            <div class="info-grid">
                               <div
                                 v-for="(item, idx) in companyDetails"
                                 :key="idx"
