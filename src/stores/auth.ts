@@ -37,11 +37,29 @@ function clearSessionActiveCookie() {
 
 /**
  * Store the mapped CurrentUser object (display data only — no tokens)
- * in localStorage so it can be shared across tabs.
- * We use a session cookie (session_active=1) to detect if the browser was closed.
+ * in sessionStorage so it is cleared when the tab is closed.
+ * We use cross-tab communication (BroadcastChannel) to sync this to new tabs.
  * The HTTP-only cookie is the real auth proof on every API request.
  */
 const AUTH_USER_KEY = "auth_user";
+
+// Ensure cross-tab communication for sessionStorage without using localStorage
+if (typeof window !== 'undefined') {
+  const syncChannel = new BroadcastChannel('auth_sync_channel');
+  syncChannel.onmessage = (event) => {
+    // If a new tab is asking for the current session state
+    if (event.data?.type === 'REQUEST_SESSION') {
+      const sessionData = sessionStorage.getItem(AUTH_USER_KEY);
+      if (sessionData) {
+        // Send the data back via the channel
+        syncChannel.postMessage({
+          type: 'PROVIDE_SESSION',
+          sessionData
+        });
+      }
+    }
+  };
+}
 
 /**
  * Helper: map a backend user response to CurrentUser.
@@ -153,7 +171,7 @@ export const useAuthStore = defineStore("auth", {
 
         // Case 3: Direct login (access_token or cookie-based)
         const userData = mapToCurrentUser(response);
-        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData));
+        sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData));
         setSessionActiveCookie();
         this.authenticated = true;
         this.currentUser = userData;
@@ -180,7 +198,7 @@ export const useAuthStore = defineStore("auth", {
     completeMfaSetup(response: any) {
       this.authenticated = true;
       this.currentUser = mapToCurrentUser(response);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
+      sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
       setSessionActiveCookie();
       this.clearMfaState();
     },
@@ -191,7 +209,7 @@ export const useAuthStore = defineStore("auth", {
     completeMfaVerify(response: any) {
       this.authenticated = true;
       this.currentUser = mapToCurrentUser(response);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
+      sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
       setSessionActiveCookie();
       this.clearMfaState();
     },
@@ -237,7 +255,7 @@ export const useAuthStore = defineStore("auth", {
 
       await authService.logout();
 
-      localStorage.removeItem(AUTH_USER_KEY);
+      sessionStorage.removeItem(AUTH_USER_KEY);
       clearSessionActiveCookie();
       this.authenticated = false;
       this.currentUser = null;
@@ -247,27 +265,70 @@ export const useAuthStore = defineStore("auth", {
 
     // ================================
     // CHECK AUTH ON STARTUP / NEW TAB
-    // Reads CurrentUser from localStorage and checks session_active cookie.
-    // This allows sessions to be shared across tabs but deleted on browser close.
+    // Reads CurrentUser from sessionStorage first, then tries to cross-tab sync 
+    // if empty (i.e. a newly opened tab). 
+    // This allows sessions to be closed when a tab is closed, but seamlessly
+    // authenticated when opening a new tab from an existing session.
     // The HTTP-only cookie is the real auth proof — it's sent automatically
-    // The HTTP-only cookie is the real auth proof — it's sent automatically
-    // by the browser on every request. If expired, the first API call
-    // triggers the refresh flow (api.ts) or forces logout.
+    // by the browser on every request.
     // ================================
-    checkAuthOnStartup() {
-      const stored = localStorage.getItem(AUTH_USER_KEY);
-      if (!stored || !getSessionActiveCookie()) {
-        localStorage.removeItem(AUTH_USER_KEY);
-        clearSessionActiveCookie();
-        this.authenticated = false;
-        this.currentUser = null;
-        return;
-      }
-      try {
-        this.currentUser = JSON.parse(stored);
-        this.authenticated = true;
-      } catch {
-        localStorage.removeItem(AUTH_USER_KEY);
+    checkAuthOnStartup(): Promise<void> | void {
+      // 1. Check if we already have it in sessionStorage (e.g., page refresh)
+      const stored = sessionStorage.getItem(AUTH_USER_KEY);
+      
+      if (stored && getSessionActiveCookie()) {
+        try {
+          this.currentUser = JSON.parse(stored);
+          this.authenticated = true;
+          return;
+        } catch {
+          sessionStorage.removeItem(AUTH_USER_KEY);
+          clearSessionActiveCookie();
+          this.authenticated = false;
+          this.currentUser = null;
+        }
+      } 
+      
+      // 2. If new tab (sessionStorage missing) but cookie exists, ask other tabs
+      else if (!stored && getSessionActiveCookie()) {
+        return new Promise((resolve) => {
+          const authChannel = new BroadcastChannel('auth_sync_channel');
+
+          const timeout = setTimeout(() => {
+            authChannel.close();
+            if (!this.authenticated) {
+              clearSessionActiveCookie();
+              this.authenticated = false;
+              this.currentUser = null;
+            }
+            resolve();
+          }, 1000); // Stop listening after 1s if no other tabs respond
+
+          authChannel.onmessage = (event) => {
+            if (event.data?.type === 'PROVIDE_SESSION' && event.data.sessionData) {
+              try {
+                const userData = JSON.parse(event.data.sessionData);
+                sessionStorage.setItem(AUTH_USER_KEY, event.data.sessionData);
+                this.currentUser = userData;
+                this.authenticated = true;
+                
+                clearTimeout(timeout);
+                authChannel.close();
+                resolve();
+              } catch {
+                // Ignore parse errors from other tabs
+              }
+            }
+          };
+
+          // Emit request for session data
+          authChannel.postMessage({ type: 'REQUEST_SESSION' });
+        });
+      } 
+      
+      // 3. Complete logout state (no session, no cookie)
+      else {
+        sessionStorage.removeItem(AUTH_USER_KEY);
         clearSessionActiveCookie();
         this.authenticated = false;
         this.currentUser = null;
@@ -289,7 +350,7 @@ export const useAuthStore = defineStore("auth", {
         // Best-effort backend logout (cookie cleanup)
         try { await authService.logout(); } catch { /* ignore */ }
 
-        localStorage.removeItem(AUTH_USER_KEY);
+        sessionStorage.removeItem(AUTH_USER_KEY);
         clearSessionActiveCookie();
         this.authenticated = false;
         this.currentUser = null;

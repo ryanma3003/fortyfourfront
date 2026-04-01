@@ -151,7 +151,7 @@ const accountDetails = computed(() => [
               </div>
             </div>
             <div class="card-body">
-              <div class="info-grid" style="grid-template-columns: repeat(3, 1fr)">
+              <div class="info-grid">
                 <div v-for="(item, idx) in accountDetails" :key="idx" class="info-grid-item">
                   <div class="info-grid-icon" :class="item.colorClass">
                     <i :class="item.icon"></i>

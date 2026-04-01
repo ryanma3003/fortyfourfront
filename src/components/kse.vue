@@ -373,7 +373,7 @@ const editData = () => {
 
     <div class="row g-4">
       <!-- Sidebar -->
-      <div class="col-lg-3 col-md-4">
+      <div class="col-12 col-md-4 col-lg-3">
         <div class="sticky-sidebar">
           
           <!-- Score Card -->
@@ -497,9 +497,9 @@ const editData = () => {
       </div>
 
       <!-- Main Content -->
-      <div class="col-lg-9 col-md-8">
+      <div class="col-12 col-md-8 col-lg-9">
         <div class="main-content-card">
-          <div class="main-content-header d-flex align-items-center justify-content-between">
+          <div class="main-content-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3">
             <div class="main-header-title-row">
               <div class="main-header-icon">
                 <i class="ri-file-list-3-line"></i>
@@ -513,7 +513,7 @@ const editData = () => {
             <!-- Display Mode Switcher -->
             <div class="display-mode-switcher d-flex align-items-center gap-2">
                 <!-- Layout Selector -->
-                <div class="dropdown me-1">
+                <div class="dropdown me-1 d-none d-xxl-block">
                     <button class="btn btn-light btn-sm d-flex align-items-center gap-2 px-3 rounded-pill border shadow-sm" type="button" data-bs-toggle="dropdown">
                         <i :class="displayModeIcon" class="fs-14"></i>
                         <span class="fs-12 fw-bold text-uppercase ls-1">Tampilan</span>
@@ -547,9 +547,9 @@ const editData = () => {
 
                 <!-- Size Settings Selector -->
                 <div class="dropdown">
-                    <button class="btn btn-light btn-sm d-flex align-items-center gap-2 px-3 rounded-pill border shadow-sm" type="button" data-bs-toggle="dropdown">
-                        <i class="ri-equalizer-line fs-14"></i>
-                        <span class="fs-12 fw-bold text-uppercase ls-1">Ukuran</span>
+                    <button class="btn btn-light btn-sm d-flex align-items-center gap-1 px-2 px-sm-3 rounded-pill border shadow-sm" type="button" data-bs-toggle="dropdown">
+                        <i class="ri-equalizer-line fs-13"></i>
+                        <span class="fs-11 fs-sm-12 fw-bold text-uppercase ls-1">Ukuran</span>
                         <i class="ri-arrow-down-s-line fs-12 opacity-50"></i>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2 rounded-3 animate__animated animate__fadeIn" style="min-width: 180px;">
@@ -600,7 +600,7 @@ const editData = () => {
               <div 
                 v-for="question in currentQuestions" 
                 :key="question.no"
-                :class="displayMode === 'list' ? 'col-12' : 'col-lg-6'"
+                :class="displayMode === 'list' ? 'col-12' : 'col-12 col-xxl-6'"
               >
                 <KseQuestionCard 
                   :question="question" 
@@ -919,6 +919,11 @@ const editData = () => {
   padding: 24px 28px 16px;
   background: white;
 }
+@media (max-width: 576px) {
+  .main-content-header {
+    padding: 16px 16px 12px;
+  }
+}
 
 .main-header-title-row {
   display: flex;
@@ -958,6 +963,11 @@ const editData = () => {
   padding: 20px 28px 28px;
   background: #fafbfd;
   border-top: 1px solid #f1f5f9;
+}
+@media (max-width: 576px) {
+  .main-content-body {
+    padding: 16px 12px 20px;
+  }
 }
 
 .main-content-pagination {

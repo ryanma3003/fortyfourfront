@@ -64,8 +64,8 @@ const vuetify = createVuetify({
 const pinia = createPinia();
 app.use(pinia);
 
-// Vue Router
-app.use(router);
+// Vue Router (lazy loaded after auth check)
+// app.use(router);
 
 // Vuetify UI
 app.use(vuetify);
@@ -103,7 +103,9 @@ authStore.setupApiHooks();
 // Verify session via GET /api/me before mounting.
 // The HTTP-only cookie is shared across all tabs — no browser storage needed.
 // Awaiting here ensures the router guard has accurate auth state on first render.
-authStore.checkAuthOnStartup();
-
-// Mount app
-app.mount('#app');
+Promise.resolve(authStore.checkAuthOnStartup()).finally(() => {
+  // Use router AFTER auth is guaranteed to be checked
+  app.use(router);
+  // Mount app
+  app.mount('#app');
+});

@@ -63,10 +63,15 @@ export default {
           email: (u as any).email || '',
           phone: (u as any).phone || '',
           location: (u as any).location || '',
-          jabatan: (u as any).jabatan || '',
+          jabatan: (u as any).jabatan || (u as any).jabatan_name || '-',
           role: (u as any).role || (u as any).role_name || 'user',
           joined: (u as any).joined || (u as any).created_at || '',
           photo: formatImageUrl((u as any).photo || (u as any).foto_profile),
+          status: typeof (u as any).status !== 'undefined' ? String((u as any).status) : 
+                  typeof (u as any).is_active !== 'undefined' ? ((u as any).is_active ? 'active' : 'suspend') :
+                  typeof (u as any).is_suspended !== 'undefined' ? ((u as any).is_suspended ? 'suspend' : 'active') :
+                  typeof (u as any).aktif !== 'undefined' ? ((u as any).aktif == 1 ? 'active' : 'suspend') :
+                  typeof (u as any).status_akun !== 'undefined' ? String((u as any).status_akun) : '',
           id_perusahaan: (u as any).id_perusahaan || undefined,
           id_jabatan: (u as any).id_jabatan || undefined,
           jabatan_name: (u as any).jabatan_name || undefined,
@@ -98,6 +103,8 @@ export default {
         ]);
         
         usersData.value = users as any;
+        console.log("🔥 SEMUA USER DARI API:", users); // Debug print
+        
         rolesData.value = roles;
         stakeholdersData.value = stakeholders;
         
@@ -221,7 +228,20 @@ export default {
       }
     };
 
-    // Get status badge class
+    // User status badges
+    const getUserStatusClass = (status?: string) => {
+      const s = String(status || '').toLowerCase();
+      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'bg-danger-transparent text-danger';
+      return 'bg-success-transparent text-success';
+    };
+
+    const getUserStatusText = (status?: string) => {
+      const s = String(status || '').toLowerCase();
+      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Suspend';
+      return 'Active';
+    };
+
+    // Get role badge class
     const getStatusClass = (role: string) =>
       role === "admin" ? "bg-danger-transparent" : "bg-info-transparent";
 
@@ -238,7 +258,7 @@ export default {
       formData, showToast, toastMessage, toastType,
       rolesData, countAdmins, countRegular,
       openEditModal, updateUser, openDeleteModal, deleteUser,
-      getStatusClass, clearSearch, toggleSort, getAvatarColorClass, getCompanyName,
+      getStatusClass, getUserStatusClass, getUserStatusText, clearSearch, toggleSort, getAvatarColorClass, getCompanyName,
     };
   },
 };
@@ -376,6 +396,12 @@ export default {
                         <span>Perusahaan</span>
                       </div>
                     </th>
+                    <th class="fw-semibold">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-toggle-line text-primary"></i>
+                        <span>Status</span>
+                      </div>
+                    </th>
                     <th class="sortable fw-semibold">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-shield-user-line text-primary"></i>
@@ -391,7 +417,7 @@ export default {
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="7" class="text-center py-5">
+                    <td colspan="8" class="text-center py-5">
                       <div class="empty-state">
                         <div class="empty-icon-ring mb-3">
                           <div class="empty-icon-inner">
@@ -431,6 +457,12 @@ export default {
                     </td>
                     <td class="align-middle">
                       <span class="text-muted fs-13">{{ getCompanyName(item.id_perusahaan) }}</span>
+                    </td>
+                    <td class="align-middle">
+                      <span :class="['badge rounded-pill px-3 py-2 fs-12', getUserStatusClass(item.status)]">
+                        <i :class="getUserStatusText(item.status) === 'Active' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
+                        {{ getUserStatusText(item.status) }}
+                      </span>
                     </td>
                     <td class="align-middle">
                       <span :class="['badge rounded-pill px-3 py-2 fs-12', getStatusClass(item.role)]">

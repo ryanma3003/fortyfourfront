@@ -819,38 +819,38 @@ export default {
                         </button>
                     </div>
                 </div>
-                <div v-else class="row align-items-center">
-                    <div class="col-12 col-md-2 text-center">
-                        <div class="profile-photo-wrapper" style="width: 140px; height: 140px; margin: 0 auto 12px;">
+                <div v-else class="row align-items-center gy-4">
+                    <div class="col-12 col-xl-auto d-flex justify-content-center justify-content-xl-start">
+                        <div class="profile-photo-wrapper mb-0" style="width: 140px; height: 140px;">
                             <img :src="currentCsirt.photo_csirt" class="img-fluid profile-csirt-img" alt="Logo CSIRT"/>
                         </div>
                     </div>
-                    <div class="col-12 col-md-5">
+                    <div class="col-12 col-xl text-center text-xl-start">
                         <h3 class="fw-bold mb-3 text-primary">{{ currentCsirt.nama_csirt }}</h3>
-                        <div class="d-flex flex-column gap-2 mt-4">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="avatar avatar-sm avatar-rounded bg-primary-transparent">
+                        <div class="d-flex flex-column flex-sm-row flex-xl-column gap-3 mt-4 justify-content-center justify-content-xl-start">
+                            <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
+                                <div class="avatar avatar-sm avatar-rounded bg-primary-transparent flex-shrink-0">
                                     <i class="ri-phone-line fs-16"></i>
                                 </div>
-                                <div>
+                                <div class="text-start">
                                     <div class="text-muted fs-11">Telepon</div>
                                     <div class="fw-semibold">{{ currentCsirt.telepon_csirt }}</div>
                                 </div>
                             </div>
-                            <div class="d-flex align-items-center gap-3 mt-1">
-                                <div class="avatar avatar-sm avatar-rounded bg-secondary-transparent">
+                            <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
+                                <div class="avatar avatar-sm avatar-rounded bg-secondary-transparent flex-shrink-0">
                                     <i class="ri-global-line fs-16"></i>
                                 </div>
-                                <div>
+                                <div class="text-start" style="min-width: 0;">
                                     <div class="text-muted fs-11">Website</div>
-                                    <div class="fw-semibold">
+                                    <div class="fw-semibold text-break" style="word-break: break-all;">
                                         <a :href="currentCsirt.web_csirt" target="_blank">{{ currentCsirt.web_csirt }}</a>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-5 col-sm-12 mt-4 mt-md-0">
+                    <div class="col-12 col-xl-5">
                         <!-- Stats strip: SDM & SE counts -->
                         <div class="d-flex gap-3 mb-3">
                             <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-primary-transparent flex-fill">

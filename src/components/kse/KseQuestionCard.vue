@@ -127,37 +127,42 @@ const getOptionColorClass = (key: string) => {
           <!-- Selected gradient bg -->
           <div class="option-bg" :class="getOptionColorClass(String(key))"></div>
           
-          <div class="option-inner">
+          <div class="option-inner align-items-start align-items-sm-center gap-3">
             <!-- Key Badge -->
             <div 
-              class="option-key" 
+              class="option-key flex-shrink-0 mt-1 mt-sm-0" 
               :class="[getOptionColorClass(String(key)), { 'key-selected': selectedOption === key }]"
             >
               {{ key }}
             </div>
             
-            <!-- Label -->
-            <div class="option-label-wrap">
-              <span class="option-label">{{ option.label }}</span>
-            </div>
-
-            <!-- Bobot -->
-            <div class="option-bobot">
-              <span class="bobot-badge">
-                <i class="ri-star-s-fill bobot-star"></i>
-                <span v-if="displayMode === 'grid'">{{ option.bobot }}</span>
-                <span v-else class="fs-10">{{ option.bobot }}</span>
-              </span>
-            </div>
-            
-            <!-- Checkmark -->
-            <transition name="pop-in">
-              <div v-if="selectedOption === key" class="selected-check">
-                <div class="check-circle" :class="getOptionColorClass(String(key))">
-                  <i class="ri-check-line"></i>
+            <div class="d-flex flex-column flex-sm-row flex-grow-1 align-items-start align-items-sm-center gap-2" style="min-width: 0;">
+                <!-- Label -->
+                <div class="option-label-wrap">
+                  <span class="option-label">{{ option.label }}</span>
                 </div>
-              </div>
-            </transition>
+
+                <!-- Right Side Info -->
+                <div class="d-flex align-items-center justify-content-between justify-content-sm-end gap-2 w-100 w-sm-auto mt-1 mt-sm-0 flex-shrink-0">
+                    <!-- Bobot -->
+                    <div class="option-bobot">
+                      <span class="bobot-badge">
+                        <i class="ri-star-s-fill bobot-star"></i>
+                        <span v-if="displayMode === 'grid'">{{ option.bobot }}</span>
+                        <span v-else class="fs-10">{{ option.bobot }}</span>
+                      </span>
+                    </div>
+                    
+                    <!-- Checkmark -->
+                    <transition name="pop-in">
+                      <div v-if="selectedOption === key" class="selected-check ms-auto ms-sm-0">
+                        <div class="check-circle" :class="getOptionColorClass(String(key))">
+                          <i class="ri-check-line"></i>
+                        </div>
+                      </div>
+                    </transition>
+                </div>
+            </div>
           </div>
         </div>
       </div>
@@ -213,23 +218,38 @@ const getOptionColorClass = (key: string) => {
   margin-bottom: 16px;
 }
 
-/* ========== SIZING SYSTEM ========== */
-
 /* Font Sizes */
 .font-small .question-hero { font-size: 0.85rem !important; }
 .font-small .option-label { font-size: 0.8rem !important; }
-.font-small .insight-content { font-size: 0.75rem !important; }
+.font-small .insight-desc { font-size: 0.75rem !important; line-height: 1.4 !important; }
+.font-small .insight-label { font-size: 9px !important; }
 .font-small .option-item { padding: 8px 12px; min-height: 40px; }
 
-.font-medium .question-hero { font-size: 1rem !important; }
-.font-medium .option-label { font-size: 0.9rem !important; }
-.font-medium .insight-content { font-size: 0.85rem !important; }
+.font-medium .question-hero { font-size: 0.95rem !important; }
+.font-medium .option-label { font-size: 0.85rem !important; }
+.font-medium .insight-desc { font-size: 0.85rem !important; line-height: 1.5 !important; }
+.font-medium .insight-label { font-size: 10px !important; }
 .font-medium .option-item { padding: 12px 14px; min-height: 48px; }
 
-.font-large .question-hero { font-size: 1.15rem !important; }
-.font-large .option-label { font-size: 1.05rem !important; }
-.font-large .insight-content { font-size: 0.95rem !important; }
+.font-large .question-hero { font-size: 1.1rem !important; }
+.font-large .option-label { font-size: 1rem !important; }
+.font-large .insight-desc { font-size: 0.95rem !important; line-height: 1.6 !important; }
+.font-large .insight-label { font-size: 11px !important; }
 .font-large .option-item { padding: 16px 18px; min-height: 56px; }
+
+@media (max-width: 576px) {
+  .card-body { padding: 16px; }
+  .mode-grid .card-body { padding: 16px; }
+  .mode-list .card-body { padding: 16px; }
+  
+  .insight-box { padding: 12px; }
+  
+  .font-medium .question-hero { font-size: 0.9rem !important; margin-bottom: 12px; }
+  .font-medium .option-label { font-size: 0.8rem !important; }
+  .font-medium .option-item { padding: 10px 12px; }
+  
+  .icon-medium .option-key { width: 32px; height: 32px; font-size: 13px; }
+}
 
 /* Icon Sizes */
 .icon-small .question-number { min-width: 20px; height: auto; font-size: 10px; padding: 4px 10px; }
