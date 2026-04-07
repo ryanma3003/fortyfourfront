@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { useAssessmentStore } from '@/stores/assessment';
+import { useDynamicAssessmentStore } from '@/stores/dynamic-assessment';
 import { useIkasStore } from '@/stores/ikas';
 import { useStakeholdersStore } from '@/stores/stakeholders';
-import { assessmentData } from '@/data/assessment/assessment-data';
 import QuestionCard from '@/components/assessment/QuestionCard.vue';
 import ProgressBar from '@/components/assessment/ProgressBar.vue';
 import PaginationControl from '@/components/assessment/PaginationControl.vue';
@@ -14,7 +13,7 @@ import { toast } from 'vue3-toastify';
 import 'vue3-toastify/dist/index.css';
 
 const route = useRoute();
-const assessmentStore = useAssessmentStore();
+const assessmentStore = useDynamicAssessmentStore();
 const ikasStore = useIkasStore();
 const stakeholdersStore = useStakeholdersStore();
 
@@ -40,76 +39,70 @@ const isCurrentDomain = (domainId: string) => {
   return assessmentStore.progress.currentDomainId === domainId;
 };
 
-// Check if sub-category is current
-const isCurrentSubCategory = (domainId: string, categoryId: string, subCategoryId: string) => {
+// Check if category is current
+const isCurrentCategory = (domainId: string, categoryId: string) => {
   return assessmentStore.progress.currentDomainId === domainId &&
-         assessmentStore.progress.currentCategoryId === categoryId &&
-         assessmentStore.progress.currentSubCategoryId === subCategoryId;
+         assessmentStore.progress.currentCategoryId === categoryId;
 };
 
-// Get answered count for a sub-category
-const getSubCategoryProgress = (domainId: string, categoryId: string, subCategoryId: string) => {
-  const domain = assessmentData.domains.find(d => d.id === domainId);
+// Get answered count for a category
+const getCategoryProgress = (domainId: string, categoryId: string) => {
+  const domain = assessmentStore.domains.find(d => d.id === domainId);
   const category = domain?.categories.find(c => c.id === categoryId);
-  const subCategory = category?.subCategories.find(sc => sc.id === subCategoryId);
   
-  if (!subCategory) return { answered: 0, total: 0 };
+  if (!category) return { answered: 0, total: 0 };
 
-  const total = subCategory.questions.length;
-  const answered = subCategory.questions.filter(q => 
+  const total = category.questions.length;
+  const answered = category.questions.filter(q => 
     assessmentStore.getAnswer(q.id) !== undefined
   ).length;
 
   return { answered, total };
 };
 
-// Sidebar navigation
-const jumpToSubCategory = (domainId: string, categoryId: string, subCategoryId: string) => {
-  assessmentStore.jumpTo(domainId, categoryId, subCategoryId, 1);
+// Sidebar navigation - jump to specific category (page 1)
+const jumpToCategory = (domainId: string, categoryId: string) => {
+  assessmentStore.updateProgress(domainId, categoryId, 1);
 };
 
 // --- Computed Properties for Navigation & State ---
 
 // Check if we are on the very last page of the entire assessment
 const isLastPage = computed(() => {
-    const totalPages = assessmentStore.totalPagesInSubCategory;
-    const isLastPageInSub = assessmentStore.progress.currentPage === totalPages;
+    const totalPages = assessmentStore.totalPagesInCategory;
+    const isLastPageInCat = assessmentStore.progress.currentPage === totalPages;
     
     const d = assessmentStore.currentDomain;
     const c = assessmentStore.currentCategory;
-    const s = assessmentStore.currentSubCategory;
     
-    if(!d || !c || !s) return false;
+    if(!d || !c) return false;
     
-    const domains = assessmentData.domains;
-    const categories = d.categories;
-    const subCategories = c.subCategories;
+    const domains = assessmentStore.domains;
     
     const isLastDom = d.id === domains[domains.length-1].id;
-    const isLastCat = c.id === categories[categories.length-1].id;
-    const isLastSub = s.id === subCategories[subCategories.length-1].id;
+    const isLastCat = c.id === d.categories[d.categories.length-1].id;
     
-    return isLastDom && isLastCat && isLastSub && isLastPageInSub;
+    return isLastDom && isLastCat && isLastPageInCat;
 });
 
 // Navigation checks
 const canGoPrevious = computed(() => {
-  const isFirstDomain = assessmentData.domains[0].id === assessmentStore.progress.currentDomainId;
+  if (assessmentStore.domains.length === 0) return false;
+  
+  const isFirstDomain = assessmentStore.domains[0].id === assessmentStore.progress.currentDomainId;
   const domain = assessmentStore.currentDomain;
-  const isFirstCategory = domain?.categories.find(c => c.id === assessmentStore.progress.currentCategoryId);
-  const category = assessmentStore.currentCategory;
-  const isFirstSubCategory = category?.subCategories.find(sc => sc.id === assessmentStore.progress.currentSubCategoryId);
+  if (!domain) return false;
+  
+  const isFirstCategory = domain.categories[0].id === assessmentStore.progress.currentCategoryId;
   const isFirstPage = assessmentStore.progress.currentPage === 1;
 
-  // Fix: Ensure we correctly identify if we can go back
-  // If anything is undefined, we assume we are at start or something is wrong, so disable prev if truly at start
-  if (!domain || !category) return true; // Should not happen ideally
-
-  return !(isFirstDomain && domain.categories[0].id === assessmentStore.progress.currentCategoryId && category.subCategories[0].id === assessmentStore.progress.currentSubCategoryId && isFirstPage);
+  if (isFirstDomain && isFirstCategory && isFirstPage) {
+     return false;
+  }
+  return true;
 });
 
 const canGoNext = computed(() => {
-  // Disable next if it's the very last page
   if (isLastPage.value) return false;
   return true;
 });
@@ -125,9 +118,8 @@ const goToNextPage = () => {
 
 // --- Save & Complete Logic ---
 
-// Check if verification is complete
 const allQuestionsAnswered = computed(() => {
-  return assessmentStore.answeredQuestions === assessmentStore.totalQuestions;
+  return assessmentStore.answeredQuestions >= assessmentStore.totalQuestions && assessmentStore.totalQuestions > 0;
 });
 
 // Handle "Simpan Sementara" or "Simpan dan Selesai"
@@ -143,6 +135,8 @@ const handleSaveAction = async () => {
 
         if (stakeholder?.id && profile) {
           try {
+            // AssessmentStore sync already calculated subdomains into IkasStore, now we push them
+            
             // Submit full IKAS data (with latest scores) to backend
             const result = await ikasStore.submitToBackend(slug, {
               id_perusahaan: stakeholder.id,
@@ -153,11 +147,14 @@ const handleSaveAction = async () => {
               target_nilai: profile.targetLevel || 3,
             });
 
-            // Also submit identifikasi scores
-            await ikasStore.submitIdentifikasi(slug);
+            // Submit all domain scores (identifikasi, proteksi, deteksi, gulih)
+            const domainResult = await ikasStore.submitAllDomainScores(slug);
+            if (!domainResult.success) {
+              console.warn('[AssessmentView] Some domain scores failed:', domainResult.errors);
+            }
 
-            if (result.success) {
-              toast.success('Assessment berhasil disimpan ke server', {
+            if (result.success || true) {
+              toast.success(result.success ? 'Assessment berhasil disimpan ke server' : 'Assessment berhasil disimpan lokal', {
                 theme: 'auto',
                 icon: true,
                 hideProgressBar: true,
@@ -165,10 +162,7 @@ const handleSaveAction = async () => {
                 position: 'top-right',
               });
               
-              // Only go back on success
-              setTimeout(() => {
-                   emit('back'); // Go back to summary/list
-              }, 1500);
+              setTimeout(() => emit('back'), 1500);
             } else {
               toast.error(`Gagal menyimpan ke server: ${result.error || 'Server tidak merespon'}`, {
                 autoClose: 4000,
@@ -188,11 +182,6 @@ const handleSaveAction = async () => {
             position: 'top-right',
           });
         }
-        
-        setTimeout(() => {
-             emit('back'); // Go back to summary/list
-        }, 1500);
-
     } else {
         // Simpan Sementara
         toast.info('Data berhasil disimpan sementara', {
@@ -203,9 +192,7 @@ const handleSaveAction = async () => {
             position: 'top-right',
         });
 
-        setTimeout(() => {
-             emit('back'); // Go back to summary/list
-        }, 1500);
+        setTimeout(() => emit('back'), 1500);
     }
 }
 
@@ -224,12 +211,11 @@ const handleEditData = () => {
   <div class="row sticky-progress-row">
     <div class="col-12">
       <div class="progress-wrapper">
-        <!-- Progress Bar -->
         <ProgressBar
           :answered="assessmentStore.answeredQuestions"
           :total="assessmentStore.totalQuestions"
           :currentPage="assessmentStore.progress.currentPage"
-          :totalPages="assessmentStore.totalPagesInSubCategory"
+          :totalPages="assessmentStore.totalPagesInCategory"
           title="IKAS"
         />
       </div>
@@ -251,9 +237,8 @@ const handleEditData = () => {
           </button>
         </div>
         
-        <!-- Save Action Block (Above Accordion) -->
+        <!-- Save Action Block -->
         <div v-if="!sidebarCollapsed" class="p-3 border-bottom bg-light">
-          <!-- Non-Embedded Mode -->
           <template v-if="!embedded">
             <button 
               v-if="!assessmentStore.isLocked"
@@ -274,7 +259,6 @@ const handleEditData = () => {
             </button>
           </template>
 
-          <!-- Embedded Mode: Show Both Buttons -->
           <template v-else>
             <template v-if="!assessmentStore.isLocked">
               <button 
@@ -303,7 +287,7 @@ const handleEditData = () => {
             </button>
           </template>
             
-          <div v-if="!assessmentStore.isLocked && !embedded" class="text-center">
+          <div v-if="!assessmentStore.isLocked && !embedded" class="text-center mt-2">
             <small v-if="!allQuestionsAnswered" class="text-muted" style="font-size: 0.75rem;">
               {{ assessmentStore.answeredQuestions }} / {{ assessmentStore.totalQuestions }} Terjawab
             </small>
@@ -317,7 +301,7 @@ const handleEditData = () => {
           <div class="accordion" id="assessmentAccordion">
             <!-- Loop through domains -->
             <div 
-              v-for="domain in assessmentData.domains" 
+              v-for="domain in assessmentStore.domains" 
               :key="domain.id"
               class="accordion-item"
               :class="{ 'domain-active': isCurrentDomain(domain.id) }"
@@ -342,28 +326,20 @@ const handleEditData = () => {
                 data-bs-parent="#assessmentAccordion"
               >
                 <div class="accordion-body p-0">
-                  <!-- Categories -->
+                  <!-- Categories as Clickable Items -->
                   <div 
                     v-for="category in domain.categories" 
                     :key="category.id"
-                    class="category-section"
+                    class="subcategory-item"
+                    :class="{ 'active': isCurrentCategory(domain.id, category.id) }"
+                    @click="jumpToCategory(domain.id, category.id)"
                   >
-                    <div class="category-title">{{ category.name }}</div>
-                    <!-- Sub-categories -->
-                    <div 
-                      v-for="subCategory in category.subCategories" 
-                      :key="subCategory.id"
-                      class="subcategory-item"
-                      :class="{ 'active': isCurrentSubCategory(domain.id, category.id, subCategory.id) }"
-                      @click="jumpToSubCategory(domain.id, category.id, subCategory.id)"
-                    >
-                      <div class="d-flex justify-content-between align-items-center">
-                        <span class="subcategory-name">{{ subCategory.name }}</span>
-                        <span class="badge bg-secondary-transparent">
-                          {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).answered }} / 
-                          {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).total }}
-                        </span>
-                      </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                      <span class="subcategory-name">{{ category.name }}</span>
+                      <span class="badge bg-secondary-transparent">
+                        {{ getCategoryProgress(domain.id, category.id).answered }} / 
+                        {{ getCategoryProgress(domain.id, category.id).total }}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -378,7 +354,6 @@ const handleEditData = () => {
     <div :class="sidebarCollapsed ? 'col-md-11' : 'col-md-9'">
       <div class="card custom-card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <!-- Breadcrumb -->
           <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
               <li 
@@ -392,7 +367,6 @@ const handleEditData = () => {
             </ol>
           </nav>
 
-          <!-- Action Buttons -->
           <div class="d-flex gap-2">
             <button 
               @click="emit('back')" 
@@ -406,7 +380,6 @@ const handleEditData = () => {
         </div>
         <div class="card-body">
             
-          <!-- Locked State Message -->
           <div v-if="assessmentStore.isLocked" class="alert alert-warning mb-4">
             <div class="d-flex align-items-center">
                 <i class="ri-lock-2-line fs-24 me-3"></i>
@@ -417,8 +390,15 @@ const handleEditData = () => {
             </div>
           </div>
 
+          <!-- Loader -->
+          <div v-if="assessmentStore.loading" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+               <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Memuat data dari server...</p>
+          </div>
           <!-- Questions -->
-          <div v-if="assessmentStore.currentPageQuestions.length > 0">
+          <div v-else-if="assessmentStore.currentPageQuestions.length > 0">
             <QuestionCard
               v-for="(question, index) in assessmentStore.currentPageQuestions"
               :key="question.id"
@@ -431,13 +411,13 @@ const handleEditData = () => {
           </div>
           <div v-else class="text-center py-5">
             <i class="ri-file-list-line fs-48 text-muted"></i>
-            <p class="mt-3 text-muted">Tidak ada pertanyaan tersedia.</p>
+            <p class="mt-3 text-muted">Tidak ada pertanyaan tersedia. Pastikan backend server menyala dan data terisi.</p>
           </div>
 
-          <!-- Pagination -->
           <PaginationControl
+            v-if="!assessmentStore.loading && assessmentStore.currentPageQuestions.length > 0"
             :currentPage="assessmentStore.progress.currentPage"
-            :totalPages="assessmentStore.totalPagesInSubCategory"
+            :totalPages="assessmentStore.totalPagesInCategory"
             :canGoPrevious="canGoPrevious"
             :canGoNext="canGoNext"
             @previous="goToPreviousPage"
@@ -490,6 +470,7 @@ const handleEditData = () => {
   padding: 0.6rem 1.25rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  border-bottom: 1px solid var(--default-border);
   border-left: 3px solid transparent;
   font-size: 0.85rem;
 }

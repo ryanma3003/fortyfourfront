@@ -78,11 +78,7 @@ const routes: RouteRecordRaw[] = [
               name: 'Profile User',
               component: () => import("../components/dashboards/user-profile.vue"),
             },
-            {
-              path: '/users/edit/:slug',
-              name: 'Edit User Profile',
-              component: () => import("../components/pages/user-profile-settings.vue"),
-            },
+
             {
               path: 'roles',
               name: "Role List",

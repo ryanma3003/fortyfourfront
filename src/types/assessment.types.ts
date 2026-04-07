@@ -65,13 +65,18 @@ export interface AssessmentProgress {
 
 // Respondent Profile
 export interface RespondentProfile {
-    namaLengkap: string;
-    jabatan: string;
-    perusahaan: string;
-    email: string;
-    nomorTelepon: string;
-    sektor: string;
-    sertifikat: string;
+    instansi: string;          // dari stakeholder.nama_perusahaan (readonly)
+    sektor: string;            // dari stakeholder.sub_sektor (readonly)
+    alamat: string;            // dari stakeholder.alamat (readonly)
+    email: string;             // dari stakeholder.email (readonly)
+    namaResponden: string;     // input user → api: responden
+    jabatanResponden: string;  // input user → api: jabatan
+    nomorTelepon: string;      // input user → api: telepon
+    tahunPengukuran: string;
+    targetLevel: number;       // → api: target_nilai
+    targetNilai: string;       // display range (e.g. "2.51-3.50")
+    acuan: string;             // dikosongkan dulu
+    tanggalPengisian: string;  // auto tanggal daftar/isi → api: tanggal
     createdAt: number;
     updatedAt: number;
 }

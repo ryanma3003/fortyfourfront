@@ -692,5 +692,180 @@ export const useIkasStore = defineStore('ikas', {
         return { success: false, error: error.message || 'Gagal menyimpan identifikasi' };
       }
     },
+
+    /**
+     * Submit proteksi scores to the backend via POST /api/proteksi.
+     */
+    async submitProteksi(slug: string): Promise<{ success: boolean; error?: string }> {
+      try {
+        this.ensureStakeholderData(slug);
+        const prot = this.ikasDataMap[slug].proteksi;
+
+        const payload = {
+          nilai_proteksi: Number(prot.nilai_proteksi) || 0,
+          nilai_subdomain1: Number(prot.nilai_subdomain1) || 0,
+          nilai_subdomain2: Number(prot.nilai_subdomain2) || 0,
+          nilai_subdomain3: Number(prot.nilai_subdomain3) || 0,
+          nilai_subdomain4: Number(prot.nilai_subdomain4) || 0,
+          nilai_subdomain5: Number(prot.nilai_subdomain5) || 0,
+          nilai_subdomain6: Number(prot.nilai_subdomain6) || 0,
+        };
+
+        await ikasService.createProteksi(payload);
+        console.log('[IKAS Store] Proteksi submitted successfully');
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Proteksi submit failed:', error);
+        return { success: false, error: error.message || 'Gagal menyimpan proteksi' };
+      }
+    },
+
+    /**
+     * Submit deteksi scores to the backend via POST /api/deteksi.
+     */
+    async submitDeteksi(slug: string): Promise<{ success: boolean; error?: string }> {
+      try {
+        this.ensureStakeholderData(slug);
+        const det = this.ikasDataMap[slug].deteksi;
+
+        const payload = {
+          nilai_deteksi: Number(det.nilai_deteksi) || 0,
+          nilai_subdomain1: Number(det.nilai_subdomain1) || 0,
+          nilai_subdomain2: Number(det.nilai_subdomain2) || 0,
+          nilai_subdomain3: Number(det.nilai_subdomain3) || 0,
+        };
+
+        await ikasService.createDeteksi(payload);
+        console.log('[IKAS Store] Deteksi submitted successfully');
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Deteksi submit failed:', error);
+        return { success: false, error: error.message || 'Gagal menyimpan deteksi' };
+      }
+    },
+
+    /**
+     * Submit gulih scores to the backend via POST /api/gulih.
+     */
+    async submitGulih(slug: string): Promise<{ success: boolean; error?: string }> {
+      try {
+        this.ensureStakeholderData(slug);
+        const tang = this.ikasDataMap[slug].tanggulih;
+
+        const payload = {
+          nilai_gulih: Number(tang.nilai_tanggulih) || 0,
+          nilai_subdomain1: Number(tang.nilai_subdomain1) || 0,
+          nilai_subdomain2: Number(tang.nilai_subdomain2) || 0,
+          nilai_subdomain3: Number(tang.nilai_subdomain3) || 0,
+          nilai_subdomain4: Number(tang.nilai_subdomain4) || 0,
+        };
+
+        await ikasService.createGulih(payload);
+        console.log('[IKAS Store] Gulih submitted successfully');
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Gulih submit failed:', error);
+        return { success: false, error: error.message || 'Gagal menyimpan gulih' };
+      }
+    },
+
+    /**
+     * Seed the full assessment structure on the backend:
+     * 1. Create 4 domains (Identifikasi, Proteksi, Deteksi, Penanggulangan & Pemulihan)
+     * 2. Create kategoris per domain
+     * 3. Create sub-kategoris per kategori
+     * 4. Create ruang lingkup per sub-kategori
+     *
+     * Uses the static assessmentData structure as the source of truth.
+     */
+    async seedAssessmentStructure(): Promise<{ success: boolean; error?: string }> {
+      try {
+        console.log('[IKAS Store] Seeding assessment structure...');
+
+        // Import assessment data structure
+        const { assessmentData } = await import('@/data/assessment/assessment-data');
+
+        for (const domain of assessmentData.domains) {
+          // 1. Create domain
+          let domainResp;
+          try {
+            domainResp = await ikasService.createDomain({ nama_domain: domain.name });
+          } catch {
+            // Domain may already exist, try fetching
+            const existing = await ikasService.getDomains();
+            domainResp = existing.find(d => d.nama_domain === domain.name);
+            if (!domainResp) {
+              console.warn(`[IKAS Store] Could not create/find domain: ${domain.name}`);
+              continue;
+            }
+          }
+
+          this.domainIds[domain.name] = domainResp.id;
+
+          // 2. Create kategoris per domain
+          for (const category of domain.categories) {
+            let kategoriResp;
+            try {
+              kategoriResp = await ikasService.createKategori({
+                domain_id: domainResp.id,
+                nama_kategori: category.name,
+              });
+            } catch {
+              console.warn(`[IKAS Store] Could not create kategori: ${category.name}`);
+              continue;
+            }
+
+            // 3. Create sub-kategoris per kategori
+            for (const subCategory of category.subCategories) {
+              try {
+                await ikasService.createSubKategori({
+                  kategori_id: kategoriResp.id,
+                  nama_sub_kategori: subCategory.name,
+                });
+              } catch {
+                console.warn(`[IKAS Store] Could not create sub-kategori: ${subCategory.name}`);
+              }
+            }
+          }
+        }
+
+        // 4. Create ruang lingkup entries (Tata Kelola, Sumber Daya Manusia, Teknologi)
+        const ruangLingkupNames = ['Tata Kelola', 'Sumber Daya Manusia', 'Teknologi'];
+        for (const name of ruangLingkupNames) {
+          try {
+            await ikasService.createRuangLingkup({ nama_ruang_lingkup: name });
+          } catch {
+            console.warn(`[IKAS Store] Could not create ruang lingkup: ${name}`);
+          }
+        }
+
+        console.log('[IKAS Store] Assessment structure seeded successfully');
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] Seed assessment structure failed:', error);
+        return { success: false, error: error.message || 'Gagal membuat struktur assessment' };
+      }
+    },
+
+    /**
+     * Submit all domain scores to backend in one go.
+     */
+    async submitAllDomainScores(slug: string): Promise<{ success: boolean; errors: string[] }> {
+      const errors: string[] = [];
+
+      const idenResult = await this.submitIdentifikasi(slug);
+      if (!idenResult.success) errors.push(`Identifikasi: ${idenResult.error}`);
+
+      const protResult = await this.submitProteksi(slug);
+      if (!protResult.success) errors.push(`Proteksi: ${protResult.error}`);
+
+      const detResult = await this.submitDeteksi(slug);
+      if (!detResult.success) errors.push(`Deteksi: ${detResult.error}`);
+
+      const gulihResult = await this.submitGulih(slug);
+      if (!gulihResult.success) errors.push(`Gulih: ${gulihResult.error}`);
+
+      return { success: errors.length === 0, errors };
+    },
   },
 });

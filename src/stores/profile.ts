@@ -10,6 +10,7 @@ import type { Stakeholder } from '@/types/stakeholders.types';
 
 export interface ProfileData {
   name: string;
+  display_name: string;
   title: string;
   role: string;
   location: string;
@@ -46,6 +47,7 @@ export interface ProfileData {
 export const useProfileStore = defineStore('profile', {
   state: (): ProfileData => ({
     name: '',
+    display_name: '',
     title: '',
     role: '',
     location: '',
@@ -74,7 +76,7 @@ export const useProfileStore = defineStore('profile', {
   getters: {
     displayName(): string {
       const authStore = useAuthStore();
-      return this.name || authStore.currentUser?.name || 'User';
+      return this.display_name || this.name || authStore.currentUser?.display_name || authStore.currentUser?.name || authStore.currentUser?.username || 'User';
     },
     displayEmail(): string {
       const authStore = useAuthStore();
@@ -102,6 +104,7 @@ export const useProfileStore = defineStore('profile', {
 
       return {
         name:           u.name          || u.username       || '',
+        display_name:   u.display_name                      || '',
         email:          u.email                             || '',
         jabatan:        u.jabatan       || u.jabatan_name   || '',
         idJabatan:      u.id_jabatan                        || '',
@@ -136,6 +139,7 @@ export const useProfileStore = defineStore('profile', {
           const mapped = this._mapApiUser(response);
 
           this.name       = mapped.name;
+          this.display_name = mapped.display_name;
           this.email      = mapped.email;
           this.jabatan    = mapped.jabatan;
           this.idJabatan  = mapped.idJabatan;
@@ -204,6 +208,7 @@ export const useProfileStore = defineStore('profile', {
         const mapped = this._mapApiUser(response);
 
         this.name       = mapped.name;
+        this.display_name = mapped.display_name;
         this.email      = mapped.email;
         this.jabatan    = mapped.jabatan;
         this.idJabatan  = mapped.idJabatan;
@@ -299,6 +304,7 @@ export const useProfileStore = defineStore('profile', {
         try {
           const textPayload: Record<string, any> = {
             username:   data.name     ?? this.name,
+            display_name: data.display_name ?? this.display_name,
             email:      data.email    ?? this.email,
             phone:      data.phone    ?? this.phone,
             location:   data.location ?? this.location,
@@ -319,6 +325,7 @@ export const useProfileStore = defineStore('profile', {
           // ── 3. Apply API response to store ──
           const mapped = this._mapApiUser(updatedUser);
           this.name      = mapped.name      || data.name     || this.name;
+          this.display_name = mapped.display_name || data.display_name || this.display_name;
           this.email     = mapped.email     || data.email    || this.email;
           this.jabatan   = mapped.jabatan   || jabatanName   || this.jabatan;
           this.idJabatan = mapped.idJabatan || jabatanId     || this.idJabatan;
@@ -330,6 +337,7 @@ export const useProfileStore = defineStore('profile', {
         } catch (err: any) {
           // API returned 403/404 — apply changes locally instead
           if (data.name     !== undefined) this.name     = data.name;
+          if (data.display_name !== undefined) this.display_name = data.display_name;
           if (data.email    !== undefined) this.email    = data.email;
           if (data.phone    !== undefined) this.phone    = data.phone;
           if (data.location !== undefined) this.location = data.location;
@@ -433,6 +441,7 @@ export const useProfileStore = defineStore('profile', {
       const authStore = useAuthStore();
       if (authStore.currentUser) {
         this.name  = authStore.currentUser.name || this.name;
+        this.display_name = (authStore.currentUser as any).display_name || this.display_name;
         this.email = authStore.currentUser.email || authStore.currentUser.username || this.email;
         this.role  = authStore.currentUser.role || this.role;
         this.phone = authStore.currentUser.phone || this.phone;
@@ -451,7 +460,7 @@ export const useProfileStore = defineStore('profile', {
 
     resetToDefaults() {
 
-      this.name = ''; this.title = ''; this.role = '';
+      this.name = ''; this.display_name = ''; this.title = ''; this.role = '';
       this.location = ''; this.email = ''; this.phone = '';
       this.jabatan = ''; this.idJabatan = ''; this.website = '';
       this.joined = ''; this.bio = ''; this.address = '';

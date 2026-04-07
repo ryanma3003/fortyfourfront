@@ -11,6 +11,7 @@ interface CurrentUser {
   slug: string;
   username: string;
   name: string;
+  display_name?: string;
   email: string;
   role: string;
   createdAt: string;
@@ -84,6 +85,7 @@ function mapToCurrentUser(data: any): CurrentUser {
     slug: u.slug || "",
     username: u.username,
     name: u.name || u.username,
+    display_name: u.display_name || '',
     email: u.email,
     role: u.role || u.role_name || "user",
     createdAt: u.created_at || u.createdAt || "",

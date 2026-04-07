@@ -10,6 +10,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useCsirtStore } from "../../stores/csirt";
 import { useKseStore } from "../../stores/kse";
 import { useRouter } from "vue-router";
+import { config } from "../../config/env";
 
 export default {
     components: {
@@ -711,6 +712,82 @@ export default {
             removeProfilePhoto,
             onAddCsirtPhotoChange,
             removeAddCsirtPhoto,
+            exportPdf: async () => {
+                if (currentCsirt.value?.id) {
+                    const id = currentCsirt.value.id;
+                    const p = currentCsirt.value.perusahaan || stakeholdersStore.stakeholders.find(s => String(s.id) === String(currentCsirt.value?.id_perusahaan));
+                    const companyName = p?.nama_perusahaan || currentCsirt.value.nama_csirt || 'csirt';
+                    const safeName = companyName.replace(/[^a-z0-9]/gi, '_');
+                    const filename = `Data_CSIRT_${safeName}.pdf`;
+
+                    try {
+                        const response = await fetch(`${config.api.baseUrl}/api/csirt/${id}/export-pdf`, {
+                            credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error('Gagal mengunduh file');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                    } catch (error) {
+                        console.error("Error exporting PDF:", error);
+                    }
+                }
+            },
+            exportPdfSe: async (row: any) => {
+                const id = row.id;
+                const safeName = (row.nama_se || 'se').replace(/[^a-z0-9]/gi, '_');
+                const filename = `Data_SE_${safeName}.pdf`;
+
+                try {
+                    const response = await fetch(`${config.api.baseUrl}/api/se/${id}/export-pdf`, {
+                        credentials: 'include'
+                    });
+                    if (!response.ok) throw new Error('Gagal mengunduh file');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error("Error exporting SE PDF:", error);
+                    // showNotification("Gagal mengunduh PDF SE", "error");
+                }
+            },
+            exportAllSePdf: async () => {
+                const idPerusahaan = currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id;
+                if (idPerusahaan) {
+                    const safeName = (currentCsirt.value?.nama_csirt || 'csirt').replace(/[^a-z0-9]/gi, '_');
+                    const filename = `Rekap_SE_${safeName}.pdf`;
+
+                    try {
+                        const response = await fetch(`${config.api.baseUrl}/api/se/export-pdf?id_perusahaan=${idPerusahaan}`, {
+                            credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error('Gagal mengunduh file');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                    } catch (error) {
+                        console.error("Error exporting all SE PDF:", error);
+                    }
+                }
+            },
         };
 
     },
@@ -802,6 +879,10 @@ export default {
                     <button v-if="canEdit && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
                         <i class="ri-edit-2-line fs-14"></i>
                         <span>Edit CSIRT</span>
+                    </button>
+                    <button @click="exportPdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2">
+                        <i class="ri-file-pdf-line fs-14"></i>
+                        <span>Export PDF</span>
                     </button>
                 </div>
             </div>
@@ -918,7 +999,7 @@ export default {
             <!-- Table -->
             <template v-else>
                 <div class="table-responsive stakeholder-table-wrap">
-                    <table class="table stakeholder-table text-nowrap mb-0" style="table-layout:fixed;width:100%">
+                    <table class="table stakeholder-table text-nowrap mb-0">
                         <colgroup>
                             <col style="width:50px">
                             <col style="width:160px">
@@ -1021,10 +1102,16 @@ export default {
         <SimpleCardComponent title="Tabel Daftar SE-CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
             <!-- Toolbar -->
             <template #showheader>
-                <button v-if="canEdit" @click="goToAddSe" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
-                    <i class="ri-add-circle-line fs-15"></i>
-                    <span>Tambah SE</span>
-                </button>
+                <div class="d-flex gap-2">
+                    <button v-if="canEdit" @click="goToAddSe" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
+                        <i class="ri-add-circle-line fs-15"></i>
+                        <span>Tambah SE</span>
+                    </button>
+                    <button @click="exportAllSePdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
+                        <i class="ri-file-pdf-line"></i>
+                        <span>Rekap SE</span>
+                    </button>
+                </div>
             </template>
 
             <!-- Loading state -->
@@ -1041,7 +1128,7 @@ export default {
             <!-- Table -->
             <template v-else>
                 <div class="table-responsive stakeholder-table-wrap">
-                    <table class="table stakeholder-table text-nowrap mb-0" style="table-layout:fixed;width:100%">
+                    <table class="table stakeholder-table text-nowrap mb-0">
                         <colgroup>
                             <col style="width:50px">
                             <col style="width:160px">
@@ -1135,6 +1222,9 @@ export default {
                                         </button>
                                         <button v-if="canEdit" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
                                             <i class="ri-delete-bin-3-line"></i>
+                                        </button>
+                                        <button @click="exportPdfSe(row)" class="btn btn-sm btn-icon btn-wave btn-secondary-light" title="Export PDF SE">
+                                            <i class="ri-file-pdf-line"></i>
                                         </button>
                                     </div>
                                 </td>

@@ -11,6 +11,7 @@ import EasyDataTable from "vue3-easy-data-table";
 import "vue3-easy-data-table/dist/style.css";
 import { useAuthStore } from "../../stores/auth";
 import { useListPage } from "../../composables/useListPage";
+import { config } from "../../config/env";
 
 export default {
   data() {
@@ -468,6 +469,51 @@ export default {
         const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
         return variants[idx];
       },
+      exportPdf: async (item: any) => {
+        const id = item.id;
+        const p = item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan));
+        const companyName = p?.nama_perusahaan || item.nama_csirt || 'csirt';
+        const safeName = companyName.replace(/[^a-z0-9]/gi, '_');
+        const filename = `Data_CSIRT_${safeName}.pdf`;
+
+        try {
+          const response = await fetch(`${config.api.baseUrl}/api/csirt/${id}/export-pdf`, {
+            credentials: 'include'
+          });
+          if (!response.ok) throw new Error('Gagal mengunduh file');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+        } catch (error) {
+          console.error("Error exporting PDF:", error);
+        }
+      },
+      exportAllCsirtPdf: async () => {
+        const filename = `Rekap_Seluruh_CSIRT.pdf`;
+        try {
+          const response = await fetch(`${config.api.baseUrl}/api/csirt/export-pdf`, {
+            credentials: 'include'
+          });
+          if (!response.ok) throw new Error('Gagal mengunduh file');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+        } catch (error) {
+          console.error("Error exporting all CSIRT PDF:", error);
+        }
+      },
       toCsirtSlug: (item: CsirtMember) => {
         const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         const csirtPart = item.slug || toSlug(item.nama_csirt);
@@ -570,25 +616,36 @@ export default {
 
             <!-- Controls Bar -->
             <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
-              <div class="d-flex align-items-center gap-2">
-                <span class="text-muted fs-13">Tampilkan</span>
-                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                </select>
-                <span class="text-muted fs-13">per halaman</span>
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="text-muted fs-13">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                  <span class="text-muted fs-13">per halaman</span>
+                </div>
               </div>
-              <button v-if="isAdmin"
-                @click="openCreateModal"
-                class="btn btn-warning d-flex align-items-center gap-2"
-              >
-                <i class="ri-add-circle-line fs-16"></i>
-                <span>Tambah CSIRT</span>
-              </button>
+              <div class="d-flex align-items-center gap-2">
+                <button v-if="isAdmin"
+                  @click="openCreateModal"
+                  class="btn btn-warning d-flex align-items-center gap-2"
+                >
+                  <i class="ri-add-circle-line fs-16"></i>
+                  <span>Tambah CSIRT</span>
+                </button>
+                <button
+                  @click="exportAllCsirtPdf"
+                  class="btn btn-danger d-flex align-items-center gap-2"
+                >
+                  <i class="ri-file-pdf-line fs-16"></i>
+                  <span>Rekap CSIRT</span>
+                </button>
+              </div>
             </div>
 
             <!-- Table -->
             <div class="table-responsive stakeholder-table-wrap">
-              <table class="table stakeholder-table mb-0" style="table-layout:fixed;width:100%">
+              <table class="table stakeholder-table text-nowrap mb-0">
                 <thead class="stakeholder-thead">
                   <tr>
                     <th class="th-no" style="width:50px">No</th>
@@ -786,6 +843,12 @@ export default {
                           class="btn btn-sm btn-icon btn-wave btn-danger-light"
                           title="Hapus">
                           <i class="ri-delete-bin-3-line"></i>
+                        </button>
+                        <button
+                          @click="exportPdf(item)"
+                          class="btn btn-sm btn-icon btn-wave btn-secondary-light"
+                          title="Export PDF">
+                          <i class="ri-file-pdf-line"></i>
                         </button>
                       </div>
                     </td>

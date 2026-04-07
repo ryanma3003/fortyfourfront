@@ -189,8 +189,9 @@ const ApexRadarChart = computed(() => [
 </script>
 
 <template>
-    <div class="row">
-        <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
+    <div class="ikas-charts-container mt-4">
+        <div class="row g-4">
+            <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
             <div class="radar-chart-card">
                 <!-- Chart card header -->
                 <div class="radar-chart-header">
@@ -217,6 +218,7 @@ const ApexRadarChart = computed(() => [
                     />
                 </div>
             </div>
+        </div>
         </div>
     </div>
 </template>
