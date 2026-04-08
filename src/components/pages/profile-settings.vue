@@ -62,7 +62,7 @@ const dataToPass = computed(() => ({
 }));
 
 const formData = ref({
-  name: "", role: "", jabatan: "", idJabatan: "", location: "", email: "", phone: "", website: "", bio: "", address: ""
+  name: "", display_name: "", role: "", jabatan: "", idJabatan: "", location: "", email: "", phone: "", website: "", bio: "", address: ""
 });
 
 const nameInput = ref<HTMLInputElement | null>(null);
@@ -174,7 +174,8 @@ watch(() => route.params.slug, async () => {
 
 const resetForm = () => {
   formData.value = {
-    name: profileStore.name || profileStore.displayName,
+    name: profileStore.name || authStore.currentUser?.username || profileStore.displayName,
+    display_name: profileStore.display_name || '',
     role: profileStore.displayRole,
     jabatan: profileStore.jabatan,
     idJabatan: profileStore.idJabatan,
@@ -268,6 +269,7 @@ const saveProfile = async () => {
   try {
     const profileData: Record<string, any> = {
       name:     formData.value.name,
+      display_name: formData.value.display_name,
       email:    formData.value.email,
       phone:    formData.value.phone,
       location: formData.value.location,
@@ -475,9 +477,9 @@ const roleOptions = ['admin', 'User'];
 
               <!-- Info Block -->
               <div class="profile-info-block">
-                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-end justify-content-between gap-2">
                   <div>
-                    <h4 class="profile-user-name mb-1">{{ formData.name || "User Name" }}</h4>
+                    <h4 class="profile-user-name mb-1">{{ formData.display_name || formData.name || "User Name" }}</h4>
                     <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                       <span :class="['profile-role-badge', `profile-role-badge--${(formData.role || '').toLowerCase()}`]">
                         <i :class="formData.role?.toLowerCase() === 'admin' ? 'ri-shield-user-line' : 'ri-user-line'"></i>{{ formData.role }}
@@ -502,7 +504,7 @@ const roleOptions = ['admin', 'User'];
                     </div>
                   </div>
                   <!-- Action Buttons (Desktop) -->
-                  <div class="save-btn-desktop d-none d-md-flex gap-2 align-self-start mt-1">
+                  <div class="save-btn-desktop d-none d-md-flex gap-2 mb-1">
                     <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-4">
                       <i class="ri-arrow-left-line me-1"></i>Batal
                     </button>
@@ -529,15 +531,28 @@ const roleOptions = ['admin', 'User'];
         </div>
         <div class="card-body p-4 p-md-5">
           <div class="row g-4">
-              <!-- Name -->
+              <!-- Username (read-only) -->
+              <div class="col-xl-6 col-lg-6 col-md-6">
+                <div class="form-group-split">
+                  <div class="form-group-split-label-card">
+                    <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px"><i class="ri-at-line" style="font-size:0.95rem"></i></div>
+                    <label class="form-item-label mb-0">Username</label>
+                  </div>
+                  <div class="form-group-split-input-card form-item-card--readonly">
+                    <div class="form-item-value">{{ formData.name }}</div>
+                    <i class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                  </div>
+                </div>
+              </div>
+              <!-- Display Name -->
               <div class="col-xl-6 col-lg-6 col-md-6">
                 <div class="form-group-split" @click="focusInput(nameInput)">
                   <div class="form-group-split-label-card">
                     <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px"><i class="ri-user-line" style="font-size:0.95rem"></i></div>
-                    <label class="form-item-label mb-0">Nama Lengkap</label>
+                    <label class="form-item-label mb-0">Display Name</label>
                   </div>
                   <div class="form-group-split-input-card">
-                    <input ref="nameInput" type="text" class="form-item-input" v-model="formData.name" placeholder="Masukkan nama lengkap" />
+                    <input ref="nameInput" type="text" class="form-item-input" v-model="formData.display_name" placeholder="Masukkan display name" />
                     <i class="ri-pencil-line form-item-edit-action"></i>
                   </div>
                 </div>

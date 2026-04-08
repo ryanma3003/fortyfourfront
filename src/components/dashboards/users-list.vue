@@ -40,13 +40,8 @@ export default {
     const stakeholdersData = ref<Stakeholder[]>([]);
 
     // CRUD state
-    const showEditModal    = ref(false);
     const showDeleteModal  = ref(false);
-    const currentEditItem  = ref<User | null>(null);
     const currentDeleteItem = ref<User | null>(null);
-
-    // Form state for editing role
-    const formData = ref<{ role: string }>({ role: "" });
 
     // Computed items from API data
     const items = computed(() => {
@@ -59,6 +54,7 @@ export default {
           id: (u as any).id?.toString() || '',
           slug: (u as any).slug || (u as any).username || (u as any).id?.toString() || '',
           username: (u as any).username || (u as any).email || '',
+          display_name: (u as any).display_name || '',
           name: (u as any).name || (u as any).username || 'Unknown',
           email: (u as any).email || '',
           phone: (u as any).phone || '',
@@ -124,6 +120,7 @@ export default {
         data = data.filter(
           (i) =>
             i.name.toLowerCase().includes(q) ||
+            (i.display_name || '').toLowerCase().includes(q) ||
             i.username.toLowerCase().includes(q) ||
             i.jabatan.toLowerCase().includes(q) ||
             i.role.toLowerCase().includes(q)
@@ -146,46 +143,7 @@ export default {
       return company?.nama_perusahaan || '-';
     };
 
-    // EDIT ROLE
-    const openEditModal = (item: User) => {
-      currentEditItem.value = item;
-      formData.value = { role: item.role };
-      showEditModal.value = true;
-    };
 
-    const updateUser = async () => {
-      if (!currentEditItem.value) return;
-
-      try {
-        // Find the role ID from the selected role name
-        const selectedRoleName = formData.value.role;
-        const roleObj = rolesData.value.find(r => 
-          r.name.toLowerCase() === selectedRoleName.toLowerCase()
-        );
-        
-        if (roleObj) {
-          // Use role service to assign role
-          await roleService.assignToUser(currentEditItem.value.id, roleObj.id);
-        } else {
-          // Fallback: update directly via users service
-          await usersService.update(currentEditItem.value.id, {
-            role: selectedRoleName
-          });
-        }
-        
-        // Update local data
-        const index = usersData.value.findIndex((u: any) => u.id?.toString() === currentEditItem.value?.id);
-        if (index !== -1) {
-          (usersData.value[index] as any).role = selectedRoleName;
-        }
-        
-        showEditModal.value = false;
-        showNotification("Role berhasil diperbarui!", "success");
-      } catch (error) {
-        console.error('Failed to update role:', error);
-        showNotification("Gagal memperbarui role!", "error");
-      }
-    };
 
     // DELETE
     const openDeleteModal = (item: User) => {
@@ -254,10 +212,10 @@ export default {
       authStore, items, loading,
       searchQuery, sortField, sortOrder, currentPage, itemsPerPage,
       totalPages, displayData, paginationInfo,
-      showEditModal, showDeleteModal, currentEditItem, currentDeleteItem,
-      formData, showToast, toastMessage, toastType,
+      showDeleteModal, currentDeleteItem,
+      showToast, toastMessage, toastType,
       rolesData, countAdmins, countRegular,
-      openEditModal, updateUser, openDeleteModal, deleteUser,
+      openDeleteModal, deleteUser,
       getStatusClass, getUserStatusClass, getUserStatusText, clearSearch, toggleSort, getAvatarColorClass, getCompanyName,
     };
   },
@@ -286,7 +244,7 @@ export default {
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <!-- Header -->
-        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-3 users-header">
           <div class="d-flex align-items-center gap-3">
             <div class="header-icon-box">
               <i class="ri-group-line"></i>
@@ -353,12 +311,14 @@ export default {
 
             <!-- Controls Bar -->
             <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
-              <div class="d-flex align-items-center gap-2">
-                <span class="text-muted fs-13">Tampilkan</span>
-                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                </select>
-                <span class="text-muted fs-13">per halaman</span>
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="text-muted fs-13">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                  <span class="text-muted fs-13">per halaman</span>
+                </div>
               </div>
             </div>
 
@@ -443,12 +403,13 @@ export default {
                           <span v-else class="company-avatar-letter">{{ item.name.charAt(0).toUpperCase() }}</span>
                         </div>
                         <div>
-                          <span class="company-name d-block">{{ item.name }}</span>
+                          <span class="company-name d-block">{{ item.display_name || item.name }}</span>
+                          <span class="text-muted fs-12">@{{ item.username }}</span>
                         </div>
                       </div>
                     </td>
                     <td class="align-middle">
-                      <span class="text-muted fs-13">{{ item.username }}</span>
+                      <span class="text-muted fs-13">{{ item.email || item.username }}</span>
                     </td>
                     <td class="align-middle">
                       <span class="badge bg-light text-dark border fs-12">
@@ -475,12 +436,12 @@ export default {
                         <router-link :to="`/users/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
                           <i class="ri-eye-line"></i>
                         </router-link>
-                        <button v-if="authStore.currentUser?.id !== item.id"
-                          @click="openEditModal(item)"
+                        <router-link v-if="authStore.currentUser?.id !== item.id"
+                          :to="{ path: `/users/${item.slug}`, query: { edit: 'true' } }"
                           class="btn btn-sm btn-icon btn-wave btn-warning-light"
-                          title="Edit Role">
+                          title="Edit User">
                           <i class="ri-pencil-line"></i>
-                        </button>
+                        </router-link>
                         <button v-if="authStore.currentUser?.id !== item.id"
                           @click="openDeleteModal(item)"
                           class="btn btn-sm btn-icon btn-wave btn-danger-light"
@@ -540,46 +501,6 @@ export default {
       </div>
     </div>
   </div>
-
-  <!-- Edit Role Modal -->
-  <Teleport to="body">
-  <div v-if="showEditModal" class="modal-overlay" tabindex="-1" @click="showEditModal = false">
-    <div class="modal-dialog modal-dialog-md" @click.stop>
-      <div class="modal-content rounded-4 border-0 shadow-lg">
-        <div class="modal-header border-0 pb-0">
-          <h5 class="modal-title fw-bold"><i class="ri-shield-user-line me-2 text-warning"></i>Edit Role</h5>
-          <button type="button" class="btn-close" @click="showEditModal = false"></button>
-        </div>
-        <div class="modal-body pt-2" v-if="currentEditItem">
-          <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-light rounded-3">
-            <span class="company-avatar modal-avatar-md">
-              <img v-if="currentEditItem.photo" :src="currentEditItem.photo" :alt="currentEditItem.name" />
-              <span v-else>{{ currentEditItem.name.charAt(0).toUpperCase() }}</span>
-            </span>
-            <div>
-              <h6 class="mb-0 fw-semibold">{{ currentEditItem.name }}</h6>
-              <span class="text-muted fs-13">{{ currentEditItem.username }}</span>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
-            <select v-model="formData.role" class="form-select">
-              <option v-for="role in rolesData" :key="role.id" :value="role.name">{{ role.name }}</option>
-              <option v-if="!rolesData.length" value="admin">Admin</option>
-              <option v-if="!rolesData.length" value="user">User</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer border-0 pt-0">
-          <button type="button" class="btn btn-light" @click="showEditModal = false">Batal</button>
-          <button type="button" class="btn btn-warning" @click="updateUser">
-            <i class="ri-save-line me-1"></i>Simpan
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-  </Teleport>
 
   <!-- Delete Modal -->
   <Teleport to="body">

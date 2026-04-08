@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import type { Question } from '@/types/assessment.types';
+import type { DynamicQuestion } from '@/types/dynamic-assessment.types';
 
 const props = defineProps<{
-  question: Question;
+  question: DynamicQuestion;
   questionNumber: number;
   selectedIndex?: number;
   readOnly?: boolean;

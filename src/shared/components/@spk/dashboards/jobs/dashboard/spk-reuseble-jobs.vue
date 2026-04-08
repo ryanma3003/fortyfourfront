@@ -47,7 +47,7 @@ export default {
                         <i :class="list.icon"></i>
                         {{ list.percent }}
                      </span>
-                     <span class="monthly-percent">this month</span>
+                     <span class="monthly-percent">{{ list.monthLabel || 'this month' }}</span>
                 </span>
             </div>
             

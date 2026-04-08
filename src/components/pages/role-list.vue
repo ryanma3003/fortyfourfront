@@ -93,7 +93,7 @@ onMounted(loadRoles);
       <div class="card custom-card gradient-header-card">
 
         <!-- Header -->
-        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-3 users-header">
           <div class="d-flex align-items-center gap-3">
             <div class="header-icon-box">
               <i class="ri-shield-keyhole-line"></i>
@@ -153,12 +153,14 @@ onMounted(loadRoles);
 
             <!-- Controls Bar -->
             <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
-              <div class="d-flex align-items-center gap-2">
-                <span class="text-muted fs-13">Tampilkan</span>
-                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-                </select>
-                <span class="text-muted fs-13">per halaman</span>
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="text-muted fs-13">Tampilkan</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
+                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                  <span class="text-muted fs-13">per halaman</span>
+                </div>
               </div>
             </div>
 

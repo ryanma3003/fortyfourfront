@@ -199,7 +199,7 @@ const handleSubmit = () => {
         <div class="card-header">
           <div class="card-title d-flex align-items-center gap-2">
             <i class="ri-file-list-3-line text-primary"></i>
-            Data Responden â€“ Kategorisasi Sistem Elektronik (KSE)
+            Data Responden Kategorisasi Sistem Elektronik (KSE)
           </div>
         </div>
 
@@ -254,7 +254,7 @@ const handleSubmit = () => {
                 <div v-if="!isFromCsirt" class="form-text">Nama sistem dari entri KSE yang dipilih.</div>
               </div>
 
-              <!--  SE Detail fields â€“ editable when fromCsirt  -->
+              <!--  SE Detail fields editable when fromCsirt  -->
               <template v-if="isFromCsirt">
                 <div class="col-12">
                   <div class="fs-12 fw-semibold text-muted text-uppercase border-bottom pb-1 mt-1">

@@ -4,14 +4,14 @@ import { useRoute, useRouter } from 'vue-router';
 import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
 import { useIkasStore } from '../stores/ikas';
-import { useAssessmentStore } from '../stores/assessment';
+import { useDynamicAssessmentStore } from '../stores/dynamic-assessment';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 
 const router = useRouter();
 const route = useRoute();
 const ikasStore = useIkasStore();
-const assessmentStore = useAssessmentStore();
+const assessmentStore = useDynamicAssessmentStore();
 const stakeholdersStore = useStakeholdersStore();
 
 // Initialize store

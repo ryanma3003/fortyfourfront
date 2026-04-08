@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue';
-import { useAssessmentStore } from '@/stores/assessment';
+import { useDynamicAssessmentStore } from '@/stores/dynamic-assessment';
 import type { RespondentProfile } from '@/types/assessment.types';
 import type { Stakeholder } from '@/types/stakeholders.types';
 
-const assessmentStore = useAssessmentStore();
+const assessmentStore = useDynamicAssessmentStore();
 
 const props = defineProps<{
   stakeholder?: Stakeholder | null;
@@ -37,6 +37,7 @@ const targetLevelOptions = [
 
 // Form state
 const formData = reactive<Partial<RespondentProfile>>({
+  instansi: '',
   sektor: 'Kesehatan',
   alamat: '',
   email: '',
@@ -46,6 +47,7 @@ const formData = reactive<Partial<RespondentProfile>>({
   tahunPengukuran: new Date().getFullYear().toString(),
   targetLevel: 3,
   targetNilai: '2.51 - 3.50',
+  acuan: '',
   tanggalPengisian: new Date().toISOString().split('T')[0]
 });
 
@@ -57,6 +59,9 @@ const saveIndicator = ref('');
 
 // Pre-fill from stakeholder data
 const prefillFromStakeholder = (stakeholder: Stakeholder) => {
+  // Instansi dari nama perusahaan
+  formData.instansi = stakeholder.nama_perusahaan || '';
+  // Sektor dari sub-sektor perusahaan
   if (stakeholder.sub_sektor?.nama_sub_sektor) {
     formData.sektor = stakeholder.sub_sektor.nama_sub_sektor;
   } else if (stakeholder.sektor) {
@@ -163,15 +168,17 @@ const handleFieldBlur = (field: string) => {
 // Save form data to store
 const saveFormData = () => {
   const profile: RespondentProfile = {
+    instansi: formData.instansi || '',
     sektor: formData.sektor || '',
     alamat: formData.alamat || '',
     email: formData.email || '',
-    nomorTelepon: formData.nomorTelepon || '',
     namaResponden: formData.namaResponden || '',
     jabatanResponden: formData.jabatanResponden || '',
+    nomorTelepon: formData.nomorTelepon || '',
     tahunPengukuran: formData.tahunPengukuran || '',
     targetLevel: formData.targetLevel || 3,
     targetNilai: formData.targetNilai || '',
+    acuan: formData.acuan || '',
     tanggalPengisian: formData.tanggalPengisian || '',
     createdAt: formData.createdAt || Date.now(),
     updatedAt: Date.now()
@@ -379,6 +386,19 @@ const startAssessment = () => {
                   placeholder="Contoh: 2.51 - 3.50"
                 />
                 <div v-if="errors.targetNilai" class="invalid-feedback">{{ errors.targetNilai }}</div>
+              </div>
+
+              <!-- Acuan (dikosongkan dulu) -->
+              <div class="col-md-6 mb-3">
+                <label class="form-label">Acuan</label>
+                <input 
+                  type="text" 
+                  class="form-control bg-light"
+                  v-model="formData.acuan"
+                  placeholder="— Belum tersedia —"
+                  disabled
+                />
+                <small class="text-muted">Akan diisi pada tahap selanjutnya</small>
               </div>
             </div>
 

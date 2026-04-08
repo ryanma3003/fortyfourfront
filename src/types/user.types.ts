@@ -3,6 +3,7 @@ export interface User {
     slug: string;
     username: string;
     name: string;
+    display_name?: string;
     email: string;
     jabatan: string;
     role: string;
@@ -32,12 +33,14 @@ export interface CreateUserPayload {
     location: string;
     photo?: string;
     banner?: string;
+    status?: string;
 }
 
 export interface UpdateUserPayload {
     username?: string;
     password?: string;
     name?: string;
+    display_name?: string;
     email?: string;
     jabatan?: string;
     id_jabatan?: string;
@@ -46,5 +49,12 @@ export interface UpdateUserPayload {
     location?: string;
     photo?: string;
     banner?: string;
+    status?: string;
     confirm_password?: string;
+    banner_position_x?: number;
+    banner_position_y?: number;
+    foto_profile_position_x?: number;
+    foto_profile_position_y?: number;
+    fotoProfileBase64?: string;
+    bannerBase64?: string;
 }

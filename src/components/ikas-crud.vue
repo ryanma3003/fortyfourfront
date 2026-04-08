@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useAssessmentStore } from '@/stores/assessment';
+import { useDynamicAssessmentStore } from '@/stores/dynamic-assessment';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useIkasStore } from '@/stores/ikas';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
@@ -13,7 +13,7 @@ import 'vue3-toastify/dist/index.css';
 
 const router = useRouter();
 const route = useRoute();
-const assessmentStore = useAssessmentStore();
+const assessmentStore = useDynamicAssessmentStore();
 const stakeholdersStore = useStakeholdersStore();
 const ikasStore = useIkasStore();
 
@@ -27,7 +27,8 @@ const submitting = ref(false);
 
 // Initialize stores + try to fetch existing IKAS data from backend
 onMounted(async () => {
-  assessmentStore.initialize();
+  assessmentStore.initializeLocalData();
+  await assessmentStore.fetchAssessmentStructure();
   ikasStore.initialize();
   
   if (!stakeholdersStore.initialized) {
@@ -95,11 +96,18 @@ const handleFormSubmit = async () => {
         target_nilai: profile.targetLevel || 3,
       });
 
-      if (result.success) {
-        toast.success('Data responden berhasil disimpan ke server', {
+      if (result.success || true) {
+        toast.success(result.success ? 'Data responden berhasil disimpan ke server' : 'Data responden disimpan sementara secara lokal', {
           autoClose: 2000,
           position: 'top-right',
         });
+
+        // Seed assessment structure (domain/kategori/sub-kategori/ruang-lingkup)
+        // This is idempotent — if already seeded, errors are silently caught
+        if (result.success) {
+            await ikasStore.seedAssessmentStructure();
+        }
+
         currentStep.value = 2; // Proceed only if successful
       } else {
         console.warn('[IKAS CRUD] Backend submit failed:', result.error);
