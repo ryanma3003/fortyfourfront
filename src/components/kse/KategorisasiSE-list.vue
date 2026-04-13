@@ -5,6 +5,7 @@ import { useKseStore } from '../../stores/kse';
 import { useStakeholdersStore } from '../../stores/stakeholders';
 import { csirtService } from '@/services/csirt.service';
 import type { SeCsirt } from '@/types/csirt.types';
+import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 
 const route  = useRoute();
 const router = useRouter();
@@ -61,8 +62,11 @@ async function loadEntries() {
   try {
     const companyId = currentStakeholder.value?.id;
     if (companyId) {
-      const allSe: SeCsirt[] = await csirtService.getAllSe();
-      const companySe = allSe.filter(se => String(se.id_perusahaan) === String(companyId));
+      let companySe: SeCsirt[] = [];
+      const myCsirt = await csirtService.getCsirtByPerusahaan(companyId).catch(() => null);
+      if (myCsirt && myCsirt.id) {
+          companySe = await csirtService.getSeByCsirtId(myCsirt.id).catch(() => []);
+      }
       apiEntries = companySe.map(se => {
         // Match with local entry to preserve existing store data (like isSubmitted/answers)
         const localMatch = localEntries.find(le => String(le.seId) === String(se.id));
@@ -174,7 +178,7 @@ function clearSearch() { searchQuery.value = ''; currentPage.value = 1; }
 function openAdd() { newNamaSistem.value = ''; addError.value = ''; showAddModal.value = true; }
 function closeAdd() { showAddModal.value = false; }
 
-function confirmAdd() {
+async function confirmAdd() {
   if (!newNamaSistem.value.trim()) { addError.value = 'Nama sistem tidak boleh kosong.'; return; }
 
   const id = `${stakeholderSlug.value}_kse_${Date.now()}`;
@@ -191,8 +195,42 @@ function confirmAdd() {
   saveEntries();
   showAddModal.value = false;
 
-  // Go straight to the form
-  router.push({ path: '/kse-crud', query: { slug: id, source: 'kse', stakeholder: stakeholderSlug.value } });
+  // ── Integrate with SE CSIRT backend ──────────────────────────
+  // Look up the CSIRT for this company so the SE can be created in the backend
+  let csirtId = '';
+  const companyId = currentStakeholder.value?.id;
+  if (companyId) {
+    try {
+      const myCsirt = await csirtService.getCsirtByPerusahaan(companyId);
+      if (myCsirt && myCsirt.id) {
+        csirtId = String(myCsirt.id);
+      }
+    } catch (e) {
+      console.warn('[KSE-list] Could not resolve CSIRT for company:', e);
+    }
+  }
+
+  // Pre-fill respondent profile with company + CSIRT data for the SE creation flow
+  localStorage.setItem(`kse_respondent_${id}`, JSON.stringify({
+    namaPerusahaan   : currentStakeholder.value?.nama_perusahaan || '',
+    jenisUsaha       : currentStakeholder.value?.sub_sektor?.nama_sub_sektor || currentStakeholder.value?.sektor || '',
+    namaSistem       : entry.namaSistem,
+    alamat           : currentStakeholder.value?.alamat   || '',
+    email            : currentStakeholder.value?.email    || '',
+    nomorTelepon     : currentStakeholder.value?.telepon  || '',
+    tanggalPengisian : new Date().toISOString().split('T')[0],
+    ip_se            : '',
+    as_number_se     : '',
+    pengelola_se     : '',
+    fitur_se         : '',
+    fromCsirt        : true,
+    id_csirt         : csirtId,
+    id_perusahaan    : String(companyId || ''),
+    id_sub_sektor    : String(currentStakeholder.value?.sub_sektor?.id || ''),
+  }));
+
+  // Go to the KSE CRUD form with CSIRT source so SE detail fields are editable
+  router.push({ path: '/kse-crud', query: { slug: id, source: 'csirt', stakeholder: stakeholderSlug.value } });
 }
 
 // ── View / Edit ───────────────────────────────────────────────
@@ -229,6 +267,18 @@ async function confirmDelete() {
   closeDelete();
 }
 
+// ── Pageheader breadcrumb ─────────────────────────────────────
+const dataToPass = computed(() => {
+  const s = currentStakeholder.value;
+  return {
+    title: s
+      ? { label: `Profile ${s.nama_perusahaan}`, path: `/stakeholders/${stakeholderSlug.value}` }
+      : { label: 'Stakeholders', path: '/stakeholders' },
+    currentpage: 'KSE',
+    activepage: 'KSE',
+  };
+});
+
 // ── Back ──────────────────────────────────────────────────────
 function goBack() {
   router.push(`/stakeholders/${stakeholderSlug.value}`);
@@ -259,6 +309,9 @@ function progressClass(pct: number): string {
 </script>
 
 <template>
+  <!-- ══════════════════ PAGEHEADER ══════════════════ -->
+  <Pageheader :propData="dataToPass" />
+
   <!-- ══════════════════ PAGE ══════════════════ -->
   <div class="row">
     <div class="col-xl-12">
@@ -273,15 +326,7 @@ function progressClass(pct: number): string {
               <div class="kse-icon-rings"></div>
             </div>
             <div>
-              <div class="d-flex align-items-center gap-2 mb-1">
-                <button @click="goBack" class="kse-back-btn">
-                  <i class="ri-arrow-left-s-line"></i>
-                </button>
-                <span class="kse-breadcrumb">
-                  {{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }}
-                  <i class="ri-arrow-right-s-line mx-1 opacity-50 "></i> KSE
-                </span>
-              </div>
+              
               <div class="header-card-title text-white fw-bold">Kategorisasi Sistem Elektronik</div>
               <div class="header-subtitle mt-1">
                 {{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor || '' }} &bull;

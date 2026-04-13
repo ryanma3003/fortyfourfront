@@ -802,8 +802,6 @@ html.dark .hero-card-shell {
                 <div class="tab-content">
                   <div class="tab-pane show active p-0 border-0">
                     <div class="row">
-
-                     
                       <SpkReusableAnlyticsCard
                         :analyticData="penilaian"
                         :csirtId="relatedCsirtId ?? undefined"
@@ -851,9 +849,6 @@ html.dark .hero-card-shell {
                           </button>
                         </div>
                       </div>
-
-                     
-
      
                       <div class="col-12 mb-4">
                         <div class="card custom-card overflow-hidden shadow-sm">
@@ -882,6 +877,11 @@ html.dark .hero-card-shell {
                                     <th>
                                       <div class="d-flex align-items-center gap-2">
                                         <i class="ri-user-6-line text-muted"></i>NAMA PIC
+                                      </div>
+                                    </th>
+                                    <th>
+                                      <div class="d-flex align-items-center gap-2">
+                                        <i class="ri-mail-line text-muted"></i>EMAIL
                                       </div>
                                     </th>
                                     <th>
@@ -930,6 +930,12 @@ html.dark .hero-card-shell {
                                           <span class="company-name text-dark fw-bold mb-0 lh-1">{{ pic.nama }}</span>
                                           <span class="text-muted fs-11 mt-1">Person in Charge</span>
                                         </div>
+                                      </div>
+                                    </td>
+                                    <td class="align-middle">
+                                      <div class="d-inline-flex align-items-center px-2 py-1 rounded-2 border border-light">
+                                        <i class="ri-mail-line me-2 text-primary fs-12"></i>
+                                        <span class="fw-bold fs-13 text-black">{{ pic.email }}</span>
                                       </div>
                                     </td>
                                     <td class="align-middle">

@@ -29,7 +29,7 @@
             </div>
         </div>
 
-        <div class="header-element header-search d-md-block d-none">
+        <div class="header-element header-search d-md-block d-none mt-2">
           <div class="autoComplete_wrapper">
             <!-- Start::header-link -->
             <input
@@ -92,46 +92,48 @@
       <!-- End::header-content-left -->
 
       <!-- Start::header-content-right -->
-      <ul class="header-content-right">
+      <ul class="header-content-right align-items-center">
         <!-- Start::header-element -->
         <li class="header-element d-md-none d-block">
           <a
             href="javascript:void(0);"
-            class="header-link"
+            class="header-link d-flex align-items-center"
             data-bs-toggle="modal"
             data-bs-target="#header-responsive-search"
           >
-            <!-- Start::header-link-icon -->
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="header-link-icon"
-              viewBox="0 0 256 256"
-            >
-              <rect width="256" height="256" fill="none" />
-              <circle cx="112" cy="112" r="80" opacity="0.2" />
-              <circle
-                cx="112"
-                cy="112"
-                r="80"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="16"
-              />
-              <line
-                x1="168.57"
-                y1="168.57"
-                x2="224"
-                y2="224"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="16"
-              />
-            </svg>
-            <!-- End::header-link-icon -->
+            <div class="d-flex align-items-center mt-2">
+              <!-- Start::header-link-icon -->
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="header-link-icon"
+                viewBox="0 0 256 256"
+              >
+                <rect width="256" height="256" fill="none" />
+                <circle cx="112" cy="112" r="80" opacity="0.2" />
+                <circle
+                  cx="112"
+                  cy="112"
+                  r="80"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="16"
+                />
+                <line
+                  x1="168.57"
+                  y1="168.57"
+                  x2="224"
+                  y2="224"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="16"
+                />
+              </svg>
+              <!-- End::header-link-icon -->
+            </div>
           </a>
         </li>
         <!-- End::header-element -->
@@ -141,42 +143,44 @@
           <!-- Start::header-link|dropdown-toggle -->
           <a
             href="javascript:void(0);"
-            class="header-link dropdown-toggle"
+            class="header-link dropdown-toggle d-flex align-items-center"
             data-bs-toggle="dropdown"
             data-bs-auto-close="outside"
             id="messageDropdown"
             aria-expanded="false"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="header-link-icon"
-              viewBox="0 0 256 256"
-            >
-              <rect width="256" height="256" fill="none" />
-              <path
-                d="M56,104a72,72,0,0,1,144,0c0,35.82,8.3,64.6,14.9,76A8,8,0,0,1,208,192H48a8,8,0,0,1-6.88-12C47.71,168.6,56,139.81,56,104Z"
-                opacity="0.2"
-              />
-              <path
-                d="M96,192a32,32,0,0,0,64,0"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="16"
-              />
-              <path
-                d="M56,104a72,72,0,0,1,144,0c0,35.82,8.3,64.6,14.9,76A8,8,0,0,1,208,192H48a8,8,0,0,1-6.88-12C47.71,168.6,56,139.81,56,104Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="16"
-              />
-            </svg>
-            <span v-if="notifStore.unreadCount > 0"
-              class="header-icon-pulse bg-secondary rounded pulse pulse-secondary"
-            ></span>
+            <div class="d-flex align-items-center mt-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="header-link-icon"
+                viewBox="0 0 256 256"
+              >
+                <rect width="256" height="256" fill="none" />
+                <path
+                  d="M56,104a72,72,0,0,1,144,0c0,35.82,8.3,64.6,14.9,76A8,8,0,0,1,208,192H48a8,8,0,0,1-6.88-12C47.71,168.6,56,139.81,56,104Z"
+                  opacity="0.2"
+                />
+                <path
+                  d="M96,192a32,32,0,0,0,64,0"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="16"
+                />
+                <path
+                  d="M56,104a72,72,0,0,1,144,0c0,35.82,8.3,64.6,14.9,76A8,8,0,0,1,208,192H48a8,8,0,0,1-6.88-12C47.71,168.6,56,139.81,56,104Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="16"
+                />
+              </svg>
+              <span v-if="notifStore.unreadCount > 0"
+                class="header-icon-pulse bg-secondary rounded pulse pulse-secondary"
+              ></span>
+            </div>
           </a>
           <!-- End::header-link|dropdown-toggle -->
           <!-- Start::main-header-dropdown -->
@@ -261,8 +265,15 @@
             data-bs-auto-close="outside"
             aria-expanded="false"
           >
-            <div>
-              <img :src="fotoProfileUrl" alt="img" class="header-link-icon" />
+            <div class="d-flex align-items-center mt-2">
+              <div class="me-sm-2 me-0">
+                <img :src="fotoProfileUrl" alt="img" class="avatar avatar-sm avatar-rounded" />
+              </div>
+              <div class="d-none d-sm-block text-start">
+                <p class="fw-semibold mb-1 lh-1">{{ displayName }}</p>
+                <span class="text-muted fs-12 lh-1">{{ displayEmail }}</span>
+              </div>
+              <i class="ri-arrow-down-s-line d-none d-sm-inline-block ms-2 text-muted"></i>
             </div>
           </a>
           <!-- End::header-link|dropdown-toggle -->

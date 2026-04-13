@@ -86,12 +86,30 @@
 
             <!-- Sub-menu -->
             <template v-if="mainmenuItem?.type === 'sub'">
-              <RecursiveMenu
-                :menuData="mainmenuItem"
-                :toggleSubmenu="toggleSubmenu"
-                :HoverToggleInnerMenuFn="HoverToggleInnerMenuFn"
-                :level="level + 1"
-              />
+              <a href="javascript:;" class="side-menu__item sb2-item" @click="toggleSubmenu($event, mainmenuItem)">
+                <span class="sb2-item-indicator" aria-hidden="true"></span>
+                <span class="sb2-icon-wrap" v-if="mainmenuItem.icon" v-html="mainmenuItem.icon"></span>
+                <span class="side-menu__label sb2-label">
+                  {{ mainmenuItem.title }}
+                  <span v-if="mainmenuItem.badgetxt" v-html="mainmenuItem.badgetxt"></span>
+                </span>
+                <i class="ri-arrow-right-s-line side-menu__angle" :class="mainmenuItem.active ? 'horizontal-arrow' : ''"></i>
+              </a>
+              <ul v-if="mainmenuItem.children && mainmenuItem.children.length > 0" class="slide-menu child1" :class="mainmenuItem.active ? 'doublemenu_slide-menu open' : 'doublemenu_slide-menu'">
+                <li
+                  v-for="(child, cIndex) in mainmenuItem.children"
+                  :key="cIndex"
+                  :class="{ 'active': child.selected }"
+                >
+                  <router-link
+                    :to="child.path"
+                    class="side-menu__item"
+                    :class="{ 'active': child.selected }"
+                  >
+                    <span class="side-menu__label">{{ child.title }}</span>
+                  </router-link>
+                </li>
+              </ul>
             </template>
           </li>
         </ul>
@@ -237,7 +255,7 @@ function toggleSubmenu(
       }
       if (item.active) {
         closeOtherMenus(menuList, item);
-        setAncestorsActive(menuList, item);
+        setAncestorsActive(menuData, item);
       }
     } else if (!item.active) {
       if (html.getAttribute("data-vertical-style") != "doublemenu") {

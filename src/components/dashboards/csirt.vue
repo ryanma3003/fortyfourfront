@@ -124,8 +124,14 @@ export default {
         const loadCSIRTs = async () => {
             loading.value = true;
             try {
+                // Determine target parameters
+                const options = {
+                    fetchGlobal: false,
+                    targetCsirtId: csirtSlug.value ? csirtSlug.value : undefined,
+                    targetCompanyId: !csirtSlug.value && newStakeholder.value ? newStakeholder.value.id : undefined,
+                };
                 // Use the store refresh to load everything including SDM/SE lists
-                await csirtStore.refresh();
+                await csirtStore.refresh(options);
             } catch (err) {
                 console.error('Failed to load CSIRT data:', err);
             } finally {
@@ -138,7 +144,12 @@ export default {
                 await stakeholdersStore.initialize();
             }
             if (!csirtStore.initialized) {
-                await csirtStore.initialize();
+                const options = {
+                    fetchGlobal: false,
+                    targetCsirtId: csirtSlug.value ? csirtSlug.value : undefined,
+                    targetCompanyId: !csirtSlug.value && newStakeholder.value ? newStakeholder.value.id : undefined,
+                };
+                await csirtStore.initialize(options);
             } else {
                 // If already initialized, at least trigger refreshing SDM/SE lists
                 await loadCSIRTs();
@@ -157,10 +168,10 @@ export default {
         const dataToPass = computed(() => {
             const from = String(route.query.from || '');
 
-            if (from === 'csirt-admin') {
+            if (from === 'csirt-list') {
                 return {
                     currentpage: "CSIRT",
-                    title: { label: "CSIRT Admin", path: "/csirt-admin" },
+                    title: { label: "CSIRT List", path: "/csirt-list" },
                     activepage: "CSIRT",
                 };
             }
@@ -472,6 +483,7 @@ export default {
             nama_csirt          : '',
             web_csirt           : '',
             telepon_csirt       : '',
+            email_csirt         : '',
             photo_csirt         : null as File | null,
             photo_csirt_preview : '',
             file_rfc2350        : null as File | null,
@@ -480,7 +492,7 @@ export default {
         const csirtFormErrors = ref<Record<string, string>>({});
 
         const openAddCsirtModal = () => {
-            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', photo_csirt: null, photo_csirt_preview: '', file_rfc2350: null, file_public_key_pgp: null };
+            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', email_csirt: '', photo_csirt: null, photo_csirt_preview: '', file_rfc2350: null, file_public_key_pgp: null };
             csirtFormErrors.value = {};
             csirtFormError.value = '';
             csirtFormSuccess.value = false;
@@ -527,6 +539,7 @@ export default {
                 nama_csirt          : csirtFormData.value.nama_csirt,
                 web_csirt           : csirtFormData.value.web_csirt,
                 telepon_csirt       : csirtFormData.value.telepon_csirt,
+                email_csirt         : csirtFormData.value.email_csirt,
                 photo_csirt         : csirtFormData.value.photo_csirt,
                 file_rfc2350        : csirtFormData.value.file_rfc2350,
                 file_public_key_pgp : csirtFormData.value.file_public_key_pgp,
@@ -553,6 +566,7 @@ export default {
         const profileFormData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null }>({
             nama_csirt: "",
             telepon_csirt: "",
+            email_csirt: "",
             web_csirt: "",
             file_rfc2350: "",
             file_public_key_pgp: "",
@@ -606,6 +620,7 @@ export default {
                     id_perusahaan       : currentCsirt.value.id_perusahaan ?? currentCsirt.value.perusahaan?.id,
                     nama_csirt          : profileFormData.value.nama_csirt!,
                     telepon_csirt       : profileFormData.value.telepon_csirt || "",
+                    email_csirt         : profileFormData.value.email_csirt || "",
                     web_csirt           : profileFormData.value.web_csirt || "",
                     photo_csirt         : profileFormData.value.photo_csirt_file ?? undefined,
                     file_rfc2350        : profileFormData.value.file_rfc2350_file ?? undefined,
@@ -737,6 +752,41 @@ export default {
                     } catch (error) {
                         console.error("Error exporting PDF:", error);
                     }
+                }
+            },
+            forceDownloadFile: async (fileUrl: string, defaultFileName: string) => {
+                try {
+                    let finalName = defaultFileName;
+                    try {
+                        const urlObj = new URL(fileUrl, window.location.origin);
+                        const segments = urlObj.pathname.split('/');
+                        const lastSegment = segments.pop() || '';
+                        if (lastSegment && lastSegment.includes('.')) {
+                            finalName = lastSegment;
+                        }
+                    } catch (e) {}
+
+                    const response = await fetch(fileUrl);
+                    if (!response.ok) throw new Error('File not accessible via fetch');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = finalName;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error("Download fallback:", error);
+                    const link = document.createElement('a');
+                    link.href = fileUrl;
+                    link.download = defaultFileName;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    document.body.appendChild(link);
+                    link.click();
+                    if (link.parentNode) link.parentNode.removeChild(link);
                 }
             },
             exportPdfSe: async (row: any) => {
@@ -919,6 +969,18 @@ export default {
                                 </div>
                             </div>
                             <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
+                                <div class="avatar avatar-sm avatar-rounded bg-info-transparent flex-shrink-0">
+                                    <i class="ri-mail-line fs-16"></i>
+                                </div>
+                                <div class="text-start">
+                                    <div class="text-muted fs-11">Email</div>
+                                    <div class="fw-semibold">
+                                        <a v-if="currentCsirt.email_csirt" :href="`mailto:${currentCsirt.email_csirt}`">{{ currentCsirt.email_csirt }}</a>
+                                        <span v-else>-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
                                 <div class="avatar avatar-sm avatar-rounded bg-secondary-transparent flex-shrink-0">
                                     <i class="ri-global-line fs-16"></i>
                                 </div>
@@ -955,14 +1017,14 @@ export default {
                                     <i class="ri-links-line text-primary"></i> Dokumen Pendukung
                                 </h6>
                                 <div class="d-flex flex-column gap-2">
-                                    <a v-if="currentCsirt.file_rfc2350" :href="currentCsirt.file_rfc2350" target="_blank" class="btn btn-primary btn-sm btn-wave d-flex align-items-center justify-content-between">
+                                    <button v-if="currentCsirt.file_rfc2350" @click="forceDownloadFile(currentCsirt.file_rfc2350, 'RFC2350.pdf')" class="btn btn-primary btn-sm btn-wave d-flex align-items-center justify-content-between">
                                         <span><i class="ri-file-pdf-line me-2"></i> RFC 2350</span>
-                                        <i class="ri-external-link-line opacity-50"></i>
-                                    </a>
-                                    <a v-if="currentCsirt.file_public_key_pgp" :href="currentCsirt.file_public_key_pgp" target="_blank" class="btn btn-secondary btn-sm btn-wave d-flex align-items-center justify-content-between">
+                                        <i class="ri-download-2-line opacity-50"></i>
+                                    </button>
+                                    <button v-if="currentCsirt.file_public_key_pgp" @click="forceDownloadFile(currentCsirt.file_public_key_pgp, 'Public_Key_PGP.asc')" class="btn btn-secondary btn-sm btn-wave d-flex align-items-center justify-content-between">
                                         <span><i class="ri-key-2-line me-2"></i> Public Key PGP</span>
-                                        <i class="ri-external-link-line opacity-50"></i>
-                                    </a>
+                                        <i class="ri-download-2-line opacity-50"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1600,13 +1662,20 @@ export default {
                                     placeholder="Masukkan nama CSIRT" />
                                 <div v-if="profileFormErrors.nama_csirt" class="invalid-feedback">{{ profileFormErrors.nama_csirt }}</div>
                             </div>
-                            <!-- No Telepon & Website -->
+                            <!-- No Telepon & Email & Website-->
                             <div class="col-xl-6">
                                 <label class="form-label fw-medium">
                                     <i class="ri-phone-line me-1 text-primary"></i>No. Telepon
                                 </label>
                                 <input type="text" class="form-control" v-model="profileFormData.telepon_csirt"
                                     placeholder="Contoh: 08123456789" />
+                            </div>
+                            <div class="col-xl-6">
+                                <label class="form-label fw-medium">
+                                    <i class="ri-mail-line me-1 text-primary"></i>Email
+                                </label>
+                                <input type="text" class="form-control" v-model="profileFormData.email_csirt"
+                                    placeholder="Contoh: [EMAIL_ADDRESS]" />
                             </div>
                             <div class="col-xl-6">
                                 <label class="form-label fw-medium">
@@ -1713,6 +1782,12 @@ export default {
                                 <label class="form-label fw-medium">Telepon CSIRT</label>
                                 <input type="tel" class="form-control" v-model="csirtFormData.telepon_csirt"
                                     placeholder="021-12345678" />
+                            </div>
+                            <!-- Email -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-medium">Email CSIRT</label>
+                                <input type="email" class="form-control" v-model="csirtFormData.email_csirt"
+                                    placeholder="csirt@domain.com" />
                             </div>
                             <!-- Photo CSIRT -->
                             <div class="col-12">

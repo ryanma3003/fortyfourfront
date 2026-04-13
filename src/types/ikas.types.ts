@@ -173,3 +173,34 @@ export interface GulihResponse extends GulihPayload {
     created_at: string;
     updated_at: string;
 }
+
+// ─── GET /api/maturity/pertanyaan-identifikasi ─────────────────────
+
+export interface PertanyaanIdentifikasiResponse {
+    id: number;
+    pertanyaan_identifikasi: string;
+    index0: string;
+    index1: string;
+    index2: string;
+    index3: string;
+    index4: string;
+    index5: string;
+    ruang_lingkup: {
+        id: number;
+        nama_ruang_lingkup: string;
+    };
+    sub_kategori: {
+        id: number;
+        nama_sub_kategori: string;
+        kategori: {
+            id: number;
+            nama_kategori: string;
+            domain: {
+                id: number;
+                nama_domain: string;
+            };
+        };
+    };
+    created_at: string;
+    updated_at: string;
+}

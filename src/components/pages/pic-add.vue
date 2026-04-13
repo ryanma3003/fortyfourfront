@@ -30,13 +30,14 @@ const dataToPass = computed(() => ({
 }));
 
 // Form state
-const form = ref({ nama: "", telepon: "" });
-const errors = ref({ name: "", telepon: "" });
+const form = ref({ nama: "", telepon: "", email: "" });
+const errors = ref({ name: "", telepon: "", email: "" });
 const phoneNumber = ref("");
 
 // Input refs
 const inputName = ref<HTMLInputElement | null>(null);
 const inputPhone = ref<HTMLInputElement | null>(null);
+const inputEmail = ref<HTMLInputElement | null>(null);
 
 // UI state
 const showSuccessAlert = ref(false);
@@ -49,8 +50,10 @@ const isLoadingPic = ref(false);
 const isFormValid = computed(() =>
   form.value.nama.trim() &&
   form.value.telepon.trim() &&
+  form.value.email.trim() &&
   !errors.value.name &&
-  !errors.value.telepon
+  !errors.value.telepon &&
+  !errors.value.email
 );
 
 // Phone formatting - format: XXX-XXXX-XXXX
@@ -89,10 +92,22 @@ const validatePhone = () => {
   }
 };
 
+const validateEmail = () => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!form.value.email.trim()) {
+    errors.value.email = "Email wajib diisi";
+  } else if (!emailRegex.test(form.value.email)) {
+    errors.value.email = "Format email tidak valid";
+  } else {
+    errors.value.email = "";
+  }
+};
+
 // Actions
 const handleSave = async () => {
   validateName();
   validatePhone();
+  validateEmail();
   if (!isFormValid.value) return;
 
   isSaving.value = true;
@@ -101,11 +116,13 @@ const handleSave = async () => {
       await picService.update(picId.value, {
         nama: form.value.nama,
         telepon: form.value.telepon,
+        email: form.value.email,
       });
     } else {
       await picService.create({
         nama: form.value.nama,
         telepon: form.value.telepon,
+        email: form.value.email,
         id_perusahaan: currentPerusahaanId.value,
       });
     }
@@ -155,6 +172,7 @@ onMounted(async () => {
       const pic = await picService.getById(picId.value);
       form.value.nama = pic.nama;
       form.value.telepon = pic.telepon;
+      form.value.email = pic.email || "";
 
       // Parse phone number — strip +62 prefix if present
       const match = pic.telepon?.match(/^\+62\s*(.+)$/);
@@ -258,12 +276,12 @@ onMounted(async () => {
                   </label>
                 </div>
                 <div class="form-group-split-input-card" :class="{ 'is-invalid-card': errors.telepon }">
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text fw-semibold bg-transparent border-0 px-0 pe-2">+62</span>
+                  <div class="d-flex align-items-center w-100">
+                    <span class="fw-semibold pe-2">+62</span>
                     <input
                       ref="inputPhone"
                       type="tel"
-                      class="form-control border-0 p-0 shadow-none bg-transparent form-item-input"
+                      class="form-item-input w-100"
                       v-model="phoneNumber"
                       @input="handlePhoneInput"
                       @blur="validatePhone"
@@ -276,6 +294,34 @@ onMounted(async () => {
               </div>
               <div v-if="errors.telepon" class="text-danger mt-1 fs-12">
                 <i class="ri-error-warning-line me-1"></i>{{ errors.telepon }}
+              </div>
+            </div>
+
+            <!-- Email -->
+             <div class="col-xl-6 col-lg-6 col-md-6">
+              <div class="form-group-split" @click="focusInput(inputEmail)">
+                <div class="form-group-split-label-card">
+                  <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px">
+                    <i class="ri-mail-line" style="font-size:0.95rem"></i>
+                  </div>
+                  <label class="form-item-label mb-0">
+                    Email <span class="text-danger">*</span>
+                  </label>
+                </div>
+                <div class="form-group-split-input-card" :class="{ 'is-invalid-card': errors.email }">
+                  <input
+                    ref="inputEmail"
+                    type="email"
+                    class="form-item-input"
+                    v-model="form.email"
+                    @blur="validateEmail"
+                    placeholder="Masukkan email PIC"
+                  />
+                  <i class="ri-pencil-line form-item-edit-action"></i>
+                </div>
+              </div>
+              <div v-if="errors.email" class="text-danger mt-1 fs-12">
+                <i class="ri-error-warning-line me-1"></i>{{ errors.email }}
               </div>
             </div>
 

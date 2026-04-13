@@ -18,6 +18,7 @@ import type {
     DeteksiResponse,
     GulihPayload,
     GulihResponse,
+    PertanyaanIdentifikasiResponse,
 } from '@/types/ikas.types';
 
 /**
@@ -37,10 +38,10 @@ export const ikasService = {
         return api.get<IkasResponse>(`/api/maturity/ikas/${id}`);
     },
 
-    /** Get IKAS record by perusahaan ID. Returns null if not found or auth fails. */
-    async getIkasByPerusahaan(perusahaanId: string): Promise<IkasResponse | null> {
+    /** Get IKAS list by perusahaan ID. Returns null if not found or auth fails. */
+    async getIkasByPerusahaan(perusahaanId: string): Promise<any | null> {
         try {
-            return await api.get<IkasResponse>(`/api/maturity/ikas?id_perusahaan=${perusahaanId}`);
+            return await api.get<any>(`/api/maturity/ikas?id_perusahaan=${perusahaanId}`);
         } catch (error) {
             // 401/403 = auth issue, 404 = not found — all mean "no data available"
             if (error instanceof ApiRequestError) {
@@ -169,5 +170,27 @@ export const ikasService = {
     /** Update gulih scores */
     async updateGulih(id: string, payload: Partial<GulihPayload>): Promise<GulihResponse> {
         return api.put<GulihResponse>(`/api/gulih/${id}`, payload);
+    },
+
+    // ─── Pertanyaan IKAS ───────────────────────────────────
+
+    /** Get pertanyaan identifikasi */
+    async getPertanyaanIdentifikasi(): Promise<any> {
+        return api.get<any>('/api/maturity/pertanyaan-identifikasi');
+    },
+
+    /** Get pertanyaan proteksi */
+    async getPertanyaanProteksi(): Promise<any> {
+        return api.get<any>('/api/maturity/pertanyaan-proteksi');
+    },
+
+    /** Get pertanyaan deteksi */
+    async getPertanyaanDeteksi(): Promise<any> {
+        return api.get<any>('/api/maturity/pertanyaan-deteksi');
+    },
+
+    /** Get pertanyaan gulih */
+    async getPertanyaanGulih(): Promise<any> {
+        return api.get<any>('/api/maturity/pertanyaan-gulih');
     },
 };

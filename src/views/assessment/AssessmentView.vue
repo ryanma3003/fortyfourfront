@@ -153,8 +153,8 @@ const handleSaveAction = async () => {
               console.warn('[AssessmentView] Some domain scores failed:', domainResult.errors);
             }
 
-            if (result.success || true) {
-              toast.success(result.success ? 'Assessment berhasil disimpan ke server' : 'Assessment berhasil disimpan lokal', {
+            if (result.success) {
+              toast.success('Assessment berhasil disimpan ke server', {
                 theme: 'auto',
                 icon: true,
                 hideProgressBar: true,
@@ -412,6 +412,15 @@ const handleEditData = () => {
           <div v-else class="text-center py-5">
             <i class="ri-file-list-line fs-48 text-muted"></i>
             <p class="mt-3 text-muted">Tidak ada pertanyaan tersedia. Pastikan backend server menyala dan data terisi.</p>
+            <div v-if="assessmentStore.error" class="alert alert-danger mt-3 mx-auto" style="max-width: 500px;">
+              <i class="ri-error-warning-line me-2"></i> {{ assessmentStore.error }}
+            </div>
+            <div v-if="assessmentStore.domains.length === 0 && !assessmentStore.error" class="alert alert-info mt-3 mx-auto" style="max-width: 500px;">
+              Debug: Data questionsList length from API was likely 0, or parsing failed.
+              <hr>
+              <strong>API Data Preview:</strong><br>
+              <pre class="bg-dark text-light p-2 mt-2 rounded text-start" style="font-size: 11px;">{{ assessmentStore.rawJsonString || 'No data or empty JSON array []' }}</pre>
+            </div>
           </div>
 
           <PaginationControl

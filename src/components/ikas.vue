@@ -7,6 +7,9 @@ import { useIkasStore } from '../stores/ikas';
 import { useDynamicAssessmentStore } from '../stores/dynamic-assessment';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
+import IkasComparison from './ikas/ikas-comparison.vue';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const router = useRouter();
 const route = useRoute();
@@ -197,6 +200,58 @@ const formatValue = (value) => {
     return value;
 };
 
+// --- STATE: Export PDF ---
+const exporting = ref(false);
+
+const exportToPdf = async () => {
+    exporting.value = true;
+    try {
+        const element = document.getElementById('ikas-report-content');
+        if (!element) return;
+
+        // Use html2canvas to capture the element
+        const canvas = await html2canvas(element, {
+            scale: 2, // High-quality capture
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            windowWidth: 1400 // Fixed width for consistent layout
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        // Basic multi-page handling
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        let heightLeft = pdfHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft >= 0) {
+            position = heightLeft - pdfHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+            heightLeft -= pageHeight;
+        }
+
+        const perusahaanName = currentStakeholder.value?.nama_perusahaan || 'Stakeholder';
+        const fileName = `IKAS_Report_${perusahaanName.replace(/\s+/g, '_')}.pdf`;
+        pdf.save(fileName);
+        
+        alert('PDF Berhasil Diunduh!');
+    } catch (error) {
+        console.error('PDF Export Error:', error);
+        alert('Gagal mengekspor PDF. Pastikan semua elemen telah dimuat.');
+    } finally {
+        exporting.value = false;
+    }
+};
+
 </script>
 
 <style scoped>
@@ -320,6 +375,17 @@ const formatValue = (value) => {
 .btn-ikas-upload:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-upload:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
+.btn-ikas-pdf {
+  background: linear-gradient(135deg, #b45309, #d97706);
+  border: none; border-radius: 50px; padding: 8px 22px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(217,119,6,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-ikas-pdf:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-pdf:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
 /* ── Domain score summary strip ─────────────────────────── */
 .domain-strip {
   display: flex;
@@ -366,13 +432,14 @@ const formatValue = (value) => {
 <template>
   <Pageheader :propData="dataToPass" />
 
-  <!-- Main IKAS Card -->
+  <div id="ikas-report-content" class="p-1">
+  <!-- Standalone Header Card -->
   <div class="row">
     <div class="col-12">
-      <div class="card custom-card gradient-header-card">
+      <div class="card custom-card border-0 mb-4" style="background: transparent; box-shadow: none;">
 
         <!-- Unified Header -->
-        <div class="card-header ikas-unified-header">
+        <div class="card-header ikas-unified-header" style="border-radius: 14px;">
           <!-- Left: title + stakeholder -->
           <div class="d-flex align-items-center gap-3">
             <div class="ikas-header-icon-box">
@@ -390,7 +457,24 @@ const formatValue = (value) => {
             <span class="ikas-header-kat-badge">{{ ikasDataDynamic.total_kategori }}</span>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 
+  <!-- Year-over-Year Comparison Section -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <IkasComparison
+        :stakeholder-slug="currentSlug"
+        :perusahaan-id="currentStakeholder?.id || ''"
+      />
+    </div>
+  </div>
+
+  <!-- Main IKAS Card Body -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card custom-card" style="border-radius: 14px;">
         <div class="card-body p-4">
 
           <!-- Domain summary cards -->
@@ -571,7 +655,7 @@ const formatValue = (value) => {
           </div>
 
           <!-- Action bar -->
-          <div class="ikas-action-bar">
+          <div class="ikas-action-bar" data-html2canvas-ignore="true">
             <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
             <button @click="goToIkasCrud" class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input">
               <i class="ri-edit-box-line"></i> Input Data
@@ -581,18 +665,23 @@ const formatValue = (value) => {
               <i v-else class="ri-file-excel-2-line"></i>
               {{ loading ? 'Mengupload...' : 'Upload Excel' }}
             </button>
+            <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting">
+              <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <i v-else class="ri-file-pdf-line"></i>
+              {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
+            </button>
           </div>
 
         </div>
       </div>
     </div>
   </div>
-
   <!-- Radar Charts Section -->
   <div class="row">
     <div class="col-12">
       <RadarChartIkas :stakeholder-slug="currentSlug" />
     </div>
+  </div>
   </div>
 
 </template>

@@ -52,6 +52,7 @@ export default {
       nama_csirt: "",
       web_csirt: "",
       telepon_csirt: "",
+      email_csirt: "",
       id_perusahaan: 0,
       photo_csirt: "",
       file_rfc2350: "",
@@ -108,12 +109,13 @@ export default {
       { text: "Nama CSIRT", value: "nama_csirt", sortable: true },
       { text: "Website", value: "web_csirt", sortable: true },
       { text: "Telepon", value: "telepon_csirt", sortable: true },
+      { text: "Email", value: "email_csirt", sortable: true },
       { text: "Aksi", value: "id" },
     ];
 
     const loadCsirtMembers = async () => {
       await stakeholdersStore.initialize();
-      await csirtStore.initialize();
+      await csirtStore.initialize({ fetchGlobal: true });
     };
 
     const filteredData = computed(() => {
@@ -124,7 +126,8 @@ export default {
           (i) =>
             i.nama_csirt.toLowerCase().includes(q) ||
             i.web_csirt.toLowerCase().includes(q) ||
-            i.telepon_csirt.toLowerCase().includes(q)
+            i.telepon_csirt.toLowerCase().includes(q) ||
+            (i.email_csirt && i.email_csirt.toLowerCase().includes(q))
         );
       }
       return [...data].sort((a, b) => {
@@ -175,6 +178,7 @@ export default {
         nama_csirt: "",
         web_csirt: "",
         telepon_csirt: "",
+        email_csirt: "",
         id_perusahaan: 0,
         photo_csirt: "",
         file_rfc2350: "",
@@ -197,6 +201,7 @@ export default {
         nama_csirt: formData.value.nama_csirt!,
         web_csirt: formData.value.web_csirt!,
         telepon_csirt: formData.value.telepon_csirt!,
+        email_csirt: formData.value.email_csirt || "",
         id_perusahaan: formData.value.id_perusahaan!,
         photo_csirt: formData.value.photo_csirt_file || formData.value.photo_csirt || "",
         file_rfc2350: formData.value.file_rfc2350_file || formData.value.file_rfc2350 || "",
@@ -250,6 +255,7 @@ export default {
         nama_csirt: formData.value.nama_csirt!,
         web_csirt: formData.value.web_csirt!,
         telepon_csirt: formData.value.telepon_csirt!,
+        email_csirt: formData.value.email_csirt || "",
         photo_csirt: formData.value.photo_csirt_file || formData.value.photo_csirt || "",
         file_rfc2350: formData.value.file_rfc2350_file || formData.value.file_rfc2350 || "",
         file_public_key_pgp: formData.value.file_public_key_pgp_file || formData.value.file_public_key_pgp || "",
@@ -630,14 +636,14 @@ export default {
                   @click="openCreateModal"
                   class="btn btn-warning d-flex align-items-center gap-2"
                 >
-                  <i class="ri-add-circle-line fs-16"></i>
+                  <i class="ri-add-circle-line fs-13"></i>
                   <span>Tambah CSIRT</span>
                 </button>
                 <button
                   @click="exportAllCsirtPdf"
                   class="btn btn-danger d-flex align-items-center gap-2"
                 >
-                  <i class="ri-file-pdf-line fs-16"></i>
+                  <i class="ri-file-pdf-line fs-13"></i>
                   <span>Rekap CSIRT</span>
                 </button>
               </div>
@@ -723,6 +729,12 @@ export default {
                         <span>Telepon</span>
                       </div>
                     </th>
+                    <th class="fw-semibold" style="width:15%">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="ri-mail-line text-primary"></i>
+                        <span>Email</span>
+                      </div>
+                    </th>
                     <th class="fw-semibold" style="width:160px;white-space:nowrap">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-bar-chart-box-line text-primary"></i>
@@ -786,6 +798,12 @@ export default {
                     </td>
                     <td class="align-middle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                       <span class="text-muted">{{ item.telepon_csirt }}</span>
+                    </td>
+                    <td class="align-middle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <a :href="`mailto:${item.email_csirt}`" v-if="item.email_csirt" class="text-muted text-decoration-none email-link">
+                         {{ item.email_csirt }}
+                      </a>
+                      <span v-else class="text-muted">—</span>
                     </td>
                     <td class="align-middle" style="white-space:normal;min-width:140px">
                       <div class="d-flex flex-column gap-1">
@@ -1041,6 +1059,14 @@ export default {
                   </div>
                 </div>
 
+                <!-- Email -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-mail-line me-1 text-primary"></i>Email CSIRT
+                  </label>
+                  <input type="email" class="form-control" v-model="formData.email_csirt" placeholder="Contoh: csirt@domain.com" />
+                </div>
+
                 <!-- Dokumen RFC 2350 -->
                 <div class="col-xl-12">
                   <label class="form-label fw-medium">
@@ -1216,6 +1242,14 @@ export default {
                   <div v-if="formErrors.telepon_csirt" class="invalid-feedback d-block">
                     {{ formErrors.telepon_csirt }}
                   </div>
+                </div>
+
+                <!-- Email -->
+                <div class="col-xl-6 col-lg-6 col-md-6">
+                  <label class="form-label fw-medium">
+                    <i class="ri-mail-line me-1 text-primary"></i>Email CSIRT
+                  </label>
+                  <input type="email" class="form-control" v-model="formData.email_csirt" placeholder="Contoh: csirt@domain.com" />
                 </div>
 
                 <!-- Dokumen RFC 2350 -->
