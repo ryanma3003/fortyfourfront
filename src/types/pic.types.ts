@@ -7,6 +7,7 @@ export interface Pic {
     id: string | number;
     nama: string;
     telepon: string;
+    email: string;
     perusahaan?: Perusahaan;
     id_perusahaan?: string | number;
     created_at?: string;
@@ -16,10 +17,12 @@ export interface Pic {
 export interface CreatePicPayload {
     nama: string;
     telepon: string;
+    email: string;
     id_perusahaan: string | number;
 }
 
 export interface UpdatePicPayload {
     nama?: string;
     telepon?: string;
+    email?: string;
 }

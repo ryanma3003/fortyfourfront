@@ -9,6 +9,7 @@ export interface CsirtMember {
     nama_csirt: string;
     web_csirt: string;
     telepon_csirt: string;
+    email_csirt: string;
     file_rfc2350: string;
     file_public_key_pgp: string;
     photo_csirt: string;
@@ -43,6 +44,7 @@ export interface CreateCsirtPayload {
     nama_csirt: string;
     web_csirt: string;
     telepon_csirt: string;
+    email_csirt: string;
     file_rfc2350?: File | string | null;
     file_public_key_pgp?: File | string | null;
     photo_csirt?: File | string | null;
@@ -60,6 +62,7 @@ export interface SdmCsirt {
         id: string;
         nama_csirt: string;
         telepon_csirt: string;
+        email_csirt: string;
         web_csirt: string;
     };
     created_at?: string;

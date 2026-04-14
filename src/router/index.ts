@@ -47,11 +47,6 @@ const routes: RouteRecordRaw[] = [
           name: "Pic Add",
           component: () => import("../components/pages/pic-add.vue"),
         },
-        {
-          path: 'dashboards',
-          name: 'User Dashboard',
-          component: () => import("../views/user/Dashboard.vue"),
-        },
         // Admin Routes
         {
           path: '',
@@ -95,9 +90,44 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/dashboards/profile-stakeholders.vue"),
             },
             {
+              path: 'csirt-list',
+              name: 'Csirt List',
+              component: () => import("../components/dashboards/csirt-list.vue"),
+            },
+            {
               path: 'csirt-admin',
-              name: 'Csirt Admin',
-              component: () => import("../components/dashboards/csirt-admin.vue"),
+              redirect: '/csirt-list',
+            },
+            // LMS Routes
+            {
+              path: 'lms/materi',
+              name: 'LMS Materi',
+              component: () => import("../components/lms/lms-materi.vue"),
+            },
+            {
+              path: 'lms/materi/create',
+              name: 'LMS Materi Create',
+              component: () => import("../components/lms/lms-materi-form.vue"),
+            },
+            {
+              path: 'lms/materi/edit/:id',
+              name: 'LMS Materi Edit',
+              component: () => import("../components/lms/lms-materi-form.vue"),
+            },
+            {
+              path: 'lms/quiz',
+              name: 'LMS Quiz',
+              component: () => import("../components/lms/lms-quiz.vue"),
+            },
+            {
+              path: 'lms/quiz/create',
+              name: 'LMS Quiz Create',
+              component: () => import("../components/lms/lms-quiz-form.vue"),
+            },
+            {
+              path: 'lms/quiz/edit/:id',
+              name: 'LMS Quiz Edit',
+              component: () => import("../components/lms/lms-quiz-form.vue"),
             },
           ]
         },
@@ -1228,7 +1258,7 @@ const router = createRouter({
 });
 
 // Navigation guard for authentication
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
 
   const isAuthenticated = authStore.authenticated;
@@ -1260,22 +1290,17 @@ router.beforeEach((to, _from, next) => {
     // Redirect to login if not authenticated
     next('/');
   } else if (isAuthenticated && to.path === '/') {
-    // Redirect to role-appropriate dashboard if already authenticated
-    if (authStore.isAdmin) {
-      next('/dashboard');
-    } else {
-      next('/dashboards');
-    }
+    // Redirect to admin dashboard if already authenticated
+    next('/dashboard');
   } else if (to.meta?.requiresAdmin) {
     // Check admin role for admin-only routes
     if (!authStore.isAdmin) {
-      next('/dashboards');
+      // Non-admin users cannot access admin routes — log out
+      await authStore.logUserOut();
+      next('/');
     } else {
       next();
     }
-  } else if (authStore.isAdmin && to.path === '/dashboards') {
-    // Prevent admins from accessing user dashboard
-    next('/dashboard');
   } else if (to.meta?.requiresStakeholder) {
     // Check if accessing IKAS/KSE without a valid stakeholder context (only for admins)
     if (authStore.isAdmin) {
@@ -1288,8 +1313,8 @@ router.beforeEach((to, _from, next) => {
         next();
       }
     } else {
-      // Users can access directly without requiring slug
-      next();
+      // Non-admin users should not have access
+      next('/dashboard');
     }
   } else {
     next();

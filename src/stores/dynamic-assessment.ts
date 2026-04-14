@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { ikasService } from '@/services/ikas.service';
 import type { 
   DynamicDomain, DynamicCategory, DynamicQuestion 
 } from '@/types/dynamic-assessment.types';
@@ -6,7 +7,6 @@ import type {
   AnswerMap, Answer, AssessmentProgress, RespondentProfile 
 } from '@/types/assessment.types';
 import { useIkasStore } from '@/stores/ikas';
-import { assessmentData } from '@/data/assessment/assessment-data';
 
 const STORAGE_KEYS = {
     RESPONDENT_PROFILES: 'dynamic_respondent_profiles_map',
@@ -36,6 +36,7 @@ const createDefaultProgress = (domainId: string, categoryId: string, subCategory
 export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
     state: () => ({
         domains: [] as DynamicDomain[],
+        rawJsonString: '' as string,
         currentStakeholderSlug: '' as string,
         respondentProfilesMap: {} as Record<string, RespondentProfile>,
         answersMap: {} as Record<string, AnswerMap>,
@@ -174,41 +175,150 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         async fetchAssessmentStructure() {
-            if (this.dataLoaded) return;
+            if (this.dataLoaded || this.loading) return;
+
             this.loading = true;
             this.error = null;
-
             try {
-                // Fallback to local data
-                this.domains = assessmentData.domains.map(d => {
-                    const dynamicCategories: DynamicCategory[] = d.categories.map(c => {
-                        const dynamicQuestions: DynamicQuestion[] = [];
-                        c.subCategories.forEach(sc => {
-                            sc.questions.forEach(q => {
-                                dynamicQuestions.push({
-                                    id: q.id,
-                                    text: q.text,
-                                    kategoriId: c.id,
-                                    scope: q.scope || 'Tata Kelola',
-                                    indexDescriptions: q.indexDescriptions || genericIndexDescriptions
-                                });
-                            });
-                        });
-                        return {
-                            id: c.id,
-                            name: c.name,
-                            domainId: d.id,
-                            questions: dynamicQuestions
-                        };
+                // 1. Fetch Domains
+                const domainsResp = await ikasService.getDomains();
+                const domainsList = Array.isArray(domainsResp) ? domainsResp : ((domainsResp as any).data || []);
+
+                const domainColors = ['#00a2e8', '#8e44ad', '#f1c40f', '#27ae60'];
+                const domainMap = new Map<string, any>();
+
+                // Seed all available domains from backend
+                domainsList.forEach((d: any) => {
+                    const dId = String(d.id || d.ID);
+                    domainMap.set(dId, {
+                        id: dId,
+                        name: d.nama_domain || d.NamaDomain,
+                        color: '',
+                        categories: new Map<string, any>()
                     });
-                    
-                    return {
-                        id: d.id,
-                        name: d.name,
-                        color: d.color || '#00a2e8',
-                        categories: dynamicCategories
-                    };
                 });
+
+                // 1.5 Fetch Kategoris to seed empty categories in UI sidebar
+                try {
+                    const kategorisResp = await ikasService.getKategoris();
+                    const kategorisList = Array.isArray(kategorisResp) ? kategorisResp : ((kategorisResp as any).data || []);
+                    kategorisList.forEach((k: any) => {
+                        const dId = String(k.domain_id || k.DomainID || k.domain?.id || k.Domain?.ID); // Handle various formats
+                        if (dId && domainMap.has(dId)) {
+                            const catMap = domainMap.get(dId).categories;
+                            const kId = String(k.id || k.ID);
+                            if (!catMap.has(kId)) {
+                                catMap.set(kId, {
+                                    id: kId,
+                                    name: k.nama_kategori || k.NamaKategori || 'Unknown Kategori',
+                                    domainId: dId,
+                                    questions: []
+                                });
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.warn('[DynamicAssessment] Failed to fetch kategoris for seeding', err);
+                }
+
+                // 2. Fetch Pertanyaan for all 4 endpoints concurrently but safely
+                const apiPromises = [
+                    ikasService.getPertanyaanIdentifikasi().catch(e => null),
+                    ikasService.getPertanyaanProteksi().catch(e => null),
+                    ikasService.getPertanyaanDeteksi().catch(e => null),
+                    ikasService.getPertanyaanGulih().catch(e => null)
+                ];
+                
+                const results = await Promise.all(apiPromises);
+                
+                let allQuestions: any[] = [];
+                results.forEach((raw, idx) => {
+                    if (raw) {
+                        const list = Array.isArray(raw) ? raw : (raw?.data || []);
+                        allQuestions = allQuestions.concat(list);
+                    }
+                });
+
+                // Keep raw sample for UI debugging if empty
+                this.rawJsonString = JSON.stringify(allQuestions.slice(0, 2), null, 2) || '';
+
+                if (allQuestions.length === 0) {
+                     console.log("[DynamicAssessment] No questions found across all endpoints, but domains are loaded.");
+                }
+
+                allQuestions.forEach((q: any, index: number) => {
+                    try {
+                        // Support both lowercase and PascalCase from Golang
+                        const sk = q?.sub_kategori || q?.SubKategori || q?.subKategori;
+                        const k = sk?.kategori || sk?.Kategori;
+                        const d = k?.domain || k?.Domain;
+                        const rl = q?.ruang_lingkup || q?.RuangLingkup || q?.ruangLingkup;
+
+                        if (!d || !k || !sk) {
+                            console.warn(`[DynamicAssessment] Skipping malformed question at index ${index}:`, q);
+                            return;
+                        }
+
+                        // Use String for keys to ensure .has() works consistently
+                        const dId = String(d.id || d.ID);
+                        const kId = String(k.id || k.ID);
+                        const skName = sk.nama_sub_kategori || sk.NamaSubKategori;
+                        const qIdent = q.pertanyaan_identifikasi || q.pertanyaan_proteksi || q.pertanyaan_deteksi || q.pertanyaan_gulih || q.Pertanyaan || '';
+                        const pName = rl ? (rl.nama_ruang_lingkup || rl.NamaRuangLingkup) : 'Tata Kelola';
+
+                        if (!domainMap.has(dId)) {
+                            domainMap.set(dId, {
+                                id: dId,
+                                name: d.nama_domain || d.NamaDomain || 'Unknown Domain',
+                                color: '',
+                                categories: new Map<string, any>()
+                            });
+                        }
+                        
+                        const catMap = domainMap.get(dId).categories;
+                        if (!catMap.has(kId)) {
+                            catMap.set(kId, {
+                                id: kId,
+                                name: k.nama_kategori || k.NamaKategori || 'Unknown Kategori',
+                                domainId: dId,
+                                questions: [] // will hold questions (pertanyaan)
+                            });
+                        }
+                        
+                        const qList = catMap.get(kId).questions;
+                        
+                        const idxDesc: Record<number, string> = {
+                            0: q.index0 || q.Index0 || 'Belum ada implementasi',
+                            1: q.index1 || q.Index1 || 'Ad-hoc / Informal',
+                            2: q.index2 || q.Index2 || 'Terdokumentasi sebagian',
+                            3: q.index3 || q.Index3 || 'Terdefinisi dan terdokumentasi',
+                            4: q.index4 || q.Index4 || 'Terkelola dan terukur',
+                            5: q.index5 || q.Index5 || 'Optimalisasi berkelanjutan'
+                        };
+
+                        qList.push({
+                            id: String(q.id || q.ID),
+                            text: skName + (qIdent ? ` - ${qIdent}` : ''),
+                            kategoriId: kId,
+                            scope: pName,
+                            indexDescriptions: idxDesc
+                        });
+                    } catch (err) {
+                        console.error(`[DynamicAssessment] Error parsing question ${index}:`, err);
+                    }
+                });
+
+                let domainIndex = 0;
+                this.domains = Array.from(domainMap.values())
+                    .sort((a: any, b: any) => Number(a.id) - Number(b.id))
+                    .map((d: any) => {
+                        d.color = domainColors[domainIndex % domainColors.length];
+                        domainIndex++;
+                        d.categories = Array.from(d.categories.values())
+                            .sort((c1: any, c2: any) => Number(c1.id) - Number(c2.id));
+                            
+                        return d;
+                    });
 
                 this.dataLoaded = true;
 
@@ -219,6 +329,12 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                             this.domains[0].id, 
                             this.domains[0].categories[0].id, 
                             '' // Subcategory ID not used directly for pagination if we paginate by category
+                        );
+                    } else if (this.domains.length > 0) {
+                        this.progressMap[this.currentStakeholderSlug] = createDefaultProgress(
+                            this.domains[0].id, 
+                            'no-category-yet', 
+                            ''
                         );
                     }
                 }

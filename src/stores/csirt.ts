@@ -73,13 +73,20 @@ export const useCsirtStore = defineStore('csirt', {
         /**
          * Initialize csirts from backend API
          */
-        async initialize() {
-            if (this.initialized) return;
+        async initialize(options?: { fetchGlobal?: boolean; targetCsirtId?: string | number; targetCompanyId?: string | number }) {
+            if (this.initialized && (!options || options.fetchGlobal !== false)) return;
 
             this.loading = true;
             this.error = null;
 
             try {
+                if (options && options.fetchGlobal === false) {
+                    await this.fetchSpecific(options);
+                    this.initialized = true;
+                    this.loading = false;
+                    return;
+                }
+
                 const [data, sdm, se] = await Promise.all([
                     csirtService.getMembers(),
                     csirtService.getAllSdm().catch((e) => { console.warn('[csirtStore] getAllSdm failed, sdmList will be empty:', e); return []; }),
@@ -108,11 +115,17 @@ export const useCsirtStore = defineStore('csirt', {
         /**
          * Refresh csirts list from backend
          */
-        async refresh() {
+        async refresh(options?: { fetchGlobal?: boolean; targetCsirtId?: string | number; targetCompanyId?: string | number }) {
             this.loading = true;
             this.error = null;
 
             try {
+                if (options && options.fetchGlobal === false) {
+                    await this.fetchSpecific(options);
+                    this.loading = false;
+                    return;
+                }
+
                 const [data, sdm, se] = await Promise.all([
                     csirtService.getMembers(),
                     csirtService.getAllSdm().catch((e) => { console.warn('[csirtStore] getAllSdm failed on refresh:', e); return []; }),
@@ -132,6 +145,99 @@ export const useCsirtStore = defineStore('csirt', {
                 console.error('Failed to refresh CSIRTs:', error);
                 this.error = error.message || 'Failed to refresh CSIRTs';
                 this.loading = false;
+            }
+        },
+
+        async fetchSpecific(options: { targetCsirtId?: string | number; targetCompanyId?: string | number }) {
+            let targetId: string | number | undefined = undefined;
+
+            try {
+                if (options.targetCsirtId) {
+                    const param = String(options.targetCsirtId);
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
+                    if (/^\d+$/.test(param) || isUUID) {
+                        const specific = await csirtService.getMemberById(param).catch(() => null);
+                        if (specific) {
+                            targetId = specific.id;
+                            const formatted = {
+                                ...specific,
+                                slug: specific.slug || this.generateSlug(specific.nama_csirt),
+                                photo_csirt: this.formatImageUrl(specific.photo_csirt),
+                                file_rfc2350: this.formatImageUrl(specific.file_rfc2350),
+                                file_public_key_pgp: this.formatImageUrl(specific.file_public_key_pgp),
+                            };
+                            const existingIdx = this.csirts.findIndex(e => String(e.id) === String(specific.id));
+                            if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
+                            else this.csirts.push(formatted);
+                        }
+                    } else {
+                        if (this.csirts.length === 0) {
+                            const data = await csirtService.getMembers().catch(() => []);
+                            this.csirts = (Array.isArray(data) ? data : []).map(c => ({
+                                ...c,
+                                slug: c.slug || this.generateSlug(c.nama_csirt),
+                                photo_csirt: this.formatImageUrl(c.photo_csirt),
+                                file_rfc2350: this.formatImageUrl(c.file_rfc2350),
+                                file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                            }));
+                        }
+                        const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                        const found = this.csirts.find(c => {
+                            if (String(c.id) === param || c.slug === param) return true;
+                            const csirtPart = c.slug || toSlug(c.nama_csirt);
+                            return csirtPart === param;
+                        });
+                        if (found) {
+                            targetId = found.id;
+                            const specific = await csirtService.getMemberById(targetId).catch(() => null);
+                            if (specific) {
+                                const existingIdx = this.csirts.findIndex(e => String(e.id) === String(specific.id));
+                                const formatted = {
+                                    ...specific,
+                                    slug: specific.slug || this.generateSlug(specific.nama_csirt),
+                                    photo_csirt: this.formatImageUrl(specific.photo_csirt),
+                                    file_rfc2350: this.formatImageUrl(specific.file_rfc2350),
+                                    file_public_key_pgp: this.formatImageUrl(specific.file_public_key_pgp),
+                                };
+                                if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
+                                else this.csirts.push(formatted);
+                            }
+                        }
+                    }
+                } else if (options.targetCompanyId) {
+                    const c = await csirtService.getCsirtByPerusahaan(options.targetCompanyId).catch(() => null);
+                    if (c) {
+                        targetId = c.id;
+                        const existingIdx = this.csirts.findIndex(e => String(e.id) === String(c.id));
+                        const formatted = {
+                            ...c,
+                            slug: c.slug || this.generateSlug(c.nama_csirt),
+                            photo_csirt: this.formatImageUrl(c.photo_csirt),
+                            file_rfc2350: this.formatImageUrl(c.file_rfc2350),
+                            file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                        };
+                        if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
+                        else this.csirts.push(formatted);
+                    }
+                }
+
+                if (targetId) {
+                    const [sdm, se] = await Promise.all([
+                        csirtService.getSdmByCsirtId(targetId).catch(() => []),
+                        csirtService.getSeByCsirtId(targetId).catch(() => [])
+                    ]);
+
+                    if (Array.isArray(sdm)) {
+                        this.sdmList = this.sdmList.filter(s => String(s.id_csirt) !== String(targetId) && String((s as any).csirt?.id) !== String(targetId));
+                        this.sdmList.push(...sdm);
+                    }
+                    if (Array.isArray(se)) {
+                        this.seList = this.seList.filter(s => String(s.id_csirt) !== String(targetId) && String((s as any).csirt?.id) !== String(targetId));
+                        this.seList.push(...se);
+                    }
+                }
+            } catch (err) {
+                console.error("fetchSpecific error:", err);
             }
         },
 

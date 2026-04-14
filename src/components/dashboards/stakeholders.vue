@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch, nextTick } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 import { useStakeholdersStore } from "../../stores/stakeholders";
@@ -57,6 +57,7 @@ export default {
     const currentEditItem   = ref<Stakeholder | null>(null);
     const currentDeleteItem = ref<Stakeholder | null>(null);
     const sektorFilter = ref<string | number>("");
+    const subSektorFilter = ref<string | number>("");
 
     // Form state
     const formData = ref<Partial<Stakeholder>>({
@@ -85,6 +86,21 @@ export default {
         const pid = getSubSektorParentId(ss);
         return pid !== undefined && String(pid) === String(selectedSektorId.value);
       });
+    });
+
+    // Filtered sub sektor untuk filter table
+    const availableSubSektorFilters = computed(() => {
+      if (!sektorFilter.value) return subSektorList.value;
+      return subSektorList.value.filter(ss => {
+        const pid = getSubSektorParentId(ss);
+        return pid !== undefined && String(pid) === String(sektorFilter.value);
+      });
+    });
+
+    const currentSektorNameFilter = computed(() => {
+      if (!sektorFilter.value) return "";
+      const s = sektorList.value.find(s => String(s.id) === String(sektorFilter.value));
+      return s ? s.nama_sektor : "";
     });
 
     // ? Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
@@ -166,25 +182,34 @@ export default {
             getItemSubSektorName(i).toLowerCase().includes(q) ||
             i.email.toLowerCase().includes(q)
         );
-      }
-      
-      // Filter by user status
-      if (userFilter.value === 'hasUser') {
-        data = data.filter(i => hasUser(i.id));
-      } else if (userFilter.value === 'noUser') {
-        data = data.filter(i => !hasUser(i.id));
+      } else {
+        // Filter by user status
+        if (userFilter.value === 'hasUser') {
+          data = data.filter(i => hasUser(i.id));
+        } else if (userFilter.value === 'noUser') {
+          data = data.filter(i => !hasUser(i.id));
+        }
+
+        // Filter by sektor (parent id)
+        if (sektorFilter.value !== "") {
+          data = data.filter(i => {
+            const itemSubSektor = i.sub_sektor || subSektorList.value.find(ss => getSubSektorName(ss) === i.sektor);
+            if (!itemSubSektor) return false;
+            const parentId = getSubSektorParentId(itemSubSektor);
+            return parentId !== undefined && String(parentId) === String(sektorFilter.value);
+          });
+        }
+        
+        // Filter by sub-sektor
+        if (subSektorFilter.value !== "") {
+          data = data.filter(i => {
+            const itemSubSektor = i.sub_sektor || subSektorList.value.find(ss => getSubSektorName(ss) === i.sektor);
+            if (!itemSubSektor) return false;
+            return String(itemSubSektor.id) === String(subSektorFilter.value);
+          });
+        }
       }
 
-      // Filter by sektor (parent id)
-      if (sektorFilter.value !== "") {
-        data = data.filter(i => {
-          const itemSubSektor = i.sub_sektor || subSektorList.value.find(ss => getSubSektorName(ss) === i.sektor);
-          if (!itemSubSektor) return false;
-          const parentId = getSubSektorParentId(itemSubSektor);
-          return parentId !== undefined && String(parentId) === String(sektorFilter.value);
-        });
-      }
-      
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
         let aVal = "";
@@ -381,6 +406,21 @@ export default {
       }
     };
 
+    // Reset page to 1 when any filter changes
+    watch([sektorFilter, subSektorFilter, userFilter], () => {
+      currentPage.value = 1;
+    });
+
+    // Scroll to top of table when page changes
+    watch(currentPage, () => {
+      nextTick(() => {
+        const card = document.querySelector('.stakeholder-table-wrap');
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
     onMounted(async () => {
       loadStakeholders();
       await loadUsers();
@@ -518,6 +558,7 @@ export default {
       countStakeholderNoUser,
       userFilter,
       sektorFilter,
+      subSektorFilter,
       hasUser,
       isAdmin,
       stakeholdersStore,
@@ -570,6 +611,8 @@ export default {
       subSektorList,
       sektorList,
       filteredSubSektorList,
+      availableSubSektorFilters,
+      currentSektorNameFilter,
       loadingSubSektors,
       selectedSektorId,
       selectedSubSektorId,
@@ -577,23 +620,45 @@ export default {
       getSubSektorName,
       getSektorFromSubSektor,
 
-      getSektorBadgeClass: (sektor: string) => {
-        const sektorColors: Record<string, string> = {
-          'Hasil hutan & perkebunan': 'badge-sektor badge-sektor-green',
-          'Pangan & perikanan': 'badge-sektor badge-sektor-teal',
-          'Minuman, tembakau & bahan penyegar': 'badge-sektor badge-sektor-amber',
-          'Kemurgi, oleokimia & pakan': 'badge-sektor badge-sektor-orange',
-          'Kimia hulu': 'badge-sektor badge-sektor-cyan',
-          'Kimia hilir & farmasi': 'badge-sektor badge-sektor-red',
-          'Semen, keramik & nonlogam': 'badge-sektor badge-sektor-slate',
-          'Tekstil, kulit & alas kaki': 'badge-sektor badge-sektor-blue',
-          'Logam': 'badge-sektor badge-sektor-indigo',
-          'Permesinan & alat pertanian': 'badge-sektor badge-sektor-violet',
-          'Transportasi, maritim & pertahanan': 'badge-sektor badge-sektor-sky',
-          'Elektronika & telematika': 'badge-sektor badge-sektor-purple',
-        };
-        return sektorColors[sektor] || 'badge-sektor badge-sektor-default';
-      },
+getSektorBadgeStyle: (subSektorName: string) => {
+  if (!subSektorName || subSektorName === "-") {
+    return {
+      backgroundColor: '#e2e8f0',
+      color: '#1e293b',
+      border: '1.5px solid #cbd5e1'
+    };
+  }
+
+  // --- HASH STABIL ---
+  let hash = 0;
+  for (let i = 0; i < subSektorName.length; i++) {
+    hash = subSektorName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const base = Math.abs(hash);
+
+  // --- RANGE HUE AMAN (NO UNGU / PINK) ---
+  const MIN_HUE = 40;   // kuning
+  const MAX_HUE = 220;  // biru
+  const RANGE = MAX_HUE - MIN_HUE;
+
+  // pakai golden angle tapi dibatasi range
+  const goldenAngle = 137.508;
+  const hue = MIN_HUE + ((base * goldenAngle) % RANGE);
+
+  // --- VARIASI SATURATION ---
+  const saturationVariants = [50, 60, 70];
+  const saturation = saturationVariants[base % saturationVariants.length];
+
+  // --- VARIASI LIGHTNESS (biar nggak mirip) ---
+  const lightnessVariants = [82, 86, 90];
+  const lightness = lightnessVariants[(Math.floor(base / 3)) % lightnessVariants.length];
+
+  return {
+    backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
+    color: `hsl(${hue}, ${Math.min(saturation + 10, 80)}%, 22%)`,
+    border: `1.5px solid hsl(${hue}, ${saturation - 10}%, ${lightness - 12}%)`
+  };
+},
       getAvatarClass: (letter: string) => {
         const variants = [
           'avatar-blue', 'avatar-indigo', 'avatar-violet', 'avatar-purple',
@@ -631,7 +696,7 @@ export default {
 
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card gradient-header-card">
+      <div class="card custom-card gradient-header-card" style="overflow: visible !important;">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header">
           <div class="d-flex align-items-center gap-3 header-inner">
             <div class="header-icon-box">
@@ -655,7 +720,7 @@ export default {
           </div>
         </div>
 
-        <div class="card-body p-4">
+        <div class="card-body p-4" style="overflow: visible !important;">
           <div v-if="loading" class="skeleton-loading p-4">
             <div class="skeleton-row" v-for="n in 5" :key="n">
               <div class="skel skel-no"></div>
@@ -669,7 +734,7 @@ export default {
 
           <template v-else>
             <!-- Stats Strip -->
-            <div class="stats-strip mb-4">
+            <div class="stats-strip flex-wrap mb-4">
               <div class="stat-card">
                 <div class="stat-icon stat-icon-blue"><i class="ri-building-2-line"></i></div>
                 <div>
@@ -708,7 +773,7 @@ export default {
             </div>
 
             <!-- Controls Bar -->
-            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
+            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3" style="position: relative; z-index: 99;">
               <!-- Left Section: Filter + Items Per Page -->
               <div class="d-flex align-items-center gap-3 flex-wrap">
                 
@@ -717,22 +782,55 @@ export default {
                   <span class="text-muted fs-13">Sektor:</span>
                   <div class="dropdown">
                     <button 
-                      class="btn btn-sm btn-primary dropdown-toggle text-white" 
+                      class="btn btn-sm btn-primary dropdown-toggle text-white d-flex align-items-center justify-content-between" 
                       type="button"
                       data-bs-toggle="dropdown"
+                      style="min-width: 130px;"
                     >
-                      <i class="ri-government-line me-1"></i>
-                      {{ sektorFilter === "" ? "Semua Sektor" : (sektorList.find(s => String(s.id) === String(sektorFilter))?.nama_sektor || "Sektor") }}
+                      <span class="text-truncate text-start pe-2">
+                        <i class="ri-government-line me-1"></i>
+                        {{ sektorFilter === "" ? "Semua Sektor" : (sektorList.find(s => String(s.id) === String(sektorFilter))?.nama_sektor || "Sektor") }}
+                      </span>
                     </button>
-                    <ul class="dropdown-menu shadow-sm">
+                    <ul class="dropdown-menu shadow-sm" style="max-height: 300px; overflow-y: auto;">
                       <li>
-                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = ''">
+                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = ''; subSektorFilter = ''">
                           Semua Sektor
                         </a>
                       </li>
                       <li v-for="s in sektorList" :key="s.id">
-                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = s.id">
+                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = s.id; subSektorFilter = ''">
                           {{ s.nama_sektor }}
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- Sub-Sektor Filter Dropdown -->
+                <div class="d-flex align-items-center gap-2 border-start ps-3 ms-1">
+                  <span class="text-muted fs-13">Sub-Sektor:</span>
+                  <div class="dropdown">
+                    <button 
+                      class="btn btn-sm btn-primary dropdown-toggle text-white d-flex align-items-center justify-content-between" 
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      style="min-width: 160px;"
+                    >
+                      <span class="text-truncate text-start pe-2">
+                        <i class="ri-government-line me-1"></i>
+                        {{ subSektorFilter === "" ? "Semua Sub-Sektor" + (currentSektorNameFilter ? " " + currentSektorNameFilter : "") : (subSektorList.find(s => String(s.id) === String(subSektorFilter))?.nama_sub_sektor || "Sub-Sektor") }}
+                      </span>
+                    </button>
+                    <ul class="dropdown-menu shadow-sm" style="max-height: 300px; overflow-y: auto;">
+                      <li>
+                        <a class="dropdown-item" href="#" @click.prevent="subSektorFilter = ''">
+                          Semua Sub-Sektor{{ currentSektorNameFilter ? " " + currentSektorNameFilter : "" }}
+                        </a>
+                      </li>
+                      <li v-for="s in availableSubSektorFilters" :key="s.id">
+                        <a class="dropdown-item" href="#" @click.prevent="subSektorFilter = s.id">
+                          {{ s.nama_sub_sektor }}
                         </a>
                       </li>
                     </ul>
@@ -797,10 +895,10 @@ export default {
               <!-- Right Section: Add Button -->
               <button v-if="isAdmin"
                 @click="openCreateModal"
-                class="btn btn-warning d-flex align-items-center gap-2"
+                class="btn btn-warning d-flex align-items-center gap-2 btn-tambah-stakeholder"
               >
-                <i class="ri-add-circle-line fs-16"></i>
-                <span>Tambah Stakeholder</span>
+                <i class="ri-add-circle-line fs-13"></i>
+                <span class="btn-text">Tambah Stakeholder</span>
               </button>
             </div>
 
@@ -845,7 +943,7 @@ export default {
                     <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sub Sektor</span>
+                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sektor &amp; Sub-Sektor</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" 
                             :class="{
@@ -923,9 +1021,12 @@ export default {
                       </div>
                     </td>
                     <td class="align-middle">
-                      <span :class="getSektorBadgeClass(getItemSubSektorName(item))">
-                        {{ getItemSubSektorName(item) }}
-                      </span>
+                      <div class="d-flex flex-column align-items-start gap-1">
+                        <span class="text-dark fw-semibold fs-13"><i class="ri-government-line text-muted me-1"></i>{{ getSektorFromSubSektor(getItemSubSektorName(item)) }}</span>
+                        <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">
+                          {{ getItemSubSektorName(item) }}
+                        </span>
+                      </div>
                     </td>
                     <td class="align-middle">
                       <a :href="`mailto:${item.email}`" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none">

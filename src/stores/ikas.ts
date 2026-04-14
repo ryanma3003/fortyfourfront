@@ -574,16 +574,49 @@ export const useIkasStore = defineStore('ikas', {
     async fetchFromBackend(
       slug: string,
       perusahaanId: string
-    ): Promise<{ success: boolean; exists: boolean; error?: string }> {
+    ): Promise<{ success: boolean; exists: boolean; error?: string; respondentData?: any; ikasRecord?: any }> {
       this.apiLoading = true;
       this.apiError = null;
 
       try {
-        const response = await ikasService.getIkasByPerusahaan(perusahaanId);
+        const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
 
-        if (!response) {
+        let matchedRecord: any = null;
+        
+        // Check if response is a list wrapped in data array
+        if (listResponse && listResponse.data && Array.isArray(listResponse.data) && listResponse.data.length > 0) {
+            // Filter records that match this perusahaan ID
+            const matchingRecords = listResponse.data.filter((record: any) => 
+              record.perusahaan?.id === perusahaanId
+            );
+
+            if (matchingRecords.length > 0) {
+              // Sort by created_at descending (latest first)
+              const sortedData = matchingRecords.sort((a: any, b: any) => 
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              );
+              matchedRecord = sortedData[0];
+            }
+        }
+
+        if (!matchedRecord) {
           this.apiLoading = false;
           return { success: true, exists: false };
+        }
+
+        // Save the backend IKAS ID for future updates
+        this.backendIkasId = matchedRecord.id || null;
+        this.backendSynced = true;
+
+        // Now try to fetch the full detailed record by ID (may have nested domain scores)
+        let detailedResponse: any = matchedRecord;
+        try {
+          const detailed = await ikasService.getIkasById(matchedRecord.id);
+          if (detailed) {
+            detailedResponse = detailed;
+          }
+        } catch (e) {
+          console.warn('[IKAS Store] Could not fetch detailed record, using list data');
         }
 
         // Populate local store from backend data
@@ -591,6 +624,7 @@ export const useIkasStore = defineStore('ikas', {
         const data = this.ikasDataMap[slug];
 
         // Map backend response to local data structure
+        const response = detailedResponse;
         if (response.identifikasi) {
           data.identifikasi.nilai_subdomain1 = response.identifikasi.nilai_subdomain1 || 0;
           data.identifikasi.nilai_subdomain2 = response.identifikasi.nilai_subdomain2 || 0;
@@ -618,16 +652,28 @@ export const useIkasStore = defineStore('ikas', {
           data.tanggulih.nilai_subdomain4 = response.gulih.nilai_subdomain4 || 0;
         }
 
-        this.backendIkasId = (response as any).id || null;
-        this.backendSynced = true;
-
         // Recalculate averages from fetched data
         this.recalculate(slug);
         this.saveToStorage();
 
         this.apiLoading = false;
-        console.log('[IKAS Store] Fetched from backend:', response);
-        return { success: true, exists: true };
+        console.log('[IKAS Store] Fetched from backend:', matchedRecord);
+
+        // Return the respondent data from the matched record so the caller
+        // can populate the dynamic-assessment store's respondent profile
+        return { 
+          success: true, 
+          exists: true,
+          respondentData: {
+            responden: matchedRecord.responden || '',
+            jabatan: matchedRecord.jabatan || '',
+            telepon: matchedRecord.telepon || '',
+            tanggal: matchedRecord.tanggal || '',
+            target_nilai: matchedRecord.target_nilai || 3,
+            nilai_kematangan: matchedRecord.nilai_kematangan || 0,
+          },
+          ikasRecord: matchedRecord
+        };
       } catch (error: any) {
         console.error('[IKAS Store] Fetch from backend failed:', error);
         this.apiError = error.message || 'Gagal mengambil data dari server';

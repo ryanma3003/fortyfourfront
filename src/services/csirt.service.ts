@@ -16,8 +16,27 @@ export const csirtService = {
     /**
      * Get CSIRT member by ID
      */
-    async getMemberById(id: number): Promise<CsirtMember> {
+    async getMemberById(id: number | string): Promise<CsirtMember> {
         return api.get<CsirtMember>(`/api/csirt/${id}`);
+    },
+
+    /**
+     * Get CSIRT member by id_perusahaan (company ID)
+     */
+    async getCsirtByPerusahaan(perusahaanId: string | number): Promise<CsirtMember | null> {
+        try {
+            // Some backends provide a direct endpoint like /api/csirt/perusahaan/1
+            return await api.get<CsirtMember>(`/api/csirt/perusahaan/${perusahaanId}`);
+        } catch (e) {
+            // fallback to querying with param
+            try {
+                const list = await api.get<CsirtMember[]>(`/api/csirt?id_perusahaan=${perusahaanId}`);
+                if (Array.isArray(list)) {
+                    return list.find(c => String(c.id_perusahaan) === String(perusahaanId) || String((c as any).perusahaan?.id) === String(perusahaanId)) || null;
+                }
+            } catch (err) {}
+            return null;
+        }
     },
 
     /**
@@ -67,14 +86,16 @@ export const csirtService = {
      */
     async getSdmByCsirtId(id: number | string): Promise<SdmCsirt[]> {
         try {
-            const result = await api.get<SdmCsirt[] | null>(`/api/sdm_csirt?id_csirt=${id}`);
-            const list = Array.isArray(result) ? result : [];
-            // Backend may not filter by id_csirt, so filter client-side.
-            // Check both flat id_csirt field and nested csirt.id (backend may embed relation).
-            return list.filter(item =>
-                String(item.id_csirt) === String(id) ||
-                String(item.csirt?.id) === String(id)
-            );
+            const result = await api.get<any>(`/api/sdm_csirt?id_csirt=${id}`);
+            let list = [];
+            if (Array.isArray(result)) list = result;
+            else if (result && Array.isArray(result.data)) list = result.data;
+            else if (result && result.id) list = [result];
+            
+            return list.map((item: any) => ({
+                ...item,
+                id_csirt: item.csirt?.id || item.id_csirt
+            })).filter((item: any) => String(item.id_csirt) === String(id));
         } catch (err) {
             if (err instanceof ApiRequestError && err.status === 404) return [];
             throw err;
@@ -122,13 +143,16 @@ export const csirtService = {
      */
     async getSeByCsirtId(id: number | string): Promise<SeCsirt[]> {
         try {
-            const result = await api.get<SeCsirt[] | null>(`/api/se?id_csirt=${id}`);
-            const list = Array.isArray(result) ? result : [];
-            // Backend may not filter by id_csirt, so filter client-side.
-            return list.filter(item =>
-                String(item.id_csirt) === String(id) ||
-                String((item as any).csirt?.id) === String(id)
-            );
+            const result = await api.get<any>(`/api/se?id_csirt=${id}`);
+            let list = [];
+            if (Array.isArray(result)) list = result;
+            else if (result && Array.isArray(result.data)) list = result.data;
+            else if (result && result.id) list = [result];
+            
+            return list.map((item: any) => ({
+                ...item,
+                id_csirt: item.csirt?.id || item.id_csirt
+            })).filter((item: any) => String(item.id_csirt) === String(id));
         } catch (err) {
             if (err instanceof ApiRequestError && err.status === 404) return [];
             throw err;

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import SpkReusebleJobs from "@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
 import RadarChartIkas from '@/shared/components/@spk/charts/ikas-charts.vue';
 import SektorAnalytics from '@/components/dashboards/sektor-analytics.vue';
@@ -11,6 +11,7 @@ import { useCsirtStore } from "@/stores/csirt";
 
 // Services
 import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
+import { dashboardService } from "@/services/dashboard.service";
 
 const date = ref();
 const showMetabase = ref(false);
@@ -24,6 +25,115 @@ const csirtStore = useCsirtStore();
 // API Data
 const sektorList = ref([]);
 const subSektorList = ref([]);
+
+// --- Dashboard Summary (from /api/dashboard/summary) ---
+const summaryLoading = ref(false);
+const summaryError = ref(false);
+const summaryData = ref(null);
+
+// Year & Quarter filter for summary API
+const summaryYear = ref(String(new Date().getFullYear()));
+const summaryQuarter = ref('');  // '' = all quarters
+
+// Helper: format Date to YYYY-MM-DD for API params
+function formatDateParam(d) {
+    if (!d) return undefined;
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return undefined;
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+async function fetchDashboardSummary() {
+    summaryLoading.value = true;
+    summaryError.value = false;
+    try {
+        // Build params from current filters
+        const params = {};
+        if (summaryYear.value) params.year = summaryYear.value;
+        if (summaryQuarter.value) params.quarter = summaryQuarter.value;
+        const data = await dashboardService.getSummary(params);
+        summaryData.value = data;
+        console.log('Dashboard summary:', data);
+    } catch (err) {
+        console.error('Failed to fetch dashboard summary:', err);
+        summaryError.value = true;
+    } finally {
+        summaryLoading.value = false;
+    }
+}
+
+// --- Computed: KSE summary cards (from API) ---
+const kseData = computed(() => summaryData.value?.kse ?? null);
+const kseStatus = computed(() => summaryData.value?.kse_status ?? null);
+const apiSektorCounts = computed(() => summaryData.value?.sektor_counts ?? []);
+
+// KSE fill rate
+const kseFillRate = computed(() => {
+    const s = kseStatus.value;
+    if (!s || !s.total_perusahaan) return 0;
+    return Math.round((s.sudah_mengisi_kse / s.total_perusahaan) * 100);
+});
+
+// Top-level summary cards from API data
+const summaryCards = computed(() => {
+    const kse = kseData.value;
+    const status = kseStatus.value;
+    if (!kse && !status) return [];
+
+    return [
+        {
+            title: 'Total Perusahaan',
+            key: 'total_perusahaan',
+            count: status?.total_perusahaan ?? 0,
+            icon: 'ri-building-2-line',
+            color: 'primary',
+            gradient: 'linear-gradient(135deg, #845adf 0%, #a78bfa 100%)',
+        },
+        {
+            title: 'Total SE',
+            key: 'total_se',
+            count: kse?.total_se ?? 0,
+            icon: 'ri-git-branch-line',
+            color: 'info',
+            gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
+        },
+        {
+            title: 'SE Strategis',
+            key: 'strategis',
+            count: kse?.strategis ?? 0,
+            icon: 'ri-shield-star-line',
+            color: 'danger',
+            gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
+        },
+        {
+            title: 'SE Tinggi',
+            key: 'tinggi',
+            count: kse?.tinggi ?? 0,
+            icon: 'ri-arrow-up-circle-line',
+            color: 'warning',
+            gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
+        },
+        {
+            title: 'SE Rendah',
+            key: 'rendah',
+            count: kse?.rendah ?? 0,
+            icon: 'ri-arrow-down-circle-line',
+            color: 'success',
+            gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
+        },
+        {
+            title: 'SE Bulan Ini',
+            key: 'this_month',
+            count: kse?.this_month ?? 0,
+            icon: 'ri-calendar-check-line',
+            color: 'secondary',
+            gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
+        },
+    ];
+});
 
 const toggleMetabase = () => {
     showMetabase.value = !showMetabase.value;
@@ -179,6 +289,8 @@ function buildSparkOptions(color, labels) {
 // ─── Fetch all data ─────────────────────────────────────
 onMounted(async () => {
     loading.value = true;
+    // Fetch summary in parallel (independent)
+    fetchDashboardSummary();
     try {
         await Promise.all([
             stakeholdersStore.initialize(),
@@ -260,6 +372,101 @@ const stakeholdersWithIkas = computed(() => {
         const val = data.total_rata_rata;
         return val !== null && val !== 0 && val !== 'NA';
     }).length;
+});
+
+// ─── Full Summary Computed Data ─────────────────────────
+const csirtCompletionRate = computed(() => {
+    if (!totalStakeholders.value) return 0;
+    return Math.round((stakeholdersWithCsirt.value / totalStakeholders.value) * 100);
+});
+
+const ikasCompletionRate = computed(() => {
+    if (!totalStakeholders.value) return 0;
+    return Math.round((stakeholdersWithIkas.value / totalStakeholders.value) * 100);
+});
+
+const avgSdmPerCsirt = computed(() => {
+    if (!totalCsirt.value) return 0;
+    return (totalSdm.value / totalCsirt.value).toFixed(1);
+});
+
+const avgSePerCsirt = computed(() => {
+    if (!totalCsirt.value) return 0;
+    return (totalSe.value / totalCsirt.value).toFixed(1);
+});
+
+const totalSektors = computed(() => sektorList.value.length);
+const totalSubSektors = computed(() => subSektorList.value.length);
+
+// IKAS average score
+const avgIkasScore = computed(() => {
+    const stakeholders = stakeholdersStore.allStakeholders;
+    let totalScore = 0;
+    let count = 0;
+    stakeholders.forEach(s => {
+        const data = ikasStore.ikasDataMap[s.slug];
+        if (data && data.total_rata_rata && data.total_rata_rata !== 'NA' && data.total_rata_rata !== 0) {
+            totalScore += Number(data.total_rata_rata);
+            count++;
+        }
+    });
+    if (!count) return 0;
+    return (totalScore / count).toFixed(2);
+});
+
+// Full summary items: combines API data (kse, kse_status) with local store data
+const fullSummaryItems = computed(() => {
+    const kse = kseData.value;
+    const status = kseStatus.value;
+    return [
+        {
+            label: 'Perusahaan',
+            value: status?.total_perusahaan ?? totalStakeholders.value,
+            icon: 'ri-building-2-line',
+            gradient: 'linear-gradient(135deg, #845adf 0%, #a78bfa 100%)',
+            color: '#845adf',
+        },
+        {
+            label: 'Total SE (KSE)',
+            value: kse?.total_se ?? totalSe.value,
+            icon: 'ri-git-branch-line',
+            gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
+            color: '#23b7e5',
+        },
+        {
+            label: 'SE Strategis',
+            value: kse?.strategis ?? 0,
+            icon: 'ri-shield-star-line',
+            gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
+            color: '#e6533c',
+        },
+        {
+            label: 'SE Tinggi',
+            value: kse?.tinggi ?? 0,
+            icon: 'ri-arrow-up-circle-line',
+            gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
+            color: '#f5b849',
+        },
+        {
+            label: 'SE Rendah',
+            value: kse?.rendah ?? 0,
+            icon: 'ri-arrow-down-circle-line',
+            gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
+            color: '#26bf94',
+        },
+        {
+            label: 'SE Bulan Ini',
+            value: kse?.this_month ?? 0,
+            icon: 'ri-calendar-check-line',
+            gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
+            color: '#6366f1',
+        },
+    ];
+});
+
+// Re-fetch summary when year/quarter changes
+watch([summaryYear, summaryQuarter], () => {
+    fetchDashboardSummary();
 });
 
 // ─── Date-filtered counts ───────────────────────────────
@@ -501,7 +708,9 @@ const operationalCards = computed(() => {
     </div>
 
     <div v-if="!showMetabase">
-        <!-- LOADING SKELETON -->
+        <!-- Removed double summary cards from the top as requested -->
+
+        <!-- LOADING SKELETON (for sektor/operational cards) -->
         <div v-if="loading" class="row g-3 mb-3">
             <div class="col-md-4" v-for="n in 6" :key="n">
                 <div class="card custom-card dashboard-main-card">
@@ -551,6 +760,276 @@ const operationalCards = computed(() => {
             </div>
         </template>
 
+        <!-- ============================================ -->
+        <!-- RINGKASAN DATA LENGKAP (Full Summary)       -->
+        <!-- ============================================ -->
+        <div class="full-summary-section" v-if="!loading">
+            <!-- Section Header -->
+            <div class="fs-section-header">
+                <div class="fs-header-left">
+                    <div class="fs-header-icon">
+                        <i class="ri-dashboard-3-line"></i>
+                    </div>
+                    <div>
+                        <h2 class="fs-header-title mb-0">Ringkasan Data </h2>
+                    </div>
+                </div>
+                <div class="fs-header-right">
+                    <!-- Year Filter -->
+                    <div class="fs-filter-group">
+                        <label class="fs-filter-label-sm"><i class="ri-calendar-line"></i> Tahun</label>
+                        <select v-model="summaryYear" class="form-select form-select-sm fs-year-select">
+                            <option value="">Semua</option>
+                            <option v-for="y in Array.from({length: 5}, (_, i) => String(new Date().getFullYear() - i))" :key="y" :value="y">{{ y }}</option>
+                        </select>
+                    </div>
+                    <!-- Quarter Filter -->
+                    <div class="fs-filter-group">
+                        <label class="fs-filter-label-sm"><i class="ri-calendar-check-line"></i> Kuartal</label>
+                        <select v-model="summaryQuarter" class="form-select form-select-sm fs-year-select" :disabled="!summaryYear">
+                            <option value="">Semua</option>
+                            <option value="1">Q1 (Jan–Mar)</option>
+                            <option value="2">Q2 (Apr–Jun)</option>
+                            <option value="3">Q3 (Jul–Sep)</option>
+                            <option value="4">Q4 (Okt–Des)</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" @click="fetchDashboardSummary" :disabled="summaryLoading">
+                        <i class="ri-refresh-line" :class="{ 'spin-icon': summaryLoading }"></i>
+                        <span>Refresh</span>
+                    </button>
+                    <div class="fs-freshness ms-2">
+                        <i class="ri-refresh-line"></i>
+                        <span>Live Data</span>
+                        <span class="fs-live-dot"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Loading -->
+            <div v-if="summaryLoading && !summaryData" class="row g-3 mb-4">
+                <div class="col-xl-4 col-lg-6 col-md-6" v-for="n in 6" :key="'skel-fs-'+n">
+                    <div class="card custom-card">
+                        <div class="card-body p-3">
+                            <div class="skeleton-icon shimmer" style="width:40px;height:40px;border-radius:10px"></div>
+                            <div class="skeleton-text shimmer mt-3" style="width:50%;height:12px"></div>
+                            <div class="skeleton-number shimmer mt-2" style="width:35%;height:22px"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Error -->
+            <div v-else-if="summaryError" class="alert alert-danger d-flex align-items-center gap-2 mb-4">
+                <i class="ri-error-warning-line fs-20"></i>
+                <span>Gagal memuat data dari API. </span>
+                <button class="btn btn-sm btn-outline-danger ms-auto" @click="fetchDashboardSummary">
+                    <i class="ri-refresh-line me-1"></i>Coba Lagi
+                </button>
+            </div>
+
+            <template v-else-if="summaryData">
+                <!-- ROW 1: KSE Metric Cards (6 cards) -->
+                <div class="row g-3 mb-4">
+                    <div class="col-xl-2 col-lg-4 col-md-4 col-sm-6 fs-card-animate" v-for="(item, idx) in fullSummaryItems" :key="'fs-'+idx"
+                         :style="{ animationDelay: `${idx * 60}ms` }">
+                        <div class="card custom-card summary-stat-card overflow-hidden">
+                            <div class="card-body p-3 position-relative">
+                                <!-- Background decoration -->
+                                <div class="summary-bg-decor" :style="{ background: item.gradient, opacity: 0.07 }"></div>
+                                
+                                <!-- Icon -->
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="avatar avatar-md rounded-circle d-flex align-items-center justify-content-center"
+                                         :style="{ background: item.gradient }">
+                                        <i :class="item.icon" class="fs-18 text-white"></i>
+                                    </div>
+                                    <div class="summary-trend-dot" :style="{ background: item.color }"></div>
+                                </div>
+        
+                                <!-- Count -->
+                                <h3 class="fw-bold mb-1 summary-count" :style="{ color: item.color }">
+                                    {{ (item.value ?? 0).toLocaleString('id-ID') }}
+                                </h3>
+        
+                                <!-- Label -->
+                                <p class="fs-12 text-muted mb-0 fw-medium text-uppercase ls-1">
+                                    {{ item.label }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW 2: Status Cards -->
+                <div class="row g-3 mb-4">
+                    <!-- Pengisian KSE -->
+                    <div class="col-xl-3 col-lg-6 col-md-6">
+                        <div class="card custom-card fs-rate-card">
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <div class="fs-rate-icon bg-primary-transparent">
+                                        <i class="ri-checkbox-circle-line text-primary"></i>
+                                    </div>
+                                    <div>
+                                        <p class="fs-rate-label mb-0">Pengisian KSE</p>
+                                        <small class="text-muted">Perusahaan yang sudah mengisi</small>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-end justify-content-between mb-2">
+                                    <h3 class="fw-bold mb-0 text-primary">{{ kseFillRate }}%</h3>
+                                    <span class="fs-12 text-muted">
+                                        {{ kseStatus?.sudah_mengisi_kse ?? 0 }} / {{ kseStatus?.total_perusahaan ?? 0 }}
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-primary" role="progressbar" 
+                                         :style="{ width: kseFillRate + '%' }"></div>
+                                </div>
+                                <div class="fs-insight-row mt-2">
+                                    <i class="ri-close-circle-line text-muted"></i>
+                                    <span>Belum mengisi: <strong>{{ kseStatus?.belum_mengisi_kse ?? 0 }}</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CSIRT Completion -->
+                    <div class="col-xl-3 col-lg-6 col-md-6">
+                        <div class="card custom-card fs-rate-card">
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <div class="fs-rate-icon bg-danger-transparent">
+                                        <i class="ri-shield-check-line text-danger"></i>
+                                    </div>
+                                    <div>
+                                        <p class="fs-rate-label mb-0">Cakupan CSIRT</p>
+                                        <small class="text-muted">Stakeholder dengan CSIRT</small>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-end justify-content-between mb-2">
+                                    <h3 class="fw-bold mb-0 text-danger">{{ csirtCompletionRate }}%</h3>
+                                    <span class="fs-12 text-muted">{{ stakeholdersWithCsirt }} / {{ totalStakeholders }}</span>
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-danger" role="progressbar" 
+                                         :style="{ width: csirtCompletionRate + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IKAS Completion -->
+                    <div class="col-xl-3 col-lg-6 col-md-6">
+                        <div class="card custom-card fs-rate-card">
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <div class="fs-rate-icon bg-success-transparent">
+                                        <i class="ri-shield-star-line text-success"></i>
+                                    </div>
+                                    <div>
+                                        <p class="fs-rate-label mb-0">Cakupan IKAS</p>
+                                        <small class="text-muted">Stakeholder dengan IKAS</small>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-end justify-content-between mb-2">
+                                    <h3 class="fw-bold mb-0 text-success">{{ ikasCompletionRate }}%</h3>
+                                    <span class="fs-12 text-muted">{{ stakeholdersWithIkas }} / {{ totalStakeholders }}</span>
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-success" role="progressbar" 
+                                         :style="{ width: ikasCompletionRate + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sektor & Skor IKAS -->
+                    <div class="col-xl-3 col-lg-6 col-md-6">
+                        <div class="card custom-card fs-rate-card">
+                            <div class="card-body p-3">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <div class="fs-rate-icon bg-warning-transparent">
+                                        <i class="ri-building-4-line text-warning"></i>
+                                    </div>
+                                    <div>
+                                        <p class="fs-rate-label mb-0">Sektor & SDM</p>
+                                        <small class="text-muted">Overview</small>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-end justify-content-between mb-2">
+                                    <h3 class="fw-bold mb-0 text-warning">{{ totalSektors }}</h3>
+                                    <span class="fs-12 text-muted">{{ totalSubSektors }} sub sektor</span>
+                                </div>
+                                <div class="fs-insight-row">
+                                    <i class="ri-team-line text-info"></i>
+                                    <span>SDM: <strong>{{ totalSdm }}</strong> &middot; SE Lokal: <strong>{{ totalSe }}</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROW 3: Sektor Counts Table (from API sektor_counts) -->
+                <div v-if="apiSektorCounts.length" class="card custom-card mb-4">
+                    <div class="card-header d-flex align-items-center justify-content-between py-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="fs-rate-icon bg-primary-transparent">
+                                <i class="ri-bar-chart-grouped-line text-primary"></i>
+                            </div>
+                            <div>
+                                <h6 class="mb-0 fw-bold">Distribusi Stakeholder per Sektor</h6>
+                                <small class="text-muted">Data dari API — {{ apiSektorCounts.length }} sektor</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 fs-sektor-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px">#</th>
+                                        <th>Nama Sektor</th>
+                                        <th class="text-center" style="width:130px">Total</th>
+                                        <th class="text-center" style="width:130px">Bulan Ini</th>
+                                        <th style="width:200px">Distribusi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(sektor, idx) in apiSektorCounts" :key="sektor.id">
+                                        <td class="text-muted">{{ idx + 1 }}</td>
+                                        <td>
+                                            <span class="fw-medium">{{ sektor.nama_sektor }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-primary-transparent fw-bold">{{ sektor.total }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span v-if="sektor.this_month > 0" class="badge bg-success-transparent fw-bold">
+                                                +{{ sektor.this_month }}
+                                            </span>
+                                            <span v-else class="text-muted">-</span>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="progress flex-grow-1" style="height: 5px;">
+                                                    <div class="progress-bar" role="progressbar"
+                                                         :style="{ 
+                                                             width: (apiSektorCounts.length ? Math.max(2, (sektor.total / Math.max(...apiSektorCounts.map(s => s.total || 1))) * 100) : 0) + '%',
+                                                             background: `hsl(${(idx * 35) % 360}, 65%, 55%)`
+                                                         }"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
         <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
         <SektorAnalytics />
 
@@ -575,3 +1054,364 @@ const operationalCards = computed(() => {
         </div>
     </div>
 </template>
+
+<style scoped>
+/* ===== SUMMARY CARD ANIMATIONS ===== */
+.summary-card-animate {
+    animation: summaryFadeUp 0.5s ease-out both;
+}
+
+@keyframes summaryFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ===== SUMMARY STAT CARD ===== */
+.summary-stat-card {
+    border: 1px solid rgba(0,0,0,0.04);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+}
+.summary-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+}
+
+.summary-bg-decor {
+    position: absolute;
+    top: -30px;
+    right: -30px;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.summary-count {
+    font-size: 1.65rem;
+    letter-spacing: -0.5px;
+    position: relative;
+    z-index: 1;
+}
+
+.summary-trend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    opacity: 0.7;
+}
+
+.ls-1 {
+    letter-spacing: 0.5px;
+}
+
+/* ===== SKELETON / SHIMMER ===== */
+.summary-card-skeleton .card-body {
+    min-height: 110px;
+}
+.skeleton-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e9ecef;
+}
+.skeleton-text,
+.skeleton-number {
+    border-radius: 4px;
+    background: #e9ecef;
+}
+
+.shimmer {
+    background: linear-gradient(90deg, #e9ecef 25%, #f8f9fa 50%, #e9ecef 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ===== FULL SUMMARY SECTION ===== */
+.full-summary-section {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.fs-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 1.25rem;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, rgba(132, 90, 223, 0.06) 0%, rgba(99, 102, 241, 0.04) 100%);
+    border-radius: 12px;
+    border: 1px solid rgba(132, 90, 223, 0.08);
+}
+
+.fs-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.fs-header-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #845adf 0%, #6366f1 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.fs-header-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--default-text-color);
+}
+
+.fs-header-subtitle {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin: 2px 0 0;
+}
+
+.fs-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.fs-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fs-filter-label-sm {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.fs-year-select {
+    min-width: 110px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid rgba(132, 90, 223, 0.15);
+    background: rgba(132, 90, 223, 0.03);
+    color: var(--default-text-color);
+    padding: 4px 10px;
+    transition: all 0.2s;
+}
+
+.fs-year-select:focus {
+    border-color: #845adf;
+    box-shadow: 0 0 0 3px rgba(132, 90, 223, 0.1);
+}
+
+.fs-year-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.fs-freshness {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: #26bf94;
+    font-weight: 600;
+    background: rgba(38, 191, 148, 0.08);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(38, 191, 148, 0.15);
+}
+
+.fs-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #26bf94;
+    animation: livePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* ── Card Animation ── */
+.fs-card-animate {
+    animation: fsSlideFade 0.45s ease-out both;
+}
+
+@keyframes fsSlideFade {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Metric Card ── */
+.fs-metric-card {
+    border: 1px solid rgba(0,0,0,0.04);
+    overflow: hidden;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fs-metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.07);
+}
+
+.fs-metric-bg {
+    position: absolute;
+    top: -20px;
+    right: -20px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    opacity: 0.06;
+    pointer-events: none;
+}
+
+.fs-metric-label {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fs-metric-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+}
+
+.fs-metric-compare {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+.fs-metric-icon-wrap {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+/* ── Rate Card ── */
+.fs-rate-card {
+    border: 1px solid rgba(0,0,0,0.04);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fs-rate-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.07);
+}
+
+.fs-rate-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.fs-rate-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--default-text-color);
+}
+
+.fs-insight-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.77rem;
+    color: #64748b;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(0,0,0,0.06);
+    margin-top: 4px;
+}
+
+.progress {
+    border-radius: 8px;
+    background: rgba(0,0,0,0.04);
+}
+
+/* ── Spin icon for loading ── */
+.spin-icon {
+    animation: spinIcon 1s linear infinite;
+}
+
+@keyframes spinIcon {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ── Sektor Table ── */
+.fs-sektor-table thead th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+    border-bottom: 2px solid rgba(0,0,0,0.06);
+    padding: 12px 16px;
+    background: rgba(0,0,0,0.01);
+}
+
+.fs-sektor-table tbody td {
+    padding: 10px 16px;
+    vertical-align: middle;
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.fs-sektor-table tbody tr:hover {
+    background: rgba(132, 90, 223, 0.03);
+}
+
+code {
+    font-size: 0.72rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(132, 90, 223, 0.08);
+    color: #845adf;
+}
+</style>

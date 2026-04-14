@@ -44,8 +44,27 @@ onMounted(async () => {
   const stakeholder = currentStakeholder.value;
   if (stakeholder?.id) {
     const result = await ikasStore.fetchFromBackend(currentSlug.value, stakeholder.id);
-    if (result.exists) {
+    if (result.exists && result.respondentData) {
       console.log('[IKAS CRUD] Loaded existing IKAS data from backend');
+
+      // Populate the respondent profile in the assessment store
+      // so hasRespondentProfile returns true and we skip to Step 2
+      assessmentStore.saveRespondentProfile({
+        instansi: stakeholder.nama_perusahaan || '',
+        sektor: stakeholder.sub_sektor || '',
+        alamat: stakeholder.alamat || '',
+        email: stakeholder.email || '',
+        namaResponden: result.respondentData.responden,
+        jabatanResponden: result.respondentData.jabatan,
+        nomorTelepon: result.respondentData.telepon,
+        tahunPengukuran: result.respondentData.tanggal ? new Date(result.respondentData.tanggal).getFullYear().toString() : new Date().getFullYear().toString(),
+        targetLevel: result.respondentData.target_nilai || 3,
+        targetNilai: '',
+        acuan: '',
+        tanggalPengisian: result.respondentData.tanggal ? result.respondentData.tanggal.split('T')[0] : new Date().toISOString().split('T')[0],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
     }
   }
 
@@ -96,17 +115,15 @@ const handleFormSubmit = async () => {
         target_nilai: profile.targetLevel || 3,
       });
 
-      if (result.success || true) {
-        toast.success(result.success ? 'Data responden berhasil disimpan ke server' : 'Data responden disimpan sementara secara lokal', {
+      if (result.success) {
+        toast.success('Data responden berhasil disimpan ke server', {
           autoClose: 2000,
           position: 'top-right',
         });
 
         // Seed assessment structure (domain/kategori/sub-kategori/ruang-lingkup)
         // This is idempotent — if already seeded, errors are silently caught
-        if (result.success) {
-            await ikasStore.seedAssessmentStructure();
-        }
+        await ikasStore.seedAssessmentStructure();
 
         currentStep.value = 2; // Proceed only if successful
       } else {

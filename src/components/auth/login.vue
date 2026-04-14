@@ -25,11 +25,8 @@ const showToast = (type: "success" | "error", message: string) => {
   });
 };
 
-// Redirect helper based on user role
-const redirectByRole = () => {
-  const role = authStore.userRole;
-  return role === "admin" ? "/dashboard" : "/dashboards";
-};
+// Admin redirect
+const redirectPath = "/dashboard";
 
 // Login handler
 const login = async () => {
@@ -55,9 +52,15 @@ const login = async () => {
 
     // Case 3: Direct login success
     if (result.authenticated) {
+      if (!authStore.isAdmin) {
+        await authStore.logUserOut();
+        showToast("error", "Akses ditolak. Hanya untuk admin.");
+        return;
+      }
+      
       showToast("success", "Logged In");
       setTimeout(() => {
-        router.push(redirectByRole());
+        router.push(redirectPath);
       }, 1500);
       return;
     }
