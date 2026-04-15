@@ -54,6 +54,7 @@ export const csirtService = {
         if (payload.photo_csirt instanceof File) form.append('photo_csirt',         payload.photo_csirt);
         if (payload.file_rfc2350        instanceof File) form.append('file_rfc2350',        payload.file_rfc2350);
         if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
+        if (payload.file_surat_tanda_registrasi instanceof File) form.append('file_surat_tanda_registrasi', payload.file_surat_tanda_registrasi);
         return api.post<CsirtMember>('/api/csirt', form);
     },
 
@@ -70,6 +71,7 @@ export const csirtService = {
         if (payload.photo_csirt instanceof File) form.append('photo_csirt', payload.photo_csirt);
         if (payload.file_rfc2350        instanceof File) form.append('file_rfc2350',        payload.file_rfc2350);
         if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
+        if (payload.file_surat_tanda_registrasi instanceof File) form.append('file_surat_tanda_registrasi', payload.file_surat_tanda_registrasi);
         return api.put<CsirtMember>(`/api/csirt/${id}`, form);
     },
 

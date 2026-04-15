@@ -47,6 +47,8 @@ export interface Answer {
     questionId: string;
     index: number;
     updatedAt: number;
+    backendSyncedAt?: number;
+    backendSyncError?: string | null;
 }
 
 export interface AnswerMap {

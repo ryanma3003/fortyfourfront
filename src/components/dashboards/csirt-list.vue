@@ -48,7 +48,7 @@ export default {
     const currentDeleteItem = ref<CsirtMember | null>(null);
 
     // Form state
-    const formData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null }>({
+    const formData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null; file_surat_tanda_registrasi_file?: File | null }>({
       nama_csirt: "",
       web_csirt: "",
       telepon_csirt: "",
@@ -57,9 +57,11 @@ export default {
       photo_csirt: "",
       file_rfc2350: "",
       file_public_key_pgp: "",
+      file_surat_tanda_registrasi: "",
       photo_csirt_file: null,
       file_rfc2350_file: null,
       file_public_key_pgp_file: null,
+      file_surat_tanda_registrasi_file: null,
     });
 
     const formErrors = ref<Record<string, string>>({});
@@ -183,9 +185,11 @@ export default {
         photo_csirt: "",
         file_rfc2350: "",
         file_public_key_pgp: "",
+        file_surat_tanda_registrasi: "",
         photo_csirt_file: null,
         file_rfc2350_file: null,
         file_public_key_pgp_file: null,
+        file_surat_tanda_registrasi_file: null,
       };
       formErrors.value = {};
       selectedCountryCode.value = "+62";
@@ -206,6 +210,7 @@ export default {
         photo_csirt: formData.value.photo_csirt_file || formData.value.photo_csirt || "",
         file_rfc2350: formData.value.file_rfc2350_file || formData.value.file_rfc2350 || "",
         file_public_key_pgp: formData.value.file_public_key_pgp_file || formData.value.file_public_key_pgp || "",
+        file_surat_tanda_registrasi: formData.value.file_surat_tanda_registrasi_file || formData.value.file_surat_tanda_registrasi || "",
       };
 
       const result = await csirtStore.createCsirt(payload);
@@ -228,6 +233,7 @@ export default {
         photo_csirt_file: null,
         file_rfc2350_file: null,
         file_public_key_pgp_file: null,
+        file_surat_tanda_registrasi_file: null,
       };
       formErrors.value = {};
       parsePhoneNumber(item.telepon_csirt);
@@ -259,6 +265,7 @@ export default {
         photo_csirt: formData.value.photo_csirt_file || formData.value.photo_csirt || "",
         file_rfc2350: formData.value.file_rfc2350_file || formData.value.file_rfc2350 || "",
         file_public_key_pgp: formData.value.file_public_key_pgp_file || formData.value.file_public_key_pgp || "",
+        file_surat_tanda_registrasi: formData.value.file_surat_tanda_registrasi_file || formData.value.file_surat_tanda_registrasi || "",
       };
 
       const result = await csirtStore.updateCsirtById(currentEditItem.value.id, payload);
@@ -347,7 +354,7 @@ export default {
       }
     };
 
-    const handleFileUpload = (event: Event, type: 'rfc' | 'pgp') => {
+    const handleFileUpload = (event: Event, type: 'rfc' | 'pgp' | 'str') => {
       const target = event.target as HTMLInputElement;
       if (target.files && target.files.length > 0) {
         const file = target.files[0];
@@ -355,6 +362,8 @@ export default {
           formData.value.file_rfc2350_file = file;
         } else if (type === 'pgp') {
           formData.value.file_public_key_pgp_file = file;
+        } else if (type === 'str') {
+          formData.value.file_surat_tanda_registrasi_file = file;
         }
         showNotification(`${file.name} berhasil dipilih`, "success");
       }
@@ -1102,6 +1111,24 @@ export default {
                     <i class="ri-check-line"></i> {{ formData.file_public_key_pgp_file.name }} siap diupload
                   </div>
                 </div>
+
+                <!-- Surat Tanda Registrasi -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-file-pdf-line me-1 text-primary"></i>Surat Tanda Registrasi
+                  </label>
+                  <div class="input-group w-100 gap-4">
+                    <input type="text" class="form-control" v-model="formData.file_surat_tanda_registrasi"
+                      placeholder="Link atau pilih file" />
+                    <input type="file" ref="createStrFile" class="d-none" @change="handleFileUpload($event, 'str')" accept=".pdf" />
+                    <button class="btn btn-info-light" type="button" @click="$refs.createStrFile.click()">
+                      <i class="ri-upload-2-line me-1"></i>Upload
+                    </button>
+                  </div>
+                  <div v-if="formData.file_surat_tanda_registrasi_file" class="text-success small mt-1">
+                    <i class="ri-check-line"></i> {{ formData.file_surat_tanda_registrasi_file.name }} siap diupload
+                  </div>
+                </div>
               </div>
             </form>
           </div>
@@ -1285,6 +1312,24 @@ export default {
                   </div>
                   <div v-if="formData.file_public_key_pgp_file" class="text-success small mt-1">
                     <i class="ri-check-line"></i> {{ formData.file_public_key_pgp_file.name }} siap diupload
+                  </div>
+                </div>
+
+                <!-- Surat Tanda Registrasi -->
+                <div class="col-xl-12">
+                  <label class="form-label fw-medium">
+                    <i class="ri-file-pdf-line me-1 text-primary"></i>Surat Tanda Registrasi
+                  </label>
+                  <div class="input-group w-100 gap-4">
+                    <input type="text" class="form-control" v-model="formData.file_surat_tanda_registrasi"
+                      placeholder="Link atau pilih file" />
+                    <input type="file" ref="editStrFile" class="d-none" @change="handleFileUpload($event, 'str')" accept=".pdf" />
+                    <button class="btn btn-info-light" type="button" @click="$refs.editStrFile.click()">
+                      <i class="ri-upload-2-line me-1"></i>Upload
+                    </button>
+                  </div>
+                  <div v-if="formData.file_surat_tanda_registrasi_file" class="text-success small mt-1">
+                    <i class="ri-check-line"></i> {{ formData.file_surat_tanda_registrasi_file.name }} siap diupload
                   </div>
                 </div>
 

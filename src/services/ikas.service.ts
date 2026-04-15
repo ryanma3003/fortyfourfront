@@ -19,6 +19,8 @@ import type {
     GulihPayload,
     GulihResponse,
     PertanyaanIdentifikasiResponse,
+    JawabanPayload,
+    JawabanResponse,
 } from '@/types/ikas.types';
 
 /**
@@ -192,5 +194,38 @@ export const ikasService = {
     /** Get pertanyaan gulih */
     async getPertanyaanGulih(): Promise<any> {
         return api.get<any>('/api/maturity/pertanyaan-gulih');
+    },
+
+    // Jawaban endpoints
+    async getJawabanIdentifikasi(): Promise<JawabanResponse[]> {
+        return api.get<JawabanResponse[]>('/api/maturity/jawaban-identifikasi');
+    },
+
+    async createJawabanIdentifikasi(payload: JawabanPayload): Promise<JawabanResponse> {
+        return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload);
+    },
+
+    async getJawabanProteksi(): Promise<JawabanResponse[]> {
+        return api.get<JawabanResponse[]>('/api/maturity/jawaban-proteksi');
+    },
+
+    async createJawabanProteksi(payload: JawabanPayload): Promise<JawabanResponse> {
+        return api.post<JawabanResponse>('/api/maturity/jawaban-proteksi', payload);
+    },
+
+    async getJawabanDeteksi(): Promise<JawabanResponse[]> {
+        return api.get<JawabanResponse[]>('/api/maturity/jawaban-deteksi');
+    },
+
+    async createJawabanDeteksi(payload: JawabanPayload): Promise<JawabanResponse> {
+        return api.post<JawabanResponse>('/api/maturity/jawaban-deteksi', payload);
+    },
+
+    async getJawabanGulih(): Promise<JawabanResponse[]> {
+        return api.get<JawabanResponse[]>('/api/maturity/jawaban-gulih');
+    },
+
+    async createJawabanGulih(payload: JawabanPayload): Promise<JawabanResponse> {
+        return api.post<JawabanResponse>('/api/maturity/jawaban-gulih', payload);
     },
 };

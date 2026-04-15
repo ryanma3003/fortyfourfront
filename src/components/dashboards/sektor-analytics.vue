@@ -28,10 +28,10 @@ const expandedSektors = ref(new Set());
 
 // ─── Color Palette ──────────────────────────────────────
 const sektorColors = [
-  "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
-  "#ec4899", "#f43f5e", "#ef4444", "#f97316",
-  "#eab308", "#22c55e", "#14b8a6", "#06b6d4",
-  "#3b82f6", "#2563eb", "#7c3aed", "#c026d3",
+  "#2563eb", "#059669", "#ea580c", "#0d9488",
+  "#ca8a04", "#dc2626", "#0ea5e9", "#0891b2",
+  "#65a30d", "#4f46e5", "#0f766e", "#b45309",
+  "#1d4ed8", "#b91c1c", "#475569", "#047857",
 ];
 
 const getSektorColor = (index) => sektorColors[index % sektorColors.length];
@@ -483,7 +483,7 @@ watch(selectedSektorId, () => {
     <template v-else>
       <!-- ──── STATS CARDS ──── -->
       <div class="sa-stats-row">
-        <div class="sa-stat-card sa-stat-indigo">
+        <div class="sa-stat-card sa-stat-blue">
           <div class="sa-stat-top">
             <div class="sa-stat-icon-wrap">
               <i class="ri-building-4-line"></i>
@@ -1021,7 +1021,7 @@ watch(selectedSektorId, () => {
 }
 .sa-level-toggle-label i {
   font-size: 15px;
-  color: #6366f1;
+  color: #2563eb;
 }
 .sa-level-toggle-group {
   display: flex;
@@ -1058,9 +1058,9 @@ watch(selectedSektorId, () => {
   color: #334155;
 }
 .sa-level-btn.active {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
 .sa-level-btn.active i {
   color: #fff;
@@ -1108,8 +1108,8 @@ watch(selectedSektorId, () => {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(139, 92, 246, 0.5) 30%,
-    rgba(96, 165, 250, 0.8) 60%,
+    rgba(16, 185, 129, 0.5) 30%,
+    rgba(59, 130, 246, 0.8) 60%,
     rgba(167, 243, 208, 0.4) 100%
   );
 }
@@ -1328,38 +1328,38 @@ watch(selectedSektorId, () => {
 }
 
 /* Color variants */
-.sa-stat-indigo {
-  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-  border-color: #c7d2fe;
-  color: #3730a3;
+.sa-stat-blue {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #bfdbfe;
+  color: #1e40af;
 }
-.sa-stat-indigo .sa-stat-icon-wrap {
-  background: rgba(99, 102, 241, 0.15);
-  color: #6366f1;
+.sa-stat-blue .sa-stat-icon-wrap {
+  background: rgba(37, 99, 235, 0.15);
+  color: #2563eb;
 }
-.sa-stat-indigo .sa-stat-badge {
-  background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
+.sa-stat-blue .sa-stat-badge {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
 }
-.sa-stat-indigo::after {
-  background: #6366f1;
+.sa-stat-blue::after {
+  background: #2563eb;
 }
 
-.sa-stat-violet {
-  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-  border-color: #ddd6fe;
-  color: #5b21b6;
+.sa-stat-emerald {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #a7f3d0;
+  color: #065f46;
 }
-.sa-stat-violet .sa-stat-icon-wrap {
-  background: rgba(139, 92, 246, 0.15);
-  color: #8b5cf6;
+.sa-stat-emerald .sa-stat-icon-wrap {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
 }
-.sa-stat-violet .sa-stat-badge {
-  background: rgba(139, 92, 246, 0.12);
-  color: #8b5cf6;
+.sa-stat-emerald .sa-stat-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
 }
-.sa-stat-violet::after {
-  background: #8b5cf6;
+.sa-stat-emerald::after {
+  background: #10b981;
 }
 
 .sa-stat-teal {
@@ -1430,7 +1430,7 @@ watch(selectedSektorId, () => {
 }
 .sa-filter-title-wrap > i {
   font-size: 16px;
-  color: #6366f1;
+  color: #2563eb;
 }
 .sa-filter-badge {
   display: inline-flex;
@@ -1439,7 +1439,7 @@ watch(selectedSektorId, () => {
   min-width: 20px;
   height: 20px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
   color: #fff;
   font-size: 10px;
   font-weight: 800;
@@ -1470,7 +1470,7 @@ watch(selectedSektorId, () => {
 }
 .sa-result-count i {
   font-size: 12px;
-  color: #6366f1;
+  color: #2563eb;
 }
 
 /* Filter Controls */
@@ -1500,7 +1500,7 @@ watch(selectedSektorId, () => {
 }
 .sa-filter-label i {
   font-size: 11px;
-  color: #6366f1;
+  color: #2563eb;
 }
 .sa-filter-select {
   min-width: 150px;
@@ -1512,8 +1512,8 @@ watch(selectedSektorId, () => {
   transition: all 0.2s;
 }
 .sa-filter-select:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 /* Search */
@@ -1540,8 +1540,8 @@ watch(selectedSektorId, () => {
   transition: all 0.2s;
 }
 .sa-search-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .sa-search-clear {
   position: absolute;
@@ -1583,9 +1583,9 @@ watch(selectedSektorId, () => {
   transition: all 0.2s;
 }
 .sa-sort-btn:hover {
-  background: #6366f1;
+  background: #2563eb;
   color: #fff;
-  border-color: #6366f1;
+  border-color: #2563eb;
 }
 
 /* Reset Button */
@@ -1637,9 +1637,9 @@ watch(selectedSektorId, () => {
   border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
-  background: #eef2ff;
-  color: #4338ca;
-  border: 1px solid #c7d2fe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
   animation: sa-pill-in 0.25s ease;
 }
 .sa-filter-pill i {
@@ -1651,9 +1651,9 @@ watch(selectedSektorId, () => {
   border-color: #bbf7d0;
 }
 .sa-pill-sub {
-  background: #fdf4ff;
-  color: #86198f;
-  border-color: #f0abfc;
+  background: #f0fdfa;
+  color: #0d9488;
+  border-color: #99f6e4;
 }
 .sa-pill-sort {
   background: #fffbeb;
@@ -1858,7 +1858,7 @@ watch(selectedSektorId, () => {
   transition: transform 0.2s;
 }
 .sa-sektor-row.expanded .sa-expand-icon {
-  color: #6366f1;
+  color: #2563eb;
 }
 
 /* Sub Sektor Rows */
@@ -1879,7 +1879,7 @@ watch(selectedSektorId, () => {
   font-size: 12.5px;
 }
 .sa-sub-row:hover {
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(37, 99, 235, 0.05);
 }
 .sa-sub-num {
   font-weight: 700;

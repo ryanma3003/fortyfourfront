@@ -35,6 +35,26 @@ const targetLevelOptions = [
   { value: 5, label: 'Level 5 - Inovatif' }
 ];
 
+const parseTargetNilai = (value: string | number | null | undefined): number => {
+  if (typeof value === 'number') return value;
+  const parsed = Number(String(value || '').replace(',', '.').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const deriveTargetLevel = (targetNilai: string | number | null | undefined): number => {
+  const nilai = parseTargetNilai(targetNilai);
+  if (nilai <= 0) return 0;
+  if (nilai < 1.5) return 1;
+  if (nilai < 2.5) return 2;
+  if (nilai < 3.5) return 3;
+  if (nilai < 4.5) return 4;
+  return 5;
+};
+
+const getTargetLevelLabel = (level: number | null | undefined): string => {
+  return targetLevelOptions.find(option => option.value === level)?.label || '-';
+};
+
 // Form state
 const formData = reactive<Partial<RespondentProfile>>({
   instansi: '',
@@ -46,7 +66,7 @@ const formData = reactive<Partial<RespondentProfile>>({
   jabatanResponden: '',
   tahunPengukuran: new Date().getFullYear().toString(),
   targetLevel: 3,
-  targetNilai: '2.51 - 3.50',
+  targetNilai: '3',
   acuan: '',
   tanggalPengisian: new Date().toISOString().split('T')[0]
 });
@@ -93,6 +113,10 @@ watch(() => props.stakeholder, (newVal) => {
   }
 });
 
+watch(() => formData.targetNilai, (newValue) => {
+  formData.targetLevel = deriveTargetLevel(newValue);
+});
+
 // Validation rules
 const validateField = (field: string, value: any): string => {
   switch (field) {
@@ -117,7 +141,11 @@ const validateField = (field: string, value: any): string => {
       if (isNaN(year) || year < 2000 || year > 2100) return 'Tahun tidak valid';
       return '';
     case 'targetNilai':
-      return value.trim() === '' ? 'Target nilai wajib diisi' : '';
+      if (value.trim() === '') return 'Target nilai wajib diisi';
+      if (!Number.isFinite(parseTargetNilai(value)) || parseTargetNilai(value) <= 0) {
+        return 'Target nilai harus berupa angka lebih dari 0';
+      }
+      return '';
     default:
       return '';
   }
@@ -176,8 +204,8 @@ const saveFormData = () => {
     jabatanResponden: formData.jabatanResponden || '',
     nomorTelepon: formData.nomorTelepon || '',
     tahunPengukuran: formData.tahunPengukuran || '',
-    targetLevel: formData.targetLevel || 3,
-    targetNilai: formData.targetNilai || '',
+    targetLevel: deriveTargetLevel(formData.targetNilai),
+    targetNilai: String(formData.targetNilai || ''),
     acuan: formData.acuan || '',
     tanggalPengisian: formData.tanggalPengisian || '',
     createdAt: formData.createdAt || Date.now(),
@@ -362,28 +390,29 @@ const startAssessment = () => {
 
               <!-- Target Level -->
               <div class="col-md-4 mb-3">
-                <label class="form-label">Target Level Kematangan <span class="text-danger">*</span></label>
-                <select 
-                  class="form-select"
-                  v-model.number="formData.targetLevel"
-                  @change="handleFieldBlur('targetLevel')"
-                >
-                  <option v-for="option in targetLevelOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
+                <label class="form-label">Target Level Kematangan</label>
+                <input
+                  type="text"
+                  class="form-control bg-light"
+                  :value="getTargetLevelLabel(formData.targetLevel)"
+                  readonly
+                />
+                <small class="text-muted">Mengikuti nilai target yang diinput</small>
               </div>
 
               <!-- Target Nilai -->
               <div class="col-md-4 mb-3">
                 <label class="form-label">Target Nilai <span class="text-danger">*</span></label>
                 <input 
-                  type="text" 
+                  type="number" 
                   class="form-control"
                   :class="{ 'is-invalid': errors.targetNilai }"
                   v-model="formData.targetNilai"
                   @blur="handleFieldBlur('targetNilai')"
-                  placeholder="Contoh: 2.51 - 3.50"
+                  placeholder="Contoh: 3"
+                  step="0.01"
+                  min="0"
+                  max="5"
                 />
                 <div v-if="errors.targetNilai" class="invalid-feedback">{{ errors.targetNilai }}</div>
               </div>

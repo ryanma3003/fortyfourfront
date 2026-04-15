@@ -35,6 +35,7 @@ export interface DynamicQuestion {
   id: string;              // sub-kategori ID
   text: string;            // sub-kategori nama
   kategoriId: string;      // parent kategori ID
+  domainKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih';
   scopeId?: string;        // The ID from backend (optional depending on how we join)
   scope: string;           // ruang lingkup text (default: 'Tata Kelola' or empty if not tied directly)
   indexDescriptions: Record<number, string>; // We supply generic descriptions here

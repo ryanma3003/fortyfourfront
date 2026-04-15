@@ -3718,3 +3718,14 @@ html.dark .dashboard-datepicker-wrapper .dp__theme_dark {
   --dp-border-color: rgba(255,255,255,0.06) !important;
   --dp-menu-border-color: rgba(255,255,255,0.06) !important;
 }
+
+/* =====================================================
+   ULTRA-WIDE / 2K+ SCREENS — Prevent infinite stretch
+   ===================================================== */
+@media (min-width: 1800px) {
+  .main-content.app-content > .container-fluid {
+    max-width: 1640px;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+}

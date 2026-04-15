@@ -34,22 +34,29 @@ export interface IkasGulihPayload {
 
 export interface IkasPayload {
     id_perusahaan: string;
-    responden: string;
     jabatan: string;
-    telepon: string;
+    responden: string;
     tanggal: string;
     target_nilai: number;
-    identifikasi: IkasIdentifikasiPayload;
-    proteksi: IkasProteksiPayload;
-    deteksi: IkasDeteksiPayload;
-    gulih: IkasGulihPayload;
+    telepon: string;
 }
 
-export interface IkasResponse extends IkasPayload {
-    id_identifikasi: string;
-    id_proteksi: string;
-    id_deteksi: string;
-    id_gulih: string;
+export interface IkasResponse {
+    id: string;
+    id_perusahaan: string;
+    jabatan: string;
+    responden: string;
+    tanggal: string;
+    target_nilai: number;
+    telepon: string;
+    perusahaan?: any;
+    identifikasi?: any;
+    proteksi?: any;
+    deteksi?: any;
+    gulih?: any;
+    nilai_kematangan?: number;
+    created_at: string;
+    updated_at: string;
 }
 
 // ─── POST /api/maturity/domain ─────────────────────────────────────
@@ -203,4 +210,23 @@ export interface PertanyaanIdentifikasiResponse {
     };
     created_at: string;
     updated_at: string;
+}
+
+export interface JawabanPayload {
+    id_ikas?: string;
+    id_pertanyaan?: string;
+    id_perusahaan?: string;
+    jawaban?: number | string;
+    nilai?: number;
+}
+
+export interface JawabanResponse {
+    id: string;
+    id_ikas?: string;
+    id_pertanyaan?: string;
+    id_perusahaan?: string;
+    jawaban?: number | string;
+    nilai?: number;
+    created_at?: string;
+    updated_at?: string;
 }
