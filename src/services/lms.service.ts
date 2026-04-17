@@ -1,0 +1,417 @@
+import { api } from '@/config/api';
+import type {
+    LmsKelas, CreateKelasPayload, UpdateKelasPayload,
+    LmsMateri, CreateMateriPayload, UpdateMateriPayload,
+    LmsFilePendukung,
+    LmsKuis, CreateKuisPayload, UpdateKuisPayload,
+    LmsSoal, CreateSoalPayload, UpdateSoalPayload,
+} from '@/types/lms.types';
+
+/**
+ * LMS Service
+ * Handles all API calls for Kelas, Materi, File Pendukung, Kuis, and Soal.
+ */
+export const lmsService = {
+
+    // ─── Kelas ───────────────────────────────────────────────────
+
+    /**
+     * Get all kelas
+     */
+    async getKelas(): Promise<LmsKelas[]> {
+        const response = await api.get<any>('/api/kelas');
+        return unwrapDataArray(response).map(normalizeKelas);
+    },
+
+    /**
+     * Get kelas by ID
+     */
+    async getKelasById(id: string | number): Promise<LmsKelas> {
+        const response = await api.get<any>(`/api/kelas/${id}`);
+        return normalizeKelas(response?.data ?? response);
+    },
+
+    /**
+     * Create a new kelas (POST /api/kelas)
+     */
+    async createKelas(payload: CreateKelasPayload): Promise<LmsKelas> {
+        const body = {
+            judul: payload.nama_kelas,
+            nama_kelas: payload.nama_kelas,
+            deskripsi: payload.deskripsi,
+            status: payload.status,
+        };
+        console.log('[LMS] POST /api/kelas payload:', JSON.stringify(body));
+        const response = await api.post<any>('/api/kelas', body);
+        return normalizeKelas(response?.data ?? response);
+    },
+
+    /**
+     * Update kelas (PUT /api/kelas/{id})
+     */
+    async updateKelas(id: string | number, payload: UpdateKelasPayload): Promise<LmsKelas> {
+        const body = {
+            ...payload,
+            judul: payload.nama_kelas,
+        };
+        const response = await api.put<any>(`/api/kelas/${id}`, body);
+        return normalizeKelas(response?.data ?? response);
+    },
+
+    /**
+     * Delete kelas (DELETE /api/kelas/{id})
+     */
+    async deleteKelas(id: string | number): Promise<void> {
+        return api.delete(`/api/kelas/${id}`);
+    },
+
+    // ─── Materi ──────────────────────────────────────────────────
+
+    /**
+     * Get materi (by kelas if provided, otherwise all)
+     */
+    async getMateriByKelas(kelasId?: string | number): Promise<LmsMateri[]> {
+        if (!kelasId) {
+            try {
+                const kls = await this.getKelas();
+                const all: LmsMateri[] = [];
+                for (const k of kls) {
+                    if ((k as any).materi) {
+                        unwrapDataArray((k as any).materi).forEach(m => all.push(normalizeMateri({...m, id_kelas: k.id})));
+                    }
+                }
+                return all;
+            } catch (e) {
+                return [];
+            }
+        }
+        try {
+            // Detail Kelas returns `materi` array inside it
+            const res = await api.get<any>(`/api/kelas/${kelasId}`);
+            const data = res?.data ?? res;
+            if (data?.materi) {
+                return unwrapDataArray(data.materi).map(normalizeMateri);
+            }
+            return [];
+        } catch (e: any) {
+            console.error('[API Error] getMateriByKelas failed:', e);
+            return [];
+        }
+    },
+
+    /**
+     * Add materi to kelas (POST /api/kelas/{id}/materi)
+     */
+    async createMateri(kelasId: string | number, payload: CreateMateriPayload): Promise<LmsMateri> {
+        const urlVideo = payload.url_video || '';
+        let youtubeId = urlVideo;
+        const match = urlVideo.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+        if (match) {
+            youtubeId = match[1];
+        }
+
+        const requestPayload = {
+            judul: payload.judul,
+            kategori: payload.kategori || 'Pelajaran',
+            tipe: payload.tipe || 'teks',
+            deskripsi_singkat: payload.deskripsi || '',
+            konten: payload.konten || '',
+            konten_html: payload.konten_html || '',
+            youtube_id: youtubeId,
+            durasi_detik: 600,
+            urutan: (payload as any).urutan || 1
+        };
+        const res = await api.post(`/api/kelas/${kelasId}/materi`, requestPayload);
+        return normalizeMateri(res?.data ?? res);
+    },
+
+    /**
+     * Update materi (PUT /api/materi/{id})
+     */
+    async updateMateri(id: string | number, payload: UpdateMateriPayload): Promise<LmsMateri> {
+        const urlVideo = payload.url_video || '';
+        let youtubeId = urlVideo;
+        if (urlVideo) {
+            const match = urlVideo.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+            if (match) {
+                youtubeId = match[1];
+            }
+        }
+
+        const requestPayload = {
+            judul: payload.judul,
+            kategori: payload.kategori || 'Pelajaran',
+            tipe: payload.tipe || 'teks',
+            deskripsi_singkat: payload.deskripsi || '',
+            konten: payload.konten || '',
+            konten_html: payload.konten_html || '',
+            youtube_id: youtubeId,
+            ...(payload as any).urutan ? { urutan: (payload as any).urutan } : {}
+        };
+        const res = await api.put(`/api/materi/${id}`, requestPayload);
+        return normalizeMateri(res?.data ?? res);
+    },
+
+    /**
+     * Delete materi (DELETE /api/materi/{id})
+     */
+    async deleteMateri(id: string | number): Promise<void> {
+        return api.delete(`/api/materi/${id}`);
+    },
+
+    // ─── File Pendukung ──────────────────────────────────────────
+
+    /**
+     * Upload file pendukung to materi (POST /api/materi/{id}/file-pendukung)
+     */
+    async uploadFilePendukung(materiId: string | number, file: File): Promise<LmsFilePendukung> {
+        const form = new FormData();
+        form.append('file', file);
+        return api.post<LmsFilePendukung>(`/api/materi/${materiId}/file-pendukung`, form);
+    },
+
+    /**
+     * Delete file pendukung (DELETE /api/file-pendukung/{id})
+     */
+    async deleteFilePendukung(id: string | number): Promise<void> {
+        return api.delete(`/api/file-pendukung/${id}`);
+    },
+
+    // ─── Kuis ────────────────────────────────────────────────────
+
+    /**
+     * Get kuis (by kelas if provided, otherwise all)
+     */
+    async getKuisByKelas(kelasId?: string | number): Promise<LmsKuis[]> {
+        if (!kelasId) {
+            try {
+                const kls = await this.getKelas();
+                const all: LmsKuis[] = [];
+                for (const k of kls) {
+                    if ((k as any).kuis || (k as any).quiz || (k as any).kuis_list) {
+                        const arr = (k as any).kuis || (k as any).quiz || (k as any).kuis_list;
+                        unwrapDataArray(arr).forEach(q => all.push(normalizeKuis({...q, id_kelas: k.id})));
+                    }
+                }
+                return all;
+            } catch (e) {
+                return [];
+            }
+        }
+        try {
+            // GET /api/kelas/{id_kelas}/kuis
+            const res = await api.get<any>(`/api/kelas/${kelasId}/kuis`);
+            return unwrapDataArray(res?.data ?? res).map(normalizeKuis);
+        } catch (e: any) {
+            console.error('[API Error] getKuisByKelas API failed:', e);
+            return [];
+        }
+    },
+
+    /**
+     * Create kuis for kelas (POST /api/kelas/{id}/kuis)
+     */
+    async createKuis(kelasId: string | number, payload: CreateKuisPayload): Promise<LmsKuis> {
+        const body = {
+            ...payload,
+            is_final: payload.tipe_kuis === 'final',
+            id_materi: payload.tipe_kuis === 'final' ? null : (payload.id_materi || null),
+            urutan: payload.tipe_kuis === 'final' ? 99 : (payload as any).urutan || 1,
+            durasi_menit: payload.durasi || 30
+        };
+        return api.post<LmsKuis>(`/api/kelas/${kelasId}/kuis`, body);
+    },
+
+    /**
+     * Update kuis (PUT /api/kuis/{id})
+     */
+    async updateKuis(id: string | number, payload: UpdateKuisPayload): Promise<LmsKuis> {
+        const body = {
+            ...payload,
+            is_final: payload.tipe_kuis === 'final',
+            id_materi: payload.tipe_kuis === 'final' ? null : (payload.id_materi || null),
+            urutan: payload.tipe_kuis === 'final' ? 99 : (payload as any).urutan || 1,
+            durasi_menit: payload.durasi || 30
+        };
+        return api.put<LmsKuis>(`/api/kuis/${id}`, body);
+    },
+
+    /**
+     * Delete kuis (DELETE /api/kuis/{id})
+     */
+    async deleteKuis(id: string | number): Promise<void> {
+        return api.delete(`/api/kuis/${id}`);
+    },
+
+    // ─── Soal ────────────────────────────────────────────────────
+
+    /**
+     * Get soal (by kuis if provided)
+     */
+    async getSoalByKuis(kuisId?: string | number): Promise<LmsSoal[]> {
+        if (!kuisId) return [];
+        try {
+            // GET /api/kuis/{id_kuis}/soal
+            const res = await api.get<any>(`/api/kuis/${kuisId}/soal`);
+            return unwrapDataArray(res?.data ?? res).map(normalizeSoal);
+        } catch (e: any) {
+            console.error('[API Error] getSoalByKuis failed:', e);
+            return [];
+        }
+    },
+
+    /**
+     * Add soal to kuis (POST /api/kuis/{id_kuis}/soal)
+     */
+    async createSoal(kuisId: string | number, payload: CreateSoalPayload): Promise<LmsSoal> {
+        const pilihan = (payload.opsi || []).map((o: any, idx: number) => ({
+            teks: o.text || '',
+            is_correct: payload.jawaban_benar === o.label,
+            urutan: idx + 1
+        }));
+        
+        const body = {
+            pertanyaan: payload.pertanyaan || '',
+            urutan: (payload as any).urutan || 1,
+            pilihan: pilihan
+        };
+
+        return api.post<LmsSoal>(`/api/kuis/${kuisId}/soal`, body);
+    },
+
+    /**
+     * Update soal (PUT /api/soal/{id})
+     */
+    async updateSoal(id: string | number, payload: UpdateSoalPayload): Promise<LmsSoal> {
+        const pilihan = (payload.opsi || []).map((o: any, idx: number) => ({
+            teks: o.text || '',
+            is_correct: payload.jawaban_benar === o.label,
+            urutan: idx + 1
+        }));
+        
+        const body = {
+            pertanyaan: payload.pertanyaan || '',
+            urutan: (payload as any).urutan || 1,
+            pilihan: pilihan
+        };
+
+        return api.put<LmsSoal>(`/api/soal/${id}`, body);
+    },
+
+    /**
+     * Delete soal (DELETE /api/soal/{id})
+     */
+    async deleteSoal(id: string | number): Promise<void> {
+        return api.delete(`/api/soal/${id}`);
+    },
+};
+
+function unwrapDataArray(response: any): any[] {
+    if (!response) return [];
+    if (Array.isArray(response)) return response;
+
+    // Breadth-first search to find the first array
+    const queue = [response];
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (Array.isArray(current)) return current;
+        if (current && typeof current === 'object') {
+            for (const key of Object.keys(current)) {
+                if (Array.isArray(current[key])) return current[key];
+                if (current[key] !== null && typeof current[key] === 'object') {
+                    queue.push(current[key]);
+                }
+            }
+        }
+    }
+
+    return [];
+}
+
+function normalizeKelas(item: any): LmsKelas {
+    return {
+        ...item,
+        id: item?.id ?? item?.kelas_id ?? '',
+        nama_kelas: String(item?.nama_kelas ?? item?.judul ?? item?.nama ?? '').trim(),
+        deskripsi: String(item?.deskripsi ?? item?.description ?? ''),
+        status: String(item?.status ?? 'draft'),
+    };
+}
+
+function normalizeMateri(item: any): LmsMateri {
+    return {
+        ...item,
+        id: item?.id ?? item?.materi_id ?? '',
+        id_kelas: item?.id_kelas ?? item?.kelas_id ?? '',
+        judul: String(item?.judul ?? item?.nama_materi ?? 'Tanpa Judul').trim(),
+        kategori: String(item?.kategori ?? 'Lainnya'),
+        deskripsi: String(item?.deskripsi ?? item?.deskripsi_singkat ?? ''),
+        tipe: String(item?.tipe ?? 'teks') as any,
+        konten: String(item?.konten ?? item?.konten_html ?? ''),
+        url_video: String(item?.url_video ?? ''),
+    };
+}
+
+function normalizeKuis(item: any): LmsKuis {
+    const isFinal = item?.is_final === true || item?.is_final === 'true' || item?.is_final === 1;
+    return {
+        ...item,
+        id: item?.id ?? item?.kuis_id ?? item?.quiz_id ?? '',
+        id_kelas: item?.id_kelas ?? item?.kelas_id ?? '',
+        judul: String(item?.judul ?? item?.nama_kuis ?? item?.nama ?? 'Kuis Tanpa Judul').trim(),
+        deskripsi: String(item?.deskripsi ?? ''),
+        tipe_kuis: String(item?.tipe_kuis ?? item?.tipe ?? (isFinal ? 'final' : 'per_materi')),
+    };
+}
+
+function normalizeSoal(item: any): LmsSoal {
+    let opsiRaw = item?.opsi ?? item?.pilihan_jawaban ?? item?.pilihan ?? [];
+    if (typeof opsiRaw === 'string') {
+        try { opsiRaw = JSON.parse(opsiRaw); } catch { opsiRaw = []; }
+    }
+    
+    const labels = ["A", "B", "C", "D", "E"];
+    let mappedOpsi: any[] = [];
+    let jawabanBenar = String(item?.jawaban_benar ?? item?.kunci_jawaban ?? item?.kunci ?? '');
+
+    if (Array.isArray(opsiRaw) && opsiRaw.length > 0) {
+        mappedOpsi = opsiRaw.map((o: any, idx: number) => {
+            const label = labels[idx] || String.fromCharCode(65 + idx);
+            // If backend provides is_correct = true, this is the correct answer
+            if (o.is_correct || o.kunci === true || o.benar === true) {
+                jawabanBenar = label;
+            }
+            return {
+                id: o.id || '',
+                label: o.label || label,
+                text: o.text ?? o.teks ?? o.jawaban ?? '',
+                urutan: o.urutan ?? idx + 1
+            };
+        });
+        
+        // Ensure at least 4 items for UI rendering
+        while(mappedOpsi.length < 4) {
+            const idx = mappedOpsi.length;
+            mappedOpsi.push({
+                label: labels[idx] || String.fromCharCode(65 + idx),
+                text: ''
+            });
+        }
+    } else {
+        mappedOpsi = [
+            { label: 'A', text: '' },
+            { label: 'B', text: '' },
+            { label: 'C', text: '' },
+            { label: 'D', text: '' }
+        ];
+    }
+
+    return {
+        ...item,
+        id: item?.id ?? item?.soal_id ?? '',
+        pertanyaan: String(item?.pertanyaan ?? item?.soal ?? item?.text ?? 'Tanpa Pertanyaan').trim(),
+        tipe: String(item?.tipe ?? 'pilihan_ganda') as any,
+        jawaban_benar: jawabanBenar,
+        opsi: mappedOpsi,
+    };
+}

@@ -267,7 +267,8 @@ const fetchAllRecords = async () => {
     if (response && response.data && Array.isArray(response.data)) {
       // Filter records for this perusahaan
       allIkasRecords.value = response.data.filter(r => 
-        r.perusahaan?.id === props.perusahaanId
+        String(r.perusahaan?.id || '') === String(props.perusahaanId) ||
+        String(r.id_perusahaan || '') === String(props.perusahaanId)
       );
       
       // Build available years from the data

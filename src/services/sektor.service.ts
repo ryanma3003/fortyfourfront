@@ -38,7 +38,14 @@ export interface SubSektor {
 
 /** Get display name for Sektor */
 export function getSektorName(s: Sektor): string {
-  return s.nama_sektor ?? s.nama ?? String(s.id)
+  const name = (s.nama_sektor ?? s.nama ?? String(s.id)).trim();
+  const upper = name.toUpperCase();
+  
+  if (upper === 'AGRO') return 'Industri Agro, Surveyor, dan Jasa Konstruksi';
+  if (upper === 'ILMATE') return 'Industri Logam, Mesin, Alat Transportasi, dan Elektronika';
+  if (upper === 'IKFT') return 'Industri Kimia, Farmasi, Tekstil, dan Kawasan Industri';
+  
+  return name;
 }
 
 /** Get display name for SubSektor */

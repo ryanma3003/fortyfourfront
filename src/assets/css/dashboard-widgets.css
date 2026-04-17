@@ -1,0 +1,719 @@
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD WIDGETS — DESIGN SYSTEM
+   Shared tokens, cards, animations, dark mode
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Brand Palette ── */
+  --dw-primary: #845adf;
+  --dw-primary-rgb: 132, 90, 223;
+  --dw-secondary: #6366f1;
+  --dw-accent: #23b7e5;
+  --dw-success: #26bf94;
+  --dw-warning: #f5b849;
+  --dw-danger: #e6533c;
+  --dw-info: #0ea5e9;
+
+  /* ── Fixed entity colors (consistent everywhere) ── */
+  --dw-color-stakeholder: #845adf;
+  --dw-color-csirt: #e6533c;
+  --dw-color-sdm: #23b7e5;
+  --dw-color-se: #8c57ff;
+  --dw-color-ikas: #26bf94;
+  --dw-color-kse: #f5b849;
+  --dw-color-sektor: #6366f1;
+
+  /* ── Surface ── */
+  --dw-bg: #f8f9fc;
+  --dw-card-bg: #ffffff;
+  --dw-card-border: rgba(0, 0, 0, 0.04);
+  --dw-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
+  --dw-card-shadow-hover: 0 8px 32px rgba(132, 90, 223, 0.1);
+  --dw-card-radius: 16px;
+  --dw-card-radius-sm: 12px;
+
+  /* ── Text ── */
+  --dw-text: #1e293b;
+  --dw-text-secondary: #64748b;
+  --dw-text-muted: #94a3b8;
+
+  /* ── Spacing ── */
+  --dw-gap: 1.25rem;
+  --dw-gap-lg: 1.5rem;
+
+  /* ── Glassmorphism ── */
+  --dw-glass-bg: rgba(255, 255, 255, 0.7);
+  --dw-glass-border: rgba(255, 255, 255, 0.3);
+  --dw-glass-blur: 12px;
+}
+
+/* ── Dark Mode ── */
+[data-theme-mode="dark"],
+[data-header-styles="dark"] .dw-root,
+.dark-mode {
+  --dw-bg: #0f172a;
+  --dw-card-bg: #1e293b;
+  --dw-card-border: rgba(255, 255, 255, 0.06);
+  --dw-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
+  --dw-card-shadow-hover: 0 8px 32px rgba(132, 90, 223, 0.2);
+  --dw-text: #e2e8f0;
+  --dw-text-secondary: #94a3b8;
+  --dw-text-muted: #64748b;
+  --dw-glass-bg: rgba(30, 41, 59, 0.7);
+  --dw-glass-border: rgba(255, 255, 255, 0.08);
+}
+
+/* ═══════ WIDGET CARD ═══════ */
+.dw-card {
+  background: var(--dw-card-bg);
+  border: 1px solid var(--dw-card-border);
+  border-radius: var(--dw-card-radius);
+  box-shadow: var(--dw-card-shadow);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
+}
+
+.dw-card:hover {
+  box-shadow: var(--dw-card-shadow-hover);
+  transform: translateY(-3px);
+}
+
+.dw-card-body {
+  padding: 1.25rem;
+}
+
+.dw-card-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--dw-card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dw-card-header-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--dw-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dw-card-header-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.dw-card-header-sub {
+  font-size: 0.75rem;
+  color: var(--dw-text-muted);
+  font-weight: 500;
+}
+
+/* ═══════ GLASSMORPHISM CARD ═══════ */
+.dw-glass {
+  background: var(--dw-glass-bg);
+  backdrop-filter: blur(var(--dw-glass-blur));
+  -webkit-backdrop-filter: blur(var(--dw-glass-blur));
+  border: 1px solid var(--dw-glass-border);
+}
+
+/* ═══════ SECTION HEADER ═══════ */
+.dw-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, rgba(var(--dw-primary-rgb), 0.06) 0%, rgba(99, 102, 241, 0.04) 100%);
+  border-radius: var(--dw-card-radius-sm);
+  border: 1px solid rgba(var(--dw-primary-rgb), 0.08);
+}
+
+.dw-section-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--dw-primary) 0%, var(--dw-secondary) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.dw-section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--dw-text);
+  margin: 0;
+}
+
+/* ═══════ KPI VALUE ═══════ */
+.dw-kpi-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  color: var(--dw-text);
+}
+
+.dw-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dw-text-muted);
+  margin-top: 4px;
+}
+
+/* ═══════ DELTA BADGE ═══════ */
+.dw-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+}
+
+.dw-delta-up {
+  background: rgba(38, 191, 148, 0.12);
+  color: #26bf94;
+}
+
+.dw-delta-down {
+  background: rgba(230, 83, 60, 0.12);
+  color: #e6533c;
+}
+
+.dw-delta-flat {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+}
+
+/* ═══════ PROGRESS RING ═══════ */
+.dw-progress-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dw-progress-ring svg {
+  transform: rotate(-90deg);
+}
+
+.dw-progress-ring-label {
+  position: absolute;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--dw-text);
+}
+
+/* ═══════ BADGE ═══════ */
+.dw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.dw-badge-critical {
+  background: rgba(230, 83, 60, 0.1);
+  color: var(--dw-danger);
+  border: 1px solid rgba(230, 83, 60, 0.15);
+}
+
+.dw-badge-warning {
+  background: rgba(245, 184, 73, 0.1);
+  color: var(--dw-warning);
+  border: 1px solid rgba(245, 184, 73, 0.15);
+}
+
+.dw-badge-success {
+  background: rgba(38, 191, 148, 0.1);
+  color: var(--dw-success);
+  border: 1px solid rgba(38, 191, 148, 0.15);
+}
+
+.dw-badge-info {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--dw-info);
+  border: 1px solid rgba(14, 165, 233, 0.15);
+}
+
+/* ═══════ ANIMATIONS ═══════ */
+.dw-fade-up {
+  animation: dwFadeUp 0.5s ease-out both;
+}
+
+@keyframes dwFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dw-slide-in {
+  animation: dwSlideIn 0.4s ease-out both;
+}
+
+@keyframes dwSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.dw-scale-in {
+  animation: dwScaleIn 0.3s ease-out both;
+}
+
+@keyframes dwScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dw-pulse {
+  animation: dwPulse 2s ease-in-out infinite;
+}
+
+@keyframes dwPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ═══════ LIVE DOT ═══════ */
+.dw-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dw-success);
+  position: relative;
+}
+
+.dw-live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: var(--dw-success);
+  opacity: 0;
+  animation: dwLivePing 1.5s ease-out infinite;
+}
+
+@keyframes dwLivePing {
+  0% { transform: scale(1); opacity: 0.4; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ═══════ INSIGHT CARD ═══════ */
+.dw-insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--dw-card-radius-sm);
+  background: var(--dw-card-bg);
+  border: 1px solid var(--dw-card-border);
+  transition: all 0.25s ease;
+}
+
+.dw-insight-item:hover {
+  background: rgba(var(--dw-primary-rgb), 0.04);
+  border-color: rgba(var(--dw-primary-rgb), 0.12);
+}
+
+.dw-insight-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ═══════ ACTION CENTER ═══════ */
+.dw-action-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--dw-card-radius-sm);
+  border: 1px solid var(--dw-card-border);
+  background: var(--dw-card-bg);
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.dw-action-item:hover {
+  border-color: rgba(var(--dw-primary-rgb), 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.dw-action-severity {
+  width: 4px;
+  height: 36px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* ═══════ ACTIVITY FEED ═══════ */
+.dw-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--dw-card-border);
+  transition: background 0.2s;
+}
+
+.dw-activity-item:last-child {
+  border-bottom: none;
+}
+
+.dw-activity-item:hover {
+  background: rgba(var(--dw-primary-rgb), 0.02);
+}
+
+.dw-activity-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.dw-activity-time {
+  font-size: 0.68rem;
+  color: var(--dw-text-muted);
+  white-space: nowrap;
+}
+
+/* ═══════ QUICK ACTIONS ═══════ */
+.dw-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dw-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--dw-card-border);
+  background: var(--dw-card-bg);
+  color: var(--dw-text);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.dw-quick-btn:hover {
+  border-color: var(--dw-primary);
+  color: var(--dw-primary);
+  box-shadow: 0 2px 8px rgba(var(--dw-primary-rgb), 0.12);
+  transform: translateY(-1px);
+}
+
+.dw-quick-btn-primary {
+  background: linear-gradient(135deg, var(--dw-primary), var(--dw-secondary));
+  color: #fff;
+  border-color: transparent;
+}
+
+.dw-quick-btn-primary:hover {
+  color: #fff;
+  opacity: 0.9;
+  box-shadow: 0 4px 14px rgba(var(--dw-primary-rgb), 0.3);
+}
+
+/* ═══════ FILTER PILLS ═══════ */
+.dw-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(var(--dw-primary-rgb), 0.08);
+  color: var(--dw-primary);
+  border: 1px solid rgba(var(--dw-primary-rgb), 0.12);
+}
+
+.dw-filter-pill-close {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(var(--dw-primary-rgb), 0.15);
+  color: var(--dw-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.dw-filter-pill-close:hover {
+  background: var(--dw-danger);
+  color: #fff;
+}
+
+/* ═══════ ALERT BAR ═══════ */
+.dw-alert-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: var(--dw-card-radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: var(--dw-gap);
+  animation: dwFadeUp 0.4s ease-out;
+}
+
+.dw-alert-bar-success {
+  background: rgba(38, 191, 148, 0.08);
+  border: 1px solid rgba(38, 191, 148, 0.15);
+  color: var(--dw-success);
+}
+
+.dw-alert-bar-warning {
+  background: rgba(245, 184, 73, 0.08);
+  border: 1px solid rgba(245, 184, 73, 0.15);
+  color: #b8860b;
+}
+
+.dw-alert-bar-danger {
+  background: rgba(230, 83, 60, 0.08);
+  border: 1px solid rgba(230, 83, 60, 0.15);
+  color: var(--dw-danger);
+}
+
+/* ═══════ DRILL DOWN MODAL ═══════ */
+.dw-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dwFadeIn 0.2s ease-out;
+}
+
+@keyframes dwFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dw-modal-content {
+  background: var(--dw-card-bg);
+  border-radius: var(--dw-card-radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 900px;
+  max-height: 85vh;
+  overflow: hidden;
+  animation: dwScaleIn 0.3s ease-out;
+}
+
+.dw-modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--dw-card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dw-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  max-height: calc(85vh - 130px);
+}
+
+.dw-modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--dw-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dw-modal-close:hover {
+  background: var(--dw-danger);
+  color: #fff;
+}
+
+/* ═══════ MAP ═══════ */
+.dw-map-container {
+  border-radius: var(--dw-card-radius);
+  overflow: hidden;
+  border: 1px solid var(--dw-card-border);
+}
+
+/* ═══════ TOGGLE BUTTONS ═══════ */
+.dw-toggle-group {
+  display: inline-flex;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--dw-card-border);
+  background: var(--dw-card-bg);
+}
+
+.dw-toggle-btn {
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--dw-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.dw-toggle-btn.active {
+  background: var(--dw-primary);
+  color: #fff;
+}
+
+.dw-toggle-btn:hover:not(.active) {
+  background: rgba(var(--dw-primary-rgb), 0.06);
+  color: var(--dw-primary);
+}
+
+/* ═══════ TABLE STYLES ═══════ */
+.dw-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dw-table thead th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dw-text-muted);
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--dw-card-border);
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.dw-table tbody td {
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: var(--dw-text);
+  border-bottom: 1px solid var(--dw-card-border);
+  vertical-align: middle;
+}
+
+.dw-table tbody tr {
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.dw-table tbody tr:hover {
+  background: rgba(var(--dw-primary-rgb), 0.03);
+}
+
+/* ═══════ RESPONSIVE ═══════ */
+@media (max-width: 768px) {
+  .dw-card-body { padding: 1rem; }
+  .dw-kpi-value { font-size: 1.4rem; }
+  .dw-section-header { padding: 10px 14px; }
+  .dw-quick-actions { gap: 6px; }
+  .dw-quick-btn { padding: 6px 12px; font-size: 0.75rem; }
+}
+
+@media (min-width: 2560px) {
+  .dw-kpi-value { font-size: 2.2rem; }
+  .dw-card-body { padding: 1.5rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SEKTOR CARD HIGHLIGHTING
+   ═══════════════════════════════════════════════════════════ */
+.dashboard-main-card {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--dw-card-border) !important;
+}
+
+/* Active State: Elevated emphasis when a specific sector is filtered */
+.sektor-card-active {
+  transform: translateY(-5px) scale(1.02);
+  z-index: 10;
+  box-shadow: 0 12px 32px rgba(var(--dw-primary-rgb), 0.15) !important;
+  border-width: 2px !important;
+}
+
+/* Muted State: Dimmed when a different sector is selection */
+.sektor-card-muted {
+  opacity: 0.35;
+  filter: grayscale(0.85);
+  transform: scale(0.98);
+  pointer-events: none;
+  box-shadow: none !important;
+  border-color: rgba(0,0,0,0.05) !important;
+}
+
+/* Ensure the chart/sparkline inside muted cards is also subtle */
+.sektor-card-muted .apexcharts-canvas {
+  opacity: 0.5;
+}

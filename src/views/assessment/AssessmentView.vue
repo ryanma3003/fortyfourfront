@@ -30,8 +30,14 @@ const emit = defineEmits<{
 const sidebarCollapsed = ref(false);
 
 // Handle answer change
-const handleAnswer = (questionId: string, index: number) => {
-  assessmentStore.saveAnswer(questionId, index);
+const parseTargetNilai = (value: string | number | null | undefined): number => {
+  if (typeof value === 'number') return value;
+  const parsed = Number(String(value || '').replace(',', '.').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const handleAnswer = async (questionId: string, index: number) => {
+  await assessmentStore.saveAnswer(questionId, index);
 };
 
 // Check if domain is current
@@ -144,7 +150,7 @@ const handleSaveAction = async () => {
               jabatan: profile.jabatanResponden || '',
               telepon: profile.nomorTelepon || '',
               tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
-              target_nilai: profile.targetLevel || 3,
+              target_nilai: parseTargetNilai(profile.targetNilai),
             });
 
             // Submit all domain scores (identifikasi, proteksi, deteksi, gulih)

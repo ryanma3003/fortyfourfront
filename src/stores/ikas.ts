@@ -7,7 +7,7 @@ import {
   calculateSubdomainScore
 } from '@/data/assessment/assessment-ikas-mapping';
 import { ikasService } from '@/services/ikas.service';
-import type { IkasPayload, IkasResponse } from '@/types/ikas.types';
+import type { IkasPayload } from '@/types/ikas.types';
 
 // Interface untuk data IKAS per domain
 
@@ -148,7 +148,7 @@ const createDefaultIkasData = (): IkasData => ({
   details: {}
 });
 
-const STORAGE_KEY = 'app_ikas_data';
+// localStorage fully removed — all IKAS data is fetched from backend API
 
 export const useIkasStore = defineStore('ikas', {
   state: () => ({
@@ -158,8 +158,8 @@ export const useIkasStore = defineStore('ikas', {
     ikasVersion: 0, // incremented on every save — lets other components react to changes
 
     // Backend API state
-    backendIkasId: null as string | null, // ID of the IKAS record on backend
-    backendSynced: false, // Whether data has been synced with backend
+    backendIkasIds: {} as Record<string, string | null>, // Map stakeholder slug -> backend IKAS ID
+    backendSyncedMap: {} as Record<string, boolean>, // Map stakeholder slug -> backend sync state
     domainIds: {} as Record<string, string>, // Maps domain name -> backend ID
     apiLoading: false,
     apiError: null as string | null,
@@ -271,19 +271,21 @@ export const useIkasStore = defineStore('ikas', {
   },
 
   actions: {
-    // Initialize (No longer uses localStorage)
+    // Initialize store (no localStorage — data comes from backend)
     initialize() {
       if (this.initialized) return;
-
-      // Local storage fallback removed. Data strictly relies on backend fetch.
       this.initialized = true;
-      this.ikasVersion++; // signal watchers that store is now loaded
+      this.ikasVersion++;
     },
 
-    // Save ke localStorage (Removed, now purely in-memory pending backend sync)
+    /** Refresh IKAS data */
+    async refresh() {
+      this.ikasVersion++;
+    },
+
+    // Signal watchers that IKAS data changed (no localStorage)
     saveToStorage() {
-      // localStorage.setItem(STORAGE_KEY, JSON.stringify(this.ikasDataMap));
-      this.ikasVersion++; // signal all watchers that IKAS data has changed
+      this.ikasVersion++;
     },
 
     // Ensure stakeholder data exists
@@ -291,6 +293,15 @@ export const useIkasStore = defineStore('ikas', {
       if (!this.ikasDataMap[slug]) {
         this.ikasDataMap[slug] = createDefaultIkasData();
       }
+    },
+
+    getBackendIkasId(slug: string): string | null {
+      return this.backendIkasIds[slug] || null;
+    },
+
+    setBackendIkasId(slug: string, id: string | null) {
+      this.backendIkasIds[slug] = id;
+      this.backendSyncedMap[slug] = !!id;
     },
 
     // Update subdomain value dan recalculate
@@ -443,6 +454,8 @@ export const useIkasStore = defineStore('ikas', {
     // Reset data untuk stakeholder tertentu
     resetStakeholderData(slug: string) {
       this.ikasDataMap[slug] = createDefaultIkasData();
+      this.backendIkasIds[slug] = null;
+      this.backendSyncedMap[slug] = false;
       this.saveToStorage();
     },
 
@@ -489,7 +502,8 @@ export const useIkasStore = defineStore('ikas', {
 
     /**
      * Submit IKAS data to backend.
-     * Collects respondent info + domain scores and POST/PUT to /api/maturity/ikas
+     * POST /api/maturity/ikas (create) or PUT /api/maturity/ikas/{id} (update)
+     * Only sends the 6 respondent fields — domain scores are sent separately.
      */
     async submitToBackend(
       slug: string,
@@ -507,55 +521,29 @@ export const useIkasStore = defineStore('ikas', {
 
       try {
         this.ensureStakeholderData(slug);
-        const data = this.ikasDataMap[slug];
 
         const payload: IkasPayload = {
           id_perusahaan: respondentData.id_perusahaan,
-          responden: respondentData.responden,
           jabatan: respondentData.jabatan,
-          telepon: respondentData.telepon,
+          responden: respondentData.responden,
           tanggal: respondentData.tanggal,
           target_nilai: respondentData.target_nilai,
-          identifikasi: {
-            nilai_subdomain1: Number(data.identifikasi.nilai_subdomain1) || 0,
-            nilai_subdomain2: Number(data.identifikasi.nilai_subdomain2) || 0,
-            nilai_subdomain3: Number(data.identifikasi.nilai_subdomain3) || 0,
-            nilai_subdomain4: Number(data.identifikasi.nilai_subdomain4) || 0,
-            nilai_subdomain5: Number(data.identifikasi.nilai_subdomain5) || 0,
-          },
-          proteksi: {
-            nilai_subdomain1: Number(data.proteksi.nilai_subdomain1) || 0,
-            nilai_subdomain2: Number(data.proteksi.nilai_subdomain2) || 0,
-            nilai_subdomain3: Number(data.proteksi.nilai_subdomain3) || 0,
-            nilai_subdomain4: Number(data.proteksi.nilai_subdomain4) || 0,
-            nilai_subdomain5: Number(data.proteksi.nilai_subdomain5) || 0,
-            nilai_subdomain6: Number(data.proteksi.nilai_subdomain6) || 0,
-          },
-          deteksi: {
-            nilai_subdomain1: Number(data.deteksi.nilai_subdomain1) || 0,
-            nilai_subdomain2: Number(data.deteksi.nilai_subdomain2) || 0,
-            nilai_subdomain3: Number(data.deteksi.nilai_subdomain3) || 0,
-          },
-          gulih: {
-            nilai_subdomain1: Number(data.tanggulih.nilai_subdomain1) || 0,
-            nilai_subdomain2: Number(data.tanggulih.nilai_subdomain2) || 0,
-            nilai_subdomain3: Number(data.tanggulih.nilai_subdomain3) || 0,
-            nilai_subdomain4: Number(data.tanggulih.nilai_subdomain4) || 0,
-          },
+          telepon: respondentData.telepon,
         };
 
-        let response: IkasResponse;
+        let response: any;
+        const backendIkasId = this.getBackendIkasId(slug);
 
-        if (this.backendIkasId) {
+        if (backendIkasId) {
           // Update existing record
-          response = await ikasService.updateIkas(this.backendIkasId, payload);
+          response = await ikasService.updateIkas(backendIkasId, payload);
         } else {
           // Create new record
           response = await ikasService.createIkas(payload);
-          this.backendIkasId = (response as any).id || null;
+          this.setBackendIkasId(slug, response?.id || response?.data?.id || null);
         }
 
-        this.backendSynced = true;
+        this.backendSyncedMap[slug] = true;
         this.apiLoading = false;
         console.log('[IKAS Store] Backend submit success:', response);
         return { success: true };
@@ -570,6 +558,7 @@ export const useIkasStore = defineStore('ikas', {
     /**
      * Fetch existing IKAS data from backend by perusahaan ID
      * and populate the local store.
+     * Uses GET /api/maturity/ikas?id_perusahaan={id} then GET /api/maturity/ikas/{id}
      */
     async fetchFromBackend(
       slug: string,
@@ -577,54 +566,70 @@ export const useIkasStore = defineStore('ikas', {
     ): Promise<{ success: boolean; exists: boolean; error?: string; respondentData?: any; ikasRecord?: any }> {
       this.apiLoading = true;
       this.apiError = null;
+      this.resetStakeholderData(slug);
+      this.setBackendIkasId(slug, null);
 
       try {
         const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
 
         let matchedRecord: any = null;
-        
-        // Check if response is a list wrapped in data array
-        if (listResponse && listResponse.data && Array.isArray(listResponse.data) && listResponse.data.length > 0) {
-            // Filter records that match this perusahaan ID
-            const matchingRecords = listResponse.data.filter((record: any) => 
-              record.perusahaan?.id === perusahaanId
+
+        // Handle various response shapes from the API
+        if (listResponse) {
+          // Response could be { data: [...] } or just an array or a single object
+          const records = Array.isArray(listResponse)
+            ? listResponse
+            : Array.isArray(listResponse.data)
+              ? listResponse.data
+              : listResponse.id
+                ? [listResponse]
+                : [];
+
+          if (records.length > 0) {
+            // Filter by perusahaan ID if needed
+            const matching = records.filter((r: any) =>
+              String(r.perusahaan?.id || '') === String(perusahaanId) ||
+              String(r.id_perusahaan || '') === String(perusahaanId)
             );
 
-            if (matchingRecords.length > 0) {
+            if (matching.length > 0) {
               // Sort by created_at descending (latest first)
-              const sortedData = matchingRecords.sort((a: any, b: any) => 
+              matching.sort((a: any, b: any) =>
                 new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
               );
-              matchedRecord = sortedData[0];
+              matchedRecord = matching[0];
             }
+          }
         }
 
         if (!matchedRecord) {
+          this.backendSyncedMap[slug] = false;
           this.apiLoading = false;
           return { success: true, exists: false };
         }
 
         // Save the backend IKAS ID for future updates
-        this.backendIkasId = matchedRecord.id || null;
-        this.backendSynced = true;
+        this.setBackendIkasId(slug, matchedRecord.id || null);
+        this.backendSyncedMap[slug] = true;
 
-        // Now try to fetch the full detailed record by ID (may have nested domain scores)
+        // Fetch full detailed record by ID (includes nested domain scores)
         let detailedResponse: any = matchedRecord;
-        try {
-          const detailed = await ikasService.getIkasById(matchedRecord.id);
-          if (detailed) {
-            detailedResponse = detailed;
+        if (matchedRecord.id) {
+          try {
+            const detailed = await ikasService.getIkasById(matchedRecord.id);
+            if (detailed) {
+              // Handle { data: {...} } wrapper
+              detailedResponse = detailed.data || detailed;
+            }
+          } catch (e) {
+            console.warn('[IKAS Store] Could not fetch detailed record, using list data');
           }
-        } catch (e) {
-          console.warn('[IKAS Store] Could not fetch detailed record, using list data');
         }
 
         // Populate local store from backend data
-        this.ensureStakeholderData(slug);
         const data = this.ikasDataMap[slug];
-
-        // Map backend response to local data structure
         const response = detailedResponse;
+
         if (response.identifikasi) {
           data.identifikasi.nilai_subdomain1 = response.identifikasi.nilai_subdomain1 || 0;
           data.identifikasi.nilai_subdomain2 = response.identifikasi.nilai_subdomain2 || 0;
@@ -659,10 +664,9 @@ export const useIkasStore = defineStore('ikas', {
         this.apiLoading = false;
         console.log('[IKAS Store] Fetched from backend:', matchedRecord);
 
-        // Return the respondent data from the matched record so the caller
-        // can populate the dynamic-assessment store's respondent profile
-        return { 
-          success: true, 
+        // Return respondent data for the caller to populate profiles
+        return {
+          success: true,
           exists: true,
           respondentData: {
             responden: matchedRecord.responden || '',

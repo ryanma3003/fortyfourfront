@@ -40,6 +40,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         currentStakeholderSlug: '' as string,
         respondentProfilesMap: {} as Record<string, RespondentProfile>,
         answersMap: {} as Record<string, AnswerMap>,
+        syncedBackendAnswersMap: {} as Record<string, Record<string, number>>,
         progressMap: {} as Record<string, AssessmentProgress>,
         loading: false,
         error: null as string | null,
@@ -151,25 +152,24 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         setCurrentStakeholder(slug: string) {
             this.currentStakeholderSlug = slug;
             if (!this.answersMap[slug]) this.answersMap[slug] = {};
+
+            if (!this.progressMap[slug]) {
+                const firstDomain = this.domains[0];
+                const firstCategory = firstDomain?.categories?.[0];
+                this.progressMap[slug] = createDefaultProgress(
+                    firstDomain?.id || '',
+                    firstCategory?.id || '',
+                    ''
+                );
+            }
         },
 
         initializeLocalData() {
             if (this.initialized) return;
-
-            const profilesData = localStorage.getItem(STORAGE_KEYS.RESPONDENT_PROFILES);
-            if (profilesData) {
-                try { this.respondentProfilesMap = JSON.parse(profilesData); } catch (e) {}
-            }
-
-            const answersData = localStorage.getItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
-            if (answersData) {
-                try { this.answersMap = JSON.parse(answersData); } catch (e) {}
-            }
-
-            const progressData = localStorage.getItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
-            if (progressData) {
-                try { this.progressMap = JSON.parse(progressData); } catch (e) {}
-            }
+            // Hapus cache legacy supaya data IKAS/responden tidak bocor antar perusahaan.
+            localStorage.removeItem(STORAGE_KEYS.RESPONDENT_PROFILES);
+            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
+            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
 
             this.initialized = true;
         },
@@ -262,6 +262,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                         // Use String for keys to ensure .has() works consistently
                         const dId = String(d.id || d.ID);
                         const kId = String(k.id || k.ID);
+                        const domainNameLower = String(d.nama_domain || d.NamaDomain || '').toLowerCase();
                         const skName = sk.nama_sub_kategori || sk.NamaSubKategori;
                         const qIdent = q.pertanyaan_identifikasi || q.pertanyaan_proteksi || q.pertanyaan_deteksi || q.pertanyaan_gulih || q.Pertanyaan || '';
                         const pName = rl ? (rl.nama_ruang_lingkup || rl.NamaRuangLingkup) : 'Tata Kelola';
@@ -300,6 +301,13 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                             id: String(q.id || q.ID),
                             text: skName + (qIdent ? ` - ${qIdent}` : ''),
                             kategoriId: kId,
+                            domainKey: domainNameLower.includes('identifikasi')
+                                ? 'identifikasi'
+                                : domainNameLower.includes('proteksi')
+                                    ? 'proteksi'
+                                    : domainNameLower.includes('deteksi')
+                                        ? 'deteksi'
+                                        : 'gulih',
                             scope: pName,
                             indexDescriptions: idxDesc
                         });
@@ -353,20 +361,117 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             this.respondentProfilesMap[this.currentStakeholderSlug] = {
                 ...profile, updatedAt: now, createdAt: profile.createdAt || now
             };
-            localStorage.setItem(STORAGE_KEYS.RESPONDENT_PROFILES, JSON.stringify(this.respondentProfilesMap));
         },
 
-        saveAnswer(questionId: string, index: number) {
+        async saveAnswer(questionId: string, index: number) {
             if (!this.currentStakeholderSlug || this.isLocked) return;
 
             if (!this.answersMap[this.currentStakeholderSlug]) {
                 this.answersMap[this.currentStakeholderSlug] = {};
             }
 
-            this.answersMap[this.currentStakeholderSlug][questionId] = { questionId, index, updatedAt: Date.now() };
-            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_ANSWERS, JSON.stringify(this.answersMap));
+            this.answersMap[this.currentStakeholderSlug][questionId] = {
+                questionId,
+                index,
+                updatedAt: Date.now(),
+                backendSyncError: null
+            };
 
             this.syncToIkas(this.currentStakeholderSlug);
+            await this.syncAnswerToBackend(this.currentStakeholderSlug, questionId, index);
+        },
+
+        async syncAnswerToBackend(stakeholderSlug: string, questionId: string, index: number) {
+            const ikasStore = useIkasStore();
+            const backendIkasId = ikasStore.getBackendIkasId(stakeholderSlug);
+            if (!backendIkasId) return;
+
+            const question = this.domains
+                .flatMap(domain => domain.categories)
+                .flatMap(category => category.questions)
+                .find(item => item.id === questionId);
+
+            if (!question) return;
+
+            if (!this.syncedBackendAnswersMap[stakeholderSlug]) {
+                this.syncedBackendAnswersMap[stakeholderSlug] = {};
+            }
+
+            if (this.syncedBackendAnswersMap[stakeholderSlug][questionId] === index) {
+                return;
+            }
+
+            const payload = {
+                id_ikas: backendIkasId,
+                id_pertanyaan: questionId,
+                jawaban: index,
+                nilai: index,
+            };
+
+            try {
+                if (question.domainKey === 'identifikasi') {
+                    await ikasService.createJawabanIdentifikasi(payload);
+                } else if (question.domainKey === 'proteksi') {
+                    await ikasService.createJawabanProteksi(payload);
+                } else if (question.domainKey === 'deteksi') {
+                    await ikasService.createJawabanDeteksi(payload);
+                } else {
+                    await ikasService.createJawabanGulih(payload);
+                }
+
+                this.syncedBackendAnswersMap[stakeholderSlug][questionId] = index;
+                if (this.answersMap[stakeholderSlug]?.[questionId]) {
+                    this.answersMap[stakeholderSlug][questionId].backendSyncedAt = Date.now();
+                    this.answersMap[stakeholderSlug][questionId].backendSyncError = null;
+                }
+            } catch (error: any) {
+                console.error('[DynamicAssessment] Failed to sync answer to backend:', error);
+                if (this.answersMap[stakeholderSlug]?.[questionId]) {
+                    this.answersMap[stakeholderSlug][questionId].backendSyncError =
+                        error?.message || 'Gagal menyimpan jawaban';
+                }
+            }
+        },
+
+        async hydrateAnswersFromBackend(stakeholderSlug: string, ikasId: string) {
+            try {
+                const results = await Promise.all([
+                    ikasService.getJawabanIdentifikasi().catch(() => []),
+                    ikasService.getJawabanProteksi().catch(() => []),
+                    ikasService.getJawabanDeteksi().catch(() => []),
+                    ikasService.getJawabanGulih().catch(() => []),
+                ]);
+
+                const answers = results
+                    .flatMap((result: any) => Array.isArray(result) ? result : (result?.data || []))
+                    .filter((item: any) => String(item.id_ikas || item.ikas_id || item.ikas?.id || '') === String(ikasId));
+
+                if (!this.answersMap[stakeholderSlug]) {
+                    this.answersMap[stakeholderSlug] = {};
+                }
+                if (!this.syncedBackendAnswersMap[stakeholderSlug]) {
+                    this.syncedBackendAnswersMap[stakeholderSlug] = {};
+                }
+
+                answers.forEach((item: any) => {
+                    const questionId = String(item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || '');
+                    if (!questionId) return;
+
+                    const indexValue = Number(item.jawaban ?? item.nilai ?? item.index ?? 0);
+                    this.answersMap[stakeholderSlug][questionId] = {
+                        questionId,
+                        index: indexValue,
+                        updatedAt: Date.now(),
+                        backendSyncedAt: Date.now(),
+                        backendSyncError: null,
+                    };
+                    this.syncedBackendAnswersMap[stakeholderSlug][questionId] = indexValue;
+                });
+
+                this.syncToIkas(stakeholderSlug);
+            } catch (error) {
+                console.warn('[DynamicAssessment] Failed to hydrate answers from backend:', error);
+            }
         },
 
         /**
@@ -442,22 +547,46 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 currentPage: page,
                 lastUpdated: Date.now()
             };
-
-            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
         },
 
         completeAssessment() {
             if (!this.currentStakeholderSlug) return;
             this.progressMap[this.currentStakeholderSlug].status = 'COMPLETED';
             this.progressMap[this.currentStakeholderSlug].lastUpdated = Date.now();
-            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
         },
         
         unlockAssessment() {
             if (!this.currentStakeholderSlug) return;
             this.progressMap[this.currentStakeholderSlug].status = 'IN_PROGRESS';
             this.progressMap[this.currentStakeholderSlug].lastUpdated = Date.now();
-            localStorage.setItem(STORAGE_KEYS.ASSESSMENT_PROGRESS, JSON.stringify(this.progressMap));
+        },
+
+        resetStakeholderData(slug: string) {
+            delete this.respondentProfilesMap[slug];
+            delete this.answersMap[slug];
+            delete this.syncedBackendAnswersMap[slug];
+            delete this.progressMap[slug];
+
+            if (this.currentStakeholderSlug === slug) {
+                const firstDomain = this.domains[0];
+                const firstCategory = firstDomain?.categories?.[0];
+                this.answersMap[slug] = {};
+                this.progressMap[slug] = createDefaultProgress(
+                    firstDomain?.id || '',
+                    firstCategory?.id || '',
+                    ''
+                );
+            }
+        },
+
+        clearAllAssessmentState() {
+            this.respondentProfilesMap = {};
+            this.answersMap = {};
+            this.syncedBackendAnswersMap = {};
+            this.progressMap = {};
+            localStorage.removeItem(STORAGE_KEYS.RESPONDENT_PROFILES);
+            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
+            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
         },
 
         goToNextPage() {

@@ -1,4 +1,4 @@
-import { api } from '@/config/api';
+import { api, ApiRequestError } from '@/config/api';
 import type { Pic, CreatePicPayload, UpdatePicPayload } from '@/types/pic.types';
 
 /**
@@ -21,12 +21,29 @@ export const picService = {
      * This ensures each company sees only their own PICs.
      */
     async getByPerusahaan(id_perusahaan: string | number): Promise<Pic[]> {
-        const pics = await api.get<Pic[]>(`/api/pic?id_perusahaan=${id_perusahaan}`);
-        // Ensure all returned PICs belong to the requested company
-        return pics.filter(pic => {
-            const picCompanyId = pic.perusahaan?.id || pic.id_perusahaan;
-            return String(picCompanyId) === String(id_perusahaan);
-        });
+    try {
+        const result = await api.get<any>(`/api/pic?id_perusahaan=${id_perusahaan}`);
+
+        let pics: Pic[] = [];
+        if (Array.isArray(result)) {
+            pics = result;
+        } else if (result && Array.isArray(result.data)) {
+            pics = result.data;
+        } else if (result && result.id) {
+            pics = [result];
+        }
+
+        // Optional safety filter (boleh dipertahankan)
+        return pics.filter(pic => 
+            String(pic.perusahaan?.id) === String(id_perusahaan)
+        );
+
+    } catch (err) {
+        if (err instanceof ApiRequestError && err.status === 404) {
+            return [];
+        }
+        throw err;
+    }
     },
 
     /**

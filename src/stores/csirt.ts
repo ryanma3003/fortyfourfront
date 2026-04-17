@@ -99,6 +99,7 @@ export const useCsirtStore = defineStore('csirt', {
                     photo_csirt:         this.formatImageUrl(c.photo_csirt),
                     file_rfc2350:        this.formatImageUrl(c.file_rfc2350),
                     file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                    file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
                 }));
                 this.sdmList = Array.isArray(sdm) ? sdm : [];
                 this.seList = Array.isArray(se) ? se : [];
@@ -137,6 +138,7 @@ export const useCsirtStore = defineStore('csirt', {
                     photo_csirt:         this.formatImageUrl(c.photo_csirt),
                     file_rfc2350:        this.formatImageUrl(c.file_rfc2350),
                     file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                    file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
                 }));
                 this.sdmList = Array.isArray(sdm) ? sdm : [];
                 this.seList = Array.isArray(se) ? se : [];
@@ -165,6 +167,7 @@ export const useCsirtStore = defineStore('csirt', {
                                 photo_csirt: this.formatImageUrl(specific.photo_csirt),
                                 file_rfc2350: this.formatImageUrl(specific.file_rfc2350),
                                 file_public_key_pgp: this.formatImageUrl(specific.file_public_key_pgp),
+                                file_surat_tanda_registrasi: this.formatImageUrl(specific.file_surat_tanda_registrasi || (specific as any).file_str),
                             };
                             const existingIdx = this.csirts.findIndex(e => String(e.id) === String(specific.id));
                             if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
@@ -179,6 +182,7 @@ export const useCsirtStore = defineStore('csirt', {
                                 photo_csirt: this.formatImageUrl(c.photo_csirt),
                                 file_rfc2350: this.formatImageUrl(c.file_rfc2350),
                                 file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                                file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi),
                             }));
                         }
                         const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -198,6 +202,7 @@ export const useCsirtStore = defineStore('csirt', {
                                     photo_csirt: this.formatImageUrl(specific.photo_csirt),
                                     file_rfc2350: this.formatImageUrl(specific.file_rfc2350),
                                     file_public_key_pgp: this.formatImageUrl(specific.file_public_key_pgp),
+                                    file_surat_tanda_registrasi: this.formatImageUrl(specific.file_surat_tanda_registrasi),
                                 };
                                 if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
                                 else this.csirts.push(formatted);
@@ -209,13 +214,14 @@ export const useCsirtStore = defineStore('csirt', {
                     if (c) {
                         targetId = c.id;
                         const existingIdx = this.csirts.findIndex(e => String(e.id) === String(c.id));
-                        const formatted = {
-                            ...c,
-                            slug: c.slug || this.generateSlug(c.nama_csirt),
-                            photo_csirt: this.formatImageUrl(c.photo_csirt),
-                            file_rfc2350: this.formatImageUrl(c.file_rfc2350),
-                            file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
-                        };
+                                const formatted = {
+                                    ...c,
+                                    slug: c.slug || this.generateSlug(c.nama_csirt),
+                                    photo_csirt: this.formatImageUrl(c.photo_csirt),
+                                    file_rfc2350: this.formatImageUrl(c.file_rfc2350),
+                                    file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                                    file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
+                                };
                         if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
                         else this.csirts.push(formatted);
                     }

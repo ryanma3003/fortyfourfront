@@ -12,6 +12,7 @@ export interface CsirtMember {
     email_csirt: string;
     file_rfc2350: string;
     file_public_key_pgp: string;
+    file_surat_tanda_registrasi: string;
     photo_csirt: string;
     status?: string; // Status field: "Aktif", "Sedang Setup", etc.
     /** Legacy field alias kept for old dummy data */
@@ -47,6 +48,7 @@ export interface CreateCsirtPayload {
     email_csirt: string;
     file_rfc2350?: File | string | null;
     file_public_key_pgp?: File | string | null;
+    file_surat_tanda_registrasi?: File | string | null;
     photo_csirt?: File | string | null;
 }
 

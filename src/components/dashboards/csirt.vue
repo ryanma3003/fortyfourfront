@@ -165,6 +165,11 @@ export default {
             loadCSIRTs();
         });
 
+        // Debug: log current CSIRT object when it changes to help trace missing files
+        watch(currentCsirt, (val) => {
+            console.debug('[csirt.vue] currentCsirt changed:', val);
+        }, { immediate: true });
+
         const dataToPass = computed(() => {
             const from = String(route.query.from || '');
 
@@ -488,18 +493,19 @@ export default {
             photo_csirt_preview : '',
             file_rfc2350        : null as File | null,
             file_public_key_pgp : null as File | null,
+            file_surat_tanda_registrasi : null as File | null,
         });
         const csirtFormErrors = ref<Record<string, string>>({});
 
         const openAddCsirtModal = () => {
-            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', email_csirt: '', photo_csirt: null, photo_csirt_preview: '', file_rfc2350: null, file_public_key_pgp: null };
+            csirtFormData.value = { nama_csirt: '', web_csirt: '', telepon_csirt: '', email_csirt: '', photo_csirt: null, photo_csirt_preview: '', file_rfc2350: null, file_public_key_pgp: null, file_surat_tanda_registrasi: null };
             csirtFormErrors.value = {};
             csirtFormError.value = '';
             csirtFormSuccess.value = false;
             showAddCsirtModal.value = true;
         };
 
-        const onCsirtFileChange = (event: Event, field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp') => {
+        const onCsirtFileChange = (event: Event, field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp' | 'file_surat_tanda_registrasi') => {
             const input = event.target as HTMLInputElement;
             if (input.files && input.files[0]) {
                 const file = input.files[0];
@@ -543,6 +549,7 @@ export default {
                 photo_csirt         : csirtFormData.value.photo_csirt,
                 file_rfc2350        : csirtFormData.value.file_rfc2350,
                 file_public_key_pgp : csirtFormData.value.file_public_key_pgp,
+                file_surat_tanda_registrasi : csirtFormData.value.file_surat_tanda_registrasi,
             });
             csirtFormLoading.value = false;
             if (result.success) {
@@ -563,16 +570,18 @@ export default {
 
         // --- PROFILE CRUD ------------------------------------------------------
         const showEditProfileModal = ref(false);
-        const profileFormData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null }>({
+        const profileFormData = ref<Partial<CsirtMember> & { photo_csirt_file?: File | null; file_rfc2350_file?: File | null; file_public_key_pgp_file?: File | null; file_surat_tanda_registrasi_file?: File | null }>({
             nama_csirt: "",
             telepon_csirt: "",
             email_csirt: "",
             web_csirt: "",
             file_rfc2350: "",
             file_public_key_pgp: "",
+            file_surat_tanda_registrasi: "",
             photo_csirt_file: null,
             file_rfc2350_file: null,
             file_public_key_pgp_file: null,
+            file_surat_tanda_registrasi_file: null,
         });
         const profileFormErrors = ref<Record<string, string>>({});
 
@@ -588,7 +597,7 @@ export default {
 
         const openEditProfileModal = () => {
             if (currentCsirt.value) {
-                profileFormData.value = { ...currentCsirt.value, photo_csirt_file: null, file_rfc2350_file: null, file_public_key_pgp_file: null };
+                profileFormData.value = { ...currentCsirt.value, photo_csirt_file: null, file_rfc2350_file: null, file_public_key_pgp_file: null, file_surat_tanda_registrasi_file: null };
                 profileFormErrors.value = {};
                 showEditProfileModal.value = true;
             }
@@ -625,6 +634,7 @@ export default {
                     photo_csirt         : profileFormData.value.photo_csirt_file ?? undefined,
                     file_rfc2350        : profileFormData.value.file_rfc2350_file ?? undefined,
                     file_public_key_pgp : profileFormData.value.file_public_key_pgp_file ?? undefined,
+                    file_surat_tanda_registrasi : profileFormData.value.file_surat_tanda_registrasi_file ?? undefined,
                 });
                 await csirtStore.refresh();
                 showEditProfileModal.value = false;
@@ -644,7 +654,7 @@ export default {
             }
         };
 
-        const handleFileUpload = (event: Event, type: 'rfc' | 'pgp') => {
+        const handleFileUpload = (event: Event, type: 'rfc' | 'pgp' | 'str') => {
             const target = event.target as HTMLInputElement;
             if (target.files && target.files.length > 0) {
                 const file = target.files[0];
@@ -652,6 +662,8 @@ export default {
                     profileFormData.value.file_rfc2350_file = file;
                 } else if (type === 'pgp') {
                     profileFormData.value.file_public_key_pgp_file = file;
+                } else if (type === 'str') {
+                    profileFormData.value.file_surat_tanda_registrasi_file = file;
                 }
                 showNotification(`${file.name} berhasil dipilih`, "success");
             }
@@ -1023,6 +1035,10 @@ export default {
                                     </button>
                                     <button v-if="currentCsirt.file_public_key_pgp" @click="forceDownloadFile(currentCsirt.file_public_key_pgp, 'Public_Key_PGP.asc')" class="btn btn-secondary btn-sm btn-wave d-flex align-items-center justify-content-between">
                                         <span><i class="ri-key-2-line me-2"></i> Public Key PGP</span>
+                                        <i class="ri-download-2-line opacity-50"></i>
+                                    </button>
+                                    <button v-if="currentCsirt.file_surat_tanda_registrasi" @click="forceDownloadFile(currentCsirt.file_surat_tanda_registrasi, 'Surat_Tanda_Registrasi.pdf')" class="btn btn-info btn-sm btn-wave d-flex align-items-center justify-content-between">
+                                        <span><i class="ri-file-pdf-line me-2"></i> Surat Tanda Registrasi</span>
                                         <i class="ri-download-2-line opacity-50"></i>
                                     </button>
                                 </div>
@@ -1718,6 +1734,23 @@ export default {
                                     <i class="ri-check-line"></i> {{ profileFormData.file_public_key_pgp_file.name }} siap diupload
                                 </div>
                             </div>
+                            <!-- Surat Tanda Registrasi -->
+                            <div class="col-xl-12">
+                                <label class="form-label fw-medium">
+                                    <i class="ri-file-pdf-line me-1 text-primary"></i>Surat Tanda Registrasi
+                                </label>
+                                <div class="input-group w-100 gap-4">
+                                    <input type="text" class="form-control" v-model="profileFormData.file_surat_tanda_registrasi"
+                                        placeholder="Link atau pilih file" />
+                                    <input type="file" ref="strFile" class="d-none" @change="handleFileUpload($event, 'str')" accept=".pdf" />
+                                    <button class="btn btn-info-light" type="button" @click="$refs.strFile.click()">
+                                        <i class="ri-upload-2-line me-1"></i>Upload
+                                    </button>
+                                </div>
+                                <div v-if="profileFormData.file_surat_tanda_registrasi_file" class="text-success small mt-1">
+                                    <i class="ri-check-line"></i> {{ profileFormData.file_surat_tanda_registrasi_file.name }} siap diupload
+                                </div>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -1843,6 +1876,12 @@ export default {
                                 <label class="form-label fw-medium">File Public Key PGP</label>
                                 <input type="file" class="form-control"
                                     @change="onCsirtFileChange($event, 'file_public_key_pgp')" />
+                            </div>
+                            <!-- Surat Tanda Registrasi -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-medium">Surat Tanda Registrasi</label>
+                                <input type="file" class="form-control"
+                                    @change="onCsirtFileChange($event, 'file_surat_tanda_registrasi')" />
                             </div>
                         </div>
 

@@ -14,6 +14,7 @@ export default {
 
     const isEdit = computed(() => !!route.params.id);
     const pageTitle = computed(() => (isEdit.value ? "Edit Materi" : "Tambah Materi"));
+    const kelasId = computed(() => (route.query.kelasId as string) || history.state?.kelasId || '');
 
     const dataToPass = computed(() => ({
       title: { label: "LMS", path: "/lms/materi" },
@@ -22,11 +23,20 @@ export default {
     }));
 
     // Form state
+    const selectedKelas = ref<string | number>("");
     const judul = ref("");
     const kategori = ref("Cybersecurity");
+    const tipe = ref("teks");
     const deskripsi = ref("");
     const konten = ref("");
+    const url_video = ref("");
     const formErrors = ref<Record<string, string>>({});
+    const isSaving = ref(false);
+
+    // File pendukung
+    const filePendukungList = ref<any[]>([]);
+    const pendingFiles = ref<File[]>([]);
+    const isUploadingFile = ref(false);
 
     // Toast
     const showToast = ref(false);
@@ -49,14 +59,30 @@ export default {
       "Lainnya",
     ];
 
-    onMounted(() => {
+    onMounted(async () => {
+      // Fetch classes for dropdown
+      try {
+        await lmsStore.fetchKelas();
+      } catch (e: any) {
+        console.error("Failed to load kelas:", e.message);
+      }
+
+      if (kelasId.value) {
+        selectedKelas.value = kelasId.value;
+      }
+
       if (isEdit.value) {
+        // Try loading from store first, or could fetch from API
         const materi = lmsStore.getMateriById(route.params.id as string);
         if (materi) {
+          selectedKelas.value = materi.id_kelas || selectedKelas.value;
           judul.value = materi.judul;
           kategori.value = materi.kategori;
+          tipe.value = materi.tipe || "teks";
           deskripsi.value = materi.deskripsi;
-          konten.value = materi.konten;
+          konten.value = materi.konten_html || materi.konten || "";
+          url_video.value = materi.url_video || "";
+          filePendukungList.value = materi.file_pendukung || [];
         } else {
           showNotification("Materi tidak ditemukan", "error");
           router.push("/lms/materi");
@@ -66,47 +92,125 @@ export default {
 
     const validate = (): boolean => {
       formErrors.value = {};
+      if (!selectedKelas.value) formErrors.value.selectedKelas = "Kelas wajib dipilih";
       if (!judul.value.trim()) formErrors.value.judul = "Judul wajib diisi";
       if (!kategori.value) formErrors.value.kategori = "Kategori wajib dipilih";
-      if (!konten.value.trim() || konten.value === "<p><br></p>")
-        formErrors.value.konten = "Konten materi wajib diisi";
+      if (!tipe.value) formErrors.value.tipe = "Tipe materi wajib dipilih";
+      
+      if (tipe.value === 'teks') {
+        if (!konten.value.trim() || konten.value === "<p><br></p>") {
+          formErrors.value.konten = "Konten materi wajib diisi untuk tipe teks";
+        }
+      } else if (tipe.value === 'video') {
+         if (!url_video.value.trim()) {
+            formErrors.value.url_video = "URL video wajib diisi untuk tipe video";
+         }
+      }
       return Object.keys(formErrors.value).length === 0;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
       if (!validate()) return;
 
-      if (isEdit.value) {
-        lmsStore.updateMateri(route.params.id as string, {
-          judul: judul.value,
-          kategori: kategori.value,
-          deskripsi: deskripsi.value,
-          konten: konten.value,
-        });
-        showNotification("Materi berhasil diperbarui!", "success");
-      } else {
-        lmsStore.createMateri({
-          judul: judul.value,
-          kategori: kategori.value,
-          deskripsi: deskripsi.value,
-          konten: konten.value,
-        });
-        showNotification("Materi berhasil ditambahkan!", "success");
-      }
+      isSaving.value = true;
+      try {
+        const payload = {
+            judul: judul.value,
+            kategori: kategori.value,
+            tipe: tipe.value,
+            deskripsi: deskripsi.value,
+            konten: konten.value,
+            konten_html: konten.value,
+            url_video: url_video.value,
+        };
 
-      setTimeout(() => router.push("/lms/materi"), 600);
+        if (isEdit.value) {
+          await lmsStore.updateMateri(route.params.id as string, payload);
+          showNotification("Materi berhasil diperbarui!", "success");
+        } else {
+          const kid = selectedKelas.value;
+          if (!kid) {
+            showNotification("Kelas wajib dipilih", "error");
+            isSaving.value = false;
+            return;
+          }
+          const newMateri = await lmsStore.createMateri(kid, payload);
+
+          // Upload pending files if any
+          if (newMateri && pendingFiles.value.length > 0) {
+            for (const file of pendingFiles.value) {
+              try {
+                await lmsStore.uploadFilePendukung(newMateri.id, file);
+              } catch (e: any) {
+                console.error('Failed to upload file:', file.name, e);
+              }
+            }
+          }
+
+          showNotification("Materi berhasil ditambahkan!", "success");
+        }
+
+        setTimeout(() => router.push({ path: "/lms/materi", state: { kelasId: selectedKelas.value } }), 600);
+      } catch (e: any) {
+        showNotification(e.message || "Gagal menyimpan materi", "error");
+      } finally {
+        isSaving.value = false;
+      }
     };
 
-    const goBack = () => router.push("/lms/materi");
+    // File pendukung handlers
+    const onFileSelect = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      if (input.files) {
+        for (const file of Array.from(input.files)) {
+          pendingFiles.value.push(file);
+        }
+      }
+      input.value = '';
+    };
+
+    const removePendingFile = (idx: number) => {
+      pendingFiles.value.splice(idx, 1);
+    };
+
+    const uploadFile = async (file: File) => {
+      if (!isEdit.value) return;
+      isUploadingFile.value = true;
+      try {
+        const result = await lmsStore.uploadFilePendukung(route.params.id as string, file);
+        if (result) filePendukungList.value.push(result);
+        showNotification("File berhasil diupload!", "success");
+      } catch (e: any) {
+        showNotification(e.message || "Gagal mengupload file", "error");
+      } finally {
+        isUploadingFile.value = false;
+      }
+    };
+
+    const deleteFile = async (fileId: string | number) => {
+      try {
+        await lmsStore.deleteFilePendukung(fileId, route.params.id as string);
+        filePendukungList.value = filePendukungList.value.filter(f => String(f.id) !== String(fileId));
+        showNotification("File berhasil dihapus!", "success");
+      } catch (e: any) {
+        showNotification(e.message || "Gagal menghapus file", "error");
+      }
+    };
+
+    const goBack = () => router.push({ path: "/lms/materi", state: { kelasId: selectedKelas.value || kelasId.value } });
 
     return {
       dataToPass,
       isEdit,
       pageTitle,
+      selectedKelas,
+      lmsStore,
       judul,
       kategori,
+      tipe,
       deskripsi,
       konten,
+      url_video,
       formErrors,
       kategoriOptions,
       handleSubmit,
@@ -114,6 +218,15 @@ export default {
       showToast,
       toastMessage,
       toastType,
+      isSaving,
+      // File pendukung
+      filePendukungList,
+      pendingFiles,
+      isUploadingFile,
+      onFileSelect,
+      removePendingFile,
+      uploadFile,
+      deleteFile,
     };
   },
 };
@@ -159,8 +272,35 @@ export default {
         <div class="card-body p-4">
           <form @submit.prevent="handleSubmit">
             <div class="row g-4">
+              <!-- Pilihan Kelas (BUAS) -->
+              <div class="col-12">
+                <div class="p-3 border rounded bg-light kse-kelas-selector" :class="{'border-danger': formErrors.selectedKelas}">
+                  <label class="form-label fw-bold text-primary mb-2 d-flex align-items-center gap-2">
+                    <i class="ri-graduation-cap-fill fs-18"></i> Pilih Kelas Pembelajaran <span class="text-danger">*</span>
+                  </label>
+                  <p class="text-muted fs-13 mb-3">Tentukan di kelas mana materi ini akan diterbitkan. Pastikan memilih kelas yang tepat.</p>
+                  
+                  <div class="position-relative">
+                    <select
+                      v-model="selectedKelas"
+                      class="form-select form-select-lg shadow-sm kse-buas-select"
+                      :class="{ 'is-invalid': formErrors.selectedKelas }"
+                      style="border-radius: 8px; font-weight: 500;"
+                    >
+                      <option value="" disabled>-- Silakan Pilih Kelas --</option>
+                      <option v-for="k in lmsStore.kelasList" :key="k.id" :value="k.id">
+                        📝 {{ k.nama_kelas }}
+                      </option>
+                    </select>
+                    <div v-if="formErrors.selectedKelas" class="invalid-feedback d-block fw-medium mt-2">
+                      <i class="ri-error-warning-line me-1"></i> {{ formErrors.selectedKelas }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Judul -->
-              <div class="col-md-8">
+              <div class="col-md-6">
                 <label class="form-label fw-semibold">Judul Materi <span class="text-danger">*</span></label>
                 <input
                   v-model="judul"
@@ -173,7 +313,7 @@ export default {
               </div>
 
               <!-- Kategori -->
-              <div class="col-md-4">
+              <div class="col-md-3">
                 <label class="form-label fw-semibold">Kategori <span class="text-danger">*</span></label>
                 <select
                   v-model="kategori"
@@ -183,6 +323,20 @@ export default {
                   <option v-for="kat in kategoriOptions" :key="kat" :value="kat">{{ kat }}</option>
                 </select>
                 <div v-if="formErrors.kategori" class="invalid-feedback">{{ formErrors.kategori }}</div>
+              </div>
+
+              <!-- Tipe -->
+              <div class="col-md-3">
+                <label class="form-label fw-semibold">Tipe Materi <span class="text-danger">*</span></label>
+                <select
+                  v-model="tipe"
+                  class="form-select kse-modal-input"
+                  :class="{ 'is-invalid': formErrors.tipe }"
+                >
+                  <option value="teks">Teks</option>
+                  <option value="video">Video</option>
+                </select>
+                <div v-if="formErrors.tipe" class="invalid-feedback">{{ formErrors.tipe }}</div>
               </div>
 
               <!-- Deskripsi -->
@@ -196,8 +350,21 @@ export default {
                 ></textarea>
               </div>
 
-              <!-- WYSIWYG Editor -->
-              <div class="col-12">
+              <!-- URL Video (Conditional) -->
+              <div v-show="tipe === 'video'" class="col-12">
+                <label class="form-label fw-semibold">URL Video <span class="text-danger">*</span></label>
+                <input
+                  v-model="url_video"
+                  type="text"
+                  class="form-control kse-modal-input"
+                  :class="{ 'is-invalid': formErrors.url_video }"
+                  placeholder="Contoh: https://youtube.com/watch?v=..."
+                />
+                <div v-if="formErrors.url_video" class="invalid-feedback">{{ formErrors.url_video }}</div>
+              </div>
+
+              <!-- WYSIWYG Editor (Conditional) -->
+              <div v-show="tipe === 'teks'" class="col-12">
                 <label class="form-label fw-semibold">Konten Materi <span class="text-danger">*</span></label>
                 <LmsEditor
                   v-model="konten"
@@ -209,14 +376,54 @@ export default {
                 <div v-if="formErrors.konten" class="text-danger fs-12 mt-1">{{ formErrors.konten }}</div>
               </div>
 
+              <!-- File Pendukung -->
+              <div class="col-12">
+                <label class="form-label fw-semibold">
+                  <i class="ri-attachment-2 me-1"></i>File Pendukung
+                </label>
+
+                <!-- Existing files (edit mode) -->
+                <div v-if="filePendukungList.length > 0" class="mb-3">
+                  <div v-for="file in filePendukungList" :key="file.id" class="d-flex align-items-center gap-2 mb-2 p-2 border rounded">
+                    <i class="ri-file-line fs-16 text-primary"></i>
+                    <span class="flex-grow-1 fs-13">{{ file.nama_file }}</span>
+                    <span v-if="file.ukuran" class="text-muted fs-12">{{ (file.ukuran / 1024).toFixed(1) }} KB</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger" @click="deleteFile(file.id)" title="Hapus">
+                      <i class="ri-delete-bin-line"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Pending files (create mode) -->
+                <div v-if="pendingFiles.length > 0" class="mb-3">
+                  <div v-for="(file, idx) in pendingFiles" :key="idx" class="d-flex align-items-center gap-2 mb-2 p-2 border rounded bg-light">
+                    <i class="ri-file-upload-line fs-16 text-warning"></i>
+                    <span class="flex-grow-1 fs-13">{{ file.name }}</span>
+                    <span class="text-muted fs-12">{{ (file.size / 1024).toFixed(1) }} KB</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger" @click="removePendingFile(idx)" title="Batal">
+                      <i class="ri-close-line"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                  <label class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" style="cursor:pointer;">
+                    <i class="ri-upload-2-line"></i>
+                    <span>Pilih File</span>
+                    <input type="file" multiple class="d-none" @change="onFileSelect" />
+                  </label>
+                </div>
+              </div>
+
               <!-- Actions -->
               <div class="col-12">
                 <div class="d-flex justify-content-end gap-3 pt-3 border-top">
                   <button type="button" class="btn btn-light px-4" @click="goBack">
                     <i class="ri-close-line me-1"></i>Batal
                   </button>
-                  <button type="submit" class="btn btn-primary px-4 d-flex align-items-center gap-2">
-                    <i :class="isEdit ? 'ri-save-line' : 'ri-add-circle-line'"></i>
+                  <button type="submit" class="btn btn-primary px-4 d-flex align-items-center gap-2" :disabled="isSaving">
+                    <span v-if="isSaving" class="spinner-border spinner-border-sm"></span>
+                    <i v-else :class="isEdit ? 'ri-save-line' : 'ri-add-circle-line'"></i>
                     <span>{{ isEdit ? 'Simpan Perubahan' : 'Tambah Materi' }}</span>
                   </button>
                 </div>

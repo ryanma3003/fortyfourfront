@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDynamicAssessmentStore } from '@/stores/dynamic-assessment';
 import { useStakeholdersStore } from '@/stores/stakeholders';
@@ -25,8 +25,23 @@ const currentSource = computed(() => String(route.query.source || ''));
 const currentStep = ref(1);
 const submitting = ref(false);
 
-// Initialize stores + try to fetch existing IKAS data from backend
-onMounted(async () => {
+const parseTargetNilai = (value: string | number | null | undefined): number => {
+  if (typeof value === 'number') return value;
+  const parsed = Number(String(value || '').replace(',', '.').trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const deriveTargetLevel = (targetNilai: string | number | null | undefined): number => {
+  const nilai = parseTargetNilai(targetNilai);
+  if (nilai <= 0) return 0;
+  if (nilai < 1.5) return 1;
+  if (nilai < 2.5) return 2;
+  if (nilai < 3.5) return 3;
+  if (nilai < 4.5) return 4;
+  return 5;
+};
+
+const loadCurrentStakeholderIkas = async () => {
   assessmentStore.initializeLocalData();
   await assessmentStore.fetchAssessmentStructure();
   ikasStore.initialize();
@@ -38,6 +53,8 @@ onMounted(async () => {
   // Set current stakeholder context in assessment store
   if (currentSlug.value) {
     assessmentStore.setCurrentStakeholder(currentSlug.value);
+    assessmentStore.resetStakeholderData(currentSlug.value);
+    ikasStore.resetStakeholderData(currentSlug.value);
   }
 
   // Try fetching existing IKAS data from backend
@@ -58,20 +75,32 @@ onMounted(async () => {
         jabatanResponden: result.respondentData.jabatan,
         nomorTelepon: result.respondentData.telepon,
         tahunPengukuran: result.respondentData.tanggal ? new Date(result.respondentData.tanggal).getFullYear().toString() : new Date().getFullYear().toString(),
-        targetLevel: result.respondentData.target_nilai || 3,
-        targetNilai: '',
+        targetLevel: deriveTargetLevel(result.respondentData.target_nilai),
+        targetNilai: String(result.respondentData.target_nilai || ''),
         acuan: '',
         tanggalPengisian: result.respondentData.tanggal ? result.respondentData.tanggal.split('T')[0] : new Date().toISOString().split('T')[0],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+      if (result.ikasRecord?.id) {
+        await assessmentStore.hydrateAnswersFromBackend(currentSlug.value, result.ikasRecord.id);
+      }
+      currentStep.value = 2;
+      return;
     }
   }
 
-  // Check if respondent profile exists, if yes skip to step 2
-  if (assessmentStore.hasRespondentProfile) {
-    currentStep.value = 2;
-  }
+  currentStep.value = 1;
+};
+
+// Initialize stores + try to fetch existing IKAS data from backend
+onMounted(async () => {
+  await loadCurrentStakeholderIkas();
+});
+
+watch(currentSlug, async (newSlug, oldSlug) => {
+  if (!newSlug || newSlug === oldSlug) return;
+  await loadCurrentStakeholderIkas();
 });
 
 // Get current stakeholder info
@@ -112,7 +141,7 @@ const handleFormSubmit = async () => {
         jabatan: profile.jabatanResponden || '',
         telepon: profile.nomorTelepon || '',
         tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
-        target_nilai: profile.targetLevel || 3,
+        target_nilai: parseTargetNilai(profile.targetNilai),
       });
 
       if (result.success) {
