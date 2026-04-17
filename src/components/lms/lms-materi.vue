@@ -10,7 +10,7 @@ export default {
   data() {
     return {
       dataToPass: {
-        title: { label: "Dashboard", path: "/dashboard" },
+        title: { label: "Daftar Kelas", path: "/lms/kelas" },
         currentpage: "LMS — Materi",
         activepage: "Materi",
       },
@@ -294,9 +294,9 @@ export default {
                   <span class="text-muted fs-13">per halaman</span>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <button @click="goCreate" class="btn btn-warning d-flex align-items-center gap-2">
-                  <i class="ri-add-circle-line fs-16"></i>
+              <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
+                <button @click="goCreate" class="btn stakeholders-add-btn d-flex align-items-center gap-2" style="background: linear-gradient(180deg, #0d9488 0%, #0f766e 100%) !important; box-shadow: 0 8px 24px rgba(13, 148, 136, 0.22);">
+                  <i class="ri-add-circle-line fs-13"></i>
                   <span>Tambah Materi</span>
                 </button>
               </div>

@@ -60,7 +60,12 @@ const kpis = computed(() => {
     // Filter base array by global date filter and sector filter
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInDateRange(s.created_at, filterStore.dateRange);
-        const inSector = filterStore.sektorId ? String(s.sub_sektor?.id_sektor || s.id_sektor) === String(filterStore.sektorId) : true;
+        let inSector = true;
+        if (filterStore.subSektorId) {
+            inSector = String(s.sub_sektor?.id || s.id_sub_sektor) === String(filterStore.subSektorId);
+        } else if (filterStore.sektorId) {
+            inSector = String(s.sub_sektor?.id_sektor || s.id_sektor) === String(filterStore.sektorId);
+        }
         return inDate && inSector;
     });
     const csirts = csirtStore.csirts; // if needed, also filter this
@@ -107,16 +112,6 @@ const kpis = computed(() => {
     const lastUpdate = sorted[0] ? (sorted[0].updated_at || sorted[0].created_at) : null;
 
     return [
-        {
-            label: 'Growth Rate',
-            value: `${growthRate > 0 ? '+' : ''}${growthRate}%`,
-            icon: 'ri-line-chart-line',
-            color: '#845adf',
-            bg: 'rgba(132,90,223,0.1)',
-            delta: growthRate,
-            sub: 'vs bulan lalu',
-            ring: null,
-        },
         {
             label: 'Cakupan CSIRT',
             value: `${csirtPct}%`,
@@ -174,7 +169,7 @@ const kpis = computed(() => {
 <template>
     <div class="row g-3">
         <div v-for="(kpi, idx) in kpis" :key="kpi.label"
-             class="col-xl-2 col-lg-4 col-md-4 col-sm-6 dw-fade-up"
+             class="col-xl col-lg-4 col-md-4 col-sm-6 dw-fade-up"
              :style="{ animationDelay: `${idx * 60}ms` }">
             <div class="dw-card dw-kpi-card-wrap" @click="$emit('drill-down', { type: kpi.label })">
                 <div class="dw-card-body" style="padding: 16px;">

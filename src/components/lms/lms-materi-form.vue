@@ -17,7 +17,7 @@ export default {
     const kelasId = computed(() => (route.query.kelasId as string) || history.state?.kelasId || '');
 
     const dataToPass = computed(() => ({
-      title: { label: "LMS", path: "/lms/materi" },
+      title: { label: "Daftar Materi", path: `/lms/materi?kelasId=${kelasId.value}` },
       currentpage: pageTitle.value,
       activepage: pageTitle.value,
     }));
@@ -114,7 +114,7 @@ export default {
 
       isSaving.value = true;
       try {
-        const payload = {
+        const payload: any = {
             judul: judul.value,
             kategori: kategori.value,
             tipe: tipe.value,
@@ -134,10 +134,21 @@ export default {
             isSaving.value = false;
             return;
           }
+
+          // Calculate next urutan to prevent "Duplicate entry" error
+          try {
+            const existingMateri = await lmsStore.fetchMateri(String(kid));
+            const maxUrutan = existingMateri.reduce((max, m) => Math.max(max, m.urutan || 0), 0);
+            payload.urutan = maxUrutan + 1;
+          } catch (e) {
+            console.warn("Failed to calculate urutan, defaulting to 1");
+            payload.urutan = 1;
+          }
+
           const newMateri = await lmsStore.createMateri(kid, payload);
 
           // Upload pending files if any
-          if (newMateri && pendingFiles.value.length > 0) {
+          if (newMateri && newMateri.id && pendingFiles.value.length > 0) {
             for (const file of pendingFiles.value) {
               try {
                 await lmsStore.uploadFilePendukung(newMateri.id, file);
@@ -439,3 +450,4 @@ export default {
 <style scoped>
 /* All editor styling is inside LmsEditor.vue */
 </style>
+

@@ -23,7 +23,7 @@ export default {
     // Form state
     const namaKelas = ref("");
     const deskripsi = ref("");
-    const status = ref("aktif");
+    const status = ref("published");
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
 
@@ -52,7 +52,7 @@ export default {
         if (kelas) {
           namaKelas.value = kelas.nama_kelas;
           deskripsi.value = kelas.deskripsi;
-          status.value = kelas.status || "aktif";
+          status.value = kelas.status || "published";
         } else {
           showNotification("Kelas tidak ditemukan", "error");
           router.push("/lms/kelas");
@@ -170,11 +170,10 @@ export default {
                 <div v-if="formErrors.nama_kelas" class="invalid-feedback">{{ formErrors.nama_kelas }}</div>
               </div>
 
-              <!-- Status -->
               <div class="col-md-4">
                 <label class="form-label fw-semibold">Status</label>
                 <select v-model="status" class="form-select kse-modal-input">
-                  <option value="aktif">Aktif</option>
+                  <option value="published">Publish</option>
                   <option value="draft">Draft</option>
                 </select>
               </div>

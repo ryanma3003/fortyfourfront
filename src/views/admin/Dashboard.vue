@@ -174,20 +174,43 @@
     });
     const apiSektorCounts = computed(() => {
         const all = baseStakeholders.value;
-        const allSubSektors = subSektorList.value;
-        
-        // Get current time context from filterStore if available, else current time
+        const activeSektorId = filterStore.sektorId;
         const currentYear = filterStore.year ? parseInt(filterStore.year) : new Date().getFullYear();
         const currentQuarter = filterStore.quarter ? parseInt(filterStore.quarter) : Math.floor(new Date().getMonth() / 3) + 1;
-        const activeSektorId = filterStore.sektorId;
+        const now = new Date();
 
-        const sektorsToShow = activeSektorId 
-            ? sektorList.value.filter(s => String(s.id) === String(activeSektorId))
-            : sektorList.value;
-
-        return sektorsToShow.map(s => {
-            // Calculate year & quarter counts from local store for this sector
+        if (activeSektorId) {
+            const allSubSektors = subSektorList.value;
             const children = allSubSektors.filter(ss => {
+                const pid = getSubSektorParentId(ss);
+                return pid !== undefined && String(pid) === String(activeSektorId);
+            });
+
+            return children.map(ss => {
+                const ssStakeholders = all.filter(st => String(st.sub_sektor?.id || st.id_sub_sektor) === String(ss.id));
+                
+                const countYear = ssStakeholders.filter(st => isInCategoryYear(st.created_at, currentYear)).length;
+                const countQuarter = ssStakeholders.filter(st => isInCategoryQuarter(st.created_at, currentYear, currentQuarter)).length;
+                const thisMonth = ssStakeholders.filter(st => {
+                    if(!st.created_at) return false;
+                    const d = new Date(st.created_at);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }).length;
+
+                return {
+                    id: ss.id,
+                    nama_sektor: getSubSektorName(ss),
+                    total: ssStakeholders.length,
+                    this_month: thisMonth,
+                    countYear,
+                    countQuarter
+                };
+            }).filter(s => s.total > 0).sort((a,b) => b.total - a.total);
+        }
+
+        const allSektors = sektorList.value;
+        return allSektors.map(s => {
+            const children = subSektorList.value.filter(ss => {
                 const pid = getSubSektorParentId(ss);
                 return pid !== undefined && String(pid) === String(s.id);
             });
@@ -200,9 +223,6 @@
 
             const countYear = sectorStakeholders.filter(st => isInCategoryYear(st.created_at, currentYear)).length;
             const countQuarter = sectorStakeholders.filter(st => isInCategoryQuarter(st.created_at, currentYear, currentQuarter)).length;
-            
-            // this month
-            const now = new Date();
             const thisMonth = sectorStakeholders.filter(st => {
                 if(!st.created_at) return false;
                 const d = new Date(st.created_at);
@@ -437,31 +457,49 @@
     // ─── Base Filtered Data arrays (Respects Sector) ───
     const baseStakeholders = computed(() => {
         const fId = filterStore.sektorId;
-        if (!fId) return stakeholdersStore.allStakeholders;
-        return stakeholdersStore.allStakeholders.filter(s => String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId));
+        const subId = filterStore.subSektorId;
+        if (!fId && !subId) return stakeholdersStore.allStakeholders;
+        return stakeholdersStore.allStakeholders.filter(s => {
+            if (subId) return String(s.sub_sektor?.id || s.id_sub_sektor) === String(subId);
+            if (fId) return String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId);
+            return true;
+        });
     });
 
     const baseCsirts = computed(() => {
         const fId = filterStore.sektorId;
-        if (!fId) return csirtStore.csirts;
-        return csirtStore.csirts.filter(c => String(c.perusahaan?.sub_sektor?.id_sektor || c.perusahaan?.id_sektor) === String(fId));
+        const subId = filterStore.subSektorId;
+        if (!fId && !subId) return csirtStore.csirts;
+        return csirtStore.csirts.filter(c => {
+            if (subId) return String(c.perusahaan?.sub_sektor?.id || c.perusahaan?.id_sub_sektor) === String(subId);
+            if (fId) return String(c.perusahaan?.sub_sektor?.id_sektor || c.perusahaan?.id_sektor) === String(fId);
+            return true;
+        });
     });
 
     const baseSdm = computed(() => {
         const fId = filterStore.sektorId;
-        if (!fId) return csirtStore.sdmList;
+        const subId = filterStore.subSektorId;
+        if (!fId && !subId) return csirtStore.sdmList;
         return csirtStore.sdmList.filter(s => {
             const csirt = csirtStore.csirts.find(c => String(c.id) === String(s.id_csirt));
-            return csirt && String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
+            if (!csirt) return false;
+            if (subId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(subId);
+            if (fId) return String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
+            return true;
         });
     });
 
     const baseSeList = computed(() => {
         const fId = filterStore.sektorId;
-        if (!fId) return csirtStore.seList;
+        const subId = filterStore.subSektorId;
+        if (!fId && !subId) return csirtStore.seList;
         return csirtStore.seList.filter(se => {
             const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-            return csirt && String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
+            if (!csirt) return false;
+            if (subId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(subId);
+            if (fId) return String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
+            return true;
         });
     });
 
@@ -1283,8 +1321,8 @@
                                                         <i class="ri-bar-chart-grouped-line text-primary"></i>
                                                     </div>
                                                     <div>
-                                                        <h6 class="mb-0 fw-bold">Distribusi Stakeholder per Sektor</h6>
-                                                        <small class="text-muted">{{ apiSektorCounts.length }} sektor</small>
+                                                        <h6 class="mb-0 fw-bold">Distribusi Stakeholder per {{ filterStore.sektorId ? 'Sub Sektor' : 'Sektor' }}</h6>
+                                                        <small class="text-muted">{{ apiSektorCounts.length }} {{ filterStore.sektorId ? 'sub sektor' : 'sektor' }}</small>
                                                     </div>
                                                 </div>
                                             </div>

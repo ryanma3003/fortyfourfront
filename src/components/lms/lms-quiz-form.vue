@@ -18,7 +18,7 @@ export default {
     const kelasId = computed(() => (route.query.kelasId as string) || history.state?.kelasId || '');
 
     const dataToPass = computed(() => ({
-      title: { label: "LMS", path: "/lms/quiz" },
+      title: { label: "Daftar Kuis", path: `/lms/quiz?kelasId=${kelasId.value}` },
       currentpage: pageTitle.value,
       activepage: pageTitle.value,
     }));

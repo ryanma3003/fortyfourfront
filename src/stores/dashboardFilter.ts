@@ -35,8 +35,12 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
       if (state.dateRange[1]) params.to = state.dateRange[1];
       if (state.year) params.year = state.year;
       if (state.quarter) params.quarter = state.quarter;
-      if (state.sektorId) params.sektor_id = state.sektorId;
-      if (state.subSektorId) params.sub_sektor_id = state.subSektorId;
+      // Only send the most specific filter — sub_sektor implies sektor
+      if (state.subSektorId) {
+        params.sub_sektor_id = state.subSektorId;
+      } else if (state.sektorId) {
+        params.sektor_id = state.sektorId;
+      }
       if (state.kategoriSe) params.kategori_se = state.kategoriSe;
       return params;
     },
