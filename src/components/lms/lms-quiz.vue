@@ -10,7 +10,7 @@ export default {
   data() {
     return {
       dataToPass: {
-        title: { label: "Dashboard", path: "/dashboard" },
+        title: { label: "Daftar Kelas", path: "/lms/kelas" },
         currentpage: "LMS — Soal / Kuis",
         activepage: "Kuis",
       },
@@ -299,9 +299,9 @@ export default {
                   <span class="text-muted fs-13">per halaman</span>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <button @click="goCreate" class="btn btn-warning d-flex align-items-center gap-2">
-                  <i class="ri-add-circle-line fs-16"></i>
+              <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
+                <button @click="goCreate" class="btn stakeholders-add-btn d-flex align-items-center gap-2">
+                  <i class="ri-add-circle-line fs-13"></i>
                   <span>Tambah Kuis</span>
                 </button>
               </div>

@@ -58,6 +58,7 @@ export const dashboardService = {
             if (params.to) query.append('to', params.to);
             if (params.year) query.append('year', params.year);
             if (params.quarter) query.append('quarter', params.quarter);
+            if (params.sektor_id) query.append('sektor_id', params.sektor_id);
             if (params.sub_sektor_id) query.append('sub_sektor_id', params.sub_sektor_id);
             if (params.kategori_se) query.append('kategori_se', params.kategori_se);
 

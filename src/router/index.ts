@@ -115,6 +115,11 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/lms/lms-kelas-form.vue"),
             },
             {
+              path: 'lms/kelas/view/:id',
+              name: 'LMS Kelas Detail',
+              component: () => import("../components/lms/lms-kelas-detail.vue"),
+            },
+            {
               path: 'lms/materi',
               name: 'LMS Materi',
               component: () => import("../components/lms/lms-materi.vue"),

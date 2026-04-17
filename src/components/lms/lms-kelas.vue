@@ -117,7 +117,13 @@ export default {
 
     // Add Materi & Quiz globally
     const goAddMateri = () => router.push(`/lms/materi/create`);
-    const goAddQuiz = () => router.push(`/lms/quiz/create`);
+    const goAddQuiz = () => {
+      router.push("/lms/quiz/create");
+    };
+
+    const goPreview = (id: string | number) => {
+      router.push(`/lms/kelas/view/${id}`);
+    };
 
     const openDeleteModal = (item: any) => {
       deleteTarget.value = item;
@@ -171,7 +177,7 @@ export default {
 
     const getStatusClass = (status: string) => {
       const s = (status || '').toLowerCase();
-      if (s === 'aktif') return 'badge-sektor-teal';
+      if (s === 'aktif' || s === 'published') return 'badge-sektor-teal';
       if (s === 'draft') return 'badge-sektor-amber';
       return 'badge-sektor-default';
     };
@@ -187,6 +193,7 @@ export default {
       clearSearch,
       goCreate,
       goEdit,
+      goPreview,
       goMateri,
       goKuis,
       goAddMateri,
@@ -302,17 +309,17 @@ export default {
                   <span class="text-muted fs-13">per halaman</span>
                 </div>
               </div>
-              <div class="d-flex align-items-center gap-2">
-                <button @click="goCreate" class="btn btn-warning d-flex align-items-center gap-2">
-                  <i class="ri-add-circle-line fs-16"></i>
+              <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
+                <button @click="goCreate" class="btn stakeholders-add-btn d-flex align-items-center gap-2">
+                  <i class="ri-add-circle-line fs-13"></i>
                   <span>Tambah Kelas</span>
                 </button>
-                <button @click="goAddMateri" class="btn btn-info d-flex align-items-center gap-2">
-                  <i class="ri-add-circle-line fs-16"></i>
+                <button @click="goAddMateri" class="btn stakeholders-add-btn d-flex align-items-center gap-2" style="background: linear-gradient(180deg, #0d9488 0%, #0f766e 100%) !important; box-shadow: 0 8px 24px rgba(13, 148, 136, 0.22);">
+                  <i class="ri-book-open-line fs-13"></i>
                   <span>Add Materi</span>
                 </button>
-                <button @click="goAddQuiz" class="btn btn-success d-flex align-items-center gap-2">
-                  <i class="ri-add-circle-line fs-16"></i>
+                <button @click="goAddQuiz" class="btn stakeholders-add-btn d-flex align-items-center gap-2" style="background: linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%) !important; box-shadow: 0 8px 24px rgba(124, 58, 237, 0.22);">
+                  <i class="ri-questionnaire-line fs-13"></i>
                   <span>Add Soal/Quiz</span>
                 </button>
               </div>
@@ -365,13 +372,16 @@ export default {
                       <span class="text-muted fs-13" style="white-space:normal;max-width:300px;display:inline-block;">{{ getKelasDescription(item) || '-' }}</span>
                     </td>
                     <td class="align-middle text-center">
-                      <span class="badge-sektor" :class="getStatusClass(item.status || 'draft')">{{ item.status || 'Draft' }}</span>
+                      <span class="badge-sektor" :class="getStatusClass(item.status || 'draft')">{{ item.status === 'published' ? 'Publish' : (item.status === 'aktif' ? 'Aktif' : 'Draft') }}</span>
                     </td>
                     <td class="align-middle">
                       <span class="text-muted fs-12">{{ formatDate(item.updated_at || item.created_at || '') }}</span>
                     </td>
                     <td class="align-middle text-center">
                       <div class="d-flex align-items-center justify-content-center gap-1">
+                        <button @click="goPreview(item.id)" class="btn btn-sm btn-icon btn-outline-success" title="Lihat Detail">
+                          <i class="ri-eye-line fs-14"></i>
+                        </button>
                         <button @click="goMateri(item.id)" class="btn btn-sm btn-icon btn-outline-info" title="Materi">
                           <i class="ri-book-open-line fs-14"></i>
                         </button>

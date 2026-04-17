@@ -35,12 +35,21 @@ const datePickerModel = computed({
 const activeFilterCount = computed(() => {
     let c = 0;
     if (filterStore.sektorId) c++;
+    if (filterStore.subSektorId) c++;
     if (filterStore.year) c++;
     if (filterStore.quarter) c++;
     if (filterStore.kategoriSe) c++;
     // if custom date range is selected (not bound cleanly to year/quarter)
     if (filterStore.dateRange[0] && !filterStore.year) c++; 
     return c;
+});
+
+const filteredSubSektorList = computed(() => {
+    if (!filterStore.sektorId) return [];
+    return props.subSektorList.filter(ss => {
+        const pid = ss.id_sektor || ss.sektor_id;
+        return String(pid) === String(filterStore.sektorId);
+    });
 });
 
 const quickRanges = [
@@ -148,6 +157,22 @@ function applyQuickRange(range) {
                             <option value="">Semua Sektor</option>
                             <option v-for="s in sektorList" :key="s.id" :value="s.id">
                                 {{ s.nama_sektor || s.nama }}
+                            </option>
+                        </select>
+                        <i class="ri-arrow-down-s-line gf-select-caret"></i>
+                    </div>
+                </div>
+
+                <!-- Sub Sektor -->
+                <div class="gf-field" v-if="filterStore.sektorId">
+                    <label class="gf-label"><i class="ri-building-2-line"></i> Sub Sektor</label>
+                    <div class="gf-select-wrap">
+                        <select :value="filterStore.subSektorId" 
+                                @change="filterStore.setSubSektorId($event.target.value)" 
+                                class="gf-select">
+                            <option value="">Semua Sub Sektor</option>
+                            <option v-for="ss in filteredSubSektorList" :key="ss.id" :value="ss.id">
+                                {{ ss.nama_sub_sektor || ss.nama }}
                             </option>
                         </select>
                         <i class="ri-arrow-down-s-line gf-select-caret"></i>

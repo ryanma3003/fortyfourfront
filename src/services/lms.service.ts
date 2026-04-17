@@ -118,8 +118,7 @@ export const lmsService = {
             konten: payload.konten || '',
             konten_html: payload.konten_html || '',
             youtube_id: youtubeId,
-            durasi_detik: 600,
-            urutan: (payload as any).urutan || 1
+            ...(payload as any).urutan ? { urutan: (payload as any).urutan } : {}
         };
         const res = await api.post(`/api/kelas/${kelasId}/materi`, requestPayload);
         return normalizeMateri(res?.data ?? res);
@@ -167,7 +166,8 @@ export const lmsService = {
     async uploadFilePendukung(materiId: string | number, file: File): Promise<LmsFilePendukung> {
         const form = new FormData();
         form.append('file', file);
-        return api.post<LmsFilePendukung>(`/api/materi/${materiId}/file-pendukung`, form);
+        const res = await api.post<any>(`/api/materi/${materiId}/file-pendukung`, form);
+        return normalizeFilePendukung(res?.data ?? res);
     },
 
     /**
@@ -349,6 +349,19 @@ function normalizeMateri(item: any): LmsMateri {
         tipe: String(item?.tipe ?? 'teks') as any,
         konten: String(item?.konten ?? item?.konten_html ?? ''),
         url_video: String(item?.url_video ?? ''),
+        file_pendukung: item?.file_pendukung ? unwrapDataArray(item.file_pendukung).map(normalizeFilePendukung) : []
+    };
+}
+
+function normalizeFilePendukung(item: any): LmsFilePendukung {
+    return {
+        ...item,
+        id: item?.id ?? item?.file_id ?? '',
+        id_materi: item?.id_materi ?? item?.materi_id ?? '',
+        nama_file: String(item?.nama_file ?? item?.name ?? 'Berkas Pendukung'),
+        path_file: String(item?.path_file ?? item?.url ?? item?.file_path ?? ''),
+        tipe_file: String(item?.tipe_file ?? item?.type ?? 'application/pdf'),
+        ukuran: Number(item?.ukuran ?? item?.size ?? 0)
     };
 }
 

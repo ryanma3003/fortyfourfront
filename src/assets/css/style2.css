@@ -1002,7 +1002,6 @@
 .stakeholders-table-shell {
   background: #fff;
   border-radius: 18px;
-  overflow: hidden;
 }
 .stakeholder-thead th {
   position: sticky;
