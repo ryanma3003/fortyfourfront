@@ -1,7 +1,6 @@
 <script lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
 import EasyDataTable from "vue3-easy-data-table";
@@ -23,7 +22,7 @@ export default {
   data() {
     return {
       dataToPass: {
-        title: { label: "Dashboards", path: "/dashboards" },
+        title: { label: "Dashboards", path: "/dashboard" },
         currentpage: "Stakeholders",
         activepage: "Stakeholders",
       },
@@ -47,6 +46,20 @@ export default {
     } = useListPage("nama_perusahaan");
 
     const searchValue2 = ref("");
+    const viewMode = ref<"table" | "grid">("table");
+    
+    // Automatically change pagination limit to 12 when in Grid View to make it look balanced
+    watch(viewMode, (newMode) => {
+      itemsPerPage.value = newMode === "grid" ? 12 : 10;
+      currentPage.value = 1; // Reset to page 1 on view switch
+    }, { immediate: true });
+
+    const selectedStakeholderIds = ref<string[]>([]);
+    const expandedStakeholderSlugs = ref<string[]>([]);
+    const showAdvancedFilters = ref(false);
+    const dateRangeStart = ref("");
+    const dateRangeEnd = ref("");
+    const datePreset = ref<"7d" | "30d" | "all" | "custom">("all");
 
     // User data and filter
     const usersData = ref<User[]>([]);
@@ -172,6 +185,21 @@ export default {
       return item.sub_sektor?.nama_sub_sektor || item.sektor || "";
     };
 
+    const isWithinDateRange = (item: Stakeholder): boolean => {
+      if (!dateRangeStart.value && !dateRangeEnd.value) return true;
+      if (!item.created_at) return true;
+
+      const itemDate = new Date(item.created_at);
+      if (Number.isNaN(itemDate.getTime())) return true;
+
+      const start = dateRangeStart.value ? new Date(dateRangeStart.value) : null;
+      const end = dateRangeEnd.value ? new Date(`${dateRangeEnd.value}T23:59:59`) : null;
+
+      if (start && itemDate < start) return false;
+      if (end && itemDate > end) return false;
+      return true;
+    };
+
     const filteredData = computed(() => {
       let data = stakeholdersStore.allStakeholders;
       if (searchQuery.value.trim()) {
@@ -209,6 +237,8 @@ export default {
           });
         }
       }
+
+      data = data.filter(isWithinDateRange);
 
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
@@ -366,6 +396,41 @@ export default {
       showDeleteModal.value = true;
     };
 
+    const deleteStakeholderWithCascade = async (stakeholderId: string | number) => {
+      try {
+        const allCsirts = await csirtService.getMembers();
+        const companyCsirts = allCsirts.filter(
+          c => String(c.perusahaan?.id) === String(stakeholderId) ||
+               String(c.id_perusahaan) === String(stakeholderId)
+        );
+        for (const csirt of companyCsirts) {
+          const [sdms, ses] = await Promise.all([
+            csirtService.getSdmByCsirtId(csirt.id),
+            csirtService.getSeByCsirtId(csirt.id),
+          ]);
+          await Promise.all([
+            ...sdms.map(sdm => csirtService.deleteSdm(sdm.id)),
+            ...ses.map(se => csirtService.deleteSe(se.id)),
+          ]);
+          await csirtService.delete(csirt.id);
+        }
+      } catch (err) {
+        console.warn('Cascade delete CSIRT failed:', err);
+        showNotification('Gagal menghapus data CSIRT terkait: ' + (err as any)?.message, 'error');
+        return false;
+      }
+
+      const result = await stakeholdersStore.deleteStakeholderById(stakeholderId);
+      if (!result.success) {
+        showNotification("Gagal menghapus stakeholder: " + result.error, "error");
+        return false;
+      }
+
+      await csirtStore.refresh();
+      selectedStakeholderIds.value = selectedStakeholderIds.value.filter(id => String(id) !== String(stakeholderId));
+      return true;
+    };
+
     const deleteStakeholder = async () => {
       if (!currentDeleteItem.value) return;
 
@@ -407,8 +472,9 @@ export default {
     };
 
     // Reset page to 1 when any filter changes
-    watch([sektorFilter, subSektorFilter, userFilter], () => {
+    watch([sektorFilter, subSektorFilter, userFilter, dateRangeStart, dateRangeEnd], () => {
       currentPage.value = 1;
+      selectedStakeholderIds.value = [];
     });
 
     // Scroll to top of table when page changes
@@ -548,14 +614,145 @@ export default {
       stakeholdersStore.stakeholders.filter(s => hasCompleteCsirt(s.id)).length
     );
 
+    const totalStakeholders = computed(() => filteredData.value.length);
+    const activeSubSectors = computed(() =>
+      new Set(filteredData.value.map(item => getItemSubSektorName(item)).filter(Boolean)).size
+    );
+    const filteredIkasCount = computed(() =>
+      filteredData.value.filter(item => hasIkas(item.slug)).length
+    );
+    const filteredCsirtCount = computed(() =>
+      filteredData.value.filter(item => hasCompleteCsirt(item.id)).length
+    );
+    const coveredCount = computed(() => {
+      if (!filteredData.value.length) return 0;
+      return filteredData.value.filter(item => hasIkas(item.slug) && hasCompleteCsirt(item.id)).length;
+    });
+    const visibleStart = computed(() =>
+      filteredData.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0
+    );
+    const visibleEnd = computed(() =>
+      Math.min(currentPage.value * itemsPerPage.value, filteredData.value.length)
+    );
+
+    const isSelected = (id: string | number): boolean =>
+      selectedStakeholderIds.value.includes(String(id));
+
+    const toggleStakeholderSelection = (id: string | number) => {
+      const normalizedId = String(id);
+      if (isSelected(normalizedId)) {
+        selectedStakeholderIds.value = selectedStakeholderIds.value.filter(item => item !== normalizedId);
+      } else {
+        selectedStakeholderIds.value = [...selectedStakeholderIds.value, normalizedId];
+      }
+    };
+
+    const allVisibleSelected = computed(() =>
+      !!displayData.value.length && displayData.value.every(item => isSelected(item.id))
+    );
+
+    const toggleSelectAllVisible = () => {
+      if (allVisibleSelected.value) {
+        selectedStakeholderIds.value = selectedStakeholderIds.value.filter(
+          id => !displayData.value.some(item => String(item.id) === String(id))
+        );
+        return;
+      }
+
+      const next = new Set(selectedStakeholderIds.value);
+      displayData.value.forEach(item => next.add(String(item.id)));
+      selectedStakeholderIds.value = [...next];
+    };
+
+    const clearSelection = () => {
+      selectedStakeholderIds.value = [];
+    };
+
+    const isExpanded = (slug: string): boolean =>
+      expandedStakeholderSlugs.value.includes(slug);
+
+    const toggleExpandedRow = (slug: string) => {
+      if (isExpanded(slug)) {
+        expandedStakeholderSlugs.value = expandedStakeholderSlugs.value.filter(item => item !== slug);
+      } else {
+        expandedStakeholderSlugs.value = [...expandedStakeholderSlugs.value, slug];
+      }
+    };
+
+    const resetDateRange = () => {
+      dateRangeStart.value = "";
+      dateRangeEnd.value = "";
+      datePreset.value = "all";
+    };
+
+    const formatDateInput = (date: Date) => {
+      const year = date.getFullYear();
+      const month = `${date.getMonth() + 1}`.padStart(2, "0");
+      const day = `${date.getDate()}`.padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const applyDatePreset = (preset: "7d" | "30d" | "all" | "custom") => {
+      datePreset.value = preset;
+      if (preset === "all" || preset === "custom") {
+        if (preset === "all") {
+          dateRangeStart.value = "";
+          dateRangeEnd.value = "";
+        }
+        return;
+      }
+
+      const end = new Date();
+      const start = new Date();
+      const offset = preset === "7d" ? 6 : 29;
+      start.setDate(end.getDate() - offset);
+
+      dateRangeStart.value = formatDateInput(start);
+      dateRangeEnd.value = formatDateInput(end);
+    };
+
+    watch([dateRangeStart, dateRangeEnd], ([start, end]) => {
+      if (!start && !end) {
+        datePreset.value = "all";
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayString = formatDateInput(today);
+
+      if (end === todayString && start) {
+        const startDate = new Date(start);
+        if (!Number.isNaN(startDate.getTime())) {
+          const diffDays = Math.round((today.getTime() - startDate.getTime()) / 86400000) + 1;
+          if (diffDays === 7) {
+            datePreset.value = "7d";
+            return;
+          }
+          if (diffDays === 30) {
+            datePreset.value = "30d";
+            return;
+          }
+        }
+      }
+
+      datePreset.value = "custom";
+    });
+
     return {
+      allVisibleSelected,
+      activeSubSectors,
       countIkasOnly,
       countCsirtOnly,
       countBoth,
       countIkas,
       countCsirt,
+      coveredCount,
       countStakeholderWithUser,
       countStakeholderNoUser,
+      dateRangeEnd,
+      dateRangeStart,
+      datePreset,
       userFilter,
       sektorFilter,
       subSektorFilter,
@@ -612,10 +809,27 @@ export default {
       sektorList,
       filteredSubSektorList,
       availableSubSektorFilters,
+      clearSelection,
       currentSektorNameFilter,
+      expandedStakeholderSlugs,
+      filteredCsirtCount,
+      filteredIkasCount,
+      isExpanded,
+      isSelected,
       loadingSubSektors,
+      resetDateRange,
+      applyDatePreset,
       selectedSektorId,
+      selectedStakeholderIds,
       selectedSubSektorId,
+      showAdvancedFilters,
+      toggleExpandedRow,
+      toggleSelectAllVisible,
+      toggleStakeholderSelection,
+      totalStakeholders,
+      viewMode,
+      visibleEnd,
+      visibleStart,
       getSektorName,
       getSubSektorName,
       getSektorFromSubSektor,
@@ -677,7 +891,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
 </script>
 
 <template>
-  <Pageheader :propData="dataToPass" />
+  <pageheader :propData="dataToPass" />
 
   <!-- Toast Notification -->
   <transition name="toast-slide">
@@ -696,31 +910,77 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card gradient-header-card" style="overflow: visible !important;">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header">
-          <div class="d-flex align-items-center gap-3 header-inner">
-            <div class="header-icon-box">
-              <i class="ri-building-2-line"></i>
+      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
+        <div class="stakeholder-header stakeholders-premium-header">
+          <div class="stakeholders-header-main ">
+            <div class="stakeholders-hero-copy1 d-flex justify-content-between align-items-start flex-column">
+              <div>
+                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> Stakeholders</div>
+                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Stakeholders</div>
+               <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Daftar Perusahaan Terdaftar</div>
+              </div>
+              <div class="stakeholders-meta-stack">
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Active Sub-Sektor</span>
+                  <strong><i class="ri-layout-grid-line"></i> {{ activeSubSectors }}</strong>
+                </div>
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Total Stakeholders</span>
+                  <strong><i class="ri-building-line"></i> {{ totalStakeholders }}</strong>
+                </div>
+              </div>
             </div>
-            <div>
-              <div class="card-title mb-0 text-white fw-bold header-card-title">Daftar Stakeholders</div>
-              <div class="header-subtitle mt-1">Manajemen data perusahaan stakeholder</div>
-            </div>
-          </div>
-          <div class="d-flex gap-2 align-items-center flex-wrap header-inner">
-
-            <div class="search-container position-relative">
-              <i class="ri-search-line card-search-icon"></i>
-              <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
-                placeholder="Cari perusahaan, sub_sektor, atau email..." />
-              <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
-                <i class="ri-close-circle-fill"></i>
-              </button>
+            <div class="stakeholders-header-tools stakeholders-hero-tools">
+              <div class="search-container position-relative stakeholders-search">
+                <i class="ri-search-line card-search-icon"></i>
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  class="form-control form-control-sm header-search-input"
+                  placeholder="Search company, sector, sub-sector, or email"
+                />
+                <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
+                  <i class="ri-close-circle-fill"></i>
+                </button>
+              </div>
+              <div class="stakeholders-filter-panel">
+                <div class="stakeholders-filter-label">
+                  <i class="ri-filter-fill"></i>
+                  <span>Filter Data</span>
+                </div>
+                <div class="stakeholders-filter-controls">
+                  <select v-model="sektorFilter" class="form-select stakeholders-select-input">
+                    <option value="">All sectors</option>
+                    <option v-for="s in sektorList" :key="s.id" :value="s.id">{{ s.nama_sektor }}</option>
+                  </select>
+                  <select v-model="subSektorFilter" class="form-select stakeholders-select-input">
+                    <option value="">All sub-sectors</option>
+                    <option v-for="s in availableSubSektorFilters" :key="s.id" :value="s.id">{{ s.nama_sub_sektor }}</option>
+                  </select>
+                 <div class="dropdown">
+                  <button class="form-select stakeholders-select-input" type="button" data-bs-toggle="dropdown">
+                    <i class="ri-user-settings-line me-1"></i>
+                    {{
+                      userFilter === 'all'
+                        ? 'Semua stakeholder'
+                        : userFilter === 'hasUser'
+                        ? 'Sudah punya user'
+                        : 'Belum punya user'
+                    }}
+                  </button>
+                  <ul class="dropdown-menu shadow-sm stakeholders-toolbar-menu">
+                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">Semua ({{ filteredData.length }})</a></li>
+                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">Ada User ({{ countStakeholderWithUser }})</a></li>
+                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">Tanpa User ({{ countStakeholderNoUser }})</a></li>
+                  </ul>
+                </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="card-body p-4" style="overflow: visible !important;">
+        <div class="card-body p-4 stakeholders-premium-body" style="overflow: visible !important;">
           <div v-if="loading" class="skeleton-loading p-4">
             <div class="skeleton-row" v-for="n in 5" :key="n">
               <div class="skel skel-no"></div>
@@ -733,240 +993,107 @@ getSektorBadgeStyle: (subSektorName: string) => {
           </div>
 
           <template v-else>
-            <!-- Stats Strip -->
-            <div class="stats-strip flex-wrap mb-4">
-              <div class="stat-card">
-                <div class="stat-icon stat-icon-blue"><i class="ri-building-2-line"></i></div>
+            <div class="stakeholders-summary-grid mb-4">
+              <div class="stakeholders-summary-card stakeholders-summary-card--indigo">
+                <div class="stakeholders-summary-icon"><i class="ri-file-chart-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ filteredData.length }}</div>
-                  <div class="stat-label">Total Stakeholder</div>
+                  <div class="stakeholders-summary-value">{{ filteredIkasCount }}</div>
+                  <div class="stakeholders-summary-label">IKAS Count</div>
                 </div>
               </div>
-              <div class="stat-card">
-                <div class="stat-icon stat-icon-teal"><i class="ri-pie-chart-2-line"></i></div>
+              <div class="stakeholders-summary-card stakeholders-summary-card--emerald">
+                <div class="stakeholders-summary-icon"><i class="ri-shield-check-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ new Set(filteredData.map((d) => getItemSubSektorName(d))).size }}</div>
-                  <div class="stat-label">Sub Sektor Aktif</div>
+                  <div class="stakeholders-summary-value">{{ filteredCsirtCount }}</div>
+                  <div class="stakeholders-summary-label">CSIRT Count</div>
                 </div>
               </div>
-              <div class="stat-card">
-                <div class="stat-icon stat-icon-violet"><i class="ri-check-double-line"></i></div>
+              <div class="stakeholders-summary-card stakeholders-summary-card--slate">
+                <div class="stakeholders-summary-icon"><i class="ri-pulse-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ countBoth }}</div>
-                  <div class="stat-label">IKAS &amp; CSIRT</div>
-                </div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-icon stat-icon-blue"><i class="ri-bar-chart-grouped-line"></i></div>
-                <div>
-                  <div class="stat-value">{{ countIkasOnly }}</div>
-                  <div class="stat-label">IKAS Saja</div>
-                </div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-icon stat-icon-teal"><i class="ri-shield-check-line"></i></div>
-                <div>
-                  <div class="stat-value">{{ countCsirtOnly }}</div>
-                  <div class="stat-label">CSIRT Saja</div>
+                  <div class="stakeholders-summary-value">
+                    {{ coveredCount }} <span class="fs-15 text-muted fw-medium ms-1">/ {{ totalStakeholders }}</span>
+                  </div>
+                  <div class="stakeholders-summary-label">Ikas & Csirt</div>
                 </div>
               </div>
             </div>
 
-            <!-- Controls Bar -->
-            <div class="controls-bar d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3" style="position: relative; z-index: 99;">
-              <!-- Left Section: Filter + Items Per Page -->
-              <div class="d-flex align-items-center gap-3 flex-wrap">
-                
-                <!-- Sektor Filter Dropdown -->
-                <div class="d-flex align-items-center gap-2">
-                  <span class="text-muted fs-13">Sektor:</span>
-                  <div class="dropdown">
-                    <button 
-                      class="btn btn-sm btn-primary dropdown-toggle text-white d-flex align-items-center justify-content-between" 
-                      type="button"
-                      data-bs-toggle="dropdown"
-                      style="min-width: 130px;"
-                    >
-                      <span class="text-truncate text-start pe-2">
-                        <i class="ri-government-line me-1"></i>
-                        {{ sektorFilter === "" ? "Semua Sektor" : (sektorList.find(s => String(s.id) === String(sektorFilter))?.nama_sektor || "Sektor") }}
-                      </span>
-                    </button>
-                    <ul class="dropdown-menu shadow-sm" style="max-height: 300px; overflow-y: auto;">
-                      <li>
-                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = ''; subSektorFilter = ''">
-                          Semua Sektor
-                        </a>
-                      </li>
-                      <li v-for="s in sektorList" :key="s.id">
-                        <a class="dropdown-item" href="#" @click.prevent="sektorFilter = s.id; subSektorFilter = ''">
-                          {{ s.nama_sektor }}
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
+            <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar">
+
+
+              <div class="stakeholders-toolbar-right">
+                <div class="stakeholders-view-toggle" role="group" aria-label="View mode">
+                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" title="List view">
+                    <i class="ri-list-check-2"></i>
+                    <span>List view</span>
+                  </button>
+                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="Grid view">
+                    <i class="ri-layout-grid-line"></i>
+                    <span>Grid view</span>
+                  </button>
                 </div>
-
-                <!-- Sub-Sektor Filter Dropdown -->
-                <div class="d-flex align-items-center gap-2 border-start ps-3 ms-1">
-                  <span class="text-muted fs-13">Sub-Sektor:</span>
-                  <div class="dropdown">
-                    <button 
-                      class="btn btn-sm btn-primary dropdown-toggle text-white d-flex align-items-center justify-content-between" 
-                      type="button"
-                      data-bs-toggle="dropdown"
-                      style="min-width: 160px;"
-                    >
-                      <span class="text-truncate text-start pe-2">
-                        <i class="ri-government-line me-1"></i>
-                        {{ subSektorFilter === "" ? "Semua Sub-Sektor" + (currentSektorNameFilter ? " " + currentSektorNameFilter : "") : (subSektorList.find(s => String(s.id) === String(subSektorFilter))?.nama_sub_sektor || "Sub-Sektor") }}
-                      </span>
-                    </button>
-                    <ul class="dropdown-menu shadow-sm" style="max-height: 300px; overflow-y: auto;">
-                      <li>
-                        <a class="dropdown-item" href="#" @click.prevent="subSektorFilter = ''">
-                          Semua Sub-Sektor{{ currentSektorNameFilter ? " " + currentSektorNameFilter : "" }}
-                        </a>
-                      </li>
-                      <li v-for="s in availableSubSektorFilters" :key="s.id">
-                        <a class="dropdown-item" href="#" @click.prevent="subSektorFilter = s.id">
-                          {{ s.nama_sub_sektor }}
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-
-                <!-- User Filter Dropdown -->
-                <div class="d-flex align-items-center gap-2 border-start ps-3 ms-1">
-                  <span class="text-muted fs-13">Filter:</span>
-
-                  <div class="dropdown">
-                    <button 
-                      class="btn btn-sm btn-primary dropdown-toggle" 
-                      type="button"
-                      data-bs-toggle="dropdown"
-                    >
-                      <i class="ri-filter-line me-1"></i>
-                      {{
-                        userFilter === 'all'
-                          ? 'Semua (' + filteredData.length + ')'
-                          : userFilter === 'hasUser'
-                          ? 'Ada User (' + countStakeholderWithUser + ')'
-                          : 'Tanpa User (' + countStakeholderNoUser + ')'
-                      }}
-                    </button>
-
-                    <ul class="dropdown-menu">
-                      <li>
-                        <a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">
-                          <i class="ri-filter-line me-1"></i>
-                          Semua ({{ filteredData.length }})
-                        </a>
-                      </li>
-
-                      <li>
-                        <a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">
-                          <i class="ri-check-line me-1 text-success"></i>
-                          Ada User ({{ countStakeholderWithUser }})
-                        </a>
-                      </li>
-
-                      <li>
-                        <a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">
-                          <i class="ri-close-line me-1 text-warning"></i>
-                          Tanpa User ({{ countStakeholderNoUser }})
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-                
-                <!-- Items Per Page -->
-                            <div class="d-flex align-items-center gap-2">
-                  <span class="text-muted fs-13">Tampilkan</span>
+                <div class="stakeholders-per-page">
+                  <span>{{ viewMode === 'grid' ? 'Cards' : 'Rows' }}</span>
                   <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                    <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                    <option v-for="n in (viewMode === 'grid' ? [6, 12, 18, 24, 60] : [5, 10, 15, 20, 25, 50])" :key="n" :value="n">{{ n }}</option>
                   </select>
-                  <span class="text-muted fs-13">Perhalaman</span>
                 </div>
+
+                <button v-if="isAdmin" @click="openCreateModal" class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2">
+                  <i class="ri-add-circle-line fs-13"></i>
+                  <span class="btn-text">Add Stakeholder</span>
+                </button>
               </div>
-              
-              <!-- Right Section: Add Button -->
-              <button v-if="isAdmin"
-                @click="openCreateModal"
-                class="btn btn-warning d-flex align-items-center gap-2 btn-tambah-stakeholder"
-              >
-                <i class="ri-add-circle-line fs-13"></i>
-                <span class="btn-text">Tambah Stakeholder</span>
-              </button>
             </div>
 
-            <!-- Table -->
-            <div class="table-responsive stakeholder-table-wrap">
-              <table class="table stakeholder-table text-nowrap mb-0">
+            <transition name="fade">
+              <div v-if="showAdvancedFilters" class="stakeholders-advanced-panel">
+                <div class="dropdown">
+                  <button class="btn btn-sm stakeholders-toolbar-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    <i class="ri-user-settings-line me-1"></i>
+                    {{
+                      userFilter === 'all'
+                        ? 'Semua stakeholder'
+                        : userFilter === 'hasUser'
+                        ? 'Sudah punya user'
+                        : 'Belum punya user'
+                    }}
+                  </button>
+                  <ul class="dropdown-menu shadow-sm stakeholders-toolbar-menu">
+                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">Semua ({{ filteredData.length }})</a></li>
+                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">Ada User ({{ countStakeholderWithUser }})</a></li>
+                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">Tanpa User ({{ countStakeholderNoUser }})</a></li>
+                  </ul>
+                </div>
+                <div class="stakeholders-filter-hint">
+                  <i class="ri-information-line"></i>
+                  <span>{{ currentSektorNameFilter || 'Semua sektor' }} · {{ paginationInfo }}</span>
+                </div>
+              </div>
+            </transition>
+            <div v-if="viewMode === 'table'" class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+              <table class="table stakeholder-table mb-0">
                 <thead class="stakeholder-thead">
                   <tr>
                     <th class="th-no">No</th>
                     <th class="sortable fw-semibold th-name-wide">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-building-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Click to toggle sort">Nama Perusahaan</span>
+                        <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Sort company">Company</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'nama_perusahaan' &&
-                                sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'nama_perusahaan';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'nama_perusahaan' &&
-                                sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'nama_perusahaan';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
+                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'nama_perusahaan' && sortOrder === 'asc' }" @click.stop="sortField = 'nama_perusahaan'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'nama_perusahaan' && sortOrder === 'desc' }" @click.stop="sortField = 'nama_perusahaan'; sortOrder = 'desc';"></i>
                         </div>
                       </div>
                     </th>
                     <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('sektor')" title="Click to toggle sort">Sektor &amp; Sub-Sektor</span>
+                        <span class="column-label" @click="toggleSort('sektor')" title="Sort sector">Sector &amp; Sub-sector</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'sektor' && sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'sektor';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'sektor' && sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'sektor';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
+                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'sektor' && sortOrder === 'asc' }" @click.stop="sortField = 'sektor'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'sektor' && sortOrder === 'desc' }" @click.stop="sortField = 'sektor'; sortOrder = 'desc';"></i>
                         </div>
                       </div>
                     </th>
@@ -987,110 +1114,182 @@ getSektorBadgeStyle: (subSektorName: string) => {
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="6" class="text-center py-5">
+                    <td colspan="7" class="text-center py-5">
                       <div class="empty-state">
                         <div class="empty-icon-ring mb-3">
                           <div class="empty-icon-inner">
                             <i class="ri-building-2-line"></i>
                           </div>
                         </div>
-                        <h6 class="fw-semibold mb-1 empty-state-title">Tidak Ada Stakeholder</h6>
-                        <p class="text-muted fs-13 mb-3">Coba ubah kata kunci pencarian Anda</p>
-                        <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm btn-outline-primary rounded-pill px-4">
-                          <i class="ri-refresh-line me-1"></i>Reset Pencarian
+                        <h6 class="fw-semibold mb-1 empty-state-title">No stakeholders found</h6>
+                        <p class="text-muted fs-13 mb-3">Coba ubah pencarian, filter sektor, atau rentang tanggal.</p>
+                        <button @click="clearSearch(); resetDateRange(); sektorFilter = ''; subSektorFilter = ''; userFilter = 'all';" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                          <i class="ri-refresh-line me-1"></i>Reset filters
                         </button>
                       </div>
                     </td>
                   </tr>
-                  <tr v-for="(item, i) in displayData" :key="item.slug" class="stakeholder-row">
-                    <td class="align-middle text-center">
-                      <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
-                    </td>
-                    <td class="align-middle">
-                      <div class="d-flex align-items-center gap-3">
-                        <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
-                          <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="company-avatar-img" />
-                          <span v-else class="company-avatar-letter">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                  <template v-for="(item, i) in displayData" :key="item.slug">
+                    <tr class="stakeholder-row" :class="{ 'stakeholder-row-expanded': isExpanded(item.slug) }">
+
+                      <td class="align-middle text-center">
+                        <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
+                      </td>
+                      <td class="align-middle">
+                        <div class="stakeholder-company-cell">
+                          <button class="stakeholder-expand-btn" @click="toggleExpandedRow(item.slug)" :title="isExpanded(item.slug) ? 'Collapse row' : 'Expand row'">
+                            <i :class="isExpanded(item.slug) ? 'ri-arrow-down-s-line' : 'ri-arrow-right-s-line'"></i>
+                          </button>
+                          <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
+                            <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="company-avatar-img" />
+                            <span v-else class="company-avatar-letter">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                          </div>
+                          <div class="company-name-wrap">
+                            <span class="company-name d-block">{{ item.nama_perusahaan }}</span>
+                            <small class="company-address d-block">
+                              <i class="ri-map-pin-2-line me-1"></i>{{ item.alamat?.substring(0, 54) }}{{ item.alamat?.length > 54 ? '...' : '' }}
+                            </small>
+                          </div>
                         </div>
-                        <div class="company-name-wrap">
-                          <span class="company-name d-block">{{ item.nama_perusahaan }}</span>
-                          <small class="company-address d-none d-lg-block">
-                            <i class="ri-map-pin-2-line me-1"></i>{{ item.alamat?.substring(0, 38) }}...
-                          </small>
+                      </td>
+                      <td class="align-middle">
+                        <div class="d-flex flex-column align-items-start gap-2">
+                          <span class="stakeholders-sector-parent"><i class="ri-government-line text-muted me-1"></i>{{ getSektorFromSubSektor(getItemSubSektorName(item)) }}</span>
+                          <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">{{ getItemSubSektorName(item) }}</span>
                         </div>
-                      </div>
-                    </td>
-                    <td class="align-middle">
-                      <div class="d-flex flex-column align-items-start gap-1">
-                        <span class="text-dark fw-semibold fs-13"><i class="ri-government-line text-muted me-1"></i>{{ getSektorFromSubSektor(getItemSubSektorName(item)) }}</span>
-                        <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">
-                          {{ getItemSubSektorName(item) }}
-                        </span>
-                      </div>
-                    </td>
-                    <td class="align-middle">
-                      <a :href="`mailto:${item.email}`" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none">
-                        <span class="email-text">{{ item.email }}</span>
-                      </a>
-                    </td>
-                    <td class="text-center align-middle">
-                      <div class="status-indicators">
-                        <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="IKAS">
-                          <span class="badge-icon-dot">
-                            <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                          </span>
-                          <span class="badge-label">IKAS</span>
+                      </td>
+                      <td class="align-middle">
+                        <a :href="`mailto:${item.email}`" class="email-link stakeholders-email-link">
+                          <span class="email-text">{{ item.email }}</span>
+                        </a>
+                      </td>
+                      <td class="text-center align-middle">
+                        <div class="status-indicators">
+                          <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="IKAS status">
+                            <span class="badge-icon-dot">
+                              <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                            </span>
+                            <span class="badge-label">IKAS</span>
+                          </div>
+                          <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="CSIRT status">
+                            <span class="badge-icon-dot">
+                              <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                            </span>
+                            <span class="badge-label">CSIRT</span>
+                          </div>
                         </div>
-                        <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="CSIRT">
-                          <span class="badge-icon-dot">
-                            <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                          </span>
-                          <span class="badge-label">CSIRT</span>
+                      </td>
+                      <td class="text-center align-middle">
+                        <div class="d-flex gap-1 justify-content-center">
+                          <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
+                            <i class="ri-eye-line"></i>
+                          </router-link>
+                          <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Open IKAS">
+                            <i class="ri-file-chart-line"></i>
+                          </router-link>
+                          <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
+                            <i class="ri-edit-2-line"></i>
+                          </button>
+                          <button v-if="isAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
+                            <i class="ri-delete-bin-3-line"></i>
+                          </button>
                         </div>
-                      </div>
-                    </td>
-                    <td class="text-center align-middle">
-                      <div class="d-flex gap-1 justify-content-center">
-                        <router-link
-                          :to="`/stakeholders/${item.slug}`"
-                          class="btn btn-sm btn-icon btn-wave btn-info-light"
-                          title="Lihat Profil">
-                          <i class="ri-eye-line"></i>
-                        </router-link>
-                        <router-link
-                          :to="`/ikas?slug=${item.slug}&source=list`"
-                          class="btn btn-sm btn-icon btn-wave btn-warning-light"
-                          title="IKAS">
-                          <i class="ri-file-chart-line"></i>
-                        </router-link>
-                        <button v-if="isAdmin"
-                          @click="openEditModal(item)"
-                          class="btn btn-sm btn-icon btn-wave btn-success-light"
-                          title="Edit">
-                          <i class="ri-edit-2-line"></i>
-                        </button>
-                        <button v-if="isAdmin"
-                          @click="openDeleteModal(item)"
-                          class="btn btn-sm btn-icon btn-wave btn-danger-light"
-                          title="Hapus">
-                          <i class="ri-delete-bin-3-line"></i>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                    <tr v-if="isExpanded(item.slug)" class="stakeholder-detail-row">
+                      <td colspan="7">
+                        <div class="stakeholder-detail-panel">
+                          <div class="stakeholder-detail-item">
+                            <span class="stakeholder-detail-label">Alamat</span>
+                            <span class="stakeholder-detail-value">{{ item.alamat || '-' }}</span>
+                          </div>
+                          <div class="stakeholder-detail-item">
+                            <span class="stakeholder-detail-label">Telepon</span>
+                            <span class="stakeholder-detail-value">{{ item.telepon || '-' }}</span>
+                          </div>
+                          <div class="stakeholder-detail-item">
+                            <span class="stakeholder-detail-label">Website</span>
+                            <a :href="item.website" target="_blank" rel="noopener noreferrer" class="stakeholder-detail-link">{{ item.website || '-' }}</a>
+                          </div>
+                          <div class="stakeholder-detail-item">
+                            <span class="stakeholder-detail-label">Monitoring</span>
+                            <div class="stakeholder-detail-status">
+                              <span class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'">IKAS</span>
+                              <span class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'">CSIRT</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
 
-            <!-- Pagination -->
-            <div v-if="totalPages > 1" class="pagination-container d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3">
-              <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-light text-muted px-3 py-2">
-                  <i class="ri-file-list-3-line me-1"></i>
-                  Halaman {{ currentPage }} dari {{ totalPages }}
-                </span>
+            <div v-else class="stakeholders-grid">
+              <div v-if="!displayData.length" class="stakeholders-grid-empty">
+                <div class="empty-state">
+                  <div class="empty-icon-ring mb-3">
+                    <div class="empty-icon-inner">
+                      <i class="ri-layout-grid-line"></i>
+                    </div>
+                  </div>
+                  <h6 class="fw-semibold mb-1 empty-state-title">Grid view is empty</h6>
+                  <p class="text-muted fs-13 mb-0">Belum ada data yang cocok dengan filter aktif.</p>
+                </div>
               </div>
-              <nav>
+              <div v-for="item in displayData" :key="`${item.slug}-card`" class="stakeholders-grid-card">
+                <div class="stakeholders-grid-card-top">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
+                      <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="company-avatar-img" />
+                      <span v-else class="company-avatar-letter">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                    </div>
+                    <div>
+                      <div class="company-name">{{ item.nama_perusahaan }}</div>
+                      <div class="company-address">{{ item.email }}</div>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-1">
+                    <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
+                      <i class="ri-eye-line"></i>
+                    </router-link>
+                    <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Open IKAS">
+                      <i class="ri-file-chart-line"></i>
+                    </router-link>
+                    <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
+                      <i class="ri-edit-2-line"></i>
+                    </button>
+                    <button v-if="isAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
+                      <i class="ri-delete-bin-3-line"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="stakeholders-grid-card-body">
+                  <div class="stakeholders-grid-sector">
+                    <span class="stakeholders-sector-parent">{{ getSektorFromSubSektor(getItemSubSektorName(item)) }}</span>
+                    <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">{{ getItemSubSektorName(item) }}</span>
+                  </div>
+                  <div class="status-indicators justify-content-start">
+                    <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'">IKAS</div>
+                    <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'">CSIRT</div>
+                  </div>
+                  <div class="stakeholders-grid-meta">
+                    <div><i class="ri-phone-line"></i>{{ item.telepon || '-' }}</div>
+                    <a :href="item.website" target="_blank" rel="noopener noreferrer"><i class="ri-global-line"></i>Website</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pagination-container stakeholders-pagination">
+              <div class="stakeholders-pagination-copy">
+                Showing {{ visibleStart }}-{{ visibleEnd }} of {{ filteredData.length }} stakeholders
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                
+                <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages || 1 }}</span>
+                <nav v-if="totalPages > 1">
                 <ul class="pagination pagination-sm mb-0 gap-1">
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
                     <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1" title="First">
@@ -1121,7 +1320,8 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     </a>
                   </li>
                 </ul>
-              </nav>
+                </nav>
+              </div>
             </div>
           </template>
         </div>

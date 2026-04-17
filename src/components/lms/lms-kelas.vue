@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useLmsStore } from "../../stores/lms";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter } from "vue-router";
 import { lmsService } from "../../services/lms.service";
 
 export default {
@@ -11,15 +11,14 @@ export default {
     return {
       dataToPass: {
         title: { label: "Dashboard", path: "/dashboard" },
-        currentpage: "LMS — Materi",
-        activepage: "Materi",
+        currentpage: "LMS — Kelas",
+        activepage: "Kelas",
       },
     };
   },
   setup() {
     const lmsStore = useLmsStore();
     const router = useRouter();
-    const route = useRoute();
 
     const searchQuery = ref("");
     const currentPage = ref(1);
@@ -39,60 +38,60 @@ export default {
       setTimeout(() => (showToast.value = false), 3000);
     };
 
-    // Get kelasId from route or history state
-    const kelasId = computed(() => route.params.kelasId || route.query.kelasId || history.state?.kelasId || '');
+    const materiCounts = ref<Record<string, number>>({});
+    const kuisCounts = ref<Record<string, number>>({});
 
-    const soalCounts = ref<Record<string, number>>({});
-    const loadMissingSoalCounts = async () => {
-      for (const kuis of lmsStore.kuisList) {
-        if (
-          kuis.jumlah_soal === undefined &&
-          kuis.total_soal === undefined &&
-          kuis.count_soal === undefined &&
-          kuis._count?.soal === undefined && 
-          (!Array.isArray(kuis.soal) || kuis.soal.length === 0)
-        ) {
-          lmsService.getSoalByKuis(kuis.id).then((arr) => {
-             soalCounts.value[kuis.id] = arr.length;
-          }).catch(() => {});
-        }
-      }
-    };
-
-    const computedTotalSoal = computed(() => {
+    const computedTotalMateri = computed(() => {
       let sum = 0;
-      for (const k of lmsStore.kuisList) {
-        if (k.jumlah_soal !== undefined) sum += Number(k.jumlah_soal);
-        else if (k.total_soal !== undefined) sum += Number(k.total_soal);
-        else if (k.count_soal !== undefined) sum += Number(k.count_soal);
-        else if (k._count?.soal !== undefined) sum += Number(k._count.soal);
-        else if (Array.isArray(k.soal)) sum += k.soal.length;
-        else sum += (soalCounts.value[k.id] || 0);
+      for (const k of lmsStore.kelasList) {
+        if (k.jumlah_materi !== undefined) sum += Number(k.jumlah_materi);
+        else if (k._count?.materi !== undefined) sum += Number(k._count.materi);
+        else if (Array.isArray(k.materi)) sum += k.materi.length;
+        else sum += (materiCounts.value[k.id] || 0);
       }
       return sum;
     });
 
-    // Fetch materi and kuis on mount
+    const computedTotalKuis = computed(() => {
+      let sum = 0;
+      for (const k of lmsStore.kelasList) {
+        if (k.jumlah_kuis !== undefined) sum += Number(k.jumlah_kuis);
+        else if (k._count?.kuis !== undefined) sum += Number(k._count.kuis);
+        else if (Array.isArray(k.kuis_list)) sum += k.kuis_list.length;
+        else if (Array.isArray(k.kuis)) sum += k.kuis.length;
+        else sum += (kuisCounts.value[k.id] || 0);
+      }
+      return sum;
+    });
+
+    const loadGlobalStats = async () => {
+      for (const k of lmsStore.kelasList) {
+        if (k.jumlah_materi === undefined && k._count?.materi === undefined && !Array.isArray(k.materi)) {
+          lmsService.getMateriByKelas(k.id).then(m => materiCounts.value[k.id] = m.length).catch(() => {});
+        }
+        if (k.jumlah_kuis === undefined && k._count?.kuis === undefined && !Array.isArray(k.kuis_list) && !Array.isArray(k.kuis)) {
+          lmsService.getKuisByKelas(k.id).then(q => kuisCounts.value[k.id] = q.length).catch(() => {});
+        }
+      }
+    };
+
+    // Fetch on mount
     onMounted(async () => {
       try {
-        await Promise.all([
-          lmsStore.fetchMateri(kelasId.value as string),
-          lmsStore.fetchKuis(kelasId.value as string)
-        ]);
-        loadMissingSoalCounts();
+        await lmsStore.fetchKelas();
+        loadGlobalStats();
       } catch (e: any) {
-        showNotification(e.message || "Gagal memuat data", "error");
+        showNotification(e.message || "Gagal memuat data kelas", "error");
       }
     });
 
     const filteredData = computed(() => {
       const q = searchQuery.value.toLowerCase().trim();
-      if (!q) return lmsStore.materiList;
-      return lmsStore.materiList.filter(
-        (m) =>
-          m.judul.toLowerCase().includes(q) ||
-          m.kategori.toLowerCase().includes(q) ||
-          m.deskripsi.toLowerCase().includes(q)
+      if (!q) return lmsStore.kelasList;
+      return lmsStore.kelasList.filter(
+        (k) =>
+          getKelasName(k).toLowerCase().includes(q) ||
+          getKelasDescription(k).toLowerCase().includes(q)
       );
     });
 
@@ -109,22 +108,16 @@ export default {
       currentPage.value = 1;
     };
 
-    const goCreate = () => {
-      const kid = kelasId.value;
-      if (kid) {
-        router.push({ path: '/lms/materi/create', state: { kelasId: kid } });
-      } else {
-        router.push("/lms/materi/create");
-      }
-    };
-    const goEdit = (id: string | number) => {
-      const kid = kelasId.value;
-      if (kid) {
-        router.push({ path: `/lms/materi/edit/${id}`, state: { kelasId: kid } });
-      } else {
-        router.push(`/lms/materi/edit/${id}`);
-      }
-    };
+    const goCreate = () => router.push("/lms/kelas/create");
+    const goEdit = (id: string | number) => router.push(`/lms/kelas/edit/${id}`);
+
+    // Navigate into kelas to manage materi & kuis
+    const goMateri = (id: string | number) => router.push({ path: '/lms/materi', state: { kelasId: id } });
+    const goKuis = (id: string | number) => router.push({ path: '/lms/quiz', state: { kelasId: id } });
+
+    // Add Materi & Quiz globally
+    const goAddMateri = () => router.push(`/lms/materi/create`);
+    const goAddQuiz = () => router.push(`/lms/quiz/create`);
 
     const openDeleteModal = (item: any) => {
       deleteTarget.value = item;
@@ -134,10 +127,10 @@ export default {
       if (deleteTarget.value) {
         isDeleting.value = true;
         try {
-          await lmsStore.deleteMateri(deleteTarget.value.id);
-          showNotification("Materi berhasil dihapus!", "success");
+          await lmsStore.deleteKelas(deleteTarget.value.id);
+          showNotification("Kelas berhasil dihapus!", "success");
         } catch (e: any) {
-          showNotification(e.message || "Gagal menghapus materi", "error");
+          showNotification(e.message || "Gagal menghapus kelas", "error");
         } finally {
           isDeleting.value = false;
         }
@@ -147,7 +140,7 @@ export default {
     };
 
     const formatDate = (iso: string) => {
-      if (!iso) return '-';
+      if (!iso) return "-";
       const d = new Date(iso);
       return d.toLocaleDateString("id-ID", {
         day: "2-digit",
@@ -156,15 +149,15 @@ export default {
       });
     };
 
-    const getKategoriClass = (kat: string) => {
-      const map: Record<string, string> = {
-        Cybersecurity: "badge-sektor-blue",
-        CSIRT: "badge-sektor-teal",
-        Networking: "badge-sektor-violet",
-        Compliance: "badge-sektor-amber",
-      };
-      return map[kat] || "badge-sektor-default";
+    const getKelasName = (item: any) => {
+      const name = String(item?.nama_kelas ?? "").trim();
+      return name || "Tanpa Nama";
     };
+
+    const getKelasDescription = (item: any) =>
+      String(item?.deskripsi ?? "").trim();
+
+    const getAvatarLetter = (item: any) => getKelasName(item).charAt(0).toUpperCase();
 
     const getAvatarClass = (letter: string) => {
       const variants = [
@@ -174,6 +167,13 @@ export default {
       ];
       const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
       return variants[idx];
+    };
+
+    const getStatusClass = (status: string) => {
+      const s = (status || '').toLowerCase();
+      if (s === 'aktif') return 'badge-sektor-teal';
+      if (s === 'draft') return 'badge-sektor-amber';
+      return 'badge-sektor-default';
     };
 
     return {
@@ -187,6 +187,10 @@ export default {
       clearSearch,
       goCreate,
       goEdit,
+      goMateri,
+      goKuis,
+      goAddMateri,
+      goAddQuiz,
       openDeleteModal,
       confirmDelete,
       showDeleteModal,
@@ -196,9 +200,13 @@ export default {
       toastMessage,
       toastType,
       formatDate,
-      getKategoriClass,
+      getKelasName,
+      getKelasDescription,
+      getAvatarLetter,
       getAvatarClass,
-      computedTotalSoal,
+      getStatusClass,
+      computedTotalMateri,
+      computedTotalKuis
     };
   },
 };
@@ -229,18 +237,18 @@ export default {
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header">
           <div class="d-flex align-items-center gap-3 header-inner">
             <div class="header-icon-box">
-              <i class="ri-book-open-line"></i>
+              <i class="ri-graduation-cap-line"></i>
             </div>
             <div>
-              <div class="card-title mb-0 text-white fw-bold header-card-title">Daftar Materi</div>
-              <div class="header-subtitle mt-1">Kelola materi pembelajaran LMS</div>
+              <div class="card-title mb-0 text-white fw-bold header-card-title">Daftar Kelas</div>
+              <div class="header-subtitle mt-1">Kelola kelas pembelajaran LMS</div>
             </div>
           </div>
           <div class="d-flex gap-2 align-items-center flex-wrap header-inner">
             <div class="search-container position-relative">
               <i class="ri-search-line" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#999;pointer-events:none;z-index:10;font-size:15px;"></i>
               <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input"
-                placeholder="Cari materi..." />
+                placeholder="Cari kelas..." />
               <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
                 <i class="ri-close-circle-fill"></i>
               </button>
@@ -254,31 +262,31 @@ export default {
             <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading...</span>
             </div>
-            <p class="text-muted mt-2 fs-13">Memuat data materi...</p>
+            <p class="text-muted mt-2 fs-13">Memuat data kelas...</p>
           </div>
 
           <template v-else>
             <!-- Stats -->
             <div class="stats-strip mb-4">
               <div class="stat-card">
-                <div class="stat-icon stat-icon-blue"><i class="ri-book-open-line"></i></div>
+                <div class="stat-icon stat-icon-blue"><i class="ri-graduation-cap-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ lmsStore.totalMateri }}</div>
+                  <div class="stat-value">{{ lmsStore.totalKelas }}</div>
+                  <div class="stat-label">Total Kelas</div>
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-icon stat-icon-violet"><i class="ri-book-open-line"></i></div>
+                <div>
+                  <div class="stat-value">{{ computedTotalMateri }}</div>
                   <div class="stat-label">Total Materi</div>
                 </div>
               </div>
               <div class="stat-card">
-                <div class="stat-icon stat-icon-violet"><i class="ri-questionnaire-line"></i></div>
+                <div class="stat-icon stat-icon-teal"><i class="ri-questionnaire-line"></i></div>
                 <div>
-                  <div class="stat-value">{{ lmsStore.totalKuis }}</div>
+                  <div class="stat-value">{{ computedTotalKuis }}</div>
                   <div class="stat-label">Total Kuis</div>
-                </div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-icon stat-icon-teal"><i class="ri-file-list-3-line"></i></div>
-                <div>
-                  <div class="stat-value">{{ computedTotalSoal }}</div>
-                  <div class="stat-label">Total Soal</div>
                 </div>
               </div>
             </div>
@@ -297,7 +305,15 @@ export default {
               <div class="d-flex align-items-center gap-2">
                 <button @click="goCreate" class="btn btn-warning d-flex align-items-center gap-2">
                   <i class="ri-add-circle-line fs-16"></i>
-                  <span>Tambah Materi</span>
+                  <span>Tambah Kelas</span>
+                </button>
+                <button @click="goAddMateri" class="btn btn-info d-flex align-items-center gap-2">
+                  <i class="ri-add-circle-line fs-16"></i>
+                  <span>Add Materi</span>
+                </button>
+                <button @click="goAddQuiz" class="btn btn-success d-flex align-items-center gap-2">
+                  <i class="ri-add-circle-line fs-16"></i>
+                  <span>Add Soal/Quiz</span>
                 </button>
               </div>
             </div>
@@ -310,13 +326,13 @@ export default {
                     <th style="width:50px">No</th>
                     <th style="width:30%">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-book-2-line text-primary"></i><span>Judul Materi</span>
+                        <i class="ri-graduation-cap-line text-primary"></i><span>Nama Kelas</span>
                       </div>
                     </th>
-                    <th style="width:12%">Kategori</th>
                     <th style="width:30%">Deskripsi</th>
+                    <th style="width:10%" class="text-center">Status</th>
                     <th style="width:12%">Tanggal</th>
-                    <th class="text-center" style="width:100px">Aksi</th>
+                    <th class="text-center" style="width:160px">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -324,38 +340,44 @@ export default {
                     <td colspan="6" class="text-center py-5">
                       <div class="empty-state">
                         <div class="empty-icon-ring mb-3">
-                          <div class="empty-icon-inner"><i class="ri-book-open-line"></i></div>
+                          <div class="empty-icon-inner"><i class="ri-graduation-cap-line"></i></div>
                         </div>
-                        <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Materi</h6>
-                        <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Materi" untuk membuat materi baru</p>
+                        <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Kelas</h6>
+                        <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Kelas" untuk membuat kelas baru</p>
                       </div>
                     </td>
                   </tr>
-                  <tr v-for="(item, i) in displayData" :key="item.id" class="stakeholder-row">
+                  <tr v-for="(item, i) in displayData" :key="item.id ?? i" class="stakeholder-row">
                     <td class="align-middle text-center">
                       <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
                     <td class="align-middle">
                       <div class="d-flex align-items-center gap-3">
-                        <div class="company-avatar" :class="getAvatarClass(item.judul.charAt(0))">
-                          <span class="company-avatar-letter">{{ item.judul.charAt(0).toUpperCase() }}</span>
+                        <div class="company-avatar" :class="getAvatarClass(getAvatarLetter(item))">
+                          <span class="company-avatar-letter">{{ getAvatarLetter(item) }}</span>
                         </div>
                         <div class="company-name-wrap">
-                          <span class="company-name d-block">{{ item.judul }}</span>
+                          <span class="company-name d-block">{{ getKelasName(item) }}</span>
                         </div>
                       </div>
                     </td>
                     <td class="align-middle">
-                      <span class="badge-sektor" :class="getKategoriClass(item.kategori)">{{ item.kategori }}</span>
+                      <span class="text-muted fs-13" style="white-space:normal;max-width:300px;display:inline-block;">{{ getKelasDescription(item) || '-' }}</span>
                     </td>
-                    <td class="align-middle">
-                      <span class="text-muted fs-13" style="white-space:normal;max-width:300px;display:inline-block;">{{ item.deskripsi }}</span>
+                    <td class="align-middle text-center">
+                      <span class="badge-sektor" :class="getStatusClass(item.status || 'draft')">{{ item.status || 'Draft' }}</span>
                     </td>
                     <td class="align-middle">
                       <span class="text-muted fs-12">{{ formatDate(item.updated_at || item.created_at || '') }}</span>
                     </td>
                     <td class="align-middle text-center">
                       <div class="d-flex align-items-center justify-content-center gap-1">
+                        <button @click="goMateri(item.id)" class="btn btn-sm btn-icon btn-outline-info" title="Materi">
+                          <i class="ri-book-open-line fs-14"></i>
+                        </button>
+                        <button @click="goKuis(item.id)" class="btn btn-sm btn-icon btn-outline-warning" title="Kuis">
+                          <i class="ri-questionnaire-line fs-14"></i>
+                        </button>
                         <button @click="goEdit(item.id)" class="btn btn-sm btn-icon btn-outline-primary" title="Edit">
                           <i class="ri-edit-line fs-14"></i>
                         </button>
@@ -373,7 +395,7 @@ export default {
             <div v-if="filteredData.length > itemsPerPage" class="d-flex flex-wrap justify-content-between align-items-center mt-4 gap-3 pagination-container">
               <span class="text-muted fs-13">
                 Menampilkan {{ (currentPage - 1) * itemsPerPage + 1 }}–{{ Math.min(currentPage * itemsPerPage, filteredData.length) }}
-                dari {{ filteredData.length }} materi
+                dari {{ filteredData.length }} kelas
               </span>
               <nav>
                 <ul class="pagination mb-0 gap-1">
@@ -408,14 +430,14 @@ export default {
             <div class="d-flex align-items-center gap-3">
               <div class="kse-modal-icon-wrap"><i class="ri-delete-bin-line"></i></div>
               <div>
-                <div class="kse-modal-title">Hapus Materi</div>
-                <div class="kse-modal-sub">Tindakan ini tidak dapat dibatalkan</div>
+                <div class="kse-modal-title">Hapus Kelas</div>
+                <div class="kse-modal-sub">Semua materi dan kuis di kelas ini akan ikut terhapus</div>
               </div>
             </div>
             <button class="kse-modal-close" @click="showDeleteModal = false"><i class="ri-close-line"></i></button>
           </div>
           <div class="kse-modal-body">
-            <p class="mb-0 fs-14">Yakin ingin menghapus materi <strong>{{ deleteTarget?.judul }}</strong>?</p>
+            <p class="mb-0 fs-14">Yakin ingin menghapus kelas <strong>{{ getKelasName(deleteTarget) }}</strong>?</p>
           </div>
           <div class="kse-modal-footer">
             <button class="btn btn-light kse-modal-cancel" @click="showDeleteModal = false">Batal</button>

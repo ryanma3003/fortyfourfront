@@ -1,8 +1,9 @@
 <script lang="ts">
-import { ref, computed, onMounted, reactive } from "vue";
+import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import LmsEditor from "./LmsEditor.vue";
-import { useLmsStore, type QuizQuestion, type QuizOption } from "../../stores/lms";
+import { useLmsStore } from "../../stores/lms";
+import type { LmsSoal, LmsSoalOpsi } from "../../types/lms.types";
 import { useRouter, useRoute } from "vue-router";
 
 export default {
@@ -13,7 +14,8 @@ export default {
     const route = useRoute();
 
     const isEdit = computed(() => !!route.params.id);
-    const pageTitle = computed(() => (isEdit.value ? "Edit Quiz" : "Tambah Quiz"));
+    const pageTitle = computed(() => (isEdit.value ? "Edit Kuis" : "Tambah Kuis"));
+    const kelasId = computed(() => (route.query.kelasId as string) || history.state?.kelasId || '');
 
     const dataToPass = computed(() => ({
       title: { label: "LMS", path: "/lms/quiz" },
@@ -21,11 +23,15 @@ export default {
       activepage: pageTitle.value,
     }));
 
-    // Form state
+    const selectedKelas = ref<string | number>("");
+    const selectedMateri = ref<string | number | null>(null);
+    const availableMateri = ref<any[]>([]);
     const judul = ref("");
     const deskripsi = ref("");
-    const soalList = ref<QuizQuestion[]>([]);
+    const tipeKuis = ref<string>("per_materi");
+    const soalList = ref<any[]>([]);
     const formErrors = ref<Record<string, string>>({});
+    const isSaving = ref(false);
 
     // Toast
     const showToast = ref(false);
@@ -43,7 +49,7 @@ export default {
         ? crypto.randomUUID()
         : Date.now().toString(36) + Math.random().toString(36).slice(2);
 
-    const makeEmptyQuestion = (): QuizQuestion => ({
+    const makeEmptyQuestion = (): any => ({
       id: uid(),
       pertanyaan: "",
       tipe: "pilihan_ganda",
@@ -53,18 +59,63 @@ export default {
         { label: "C", text: "" },
         { label: "D", text: "" },
       ],
-      jawabanBenar: "A",
+      jawaban_benar: "A",
+      _isNew: true, // flag for new questions not yet saved
     });
 
-    onMounted(() => {
+    const fetchMateriForKelas = async (kid: string) => {
+      try {
+        await lmsStore.fetchMateri(kid);
+        availableMateri.value = lmsStore.materiList;
+      } catch (e: any) {
+        console.error("Failed to fetch materi for kelas");
+      }
+    };
+
+    const onKelasChange = async () => {
+      selectedMateri.value = null; // reset
+      if (selectedKelas.value) {
+        await fetchMateriForKelas(selectedKelas.value as string);
+      } else {
+        availableMateri.value = [];
+      }
+    };
+
+    onMounted(async () => {
+      try {
+        await lmsStore.fetchKelas();
+      } catch (e: any) {
+        console.error("Failed to load kelas:", e.message);
+      }
+
+      if (kelasId.value) {
+        selectedKelas.value = kelasId.value;
+        await fetchMateriForKelas(kelasId.value as string);
+      }
+
       if (isEdit.value) {
-        const quiz = lmsStore.getQuizById(route.params.id as string);
-        if (quiz) {
-          judul.value = quiz.judul;
-          deskripsi.value = quiz.deskripsi;
-          soalList.value = JSON.parse(JSON.stringify(quiz.soalList));
+        const kuisId = route.params.id as string;
+        const kuis = lmsStore.getKuisById(kuisId);
+        if (kuis) {
+          selectedKelas.value = kuis.id_kelas || selectedKelas.value;
+          if (selectedKelas.value) {
+            await fetchMateriForKelas(selectedKelas.value as string);
+          }
+          judul.value = kuis.judul;
+          deskripsi.value = kuis.deskripsi;
+          tipeKuis.value = kuis.tipe_kuis || 'per_materi';
+          selectedMateri.value = kuis.id_materi || null;
+
+          // Fetch soal from API
+          try {
+            await lmsStore.fetchSoal(kuisId);
+            soalList.value = JSON.parse(JSON.stringify(lmsStore.soalList));
+          } catch (e: any) {
+            // Fallback: use inline soal if available
+            soalList.value = JSON.parse(JSON.stringify(kuis.soal || []));
+          }
         } else {
-          showNotification("Quiz tidak ditemukan", "error");
+          showNotification("Kuis tidak ditemukan", "error");
           router.push("/lms/quiz");
         }
       }
@@ -74,29 +125,32 @@ export default {
       soalList.value.push(makeEmptyQuestion());
     };
 
-    const removeQuestion = (idx: number) => {
+    const removeQuestion = async (idx: number) => {
+      const soal = soalList.value[idx];
+      // If it's an existing soal (has real id and not new), delete from API
+      if (soal && !soal._isNew && soal.id) {
+        try {
+          await lmsStore.deleteSoal(soal.id);
+          showNotification("Soal berhasil dihapus!", "success");
+        } catch (e: any) {
+          showNotification(e.message || "Gagal menghapus soal", "error");
+          return;
+        }
+      }
       soalList.value.splice(idx, 1);
     };
 
     const onTipeChange = (idx: number) => {
-      const soal = soalList.value[idx];
-      if (soal.tipe === "essay") {
-        soal.opsi = [];
-        soal.jawabanBenar = "";
-      } else {
-        soal.opsi = [
-          { label: "A", text: "" },
-          { label: "B", text: "" },
-          { label: "C", text: "" },
-          { label: "D", text: "" },
-        ];
-        soal.jawabanBenar = "A";
-      }
+      // Logic removed since it's always pilihan_ganda
     };
 
     const validate = (): boolean => {
       formErrors.value = {};
-      if (!judul.value.trim()) formErrors.value.judul = "Judul quiz wajib diisi";
+      if (!selectedKelas.value) formErrors.value.selectedKelas = "Kelas wajib dipilih";
+      if (!judul.value.trim()) formErrors.value.judul = "Judul kuis wajib diisi";
+      if (tipeKuis.value === 'per_materi' && !selectedMateri.value) {
+        formErrors.value.selectedMateri = "Materi wajib dipilih untuk kuis per materi";
+      }
       if (soalList.value.length === 0)
         formErrors.value.soal = "Minimal harus ada 1 soal";
 
@@ -105,8 +159,10 @@ export default {
         if (!s.pertanyaan.trim() || s.pertanyaan === "<p><br></p>") {
           formErrors.value[`soal_${i}`] = `Pertanyaan soal #${i + 1} wajib diisi`;
         }
-        if (s.tipe === "pilihan_ganda") {
-          const emptyOpts = s.opsi.filter((o) => !o.text.trim());
+        if (s.tipe === "pilihan_ganda" || !s.tipe || s.tipe === 'essay') {
+          // Fallback force
+          s.tipe = "pilihan_ganda";
+          const emptyOpts = (s.opsi || []).filter((o: any) => !o.text.trim());
           if (emptyOpts.length > 0) {
             formErrors.value[`opsi_${i}`] = `Semua opsi soal #${i + 1} wajib diisi`;
           }
@@ -116,29 +172,80 @@ export default {
       return Object.keys(formErrors.value).length === 0;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
       if (!validate()) return;
 
-      if (isEdit.value) {
-        lmsStore.updateQuiz(route.params.id as string, {
+      isSaving.value = true;
+      try {
+        const kuisId = route.params.id as string;
+        
+        const kuisPayload = {
           judul: judul.value,
           deskripsi: deskripsi.value,
-          soalList: soalList.value,
-        });
-        showNotification("Quiz berhasil diperbarui!", "success");
-      } else {
-        lmsStore.createQuiz({
-          judul: judul.value,
-          deskripsi: deskripsi.value,
-          soalList: soalList.value,
-        });
-        showNotification("Quiz berhasil ditambahkan!", "success");
-      }
+          tipe_kuis: tipeKuis.value,
+          id_materi: tipeKuis.value === 'per_materi' ? selectedMateri.value : null,
+        };
 
-      setTimeout(() => router.push("/lms/quiz"), 600);
+        if (isEdit.value) {
+          // Update kuis data
+          await lmsStore.updateKuis(kuisId, kuisPayload);
+
+          // Process each soal: create new or update existing
+          let questionOrder = 1;
+          for (const soal of soalList.value) {
+            const soalPayload = {
+              pertanyaan: soal.pertanyaan,
+              tipe: soal.tipe,
+              opsi: soal.opsi,
+              jawaban_benar: soal.jawaban_benar,
+              urutan: questionOrder++,
+            };
+
+            if (soal._isNew) {
+              await lmsStore.createSoal(kuisId, soalPayload);
+            } else {
+              await lmsStore.updateSoal(soal.id, soalPayload);
+            }
+          }
+
+          showNotification("Kuis berhasil diperbarui!", "success");
+        } else {
+          const kid = selectedKelas.value;
+          if (!kid) {
+            showNotification("Kelas wajib dipilih", "error");
+            isSaving.value = false;
+            return;
+          }
+
+          // Create kuis
+          const newKuis = await lmsStore.createKuis(kid, kuisPayload);
+
+          // Add soal to the newly created kuis
+          if (newKuis) {
+            let questionOrder = 1;
+            for (const soal of soalList.value) {
+              await lmsStore.createSoal(newKuis.id, {
+                pertanyaan: soal.pertanyaan,
+                tipe: soal.tipe,
+                opsi: soal.opsi,
+                jawaban_benar: soal.jawaban_benar,
+                urutan: questionOrder++,
+              });
+            }
+          }
+
+          showNotification("Kuis berhasil ditambahkan!", "success");
+        }
+
+        setTimeout(() => router.push({ path: "/lms/quiz", state: { kelasId: selectedKelas.value } }), 600);
+      } catch (e: any) {
+        showNotification(e.message || "Gagal menyimpan kuis", "error");
+      } finally {
+        isSaving.value = false;
+      }
     };
 
-    const goBack = () => router.push("/lms/quiz");
+    const goBack = () => router.push({ path: "/lms/quiz", state: { kelasId: selectedKelas.value || kelasId.value } });
 
     // Expand/collapse for questions
     const expandedQuestions = ref<Set<number>>(new Set());
@@ -155,8 +262,14 @@ export default {
       dataToPass,
       isEdit,
       pageTitle,
+      selectedKelas,
+      selectedMateri,
+      availableMateri,
+      onKelasChange,
+      lmsStore,
       judul,
       deskripsi,
+      tipeKuis,
       soalList,
       formErrors,
       handleSubmit,
@@ -167,6 +280,7 @@ export default {
       showToast,
       toastMessage,
       toastType,
+      isSaving,
       toggleQuestion,
       isExpanded,
       expandedQuestions,
@@ -207,7 +321,7 @@ export default {
             </div>
             <div>
               <div class="card-title mb-0 text-white fw-bold header-card-title">{{ pageTitle }}</div>
-              <div class="header-subtitle mt-1">{{ isEdit ? 'Perbarui quiz dan soal' : 'Buat quiz baru dengan soal-soal' }}</div>
+              <div class="header-subtitle mt-1">{{ isEdit ? 'Perbarui kuis dan soal' : 'Buat kuis baru dengan soal-soal' }}</div>
             </div>
           </div>
         </div>
@@ -215,27 +329,92 @@ export default {
         <div class="card-body p-4">
           <form @submit.prevent="handleSubmit">
             <div class="row g-4">
-              <!-- Judul Quiz -->
-              <div class="col-md-6">
-                <label class="form-label fw-semibold">Judul Quiz <span class="text-danger">*</span></label>
+              <!-- Pilihan Kelas (BUAS) -->
+              <div class="col-12">
+                <div class="p-3 border rounded bg-light kse-kelas-selector" :class="{'border-danger': formErrors.selectedKelas}">
+                  <label class="form-label fw-bold text-primary mb-2 d-flex align-items-center gap-2">
+                    <i class="ri-graduation-cap-fill fs-18"></i> Pilih Kelas Pembelajaran <span class="text-danger">*</span>
+                  </label>
+                  <p class="text-muted fs-13 mb-3">Tentukan di kelas mana kuis ini akan ditempatkan.</p>
+                  
+                  <div class="position-relative">
+                    <select
+                      v-model="selectedKelas"
+                      @change="onKelasChange"
+                      class="form-select form-select-lg shadow-sm kse-buas-select"
+                      :class="{ 'is-invalid': formErrors.selectedKelas }"
+                      style="border-radius: 8px; font-weight: 500;"
+                    >
+                      <option value="" disabled>-- Silakan Pilih Kelas --</option>
+                      <option v-for="k in lmsStore.kelasList" :key="k.id" :value="k.id">
+                        📝 {{ k.nama_kelas }}
+                      </option>
+                    </select>
+                    <div v-if="formErrors.selectedKelas" class="invalid-feedback d-block fw-medium mt-2">
+                      <i class="ri-error-warning-line me-1"></i> {{ formErrors.selectedKelas }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pilihan Materi -->
+              <div v-show="tipeKuis === 'per_materi'" class="col-12">
+                <div class="p-3 border rounded bg-light kse-kelas-selector" :class="{'border-danger': formErrors.selectedMateri}">
+                  <label class="form-label fw-bold text-info mb-2 d-flex align-items-center gap-2">
+                    <i class="ri-book-open-fill fs-18"></i> Pilih Materi Pembelajaran <span class="text-danger">*</span>
+                  </label>
+                  <p class="text-muted fs-13 mb-3">Kuis 'per materi' wajib menetapkan modul materi spesifik.</p>
+                  
+                  <div class="position-relative">
+                    <select
+                      v-model="selectedMateri"
+                      class="form-select shadow-sm"
+                      :class="{ 'is-invalid': formErrors.selectedMateri }"
+                      style="border-radius: 8px;"
+                      :disabled="!selectedKelas"
+                    >
+                      <option :value="null" disabled>-- {{ selectedKelas ? 'Silakan Pilih Materi' : 'Pilih Kelas Terlebih Dahulu' }} --</option>
+                      <option v-for="m in availableMateri" :key="m.id" :value="m.id">
+                        📄 {{ m.judul }}
+                      </option>
+                    </select>
+                    <div v-if="formErrors.selectedMateri" class="invalid-feedback d-block fw-medium mt-2">
+                      <i class="ri-error-warning-line me-1"></i> {{ formErrors.selectedMateri }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Judul Kuis -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Judul Kuis <span class="text-danger">*</span></label>
                 <input
                   v-model="judul"
                   type="text"
                   class="form-control kse-modal-input"
                   :class="{ 'is-invalid': formErrors.judul }"
-                  placeholder="Masukkan judul quiz..."
+                  placeholder="Masukkan judul kuis..."
                 />
                 <div v-if="formErrors.judul" class="invalid-feedback">{{ formErrors.judul }}</div>
               </div>
 
+              <!-- Tipe Kuis -->
+              <div class="col-md-3">
+                <label class="form-label fw-semibold">Tipe Kuis</label>
+                <select v-model="tipeKuis" class="form-select kse-modal-input">
+                  <option value="per_materi">Per Materi</option>
+                  <option value="final">Final</option>
+                </select>
+              </div>
+
               <!-- Deskripsi -->
-              <div class="col-md-6">
+              <div class="col-md-5">
                 <label class="form-label fw-semibold">Deskripsi</label>
                 <input
                   v-model="deskripsi"
                   type="text"
                   class="form-control kse-modal-input"
-                  placeholder="Deskripsi singkat quiz..."
+                  placeholder="Deskripsi singkat kuis..."
                 />
               </div>
 
@@ -265,8 +444,8 @@ export default {
                         <div class="question-preview" v-if="soal.pertanyaan && soal.pertanyaan !== '<p><br></p>'" v-html="soal.pertanyaan"></div>
                         <span v-else class="text-muted fs-13 fst-italic">Belum ada pertanyaan...</span>
                       </div>
-                      <span class="badge rounded-pill px-3 fs-11" :class="soal.tipe === 'pilihan_ganda' ? 'bg-info-transparent' : 'bg-warning-transparent'">
-                        {{ soal.tipe === 'pilihan_ganda' ? 'Pilihan Ganda' : 'Essay' }}
+                      <span class="badge rounded-pill px-3 fs-11 bg-info-transparent">
+                        Pilihan Ganda
                       </span>
                       <i class="ri-arrow-down-s-line fs-18 text-muted transition-icon" :class="{ 'rotate-180': isExpanded(idx) }"></i>
                     </div>
@@ -275,24 +454,11 @@ export default {
                   <!-- Question Body (expandable) -->
                   <transition name="slide-down">
                     <div v-show="isExpanded(idx)" class="question-body">
-                      <!-- Tipe Soal -->
-                      <div class="row g-3 mb-3">
-                        <div class="col-md-4">
-                          <label class="form-label fw-semibold fs-13">Tipe Soal</label>
-                          <select
-                            v-model="soal.tipe"
-                            class="form-select kse-modal-input"
-                            @change="onTipeChange(idx)"
-                          >
-                            <option value="pilihan_ganda">Pilihan Ganda</option>
-                            <option value="essay">Essay</option>
-                          </select>
-                        </div>
-                        <div class="col-md-8 d-flex align-items-end">
-                          <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1" @click="removeQuestion(idx)">
-                            <i class="ri-delete-bin-line"></i> Hapus Soal
-                          </button>
-                        </div>
+                      <!-- Soal Controls -->
+                      <div class="d-flex justify-content-end mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1" @click="removeQuestion(idx)">
+                          <i class="ri-delete-bin-line"></i> Hapus Soal
+                        </button>
                       </div>
 
                       <!-- Pertanyaan (WYSIWYG) -->
@@ -309,13 +475,13 @@ export default {
                       </div>
 
                       <!-- Opsi (Pilihan Ganda) -->
-                      <div v-if="soal.tipe === 'pilihan_ganda'">
+                      <div>
                         <label class="form-label fw-semibold fs-13">Opsi Jawaban</label>
                         <div v-if="formErrors[`opsi_${idx}`]" class="text-danger fs-12 mb-2">{{ formErrors[`opsi_${idx}`] }}</div>
                         <div class="row g-2">
                           <div v-for="opsi in soal.opsi" :key="opsi.label" class="col-md-6">
                             <div class="input-group">
-                              <span class="input-group-text option-label" :class="{ 'option-correct': soal.jawabanBenar === opsi.label }">
+                              <span class="input-group-text option-label" :class="{ 'option-correct': soal.jawaban_benar === opsi.label }">
                                 {{ opsi.label }}
                               </span>
                               <input
@@ -336,20 +502,15 @@ export default {
                               :key="opsi.label"
                               type="button"
                               class="btn btn-sm answer-btn"
-                              :class="soal.jawabanBenar === opsi.label ? 'btn-success' : 'btn-outline-secondary'"
-                              @click="soal.jawabanBenar = opsi.label"
+                              :class="soal.jawaban_benar === opsi.label ? 'btn-success' : 'btn-outline-secondary'"
+                              @click="soal.jawaban_benar = opsi.label"
                             >
                               {{ opsi.label }}
                             </button>
                           </div>
                         </div>
                       </div>
-
-                      <!-- Essay hint -->
-                      <div v-else class="alert alert-info-transparent py-2 fs-13 mb-0">
-                        <i class="ri-information-line me-1"></i>Soal essay tidak memerlukan opsi jawaban. Peserta akan menjawab dengan teks bebas.
                       </div>
-                    </div>
                   </transition>
                 </div>
 
@@ -370,9 +531,10 @@ export default {
                   <button type="button" class="btn btn-light px-4" @click="goBack">
                     <i class="ri-close-line me-1"></i>Batal
                   </button>
-                  <button type="submit" class="btn btn-primary px-4 d-flex align-items-center gap-2">
-                    <i :class="isEdit ? 'ri-save-line' : 'ri-add-circle-line'"></i>
-                    <span>{{ isEdit ? 'Simpan Perubahan' : 'Tambah Quiz' }}</span>
+                  <button type="submit" class="btn btn-primary px-4 d-flex align-items-center gap-2" :disabled="isSaving">
+                    <span v-if="isSaving" class="spinner-border spinner-border-sm"></span>
+                    <i v-else :class="isEdit ? 'ri-save-line' : 'ri-add-circle-line'"></i>
+                    <span>{{ isEdit ? 'Simpan Perubahan' : 'Tambah Kuis' }}</span>
                   </button>
                 </div>
               </div>

@@ -100,6 +100,21 @@ const routes: RouteRecordRaw[] = [
             },
             // LMS Routes
             {
+              path: 'lms/kelas',
+              name: 'LMS Kelas',
+              component: () => import("../components/lms/lms-kelas.vue"),
+            },
+            {
+              path: 'lms/kelas/create',
+              name: 'LMS Kelas Create',
+              component: () => import("../components/lms/lms-kelas-form.vue"),
+            },
+            {
+              path: 'lms/kelas/edit/:id',
+              name: 'LMS Kelas Edit',
+              component: () => import("../components/lms/lms-kelas-form.vue"),
+            },
+            {
               path: 'lms/materi',
               name: 'LMS Materi',
               component: () => import("../components/lms/lms-materi.vue"),

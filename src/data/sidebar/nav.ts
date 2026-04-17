@@ -65,11 +65,7 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/roles", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
-    icon: Svgicons.LMSicon, title: "LMS", type: "sub", active: false, dirchange: false, selected: false, requiredRole: "admin",
-    children: [
-      { path: "/lms/materi", title: "Materi", type: "link", active: false, selected: false },
-      { path: "/lms/quiz", title: "Soal / Quiz", type: "link", active: false, selected: false },
-    ]
+    path: "/lms/kelas", icon: Svgicons.LMSicon, title: "LMS", type: "link", active: false, dirchange: false, selected: false, requiredRole: "admin"
   },
 ]
 

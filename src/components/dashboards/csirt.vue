@@ -165,6 +165,11 @@ export default {
             loadCSIRTs();
         });
 
+        // Debug: log current CSIRT object when it changes to help trace missing files
+        watch(currentCsirt, (val) => {
+            console.debug('[csirt.vue] currentCsirt changed:', val);
+        }, { immediate: true });
+
         const dataToPass = computed(() => {
             const from = String(route.query.from || '');
 
