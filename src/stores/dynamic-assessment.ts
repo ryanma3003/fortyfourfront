@@ -7,6 +7,7 @@ import type {
   AnswerMap, Answer, AssessmentProgress, RespondentProfile 
 } from '@/types/assessment.types';
 import { useIkasStore } from '@/stores/ikas';
+import { useStakeholdersStore } from '@/stores/stakeholders';
 
 const STORAGE_KEYS = {
     RESPONDENT_PROFILES: 'dynamic_respondent_profiles_map',
@@ -231,11 +232,14 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 
                 const results = await Promise.all(apiPromises);
                 
+                const domainTypesByIndex = ['identifikasi', 'proteksi', 'deteksi', 'gulih'];
                 let allQuestions: any[] = [];
                 results.forEach((raw, idx) => {
                     if (raw) {
                         const list = Array.isArray(raw) ? raw : (raw?.data || []);
-                        allQuestions = allQuestions.concat(list);
+                        // Tag each question with which API endpoint it came from
+                        const tagged = list.map((q: any) => ({ ...q, _sourceType: domainTypesByIndex[idx] }));
+                        allQuestions = allQuestions.concat(tagged);
                     }
                 });
 
@@ -297,17 +301,24 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                             5: q.index5 || q.Index5 || 'Optimalisasi berkelanjutan'
                         };
 
+                        // Use _sourceType from fetch tagging for reliable domain key
+                        const sourceType: string = q._sourceType || (
+                            domainNameLower.includes('identifikasi') ? 'identifikasi'
+                            : domainNameLower.includes('proteksi') ? 'proteksi'
+                            : domainNameLower.includes('deteksi') ? 'deteksi'
+                            : 'gulih'
+                        );
+                        const numericId = String(q.id || q.ID);
+                        // Use composite ID to avoid collisions across domains
+                        // (e.g. pertanyaan-identifikasi id=1 vs pertanyaan-proteksi id=1)
+                        const compositeId = `${sourceType}_${numericId}`;
+
                         qList.push({
-                            id: String(q.id || q.ID),
+                            id: compositeId,
+                            originalId: numericId,
                             text: skName + (qIdent ? ` - ${qIdent}` : ''),
                             kategoriId: kId,
-                            domainKey: domainNameLower.includes('identifikasi')
-                                ? 'identifikasi'
-                                : domainNameLower.includes('proteksi')
-                                    ? 'proteksi'
-                                    : domainNameLower.includes('deteksi')
-                                        ? 'deteksi'
-                                        : 'gulih',
+                            domainKey: sourceType as any,
                             scope: pName,
                             indexDescriptions: idxDesc
                         });
@@ -382,9 +393,31 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         async syncAnswerToBackend(stakeholderSlug: string, questionId: string, index: number) {
+            // Get perusahaan_id from stakeholders store
+            const stakeholdersStore = useStakeholdersStore();
+            const stakeholder = stakeholdersStore.getStakeholderBySlug(stakeholderSlug);
+            
+            // Backend also requires ikas_id (Assessment record ID)
             const ikasStore = useIkasStore();
             const backendIkasId = ikasStore.getBackendIkasId(stakeholderSlug);
-            if (!backendIkasId) return;
+
+            if (!stakeholder?.id) {
+                console.warn('[DynamicAssessment] No stakeholder found for slug:', stakeholderSlug);
+                return;
+            }
+
+            if (!backendIkasId) {
+                console.error('[DynamicAssessment] Missing ikas_id for stakeholder:', stakeholderSlug);
+                // Attempt to fetch if missing (happens on refresh)
+                await ikasStore.fetchFromBackend(stakeholderSlug, stakeholder.id);
+            }
+            
+            // Re-fetch after possible hydrate
+            const finalIkasId = backendIkasId || ikasStore.getBackendIkasId(stakeholderSlug);
+            if (!finalIkasId) {
+                console.error('[DynamicAssessment] ikas_id is still missing. Cannot sync answer.');
+                return;
+            }
 
             const question = this.domains
                 .flatMap(domain => domain.categories)
@@ -412,11 +445,24 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             };
             const pertanyaanField = pertanyaanFieldMap[domainKey] || 'id_pertanyaan';
 
+            // Use the original numeric ID (not the composite ID) for the backend payload
+            const numericId = question.originalId ? Number(question.originalId) : Number(questionId.split('_').pop());
+
+            // Each jawaban endpoint expects its own domain-specific field name
+            const jawabanFieldMap: Record<string, string> = {
+                identifikasi: 'jawaban_identifikasi',
+                proteksi: 'jawaban_proteksi',
+                deteksi: 'jawaban_deteksi',
+                gulih: 'jawaban_gulih',
+            };
+            const jawabanField = jawabanFieldMap[domainKey] || 'jawaban_identifikasi';
+
+            // Build the payload — backend needs BOTH ikas_id and perusahaan_id
             const payload: Record<string, any> = {
-                ikas_id: backendIkasId,
-                [pertanyaanField]: Number(questionId),
-                jawaban: index,
-                nilai: index,
+                ikas_id: finalIkasId,
+                perusahaan_id: stakeholder.id,
+                [pertanyaanField]: numericId,
+                [jawabanField]: index,
             };
 
             try {
@@ -444,18 +490,16 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             }
         },
 
-        async hydrateAnswersFromBackend(stakeholderSlug: string, ikasId: string) {
+        async hydrateAnswersFromBackend(stakeholderSlug: string, perusahaanId: string) {
             try {
                 const results = await Promise.all([
-                    ikasService.getJawabanIdentifikasi().catch(() => []),
-                    ikasService.getJawabanProteksi().catch(() => []),
-                    ikasService.getJawabanDeteksi().catch(() => []),
-                    ikasService.getJawabanGulih().catch(() => []),
+                    ikasService.getJawabanIdentifikasi(perusahaanId).catch(() => []),
+                    ikasService.getJawabanProteksi(perusahaanId).catch(() => []),
+                    ikasService.getJawabanDeteksi(perusahaanId).catch(() => []),
+                    ikasService.getJawabanGulih(perusahaanId).catch(() => []),
                 ]);
 
-                const answers = results
-                    .flatMap((result: any) => Array.isArray(result) ? result : (result?.data || []))
-                    .filter((item: any) => String(item.id_ikas || item.ikas_id || item.ikas?.id || '') === String(ikasId));
+                // Process each result set separately to preserve domain type info
 
                 if (!this.answersMap[stakeholderSlug]) {
                     this.answersMap[stakeholderSlug] = {};
@@ -464,23 +508,39 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     this.syncedBackendAnswersMap[stakeholderSlug] = {};
                 }
 
-                answers.forEach((item: any) => {
-                    const questionId = String(
-                        item.pertanyaan_identifikasi_id || item.pertanyaan_proteksi_id ||
-                        item.pertanyaan_deteksi_id || item.pertanyaan_gulih_id ||
-                        item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || ''
-                    );
-                    if (!questionId) return;
+                // Tag each answer with its source domain type for composite ID matching
+                const domainTypes = ['identifikasi', 'proteksi', 'deteksi', 'gulih'];
+                results.forEach((rawResult: any, domainIdx: number) => {
+                    const items = Array.isArray(rawResult) ? rawResult : (rawResult?.data || []);
+                    const domainType = domainTypes[domainIdx];
 
-                    const indexValue = Number(item.jawaban ?? item.nilai ?? item.index ?? 0);
-                    this.answersMap[stakeholderSlug][questionId] = {
-                        questionId,
-                        index: indexValue,
-                        updatedAt: Date.now(),
-                        backendSyncedAt: Date.now(),
-                        backendSyncError: null,
-                    };
-                    this.syncedBackendAnswersMap[stakeholderSlug][questionId] = indexValue;
+                    items
+                        .filter((item: any) => {
+                            const itemPerusahaanId = String(item.perusahaan_id || item.id_perusahaan || item.perusahaan?.id || '');
+                            const itemIkasId = String(item.ikas_id || item.id_ikas || item.ikas?.id || '');
+                            return itemPerusahaanId === String(perusahaanId) || itemIkasId === String(perusahaanId);
+                        })
+                        .forEach((item: any) => {
+                            const numericId = String(
+                                item.pertanyaan_identifikasi_id || item.pertanyaan_proteksi_id ||
+                                item.pertanyaan_deteksi_id || item.pertanyaan_gulih_id ||
+                                item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || ''
+                            );
+                            if (!numericId) return;
+
+                            // Build composite ID that matches the question store
+                            const compositeId = `${domainType}_${numericId}`;
+                            const indexValue = Number(item.jawaban ?? item.jawaban_identifikasi ?? item.nilai ?? item.index ?? 0);
+
+                            this.answersMap[stakeholderSlug][compositeId] = {
+                                questionId: compositeId,
+                                index: indexValue,
+                                updatedAt: Date.now(),
+                                backendSyncedAt: Date.now(),
+                                backendSyncError: null,
+                            };
+                            this.syncedBackendAnswersMap[stakeholderSlug][compositeId] = indexValue;
+                        });
                 });
 
                 this.syncToIkas(stakeholderSlug);

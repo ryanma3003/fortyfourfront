@@ -1,5 +1,6 @@
 import { api } from '@/config/api';
 import type { Stakeholder, CreateStakeholderPayload, CreateStakeholderResponse } from '@/types/stakeholders.types';
+import { useNotificationStore } from '@/stores/notifications';
 
 /**
  * Stakeholders Service
@@ -48,6 +49,7 @@ export const stakeholdersService = {
      * Update a stakeholder
      */
     async update(id: string, data: Partial<CreateStakeholderPayload>): Promise<Stakeholder> {
+        useNotificationStore().trackSelfAction('stakeholder', id);
         const formData = new FormData();
         if (data.nama_perusahaan) formData.append('nama_perusahaan', data.nama_perusahaan);
         if (data.id_sub_sektor) formData.append('id_sub_sektor', data.id_sub_sektor);
@@ -65,6 +67,7 @@ export const stakeholdersService = {
      * Delete a stakeholder
      */
     async delete(id: string): Promise<void> {
+        useNotificationStore().trackSelfAction('stakeholder', id);
         return api.delete(`/api/perusahaan/${id}`);
     }
 };

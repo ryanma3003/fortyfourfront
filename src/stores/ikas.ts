@@ -767,6 +767,8 @@ export const useIkasStore = defineStore('ikas', {
         const iden = this.ikasDataMap[slug].identifikasi;
 
         const payload = {
+          ikas_id: this.getBackendIkasId(slug),
+          id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_identifikasi: Number(iden.nilai_identifikasi) || 0,
           nilai_subdomain1: Number(iden.nilai_subdomain1) || 0,
           nilai_subdomain2: Number(iden.nilai_subdomain2) || 0,
@@ -793,6 +795,8 @@ export const useIkasStore = defineStore('ikas', {
         const prot = this.ikasDataMap[slug].proteksi;
 
         const payload = {
+          ikas_id: this.getBackendIkasId(slug),
+          id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_proteksi: Number(prot.nilai_proteksi) || 0,
           nilai_subdomain1: Number(prot.nilai_subdomain1) || 0,
           nilai_subdomain2: Number(prot.nilai_subdomain2) || 0,
@@ -820,6 +824,8 @@ export const useIkasStore = defineStore('ikas', {
         const det = this.ikasDataMap[slug].deteksi;
 
         const payload = {
+          ikas_id: this.getBackendIkasId(slug),
+          id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_deteksi: Number(det.nilai_deteksi) || 0,
           nilai_subdomain1: Number(det.nilai_subdomain1) || 0,
           nilai_subdomain2: Number(det.nilai_subdomain2) || 0,
@@ -844,6 +850,8 @@ export const useIkasStore = defineStore('ikas', {
         const tang = this.ikasDataMap[slug].tanggulih;
 
         const payload = {
+          ikas_id: this.getBackendIkasId(slug),
+          id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_gulih: Number(tang.nilai_tanggulih) || 0,
           nilai_subdomain1: Number(tang.nilai_subdomain1) || 0,
           nilai_subdomain2: Number(tang.nilai_subdomain2) || 0,
@@ -883,38 +891,44 @@ export const useIkasStore = defineStore('ikas', {
             domainResp = await ikasService.createDomain({ nama_domain: domain.name });
           } catch {
             // Domain may already exist, try fetching
-            const existing = await ikasService.getDomains();
-            domainResp = existing.find(d => d.nama_domain === domain.name);
+            const res = await ikasService.getDomains();
+            const existing = Array.isArray(res) ? res : (res?.data || []);
+            domainResp = existing.find((d: any) => d.nama_domain === domain.name);
             if (!domainResp) {
               console.warn(`[IKAS Store] Could not create/find domain: ${domain.name}`);
               continue;
             }
           }
+          
+          const domainId = domainResp.id || domainResp.data?.id;
 
-          this.domainIds[domain.name] = domainResp.id;
+          this.domainIds[domain.name] = domainId;
 
           // 2. Create kategoris per domain
           for (const category of domain.categories) {
             let kategoriResp;
             try {
               kategoriResp = await ikasService.createKategori({
-                domain_id: domainResp.id,
+                domain_id: domainId,
                 nama_kategori: category.name,
               });
             } catch {
-              console.warn(`[IKAS Store] Could not create kategori: ${category.name}`);
+              console.warn(`[IKAS Store] Could not create kategori (might exist): ${category.name}`);
               continue;
             }
+
+            const kategoriId = kategoriResp.id || kategoriResp.data?.id;
+            if (!kategoriId) continue;
 
             // 3. Create sub-kategoris per kategori
             for (const subCategory of category.subCategories) {
               try {
                 await ikasService.createSubKategori({
-                  kategori_id: kategoriResp.id,
+                  kategori_id: kategoriId,
                   nama_sub_kategori: subCategory.name,
                 });
               } catch {
-                console.warn(`[IKAS Store] Could not create sub-kategori: ${subCategory.name}`);
+                console.warn(`[IKAS Store] Could not create sub-kategori (might exist): ${subCategory.name}`);
               }
             }
           }

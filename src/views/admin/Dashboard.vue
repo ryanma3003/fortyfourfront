@@ -25,6 +25,7 @@
     import { useIkasStore } from "@/stores/ikas";
     import { useCsirtStore } from "@/stores/csirt";
     import { useDashboardFilterStore } from "@/stores/dashboardFilter";
+    import { useNotificationStore } from "@/stores/notifications";
 
     // Services
     import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
@@ -38,6 +39,7 @@
     const ikasStore = useIkasStore();
     const csirtStore = useCsirtStore();
     const filterStore = useDashboardFilterStore();
+    const notifStore = useNotificationStore();
 
     // API Data
     const sektorList = ref([]);
@@ -956,15 +958,20 @@
             });
         } else if (context.type === 'csirt' || context.type === 'Total CSIRT') {
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'csirt_nama', 'csirt_status', 'created_at'];
-            drillDownItems.value = baseCsirts.value.map(c => ({
-                nama_perusahaan: c.perusahaan?.nama_perusahaan || c.nama_csirt || '-',
-                sektor: getCsirtSektorName(c),
-                sub_sektor: getCsirtSubSektorName(c),
-                csirt_nama: c.nama_csirt || '-',
-                csirt_status: csirtStore.hasCompleteCsirt(c.id_perusahaan || c.perusahaan?.id) ? '✓ Lengkap' : '⚠ Belum Lengkap',
-                created_at: c.perusahaan?.created_at ? new Date(c.perusahaan.created_at).toLocaleDateString('id-ID') : '-',
-                slug: c.perusahaan?.slug,
-            }));
+            drillDownItems.value = baseCsirts.value.map(c => {
+                const stakeholder = stakeholdersStore.allStakeholders.find(s => 
+                    String(s.id) === String(c.id_perusahaan || c.perusahaan?.id)
+                );
+                return {
+                    nama_perusahaan: stakeholder?.nama_perusahaan || c.perusahaan?.nama_perusahaan || c.nama_csirt || '-',
+                    sektor: stakeholder ? getStakeholderSektorName(stakeholder) : getCsirtSektorName(c),
+                    sub_sektor: stakeholder ? getStakeholderSubSektorName(stakeholder) : getCsirtSubSektorName(c),
+                    csirt_nama: c.nama_csirt || '-',
+                    csirt_status: csirtStore.hasCompleteCsirt(c.id_perusahaan || c.perusahaan?.id) ? '✓ Lengkap' : '⚠ Belum Lengkap',
+                    created_at: c.perusahaan?.created_at ? new Date(c.perusahaan.created_at).toLocaleDateString('id-ID') : '-',
+                    slug: stakeholder?.slug || c.perusahaan?.slug || c.id,
+                };
+            });
         } else if (context.type === 'Total IKAS') {
             // Show all stakeholders that have IKAS data
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'ikas_score', 'ikas_kategori'];
@@ -987,14 +994,16 @@
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'nama_se', 'kategori_se'];
             drillDownItems.value = baseSeList.value.map(se => {
                 const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-                const perusahaan = csirt?.perusahaan;
+                const stakeholder = stakeholdersStore.allStakeholders.find(s => 
+                    String(s.id) === String(csirt?.id_perusahaan || csirt?.perusahaan?.id)
+                );
                 return {
-                    nama_perusahaan: perusahaan?.nama_perusahaan || '-',
-                    sektor: csirt ? getCsirtSektorName(csirt) : '-',
-                    sub_sektor: csirt ? getCsirtSubSektorName(csirt) : '-',
+                    nama_perusahaan: stakeholder?.nama_perusahaan || stakeholder?.nama || csirt?.perusahaan?.nama_perusahaan || '-',
+                    sektor: stakeholder ? getStakeholderSektorName(stakeholder) : (csirt ? getCsirtSektorName(csirt) : '-'),
+                    sub_sektor: stakeholder ? getStakeholderSubSektorName(stakeholder) : (csirt ? getCsirtSubSektorName(csirt) : '-'),
                     nama_se: se.nama_se || se.nama || '-',
                     kategori_se: se.kategori_se || '-',
-                    slug: perusahaan?.slug,
+                    slug: stakeholder?.slug || csirt?.perusahaan?.slug,
                 };
             });
         } else if (context.type === 'Cakupan CSIRT') {
@@ -1097,32 +1106,74 @@
                 };
             }).filter(item => item.periode !== 'Older'); // Only show this month and last month
         } else if (context.type === 'Update Terakhir') {
-            // Show all stakeholders sorted by last update time
+            // Pre-calculate mappings to map any event to a stakeholder ID
+            const csirtToSt = new Map();
+            csirtStore.csirts.forEach(c => {
+                csirtToSt.set(String(c.id), String(c.id_perusahaan || c.perusahaan?.id));
+            });
+            const sdmToSt = new Map();
+            csirtStore.sdmList.forEach(s => {
+                const csirtId = String(s.id_csirt || s.csirt?.id);
+                if (csirtToSt.has(csirtId)) sdmToSt.set(String(s.id), csirtToSt.get(csirtId));
+            });
+            const seToSt = new Map();
+            csirtStore.seList.forEach(s => {
+                const csirtId = String(s.id_csirt || s.csirt?.id);
+                if (csirtToSt.has(csirtId)) seToSt.set(String(s.id), csirtToSt.get(csirtId));
+            });
+            const ikasToSt = new Map();
+            for (const [slug, id] of Object.entries(ikasStore.backendIkasIds)) {
+                if (id) {
+                    const st = all.find(stakeholder => stakeholder.slug === slug);
+                    if (st) ikasToSt.set(String(id), String(st.id));
+                }
+            }
+
+            // Find the latest timestamp and action for each stakeholder
+            const stLatestUpdate = new Map(); // st_id -> timestamp string
+            const stLatestAction = new Map(); // st_id -> label
+            
+            // Events are already sorted descending
+            for (const event of notifStore.events) {
+                let stId = null;
+                if (event.entity === 'stakeholder') stId = String(event.entity_id);
+                else if (event.entity === 'csirt') stId = csirtToSt.get(String(event.entity_id));
+                else if (event.entity === 'sdm_csirt') stId = sdmToSt.get(String(event.entity_id));
+                else if (event.entity === 'se_csirt') stId = seToSt.get(String(event.entity_id));
+                else if (event.entity === 'ikas') stId = ikasToSt.get(String(event.entity_id));
+
+                if (stId && !stLatestUpdate.has(stId)) {
+                    stLatestUpdate.set(stId, event.timestamp);
+                    const verbMap = { 'created': 'Penambahan', 'updated': 'Perubahan', 'deleted': 'Penghapusan' };
+                    const entityMap = { 'stakeholder': 'Stakeholder', 'csirt': 'CSIRT', 'sdm_csirt': 'SDM CSIRT', 'se_csirt': 'SE CSIRT', 'ikas': 'IKAS', 'user': 'Pengguna' };
+                    stLatestAction.set(stId, `${verbMap[event.type] || 'Update'} ${entityMap[event.entity] || event.entity}`);
+                }
+            }
+
+            // Show all stakeholders sorted by actual last update time across all related entities
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'updated_at', 'status_data'];
             drillDownItems.value = all.map(s => {
-                const lastUpdate = s.updated_at || s.created_at;
-                const hasCsirt = csirtStore.hasCompleteCsirt(s.id);
-                const ikasData = ikasStore.ikasDataMap[s.slug];
-                const hasIkas = ikasData && ikasData.total_rata_rata && ikasData.total_rata_rata !== 'NA' && ikasData.total_rata_rata !== 0;
+                const sId = String(s.id);
+                let lastUpdate = stLatestUpdate.get(sId);
+                let actionLabel = stLatestAction.get(sId);
                 
-                let statusData = [];
-                if (hasCsirt) statusData.push('CSIRT');
-                if (hasIkas) statusData.push('IKAS');
-                
+                // Fallback to their updated_at if no events were found
+                if (!lastUpdate) {
+                    lastUpdate = s.updated_at || s.created_at;
+                    actionLabel = 'Data Stakeholder';
+                }
+
                 return {
                     nama_perusahaan: s.nama_perusahaan || s.nama || '-',
                     sektor: getStakeholderSektorName(s),
                     sub_sektor: getStakeholderSubSektorName(s),
-                    updated_at: lastUpdate ? new Date(lastUpdate).toLocaleDateString('id-ID') : '-',
-                    status_data: statusData.length > 0 ? statusData.join(', ') : 'Belum ada',
+                    updated_at: lastUpdate ? new Date(lastUpdate).toLocaleString('id-ID', {day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '-',
+                    _rawTimestamp: lastUpdate ? new Date(lastUpdate).getTime() : 0,
+                    status_data: actionLabel,
                     slug: s.slug,
                 };
-            }).sort((a, b) => {
-                // Sort by date descending (most recent first)
-                const dateA = a.updated_at ? new Date(a.updated_at) : new Date(0);
-                const dateB = b.updated_at ? new Date(b.updated_at) : new Date(0);
-                return dateB.getTime() - dateA.getTime();
-            });
+            }).sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+
         } else {
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'created_at'];
             drillDownItems.value = all.slice(0, 50).map(s => ({
@@ -1181,7 +1232,16 @@
     function handleDrillDownNavigate(item) {
         drillDownVisible.value = false;
         if (item && item.slug) {
-            router.push(`/stakeholders/${item.slug}`);
+            const title = drillDownTitle.value.toLowerCase();
+            if (title.includes('kse') || title.includes('sistem elektronik')) {
+                router.push(`/kse?slug=${item.slug}`);
+            } else if (title.includes('ikas')) {
+                router.push(`/ikas?slug=${item.slug}`);
+            } else if (title.includes('csirt')) {
+                router.push(`/csirt/${item.slug}`);
+            } else {
+                router.push(`/stakeholders/${item.slug}`);
+            }
         } else {
             router.push('/stakeholders');
         }

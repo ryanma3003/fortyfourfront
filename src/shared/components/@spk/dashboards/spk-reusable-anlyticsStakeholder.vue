@@ -30,13 +30,9 @@ const handleResiko = () => {
   }
 };
 const handleCsirt = () => {
-  if (props.csirtId) {
-    router.push({
-      path: `/csirt/${props.csirtId}`,
-      query: props.stakeholderSlug ? { stakeholder: props.stakeholderSlug } : undefined,
-    });
-  } else if (props.stakeholderSlug) {
-    router.push({ path: '/csirt', query: { stakeholder: props.stakeholderSlug } });
+  const routeParam = props.stakeholderSlug || props.csirtId;
+  if (routeParam) {
+    router.push(`/csirt/${routeParam}`);
   } else {
     router.push("/csirt");
   }

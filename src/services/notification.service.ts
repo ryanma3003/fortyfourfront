@@ -1,26 +1,38 @@
 import { config } from '@/config/env';
 import { api } from '@/config/api';
-import type { ServerEvent, NotificationStats } from '@/types/notification.types';
+import type { NotificationStats } from '@/types/notification.types';
 
 /**
  * Notification Service
  *
- * 1. SSE connection to /api/events for real-time event streaming.
- * 2. REST calls for notification history and management:
- *    - GET    /api/notifications           → fetch all notifications
- *    - DELETE /api/notifications           → delete all notifications
- *    - PATCH  /api/notifications/read-all  → mark all as read
- *    - DELETE /api/notifications/{id}      → delete a notification
- *    - PATCH  /api/notifications/{id}/read → mark as read
+ * Handles SSE connection and REST API calls for persistent notifications.
+ *
+ * SSE Endpoints:
+ *   GET  /api/events       → Server-Sent Events connection (real-time)
+ *   GET  /api/events/stats  → SSE connection statistics
+ *
+ * Notification REST Endpoints:
+ *   GET    /api/notifications           → Fetch all notifications (from DB)
+ *   DELETE /api/notifications           → Delete all notifications
+ *   PATCH  /api/notifications/read-all  → Mark all as read
+ *   DELETE /api/notifications/{id}      → Delete single notification
+ *   PATCH  /api/notifications/{id}      → Mark single notification as read
+ *
+ * IMPORTANT: The backend is responsible for saving notifications to the DB
+ * during every CRUD mutation. The frontend NEVER creates notifications—it
+ * only reads, marks-as-read, and deletes them.
  */
 
-type EventCallback = (event: ServerEvent) => void;
+type EventCallback = (event: any) => void;
 
 /** Event types that are heartbeats, not real notifications */
-const IGNORED_TYPES = new Set(['ping', 'heartbeat', 'keepalive', 'keep-alive', 'connection', 'connected']);
+const IGNORED_TYPES = new Set([
+    'ping', 'heartbeat', 'keepalive', 'keep-alive',
+    'connection', 'connected', 'welcome',
+]);
 
 /** Reconnect backoff steps in ms */
-const BACKOFF_MS = [3000, 6000, 12000, 30000];
+const BACKOFF_MS = [2000, 5000, 10000, 30000];
 
 class NotificationService {
     private eventSource: EventSource | null = null;
@@ -30,6 +42,8 @@ class NotificationService {
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private _connected = false;
 
+    // ── SSE Connection ───────────────────────────────────────────────
+
     /** Build the full URL for a given API path */
     private buildUrl(path: string): string {
         const base = config.api.baseUrl.replace(/\/$/, '');
@@ -37,77 +51,58 @@ class NotificationService {
         return base ? `${base}/${clean}` : `/${clean}`;
     }
 
-    /**
-     * Check if an SSE message is a ping/heartbeat that should be ignored.
-     */
+    /** Check if an SSE message is a ping/heartbeat that should be ignored. */
     private isPingEvent(data: any): boolean {
         if (!data) return true;
-
-        // Check by type field
-        const type = (data.type || data.event_type || data.action || '').toLowerCase();
+        const type = String(data.type || data.event_type || data.action || '').toLowerCase();
         if (IGNORED_TYPES.has(type)) return true;
-
-        // Check by entity field
-        const entity = (data.entity || data.resource || data.model || '').toLowerCase();
+        const entity = String(data.entity || data.resource || data.model || '').toLowerCase();
         if (entity === 'ping' || entity === 'heartbeat') return true;
-
-        // Check if it's a bare ping string
         if (typeof data === 'string' && IGNORED_TYPES.has(data.toLowerCase())) return true;
-
         return false;
     }
 
     /**
-     * Open the SSE connection.
-     * @param onEvent  Called for each real (non-ping) incoming event.
-     * @param onConnectionChange  Called when connected/disconnected.
+     * Open the SSE connection to /api/events.
+     * @param onEvent Called for each real (non-ping) incoming event.
+     * @param onConnectionChange Called when connected/disconnected.
      */
     connect(onEvent: EventCallback, onConnectionChange?: (connected: boolean) => void): void {
         if (this.eventSource) return;
-
         this.onEventCallback = onEvent;
         this.onConnectionChange = onConnectionChange ?? null;
-
         this.openConnection();
     }
 
     private openConnection(): void {
-        // SSE endpoint — /api/events
         const url = this.buildUrl('/api/events');
-
         try {
             this.eventSource = new EventSource(url, { withCredentials: true });
 
             this.eventSource.onopen = () => {
                 this.reconnectAttempt = 0;
                 this.setConnected(true);
-                console.log('[NotificationService] SSE connected to', url);
+                console.log('[NotifService] SSE connected →', url);
             };
 
             this.eventSource.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-
-                    // Skip ping / heartbeat events
-                    if (this.isPingEvent(data)) {
-                        return;
-                    }
-
+                    if (this.isPingEvent(data)) return;
                     this.onEventCallback?.(data);
-                } catch (err) {
-                    // If it's not JSON, it's likely a ping string — ignore
-                    console.debug('[NotificationService] Non-JSON SSE message (ignored):', event.data);
+                } catch {
+                    // Non-JSON message (likely a ping string) — ignore
                 }
             };
 
             this.eventSource.onerror = () => {
-                console.warn('[NotificationService] SSE error, will reconnect...');
+                console.warn('[NotifService] SSE error, reconnecting...');
                 this.closeConnection();
                 this.setConnected(false);
                 this.scheduleReconnect();
             };
         } catch (err) {
-            console.error('[NotificationService] Failed to create EventSource:', err);
+            console.error('[NotifService] Failed to create EventSource:', err);
             this.setConnected(false);
             this.scheduleReconnect();
         }
@@ -116,8 +111,6 @@ class NotificationService {
     private scheduleReconnect(): void {
         const delay = BACKOFF_MS[Math.min(this.reconnectAttempt, BACKOFF_MS.length - 1)];
         this.reconnectAttempt++;
-        console.log(`[NotificationService] Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempt})...`);
-
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.openConnection();
@@ -147,7 +140,6 @@ class NotificationService {
         this.reconnectAttempt = 0;
         this.onEventCallback = null;
         this.onConnectionChange = null;
-        console.log('[NotificationService] SSE disconnected');
     }
 
     /** Whether the SSE connection is currently open. */
@@ -155,64 +147,53 @@ class NotificationService {
         return this._connected;
     }
 
-    // ── REST endpoints (matching backend /api/notifications) ──────────
+    // ── REST API Endpoints ───────────────────────────────────────────
 
     /**
-     * Fetch all notifications from backend.
+     * Fetch all notifications from the database.
      * GET /api/notifications
+     *
+     * Expected response:
+     * { notifications: [{id, message, type, read, created_at, user_id?, ...}], unread_count: number }
      */
-    async getAll(): Promise<any[]> {
+    async fetchAll(): Promise<{ notifications: any[]; unread_count: number }> {
         try {
             const res = await api.get<any>('/api/notifications');
-            // Backend returns { notifications: [...], unread_count: X } or [...]
+
+            // Shape: { notifications: [...], unread_count: X }
             if (res && typeof res === 'object' && 'notifications' in res) {
-                return Array.isArray(res.notifications) ? res.notifications : [];
+                return {
+                    notifications: Array.isArray(res.notifications) ? res.notifications : [],
+                    unread_count: typeof res.unread_count === 'number' ? res.unread_count : 0,
+                };
             }
-            return Array.isArray(res) ? res : [];
-        } catch (err) {
-            console.warn('[NotificationService] Failed to fetch notifications:', err);
-            return [];
-        }
-    }
 
-    /** 
-     * Alias for backwards compatibility. 
-     * @deprecated Use getAll() instead.
-     */
-    async getHistory(): Promise<any[]> {
-        return this.getAll();
-    }
+            // Fallback: backend returned a flat array
+            if (Array.isArray(res)) {
+                return {
+                    notifications: res,
+                    unread_count: res.filter((n: any) => !n.read).length,
+                };
+            }
 
-    /** Fetch notification statistics (derived from getAll if no dedicated endpoint). */
-    async getStats(): Promise<NotificationStats> {
-        try {
-            const all = await this.getAll();
-            const stats: NotificationStats = {
-                total: all.length,
-                unread: all.filter((n: any) => !n.is_read && !n.read_at).length,
-                by_type: {
-                    created: all.filter((n: any) => (n.type || n.action || '').toLowerCase().includes('creat')).length,
-                    updated: all.filter((n: any) => (n.type || n.action || '').toLowerCase().includes('updat')).length,
-                    deleted: all.filter((n: any) => (n.type || n.action || '').toLowerCase().includes('delet')).length,
-                },
-                by_entity: {},
-            };
-            return stats;
+            return { notifications: [], unread_count: 0 };
         } catch (err) {
-            console.warn('[NotificationService] Failed to compute stats:', err);
-            return { total: 0, unread: 0, by_type: { created: 0, updated: 0, deleted: 0 }, by_entity: {} };
+            console.warn('[NotifService] fetchAll failed:', err);
+            return { notifications: [], unread_count: 0 };
         }
     }
 
     /**
      * Mark a single notification as read.
-     * PATCH /api/notifications/{id}/read
+     * PATCH /api/notifications/{id}
      */
-    async markAsRead(id: string): Promise<void> {
+    async markAsRead(id: string): Promise<boolean> {
         try {
             await api.patch(`/api/notifications/${id}/read`, {});
+            return true;
         } catch (err) {
-            console.warn('[NotificationService] Failed to mark as read:', id, err);
+            console.warn('[NotifService] markAsRead failed:', id, err);
+            return false;
         }
     }
 
@@ -220,11 +201,13 @@ class NotificationService {
      * Mark all notifications as read.
      * PATCH /api/notifications/read-all
      */
-    async markAllAsRead(): Promise<void> {
+    async markAllAsRead(): Promise<boolean> {
         try {
             await api.patch('/api/notifications/read-all', {});
+            return true;
         } catch (err) {
-            console.warn('[NotificationService] Failed to mark all as read:', err);
+            console.warn('[NotifService] markAllAsRead failed:', err);
+            return false;
         }
     }
 
@@ -232,11 +215,13 @@ class NotificationService {
      * Delete a single notification.
      * DELETE /api/notifications/{id}
      */
-    async deleteNotification(id: string): Promise<void> {
+    async deleteOne(id: string): Promise<boolean> {
         try {
             await api.delete(`/api/notifications/${id}`);
+            return true;
         } catch (err) {
-            console.warn('[NotificationService] Failed to delete notification:', id, err);
+            console.warn('[NotifService] deleteOne failed:', id, err);
+            return false;
         }
     }
 
@@ -244,29 +229,26 @@ class NotificationService {
      * Delete all notifications.
      * DELETE /api/notifications
      */
-    async clearAll(): Promise<void> {
+    async deleteAll(): Promise<boolean> {
         try {
             await api.delete('/api/notifications');
+            return true;
         } catch (err) {
-            console.warn('[NotificationService] Failed to clear all notifications:', err);
+            console.warn('[NotifService] deleteAll failed:', err);
+            return false;
         }
     }
 
     /**
-     * Persist a new notification to the database.
-     * POST /api/notifications
+     * Fetch SSE statistics.
+     * GET /api/events/stats
      */
-    async saveNotification(event: ServerEvent): Promise<void> {
+    async getStats(): Promise<NotificationStats | null> {
         try {
-            await api.post('/api/notifications', {
-                id: event.id,
-                type: event.type,
-                message: event.message,
-                read: false,
-                created_at: event.timestamp
-            });
+            return await api.get<NotificationStats>('/api/events/stats');
         } catch (err) {
-            console.warn('[NotificationService] Failed to persist SSE event to database:', err);
+            console.warn('[NotifService] getStats failed:', err);
+            return null;
         }
     }
 }

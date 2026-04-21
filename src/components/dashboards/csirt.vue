@@ -93,6 +93,12 @@ export default {
             return csirtStore.csirts.find(c => {
                 if (String(c.id) === slug) return true;
                 if (c.slug === slug) return true;
+                
+                // Allow matching by stakeholder slug directly
+                const stakeholder = stakeholdersStore.stakeholders.find(s => String(s.id) === String(c.id_perusahaan || (c as any).perusahaan?.id));
+                if (stakeholder && stakeholder.slug === slug) return true;
+                if ((c as any).perusahaan?.slug && (c as any).perusahaan?.slug === slug) return true;
+
                 const csirtPart = c.slug || toSlug(c.nama_csirt);
                 const perusahaanName = (c as any).perusahaan?.nama_perusahaan;
                 const perusahaanPart = perusahaanName ? toSlug(perusahaanName) : '';

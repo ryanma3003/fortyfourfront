@@ -7,321 +7,270 @@ import { useAuthStore } from './auth';
 import { useUsersStore } from './users';
 import { formatImageUrl } from '@/utils/media';
 
-/** Maximum events kept in memory */
+// ─── Constants ───────────────────────────────────────────────────────
 const MAX_EVENTS = 200;
-
-/** How often to poll for new notifications (ms) — fallback when SSE is unavailable */
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Format an ISO timestamp to a relative Indonesian time string.
+ * Check if a notification ID is a real database UUID (not a frontend-generated fallback).
+ * Backend will reject operations on non-UUID IDs.
  */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isRealDbId(id: string): boolean {
+    // Accept UUIDs and numeric IDs from DB
+    return UUID_REGEX.test(id) || /^\d+$/.test(id);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
 function timeAgo(isoDate: string): string {
     const now = Date.now();
     const then = new Date(isoDate).getTime();
     if (isNaN(then)) return '';
     const diff = Math.max(0, now - then);
-
     const seconds = Math.floor(diff / 1000);
     if (seconds < 60) return 'Baru saja';
-
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} menit yang lalu`;
-
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours} jam yang lalu`;
-
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days} hari yang lalu`;
-
     const weeks = Math.floor(days / 7);
     if (weeks < 4) return `${weeks} minggu yang lalu`;
-
     const months = Math.floor(days / 30);
     return `${months} bulan yang lalu`;
 }
 
-/**
- * Dictionary to map database column names to human-readable Indonesian labels
- */
 const FIELD_LABELS: Record<string, string> = {
-    name: 'nama',
-    nama: 'nama',
-    username: 'username',
-    email: 'email',
-    jabatan: 'jabatan',
-    id_jabatan: 'posisi/jabatan',
-    role: 'hak akses',
-    role_name: 'hak akses',
-    phone: 'nomor telepon',
-    no_telepon: 'nomor telepon',
-    location: 'lokasi',
-    alamat: 'alamat',
-    photo: 'foto profil',
-    foto_profile: 'foto profil',
-    banner: 'banner profil',
-    password: 'kata sandi',
-    // CSIRT specific
-    nama_csirt: 'nama CSIRT',
-    id_perusahaan: 'instansi/perusahaan',
-    dikutip_dari: 'sumber kutipan',
-    photo_csirt: 'logo CSIRT',
-    file_rfc2350: 'dokumen RFC2350',
-    file_public_key_pgp: 'Public Key PGP',
-    // IKAS / KSE specific
-    domain: 'domain',
-    kategori: 'kategori',
-    sub_kategori: 'sub-kategori',
-    identifikasi: 'identifikasi',
-    proteksi: 'proteksi',
-    nilai: 'nilai',
-    status: 'status',
-    keterangan: 'keterangan'
+    name: 'nama', nama: 'nama', username: 'username', email: 'email',
+    jabatan: 'jabatan', id_jabatan: 'posisi/jabatan',
+    role: 'hak akses', role_name: 'hak akses',
+    phone: 'nomor telepon', no_telepon: 'nomor telepon',
+    location: 'lokasi', alamat: 'alamat',
+    photo: 'foto profil', foto_profile: 'foto profil',
+    banner: 'banner profil', password: 'kata sandi',
+    nama_csirt: 'nama CSIRT', id_perusahaan: 'instansi/perusahaan',
+    dikutip_dari: 'sumber kutipan', photo_csirt: 'logo CSIRT',
+    file_rfc2350: 'dokumen RFC2350', file_public_key_pgp: 'Public Key PGP',
+    domain: 'domain', kategori: 'kategori', sub_kategori: 'sub-kategori',
+    identifikasi: 'identifikasi', proteksi: 'proteksi',
+    nilai: 'nilai', status: 'status', keterangan: 'keterangan',
 };
 
-/**
- * Format a value for display (handles nulls, booleans, objects)
- */
 function formatValue(val: any): string {
     if (val === null || val === undefined) return 'kosong';
     if (typeof val === 'boolean') return val ? 'ya' : 'tidak';
     if (typeof val === 'object') return 'data kompleks';
     const str = String(val);
-    if (str.length > 30) return `'${str.substring(0, 30)}...'`;
-    return `'${str}'`;
+    return str.length > 30 ? `'${str.substring(0, 30)}...'` : `'${str}'`;
 }
 
-/**
- * Build a specific detail string from field changes.
- * Handles arrays of {field, old_value, new_value} OR object diffs { field: { old, new } }
- * e.g. "Mengubah nama dari 'PT Lama' menjadi 'PT Baru', nomor_telepon dari '08xx' menjadi '08yy'"
- */
 function buildFieldChangeDetail(changes: any): string {
     if (!changes) return '';
-
-    let parsedChanges: Array<{ field: string, old_value: any, new_value: any }> = [];
-
-    // If it's the standard array format
+    let parsed: Array<{ field: string; old_value: any; new_value: any }> = [];
     if (Array.isArray(changes)) {
-        if (typeof changes[0] === 'string') {
-            return changes.join(', '); // fallback for simple string arrays
-        }
-        parsedChanges = changes;
-    } 
-    // If it's an object dict format: { "name": { old: "A", new: "B" } } or { "name": "B" }
-    else if (typeof changes === 'object') {
+        if (typeof changes[0] === 'string') return changes.join(', ');
+        parsed = changes;
+    } else if (typeof changes === 'object') {
         for (const [key, val] of Object.entries(changes)) {
             if (val && typeof val === 'object' && ('old' in val || 'new' in val || 'old_value' in val)) {
-                parsedChanges.push({ 
-                    field: key, 
-                    old_value: (val as any).old || (val as any).old_value, 
-                    new_value: (val as any).new || (val as any).new_value 
-                });
+                parsed.push({ field: key, old_value: (val as any).old ?? (val as any).old_value, new_value: (val as any).new ?? (val as any).new_value });
             } else {
-                parsedChanges.push({ field: key, old_value: null, new_value: val });
+                parsed.push({ field: key, old_value: null, new_value: val });
             }
         }
     }
-
-    if (parsedChanges.length === 0) return '';
-
-    // Ignore noisy fields like updated_at
-    const ignoredFields = ['updated_at', 'created_at', 'id', 'user_id', 'actor_id'];
-    const validChanges = parsedChanges.filter(c => c.field && !ignoredFields.includes(c.field.toLowerCase()));
-
-    if (validChanges.length === 0) return '';
-
-    return validChanges
-        .slice(0, 3)
-        .map(c => {
-            const rawField = c.field.toLowerCase();
-            const fieldLabel = FIELD_LABELS[rawField] || c.field.replace(/_/g, ' ');
-            
-            if (c.old_value !== undefined && c.old_value !== null && c.new_value !== undefined && c.new_value !== null) {
-                return `mengubah ${fieldLabel} dari ${formatValue(c.old_value)} menjadi ${formatValue(c.new_value)}`;
-            }
-            if (c.new_value !== undefined && c.new_value !== null) {
-                return `mengatur ${fieldLabel} menjadi ${formatValue(c.new_value)}`;
-            }
-            return `menghapus data ${fieldLabel}`;
-        })
-        .join(', ') + (validChanges.length > 3 ? `, dan ${validChanges.length - 3} kolom lainnya` : '');
+    const ignored = ['updated_at', 'created_at', 'id', 'user_id', 'actor_id'];
+    const valid = parsed.filter(c => c.field && !ignored.includes(c.field.toLowerCase()));
+    if (valid.length === 0) return '';
+    return valid.slice(0, 3).map(c => {
+        const label = FIELD_LABELS[c.field.toLowerCase()] || c.field.replace(/_/g, ' ');
+        if (c.old_value != null && c.new_value != null) return `mengubah ${label} dari ${formatValue(c.old_value)} menjadi ${formatValue(c.new_value)}`;
+        if (c.new_value != null) return `mengatur ${label} menjadi ${formatValue(c.new_value)}`;
+        return `menghapus data ${label}`;
+    }).join(', ') + (valid.length > 3 ? `, dan ${valid.length - 3} kolom lainnya` : '');
 }
 
+// ─── User Resolution ─────────────────────────────────────────────────
+
+function resolveUser(userId: string): { id: string; name: string; role: string; avatar?: string } | null {
+    if (!userId) return null;
+
+    try {
+        const usersStore = useUsersStore();
+        const found = usersStore.getUserById(userId);
+        if (found) {
+            return {
+                id: String(found.id),
+                name: found.name || found.username || 'User',
+                role: found.role || 'user',
+                avatar: formatImageUrl(found.photo || (found as any).foto_profile) || undefined,
+            };
+        }
+    } catch { /* store not ready */ }
+
+    try {
+        const authStore = useAuthStore();
+        if (authStore.currentUser && String(authStore.currentUser.id) === String(userId)) {
+            return {
+                id: String(authStore.currentUser.id),
+                name: authStore.currentUser.name || authStore.currentUser.username || 'Saya',
+                role: authStore.currentUser.role || 'user',
+                avatar: authStore.currentUser.foto_profile ? formatImageUrl(authStore.currentUser.foto_profile) : undefined,
+            };
+        }
+    } catch { /* store not ready */ }
+
+    return null;
+}
+
+/** Get the current user's info from authStore */
+function getCurrentUser(): { id: string; name: string; role: string; avatar?: string } | null {
+    try {
+        const authStore = useAuthStore();
+        if (authStore.currentUser) {
+            return {
+                id: String(authStore.currentUser.id),
+                name: authStore.currentUser.name || authStore.currentUser.username || 'Saya',
+                role: authStore.currentUser.role || 'user',
+                avatar: authStore.currentUser.foto_profile ? formatImageUrl(authStore.currentUser.foto_profile) : undefined,
+            };
+        }
+    } catch { /* ignore */ }
+    return null;
+}
+
+// ─── Normalizer ──────────────────────────────────────────────────────
+
+const NOISE_TYPES = new Set(['ping', 'heartbeat', 'keepalive', 'keep-alive', 'connection', 'connected', 'welcome']);
+
 /**
- * Normalize an incoming SSE event or history item to our ServerEvent interface.
- * Handles flexible backend payloads with many possible shapes.
+ * Normalize a raw notification (from DB or SSE) into our ServerEvent interface.
+ *
+ * Handles two shapes:
+ *  A. Minimal DB record: { id, message, type, read, created_at, user_id? }
+ *  B. Rich SSE event:    { type, entity, entity_id, message, ... } — often NO id, NO user
  */
-function normalizeEvent(raw: any): ServerEvent | null {
+function normalizeToServerEvent(raw: any): ServerEvent | null {
     if (!raw || typeof raw !== 'object') return null;
 
-    // -- Extract read state from backend --
-    const isRead = !!(raw.read || raw.is_read || raw.read_at);
+    // ── ID ── Use real ID from backend, or generate a temporary one
+    const id = String(raw.id || raw.notification_id || raw.event_id || `sse-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
 
-    // -- Extract type --
-    const rawType = (raw.type || raw.action || raw.event_type || '').toLowerCase();
+    // ── Skip noise ──
+    const rawType = String(raw.type || raw.action || raw.event_type || '').toLowerCase();
+    if (NOISE_TYPES.has(rawType)) return null;
+    const rawMsg = String(raw.message || raw.description || raw.detail || '');
+    if (NOISE_TYPES.has(rawMsg.toLowerCase())) return null;
 
-    // Helper: raw message text
-    const rawMsgStr = String(raw.message || raw.description || raw.detail || '').toLowerCase();
+    // ── Read state ──
+    const is_read = !!(raw.read === true || raw.is_read === true || raw.read_at);
 
-    // Skip ping / heartbeat / system noise
-    const ignoreTypes = ['ping', 'heartbeat', 'keepalive', 'keep-alive', 'connection', 'connected'];
-    if (ignoreTypes.includes(rawType) || ignoreTypes.includes(rawMsgStr)) return null;
+    // ── Type classification ──
+    let type: 'created' | 'updated' | 'deleted' = 'updated';
+    const hint = `${rawType} ${rawMsg.toLowerCase()}`;
+    if (/delet|remov|hapus|destroy/i.test(hint)) type = 'deleted';
+    else if (/creat|add|insert|tambah|buat/i.test(hint)) type = 'created';
+    else if (/updat|edit|modif|ubah|perbarui/i.test(hint)) type = 'updated';
 
-    // Map to our standard types by checking both type and message strings
-    let type: 'created' | 'updated' | 'deleted' = 'updated'; // default
-    const combinedActionText = `${rawType} ${rawMsgStr}`;
+    // ── User extraction ──
+    let user = { id: '', name: '', role: '' } as { id: string; name: string; role: string; avatar?: string };
 
-    // Check for deletion keywords first (strongest signal)
-    if (combinedActionText.includes('delet') || combinedActionText.includes('remov') || combinedActionText.includes('hapus') || combinedActionText.includes('destroy') || combinedActionText.includes('cabut') || combinedActionText.includes('lepas') || combinedActionText.includes('hilang')) {
-        type = 'deleted';
-    // Then creation keywords
-    } else if (combinedActionText.includes('creat') || combinedActionText.includes('add') || combinedActionText.includes('insert') || combinedActionText.includes('tambah') || combinedActionText.includes('daftar') || combinedActionText.includes('buat')) {
-        type = 'created';
-    // Fallback to update keywords
-    } else if (combinedActionText.includes('updat') || combinedActionText.includes('edit') || combinedActionText.includes('modif') || combinedActionText.includes('ubah') || combinedActionText.includes('perbarui')) {
-        type = 'updated';
-    }
-
-    // -- Extract user --
-    let user = { id: '', name: '', role: '' };
     if (raw.user && typeof raw.user === 'object') {
-        user = {
-            id: String(raw.user.id || raw.user.user_id || ''),
-            name: raw.user.name || raw.user.username || raw.user.nama || '',
-            role: raw.user.role || raw.user.role_name || raw.user.jabatan || '',
-        };
-        const rawAvatar = raw.user.avatar || raw.user.photo || raw.user.foto_profile;
-        if (rawAvatar) user.avatar = formatImageUrl(rawAvatar);
-    } else if (raw.user_name || raw.username || raw.actor_name || raw.actorName) {
-        user = {
-            id: String(raw.user_id || raw.actor_id || raw.actorID || ''),
-            name: raw.user_name || raw.username || raw.actor_name || raw.actorName || '',
-            role: raw.user_role || raw.role || raw.actor_type || raw.actorType || '',
-        };
-        const rawAvatar = raw.avatar || raw.photo || raw.foto_profile || raw.actor_avatar || raw.actorAvatar;
-        if (rawAvatar) user.avatar = formatImageUrl(rawAvatar);
-    } else if (typeof raw.user === 'string') {
-        user.name = raw.user;
+        user.id = String(raw.user.id || raw.user.user_id || '');
+        user.name = raw.user.name || raw.user.username || raw.user.nama || '';
+        user.role = raw.user.role || raw.user.role_name || '';
+        const av = raw.user.avatar || raw.user.photo || raw.user.foto_profile;
+        if (av) user.avatar = formatImageUrl(av);
+    } else if (raw.actor_name || raw.user_name || raw.username) {
+        user.id = String(raw.user_id || raw.actor_id || '');
+        user.name = raw.actor_name || raw.user_name || raw.username || '';
+        user.role = raw.user_role || raw.actor_type || raw.role || '';
+        const av = raw.avatar || raw.photo || raw.actor_avatar;
+        if (av) user.avatar = formatImageUrl(av);
     }
 
-     // Attempt to extract an actor ID from generic fields if user object was entirely missing
+    // Extract user_id from any available field
     if (!user.id) {
-        user.id = String(
-            raw.user_id || 
-            raw.userID || 
-            raw.userId || 
-            raw.actor_id || 
-            raw.actorID || 
-            raw.actorId || 
-            raw.created_by || 
-            raw.updated_by || 
-            raw.deleted_by || 
-            raw.data?.user_id || 
-            raw.data?.userId || 
-            raw.data?.userID ||
-            raw.by || 
-            ''
-        );
-    }
-
-    // Fetch precise user name/role from the users store if we have an ID
-    if (user.id) {
-        try {
-            const usersStore = useUsersStore();
-            const foundUser = usersStore.getUserById(user.id);
-            if (foundUser) {
-                user.name = foundUser.name || foundUser.username || user.name || 'Unknown';
-                user.role = foundUser.role || user.role || 'user';
-                const rawAvatar = foundUser.photo || (foundUser as any).foto_profile;
-                if (rawAvatar) user.avatar = formatImageUrl(rawAvatar);
-            }
-        } catch (e) {
-            // ignore store errors during early init
+        let parsedData = raw.data;
+        if (typeof parsedData === 'string') {
+            try { parsedData = JSON.parse(parsedData); } catch { /* ignore */ }
         }
+        
+        const uid = raw.user_id || raw.userId || raw.userID
+            || raw.actor_id || raw.actorId || raw.actorID
+            || raw.causer_id || raw.causerId 
+            || raw.created_by || raw.updated_by || raw.deleted_by
+            || parsedData?.user_id || parsedData?.userId || parsedData?.actor_id || parsedData?.causer_id
+            || raw.by;
+            
+        if (uid) user.id = String(uid);
     }
 
-    // Final sanity check for anonymous events
-    if (!user.name || user.name === 'System' || user.name === 'Sistem') {
-        user.name = 'Sistem';
-        user.role = 'system';
+    // Resolve user name from usersStore if we have an ID but no name
+    if (user.id && (!user.name || user.name === 'system' || user.name === 'System' || user.name === 'Sistem')) {
+        const resolved = resolveUser(user.id);
+        if (resolved) user = resolved;
     }
 
-    // -- Extract entity --
-    let entity = String(raw.entity || raw.resource || raw.model || raw.table || 'unknown').toLowerCase();
-    
-    // Normalize variations from backend for CSIRT
+    // Final fallback
+    if (!user.name || user.name === 'system' || user.name === 'System') {
+        const nameMatch = rawMsg.match(/^([A-Z][a-zA-Z\s]+?)\s+(memperbarui|menambahkan|menghapus|updated|created|deleted|mengubah)/);
+        if (nameMatch) {
+            user.name = nameMatch[1].trim();
+        }
+        // NOTE: Don't force "Sistem" here — the store will handle attribution for SSE events
+    }
+
+    // ── Entity ──
+    let entity = String(raw.entity || raw.resource || raw.model || raw.table || raw.target || '').toLowerCase() || 'unknown';
     if (entity === 'csirts' || entity === 'csirtmember' || entity === 'csirt_member') entity = 'csirt';
     if (entity === 'sdms' || entity === 'sdmcsirt' || entity === 'sdm') entity = 'sdm_csirt';
     if (entity === 'ses' || entity === 'secsirt' || entity === 'se') entity = 'se_csirt';
 
-    let entityName = raw.entity_name || raw.resource_name || raw.name || raw.title || raw.nama || '';
-    const entityId = String(raw.entity_id || raw.resource_id || raw.model_id || raw.record_id || raw.data?.id || '');
-
-    // -- Generate a stable ID if backend didn't provide one --
-    const signature = entityId && rawType ? `notif-${entityId}-${rawType}` : `evt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const id = String(raw.id || raw.event_id || raw.notification_id || signature);
-
-    // -- Build message --
-    let message: string = typeof raw.message === 'string' ? raw.message : (raw.description || raw.detail || '');
-    const fieldChanges = raw.field_changes || raw.changes || raw.fields || raw.changed_fields || undefined;
-
-    // Use type from raw data if available and valid
-    if (!message && raw.type && typeof raw.type === 'string' && raw.type.length > 5) {
-        message = raw.type;
+    if (entity === 'unknown' && rawMsg) {
+        const entityMatch = rawMsg.match(/(stakeholder|user|csirt|ikas|kse|sdm_csirt|se_csirt|perusahaan)/i);
+        if (entityMatch) entity = entityMatch[1].toLowerCase();
     }
 
-    // Try to extract entity_name from generic messages
-    if (!entityName && message) {
-        const match = message.match(/(.*?)\s+(berhasil|telah)/i);
-        if (match && match[1]) {
-            let extracted = match[1].trim();
-            extracted = extracted.replace(/^(?:data\s+|baru\s+|sdm_csirt\s+|se_csirt\s+|csirt\s+|stakeholder\s+|kse\s+|user\s+|personel\s+|sistem\s+elektronik\s+)/i, '').trim();
-            if (extracted) entityName = extracted;
+    let entityName = String(raw.entity_name || raw.resource_name || raw.title || raw.nama || '');
+
+    if (!entityName && rawMsg) {
+        const nameExtracted = rawMsg.match(/(?:stakeholder|users?|csirts?|ikas|kse|sdm_csirt|se_csirt|perusahaan)\s+(?:baru\s+)?([a-zA-Z0-9_.\-\s]+?)\s+berhasil/i);
+        if (nameExtracted) {
+            entityName = nameExtracted[1].trim();
         }
     }
 
-    if (!message && fieldChanges && Array.isArray(fieldChanges) && fieldChanges.length > 0) {
-        message = buildFieldChangeDetail(fieldChanges);
-    }
+    const entityId = String(raw.entity_id || raw.resource_id || raw.model_id || raw.record_id || raw.data?.id || '');
 
+    // ── Message ──
+    let message = typeof raw.message === 'string' ? raw.message : (raw.description || raw.detail || '');
+    const fieldChanges = raw.field_changes || raw.changes || raw.fields || raw.changed_fields || undefined;
+
+    if (!message && fieldChanges) message = buildFieldChangeDetail(fieldChanges);
     if (!message) {
         const verb = ACTION_VERBS[type] || type;
         const label = ENTITY_LABELS[entity] || entity;
         message = `${verb} data ${entityName || label}`;
     }
 
-    return {
-        id,
-        type,
-        entity,
-        entity_id: entityId,
-        entity_name: entityName,
-        field_changes: fieldChanges,
-        user,
-        timestamp: raw.timestamp || raw.created_at || raw.time || raw.date || new Date().toISOString(),
-        message,
-        is_read: isRead,
-    };
+    const timestamp = raw.timestamp || raw.created_at || raw.time || raw.date || new Date().toISOString();
+
+    return { id, type, entity, entity_id: entityId, entity_name: entityName, field_changes: fieldChanges, user, timestamp, message, is_read };
 }
 
-/**
- * Show a browser toast notification.
- * Uses the browser's built-in Notification API if permission is granted.
- */
-function showBrowserNotification(event: ServerEvent): void {
-    // Don't show if page is focused and visible
-    if (document.hasFocus()) return;
+// ─── Browser Notification ────────────────────────────────────────────
 
+function showBrowserNotification(event: ServerEvent): void {
+    if (document.hasFocus()) return;
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
         const verb = ACTION_VERBS[event.type] || event.type;
         const label = ENTITY_LABELS[event.entity] || event.entity;
-        const title = `${event.user?.name || 'Sistem'} ${verb} ${label}`;
-        const body = event.entity_name ? `${event.entity_name}${event.message ? ' — ' + event.message : ''}` : event.message || '';
-
-        new Notification(title, {
-            body,
+        new Notification(`${event.user?.name || 'Sistem'} ${verb} ${label}`, {
+            body: event.entity_name ? `${event.entity_name} — ${event.message}` : event.message,
             icon: '/images/brand-logos/logoD4.svg',
             tag: event.id,
         });
@@ -330,34 +279,43 @@ function showBrowserNotification(event: ServerEvent): void {
     }
 }
 
+// ─── Store ───────────────────────────────────────────────────────────
+
 export const useNotificationStore = defineStore('notifications', {
     state: () => ({
+        /** All notifications — merged from DB + SSE */
         events: [] as ServerEvent[],
-        readIds: new Set<string>() as Set<string>,
-        stats: null as NotificationStats | null,
+        /** IDs of events that came from SSE and might not be in the DB yet */
+        pendingSSEIds: new Set<string>(),
+        /** Connection state */
         connected: false,
         initialized: false,
         loading: false,
-        /** Toast queue — consumed by the header/UI to show in-app toasts */
+        /** Backend-reported unread count */
+        backendUnreadCount: 0,
+        /** Toast queue */
         toastQueue: [] as ServerEvent[],
+        /** Polling timer */
         pollTimer: null as ReturnType<typeof setInterval> | null,
-        /** 
-         * Actions recently performed by THIS user. 
-         * Used to attribute anonymous "system" SSE events back to the current user.
+        /** Stats */
+        stats: null as NotificationStats | null,
+        /**
+         * Recent actions performed by the current user.
+         * Used to attribute SSE events that arrive without user info.
          */
         trackedActions: [] as Array<{ entity: string; entity_id: string; timestamp: number }>,
     }),
 
     getters: {
         unreadCount(state): number {
-            return state.events.filter(e => !e.is_read && !state.readIds.has(e.id)).length;
+            return state.events.filter(e => !e.is_read).length;
         },
 
         recentForDropdown(state): Array<ServerEvent & { timeAgoStr: string; isRead: boolean }> {
             return state.events.slice(0, 5).map(e => ({
                 ...e,
                 timeAgoStr: timeAgo(e.timestamp),
-                isRead: !!(e.is_read || state.readIds.has(e.id)),
+                isRead: !!e.is_read,
             }));
         },
 
@@ -372,7 +330,7 @@ export const useNotificationStore = defineStore('notifications', {
             return state.events.map(e => ({
                 ...e,
                 timeAgoStr: timeAgo(e.timestamp),
-                isRead: !!(e.is_read || state.readIds.has(e.id)),
+                isRead: !!e.is_read,
                 entityLabel: ENTITY_LABELS[e.entity] || e.entity,
                 actionVerb: ACTION_VERBS[e.type] || e.type,
                 details: e.field_changes ? buildFieldChangeDetail(e.field_changes) : e.message,
@@ -386,136 +344,305 @@ export const useNotificationStore = defineStore('notifications', {
         },
 
         statCounts(state): { total: number; unread: number; updates: number; deletes: number; creates: number } {
-            const events = state.events;
             return {
-                total: events.length,
-                unread: events.filter(e => !e.is_read && !state.readIds.has(e.id)).length,
-                updates: events.filter(e => e.type === 'updated').length,
-                deletes: events.filter(e => e.type === 'deleted').length,
-                creates: events.filter(e => e.type === 'created').length,
+                total: state.events.length,
+                unread: state.events.filter(e => !e.is_read).length,
+                updates: state.events.filter(e => e.type === 'updated').length,
+                deletes: state.events.filter(e => e.type === 'deleted').length,
+                creates: state.events.filter(e => e.type === 'created').length,
             };
         },
 
-        /** Pop the next toast to display */
         nextToast(state): ServerEvent | null {
             return state.toastQueue.length > 0 ? state.toastQueue[0] : null;
         },
     },
 
     actions: {
-        /**
-         * Initialize: load history from backend, then open SSE.
-         * Notifications persist on the server — reload fetches them again.
-         */
+        // ═══════════════════════════════════════════════════════════
+        // INIT
+        // ═══════════════════════════════════════════════════════════
         async init() {
             if (this.initialized) return;
             this.initialized = true;
             this.loading = true;
-            console.log('[NotificationStore] Initializing...');
+            console.log('[NotifStore] Initializing...');
 
-            // Request browser notification permission
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
             }
 
-            // 1. Ensure users are loaded for proper attribution mapping
             try {
                 const usersStore = useUsersStore();
-                if (!usersStore.initialized) {
-                    await usersStore.initialize();
-                }
+                if (!usersStore.initialized) await usersStore.initialize();
             } catch (err) {
-                console.warn('[NotificationStore] Failed to load users for attribution mapping', err);
+                console.warn('[NotifStore] Users load failed:', err);
             }
 
-            // 2. Load notification history from backend (GET /api/notifications)
-            try {
-                const history = await notificationService.getAll();
-                console.log('[NotificationStore] Loaded history:', history?.length || 0, 'items');
-                if (Array.isArray(history) && history.length > 0) {
-                    const normalized = history
-                        .map((raw: any) => normalizeEvent(raw))
-                        .filter((e): e is ServerEvent => e !== null);
-
-                    // Newest first — sort by timestamp descending
-                    normalized.sort((a, b) =>
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-
-                    this.events = normalized.slice(0, MAX_EVENTS);
-
-                    // Sync read state from backend
-                    normalized.forEach(e => {
-                        if (e.is_read) this.readIds.add(e.id);
-                    });
-                }
-            } catch (err) {
-                console.warn('[NotificationStore] Failed to load history from backend:', err);
-            }
-
+            await this.loadFromDatabase();
             this.loading = false;
 
-            // 3. Open SSE for real-time events
-            console.log('[NotificationStore] Connecting to SSE...');
             notificationService.connect(
-                (raw: any) => this.onEvent(raw),
-                (connected: boolean) => { 
+                (raw: any) => this.handleSSEEvent(raw),
+                (connected: boolean) => {
                     this.connected = connected;
-                    console.log('[NotificationStore] SSE connection state:', connected ? 'CONNECTED' : 'DISCONNECTED');
-                    // If SSE fails, start polling as fallback
-                    if (!connected && !this.pollTimer) {
-                        this.startPolling();
-                    } else if (connected && this.pollTimer) {
-                        this.stopPolling();
-                    }
+                    if (!connected && !this.pollTimer) this.startPolling();
+                    else if (connected && this.pollTimer) this.stopPolling();
                 },
             );
 
-            // 4. Start polling as safety net (SSE might not be available on backend)
             this.startPolling();
         },
 
-        /** Start polling as a fallback mechanism */
-        startPolling() {
-            if (this.pollTimer) return;
-            this.pollTimer = setInterval(async () => {
-                try {
-                    const all = await notificationService.getAll();
-                    if (Array.isArray(all) && all.length > 0) {
-                        const normalized = all
-                            .map((raw: any) => normalizeEvent(raw))
-                            .filter((e): e is ServerEvent => e !== null);
+        // ═══════════════════════════════════════════════════════════
+        // LOAD FROM DATABASE — Full load on init
+        // ═══════════════════════════════════════════════════════════
+        async loadFromDatabase() {
+            try {
+                const { notifications, unread_count } = await notificationService.fetchAll();
+                console.log('[NotifStore] DB load:', notifications.length, 'items, unread:', unread_count);
 
-                        // Find truly new notifications (not in current events)
-                        const existingIds = new Set(this.events.map(e => e.id));
-                        const newEvents = normalized.filter(e => !existingIds.has(e.id));
+                const normalized = notifications
+                    .map(raw => normalizeToServerEvent(raw))
+                    .filter((e): e is ServerEvent => e !== null);
 
-                        // Add new events and trigger toast
-                        newEvents.forEach(e => {
-                            this.events.unshift(e);
-                            if (!e.is_read) {
-                                this.toastQueue.push(e);
-                                showBrowserNotification(e);
-                            }
-                        });
-
-                        // Update read states from server
-                        normalized.forEach(e => {
-                            if (e.is_read) this.readIds.add(e.id);
-                        });
-
-                        // Trim
-                        if (this.events.length > MAX_EVENTS) {
-                            this.events = this.events.slice(0, MAX_EVENTS);
+                // Ensure all DB notifications have proper user attribution
+                for (const evt of normalized) {
+                    if (!evt.user.name || evt.user.name === 'Sistem') {
+                        if (evt.user.id) {
+                            const resolved = resolveUser(evt.user.id);
+                            if (resolved) evt.user = resolved;
                         }
                     }
-                } catch (err) {
-                    // Silent fail for polling
                 }
+
+                normalized.sort((a, b) =>
+                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+
+                this.events = normalized.slice(0, MAX_EVENTS);
+                this.backendUnreadCount = unread_count;
+                this.pendingSSEIds.clear();
+            } catch (err) {
+                console.warn('[NotifStore] DB load failed:', err);
+            }
+        },
+
+        // ═══════════════════════════════════════════════════════════
+        // MERGE FROM DATABASE — Smart merge during polling
+        // ═══════════════════════════════════════════════════════════
+        async mergeFromDatabase() {
+            try {
+                const { notifications, unread_count } = await notificationService.fetchAll();
+                if (!notifications || notifications.length === 0) {
+                    // DB empty — keep only SSE-pending events
+                    this.events = this.events.filter(e => this.pendingSSEIds.has(e.id));
+                    this.backendUnreadCount = 0;
+                    return;
+                }
+
+                const normalized = notifications
+                    .map(raw => normalizeToServerEvent(raw))
+                    .filter((e): e is ServerEvent => e !== null);
+
+                // Resolve user names for DB records
+                for (const evt of normalized) {
+                    if (!evt.user.name || evt.user.name === 'Test') {
+                        if (evt.user.id) {
+                            const resolved = resolveUser(evt.user.id);
+                            if (resolved) evt.user = resolved;
+                        }
+                    }
+                }
+
+                const dbIdSet = new Set(normalized.map(n => n.id));
+                const localIdSet = new Set(this.events.map(e => e.id));
+
+                // ADD new DB items
+                const newFromDb: ServerEvent[] = [];
+                for (const dbEvt of normalized) {
+                    if (!localIdSet.has(dbEvt.id)) {
+                        newFromDb.push(dbEvt);
+                    }
+                }
+
+                // UPDATE read states + user info of existing items
+                for (const dbEvt of normalized) {
+                    const local = this.events.find(e => e.id === dbEvt.id);
+                    if (local) {
+                        local.is_read = dbEvt.is_read;
+                        if (local.user.name === 'Sistem' && dbEvt.user.name !== 'Sistem') {
+                            local.user = dbEvt.user;
+                        }
+                    }
+                }
+
+                // REPLACE SSE-pending events with their DB counterparts
+                // Find SSE events that now have a matching DB record (by entity+entity_id+type)
+                for (const sseId of this.pendingSSEIds) {
+                    const sseEvt = this.events.find(e => e.id === sseId);
+                    if (!sseEvt) continue;
+
+                    const dbMatch = normalized.find(db =>
+                        db.entity === sseEvt.entity &&
+                        db.entity_id === sseEvt.entity_id &&
+                        db.type === sseEvt.type &&
+                        Math.abs(new Date(db.timestamp).getTime() - new Date(sseEvt.timestamp).getTime()) < 30000
+                    );
+
+                    if (dbMatch && !localIdSet.has(dbMatch.id)) {
+                        // Replace SSE event with the DB version (has real UUID)
+                        const idx = this.events.findIndex(e => e.id === sseId);
+                        if (idx !== -1) {
+                            this.events[idx] = dbMatch;
+                            this.pendingSSEIds.delete(sseId);
+                            dbIdSet.add(dbMatch.id); // prevent re-adding
+                        }
+                    } else if (dbMatch && localIdSet.has(dbMatch.id)) {
+                        // DB version already exists — just remove the SSE duplicate
+                        this.events = this.events.filter(e => e.id !== sseId);
+                        this.pendingSSEIds.delete(sseId);
+                    }
+                }
+
+                // REMOVE items not in DB and not SSE-pending
+                this.events = this.events.filter(e =>
+                    dbIdSet.has(e.id) || this.pendingSSEIds.has(e.id)
+                );
+
+                // Clear pending SSE IDs that are now in DB
+                for (const id of this.pendingSSEIds) {
+                    if (dbIdSet.has(id)) this.pendingSSEIds.delete(id);
+                }
+
+                // Merge new DB items
+                if (newFromDb.length > 0) {
+                    this.events.push(...newFromDb);
+                    for (const evt of newFromDb) {
+                        if (!evt.is_read) {
+                            this.toastQueue.push(evt);
+                            showBrowserNotification(evt);
+                        }
+                    }
+                }
+
+                // Re-sort and trim
+                this.events.sort((a, b) =>
+                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+                if (this.events.length > MAX_EVENTS) {
+                    this.events = this.events.slice(0, MAX_EVENTS);
+                }
+
+                this.backendUnreadCount = unread_count;
+            } catch {
+                // Silent fail
+            }
+        },
+
+        // ═══════════════════════════════════════════════════════════
+        // HANDLE SSE EVENT
+        //
+        // SSE events often arrive WITHOUT a real DB id and WITHOUT
+        // user info. We:
+        //  1. Attribute to the current user if it matches a tracked action
+        //  2. Mark it with a generated ID (sse-xxx) 
+        //  3. The next poll will replace it with the DB version
+        // ═══════════════════════════════════════════════════════════
+        handleSSEEvent(raw: any) {
+            const event = normalizeToServerEvent(raw);
+            if (!event) return;
+
+            // ── USER ATTRIBUTION ──
+            // If SSE arrived without user info, try to attribute it
+            if (!event.user.name || event.user.name === 'Sistem' || event.user.name === 'system') {
+                const now = Date.now();
+
+                // 1. Check tracked actions — did the current user just do this?
+                const matchIdx = this.trackedActions.findIndex(a =>
+                    a.entity === event.entity &&
+                    String(a.entity_id) === String(event.entity_id) &&
+                    (now - a.timestamp) < 20_000 // 20s window
+                );
+
+                if (matchIdx !== -1) {
+                    const currentUser = getCurrentUser();
+                    if (currentUser) {
+                        console.log('[NotifStore] Attributing SSE event to current user:', currentUser.name);
+                        event.user = currentUser;
+                    }
+                    this.trackedActions.splice(matchIdx, 1);
+                }
+                // 2. If the SSE payload has a user_id, try resolving it
+                else if (event.user.id) {
+                    const resolved = resolveUser(event.user.id);
+                    if (resolved) event.user = resolved;
+                }
+                // 3. If we still don't have a user, try the current user as last resort
+                //    (only if we have tracked actions recently, meaning the user IS active)
+                else if (this.trackedActions.length > 0 && (now - this.trackedActions[this.trackedActions.length - 1].timestamp) < 10_000) {
+                    const currentUser = getCurrentUser();
+                    if (currentUser) {
+                        event.user = currentUser;
+                    }
+                }
+            }
+
+            // If still no name, set fallback
+            if (!event.user.name) {
+                event.user.name = 'Sistem';
+                event.user.role = event.user.role || 'system';
+            }
+
+            console.log('[NotifStore] Processed SSE event:', event);
+
+            // ── DEDUPLICATION ──
+            const isDup = this.events.some(e =>
+                e.id === event.id ||
+                (e.entity === event.entity && e.entity_id === event.entity_id &&
+                 e.type === event.type && Math.abs(new Date(e.timestamp).getTime() - new Date(event.timestamp).getTime()) < 5000)
+            );
+
+            if (isDup) {
+                const existing = this.events.find(e =>
+                    e.id === event.id ||
+                    (e.entity === event.entity && e.entity_id === event.entity_id && e.type === event.type)
+                );
+                if (existing && existing.user.name === 'Sistem' && event.user.name !== 'Sistem') {
+                    existing.user = event.user;
+                }
+                return;
+            }
+
+            // ── ADD TO LIST ──
+            this.events.unshift(event);
+            if (this.events.length > MAX_EVENTS) {
+                this.events = this.events.slice(0, MAX_EVENTS);
+            }
+
+            // Track as pending SSE if it has a generated ID (not a real DB UUID)
+            if (!isRealDbId(event.id)) {
+                this.pendingSSEIds.add(event.id);
+                // Auto-expire pending status after 90s
+                setTimeout(() => {
+                    this.pendingSSEIds.delete(event.id);
+                }, 90_000);
+            }
+
+            this.toastQueue.push(event);
+            showBrowserNotification(event);
+        },
+
+        // ═══════════════════════════════════════════════════════════
+        // POLLING
+        // ═══════════════════════════════════════════════════════════
+        startPolling() {
+            if (this.pollTimer) return;
+            this.pollTimer = setInterval(() => {
+                this.mergeFromDatabase();
             }, POLL_INTERVAL_MS);
         },
 
-        /** Stop polling */
         stopPolling() {
             if (this.pollTimer) {
                 clearInterval(this.pollTimer);
@@ -523,208 +650,135 @@ export const useNotificationStore = defineStore('notifications', {
             }
         },
 
-        /** Handle an incoming SSE event — normalize, prepend, and persist */
-        async onEvent(raw: any) {
-            console.log('[NotificationStore] Incoming event:', raw);
-            const event = normalizeEvent(raw);
-            if (!event) {
-                console.log('[NotificationStore] Event ignored (ping or invalid)');
-                return;
-            }
-
-            // --- SELF-ACTION ATTRIBUTION (Frontend Safety) ---
-            // If the event arrives as "system" but we have an actor_id or it matches our local tracking,
-            // we attribute it to "Saya" or the real user identity.
-            const isSystemActor = event.user.name === 'Sistem' || raw.actor_type === 'system';
-            
-            if (isSystemActor && event.entity_id) {
-                const now = Date.now();
-                console.log(`[NotificationStore] Anonymous ${event.entity} event detected. Checking fallback...`);
-                
-                // 1. Cross-reference with our 'Self-Action Tracking' (The user just did it)
-                const myActionIndex = this.trackedActions.findIndex(a => {
-                    const match = String(a.entity) === String(event.entity) && String(a.entity_id) === String(event.entity_id);
-                    return match && (now - a.timestamp) < 20000; // 20s window
-                });
-
-                if (myActionIndex !== -1) {
-                    const authStore = useAuthStore();
-                    if (authStore.currentUser) {
-                        console.log('[NotificationStore] Safety Fallback: Attributing anonymous action to Current User (Action Tracked)');
-                        event.user = {
-                            id: authStore.currentUser.id || '',
-                            name: authStore.currentUser.name || authStore.currentUser.username || 'Saya',
-                            role: authStore.currentUser.role || 'user',
-                            avatar: formatImageUrl((authStore.currentUser as any).photo || authStore.currentUser.foto_profile)
-                        };
-                        this.trackedActions.splice(myActionIndex, 1);
-                    }
-                } 
-                // 2. Logic Fallback: If we have an actor_id that isn't null, but backend incorrectly said 'system'
-                else if (raw.actor_id && raw.actor_id !== 'system') {
-                    console.log('[NotificationStore] Safety Fallback: Recovering user from actor_id field');
-                    const usersStore = useUsersStore();
-                    const found = usersStore.getUserById(String(raw.actor_id));
-                    if (found) {
-                        event.user = {
-                            id: String(found.id),
-                            name: found.name || found.username || 'User',
-                            role: found.role || 'user',
-                            avatar: formatImageUrl(found.photo || (found as any).foto_profile)
-                        };
-                    }
-                }
-            }
-
-            // --- SMART DEDUPLICATION ---
-            // If the same entity action arrived just recently (within 5s), ignore it.
-            // This specifically handles the case where the backend sends a "system" event 
-            // and a "user" event for the same database record.
-            const duplicate = this.events.find(e => 
-                (e.id === event.id) || 
-                (e.entity === event.entity && e.entity_id === event.entity_id && e.message === event.message)
-            );
-
-            if (duplicate) {
-                // If the new event has better user info than the duplicate we already have, 
-                // we "upgrade" the existing one rather than adding a new one.
-                if (duplicate.user.name === 'Sistem' && event.user.name !== 'Sistem') {
-                    console.log('[NotificationStore] Upgrading duplicate with real user info:', event.user.name);
-                    duplicate.user = event.user;
-                } else {
-                    console.log('[NotificationStore] Duplicate event ignored:', event.id);
-                }
-                return;
-            }
-
-            this.events.unshift(event);
-            if (this.events.length > MAX_EVENTS) {
-                this.events = this.events.slice(0, MAX_EVENTS);
-            }
-
-            // -- PERSISTENCE TO DATABASE --
-            try {
-                const authStore = useAuthStore();
-                const currentUserId = authStore.currentUser?.id;
-                const eventUserId = String(raw.user_id || raw.actor_id || '');
-
-                // Only the triggering user saves to DB
-                if (eventUserId === currentUserId) {
-                    console.log('[NotificationStore] Saving our own action to database...');
-                    await notificationService.saveNotification(event);
-                }
-            } catch (err) {
-                console.error('[NotificationStore] Error during persistence check:', err);
-            }
-
-            // Push to toast queue
-            this.toastQueue.push(event);
-
-            // Show browser notification
-            showBrowserNotification(event);
-        },
-
-        /** Dismiss the oldest toast from the queue */
+        // ═══════════════════════════════════════════════════════════
+        // TOAST
+        // ═══════════════════════════════════════════════════════════
         dismissToast() {
             this.toastQueue.shift();
         },
 
-        /**
-         * Mark a single notification as read — persists to backend.
-         * PATCH /api/notifications/{id}/read
-         */
+        // ═══════════════════════════════════════════════════════════
+        // MARK AS READ — Single
+        // PATCH /api/notifications/{id}
+        //
+        // Only calls backend for real DB IDs. SSE-only events
+        // are marked as read locally only.
+        // ═══════════════════════════════════════════════════════════
         async markAsRead(id: string) {
-            this.readIds.add(id);
-            // Update the event's is_read flag locally
             const evt = this.events.find(e => e.id === id);
             if (evt) evt.is_read = true;
 
-            // Persist to backend
-            await notificationService.markAsRead(id);
+            // Only call backend if this is a real DB ID
+            if (isRealDbId(id)) {
+                const ok = await notificationService.markAsRead(id);
+                if (!ok && evt) evt.is_read = false; // rollback
+            }
         },
 
-        /**
-         * Mark all notifications as read — persists to backend.
-         * PATCH /api/notifications/read-all
-         */
+        // ═══════════════════════════════════════════════════════════
+        // MARK ALL AS READ
+        // PATCH /api/notifications/read-all
+        // ═══════════════════════════════════════════════════════════
         async markAllAsRead() {
-            this.events.forEach(e => {
-                this.readIds.add(e.id);
-                e.is_read = true;
-            });
+            const previousStates = this.events.map(e => ({ id: e.id, was: e.is_read }));
+            this.events.forEach(e => { e.is_read = true; });
 
-            // Persist to backend
-            await notificationService.markAllAsRead();
+            const ok = await notificationService.markAllAsRead();
+            if (!ok) {
+                previousStates.forEach(({ id, was }) => {
+                    const evt = this.events.find(e => e.id === id);
+                    if (evt) evt.is_read = was;
+                });
+            }
         },
 
-        /**
-         * Delete notification at backend level.
-         * DELETE /api/notifications/{id}
-         */
+        // ═══════════════════════════════════════════════════════════
+        // DELETE — Single
+        // DELETE /api/notifications/{id}
+        //
+        // Only calls backend for real DB IDs. SSE-only events
+        // are just removed from local state.
+        // ═══════════════════════════════════════════════════════════
         async deleteEvent(id: string) {
-            // Remove locally first for instant UI feedback
+            const removed = this.events.find(e => e.id === id);
             this.events = this.events.filter(e => e.id !== id);
-            this.readIds.delete(id);
-            
-            // Then delete from backend
-            try {
-                await notificationService.deleteNotification(id);
-            } catch(e) {}
+            this.pendingSSEIds.delete(id);
+
+            // Only call backend if this is a real DB ID
+            if (isRealDbId(id)) {
+                const ok = await notificationService.deleteOne(id);
+                if (!ok && removed) {
+                    this.events.unshift(removed);
+                    this.events.sort((a, b) =>
+                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    );
+                }
+            }
         },
 
-        /**
-         * Clear all notifications at backend level.
-         * DELETE /api/notifications
-         */
+        // ═══════════════════════════════════════════════════════════
+        // CLEAR ALL
+        // DELETE /api/notifications
+        // ═══════════════════════════════════════════════════════════
         async clearAll() {
+            const backup = [...this.events];
             this.events = [];
-            this.readIds = new Set();
-            try {
-                await notificationService.clearAll();
-            } catch(e) {}
+            this.backendUnreadCount = 0;
+            this.pendingSSEIds.clear();
+
+            const ok = await notificationService.deleteAll();
+            if (!ok) {
+                this.events = backup;
+            }
         },
 
+        // ═══════════════════════════════════════════════════════════
+        // TAB FILTER
+        // ═══════════════════════════════════════════════════════════
         filteredByTab(tab: string) {
             const all = this.enhancedEvents;
             switch (tab) {
-                case 'Belum Dibaca':
-                    return all.filter(e => !e.isRead);
-                case 'Pembaruan Data':
-                    return all.filter(e => e.type === 'updated');
-                case 'Sistem':
-                    return all.filter(e => e.type === 'deleted' || e.type === 'created');
-                default:
-                    return all;
+                case 'Belum Dibaca': return all.filter(e => !e.isRead);
+                case 'Pembaruan Data': return all.filter(e => e.type === 'updated');
+                case 'Sistem': return all.filter(e => e.type === 'deleted' || e.type === 'created');
+                default: return all;
             }
         },
 
-        /**
-         * Track an action performed by the current user.
-         * Call this before making an API request that will trigger an SSE event.
-         */
+        // ═══════════════════════════════════════════════════════════
+        // TRACK SELF ACTION
+        //
+        // Call BEFORE making a CRUD API call. When the resulting
+        // SSE event arrives (usually without user info), this
+        // allows us to attribute it to the current user.
+        // ═══════════════════════════════════════════════════════════
         trackSelfAction(entity: string, entity_id: string) {
-            console.log(`[NotificationStore] Tracking self action: ${entity} (id: ${entity_id})`);
-            this.trackedActions.push({ 
-                entity, 
-                entity_id: String(entity_id), 
-                timestamp: Date.now() 
+            this.trackedActions.push({
+                entity,
+                entity_id: String(entity_id),
+                timestamp: Date.now(),
             });
-            // Cleanup old tracking data (> 30s)
-            if (this.trackedActions.length > 50) {
-                const now = Date.now();
-                this.trackedActions = this.trackedActions.filter(a => (now - a.timestamp) < 30000);
+            // Cleanup old entries (> 30s)
+            const now = Date.now();
+            if (this.trackedActions.length > 30) {
+                this.trackedActions = this.trackedActions.filter(a => (now - a.timestamp) < 30_000);
             }
         },
 
+        // ═══════════════════════════════════════════════════════════
+        // DISCONNECT
+        // ═══════════════════════════════════════════════════════════
         disconnect() {
             notificationService.disconnect();
             this.stopPolling();
             this.connected = false;
             this.initialized = false;
             this.events = [];
-            this.readIds = new Set();
+            this.pendingSSEIds.clear();
             this.stats = null;
             this.toastQueue = [];
+            this.backendUnreadCount = 0;
+            this.trackedActions = [];
         },
     },
 });

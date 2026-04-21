@@ -112,10 +112,12 @@ export const csirtService = {
         try {
             const result = await api.get<any>(`/api/sdm_csirt?id_csirt=${id}`);
             const list = unwrapArray<any>(result, `sdm_csirt(id_csirt=${id})`);
-            return list.map((item: any) => ({
+            const mapped = list.map((item: any) => ({
                 ...item,
                 id_csirt: item.csirt?.id || item.id_csirt
             }));
+            // Enforce client-side filtering as backend may ignore ?id_csirt=
+            return mapped.filter(item => String(item.id_csirt) === String(id));
         } catch (err) {
             if (err instanceof ApiRequestError && err.status === 404) return [];
             throw err;
@@ -167,10 +169,12 @@ export const csirtService = {
         try {
             const result = await api.get<any>(`/api/se?id_csirt=${id}`);
             const list = unwrapArray<any>(result, `se(id_csirt=${id})`);
-            return list.map((item: any) => ({
+            const mapped = list.map((item: any) => ({
                 ...item,
                 id_csirt: item.csirt?.id || item.id_csirt
             }));
+            // Enforce client-side filtering as backend may ignore ?id_csirt=
+            return mapped.filter(item => String(item.id_csirt) === String(id));
         } catch (err) {
             if (err instanceof ApiRequestError && err.status === 404) return [];
             throw err;

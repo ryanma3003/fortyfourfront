@@ -4,11 +4,13 @@ import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useCsirtStore } from '@/stores/csirt';
 import { useIkasStore } from '@/stores/ikas';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
+import { useKseStore } from '@/stores/kse';
 
 const stakeholdersStore = useStakeholdersStore();
 const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
 const filterStore = useDashboardFilterStore();
+const kseStore = useKseStore();
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
@@ -50,109 +52,113 @@ const insights = computed(() => {
         const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
         return inDate && inSector;
     });
-    const csirts = csirtStore.csirts;
     const results = [];
 
-    // 1. Stakeholder growth this week vs last week
-    const thisWeek = countInPeriod(all, 'created_at', 7, 0);
-    const lastWeek = countInPeriod(all, 'created_at', 14, 7);
-    const weekDelta = calcDelta(thisWeek, lastWeek);
-    if (weekDelta > 0) {
-        results.push({
-            type: 'positive',
-            icon: 'ri-arrow-up-line',
-            color: '#26bf94',
-            bg: 'rgba(38,191,148,0.1)',
-            text: `Stakeholder naik ${weekDelta}% minggu ini`,
-            detail: `${thisWeek} baru vs ${lastWeek} minggu lalu`,
-        });
-    } else if (weekDelta < 0) {
-        results.push({
-            type: 'negative',
-            icon: 'ri-arrow-down-line',
-            color: '#e6533c',
-            bg: 'rgba(230,83,60,0.1)',
-            text: `Stakeholder turun ${Math.abs(weekDelta)}% minggu ini`,
-            detail: `${thisWeek} baru vs ${lastWeek} minggu lalu`,
-        });
-    }
-
-    // 2. Sector with highest growth this month
-    const thisMonth = countInPeriod(all, 'created_at', 30, 0);
-    const lastMonth = countInPeriod(all, 'created_at', 60, 30);
-    const monthDelta = calcDelta(thisMonth, lastMonth);
-    if (monthDelta !== 0) {
-        results.push({
-            type: monthDelta > 0 ? 'positive' : 'negative',
-            icon: monthDelta > 0 ? 'ri-line-chart-line' : 'ri-line-chart-fill',
-            color: monthDelta > 0 ? '#26bf94' : '#e6533c',
-            bg: monthDelta > 0 ? 'rgba(38,191,148,0.1)' : 'rgba(230,83,60,0.1)',
-            text: `Pertumbuhan ${monthDelta > 0 ? '+' : ''}${monthDelta}% bulan ini`,
-            detail: `${thisMonth} stakeholder vs ${lastMonth} bulan lalu`,
-        });
-    }
-
-    // 3. CSIRT coverage
-    const totalSh = all.length;
-    const withCsirt = totalSh > 0 ? all.filter(s => csirtStore.hasCompleteCsirt(s.id)).length : 0;
-    const csirtPct = totalSh > 0 ? Math.round((withCsirt / totalSh) * 100) : 0;
-    if (csirtPct < 50) {
+    if (all.length === 0) {
         results.push({
             type: 'warning',
-            icon: 'ri-shield-line',
+            icon: 'ri-alert-line',
             color: '#f5b849',
             bg: 'rgba(245,184,73,0.1)',
-            text: `Cakupan CSIRT masih ${csirtPct}%`,
-            detail: `${withCsirt} dari ${totalSh} stakeholder memiliki CSIRT lengkap`,
+            text: 'Tidak ada data stakeholder',
+            detail: 'Silakan sesuaikan rentang tanggal atau filter sektor',
+        });
+        return results;
+    }
+
+    const totalSh = all.length;
+
+    // 1. Total Stakeholder Terdaftar
+    results.push({
+        type: 'positive',
+        icon: 'ri-building-4-line',
+        color: '#845adf',
+        bg: 'rgba(132,90,223,0.1)',
+        text: `Terdapat ${totalSh} Stakeholder Aktif`,
+        detail: 'Berdasarkan filter aktif saat ini',
+    });
+
+    // 2. CSIRT Performance
+    const withCsirt = all.filter(s => csirtStore.hasCompleteCsirt(s.id)).length;
+    const csirtPct = totalSh > 0 ? Math.round((withCsirt / totalSh) * 100) : 0;
+    
+    if (csirtPct >= 50) {
+        results.push({
+            type: 'positive',
+            icon: 'ri-shield-check-line',
+            color: '#26bf94',
+            bg: 'rgba(38,191,148,0.1)',
+            text: `Kesiapan CSIRT Cukup Baik (${csirtPct}%)`,
+            detail: `${withCsirt} instansi telah melengkapi profil CSIRT`,
+        });
+    } else {
+        results.push({
+            type: 'warning',
+            icon: 'ri-shield-keyhole-line',
+            color: '#f5b849',
+            bg: 'rgba(245,184,73,0.1)',
+            text: `Perlu Atensi Profil CSIRT`,
+            detail: `Baru ${withCsirt} dari ${totalSh} instansi melengkapi CSIRT`,
         });
     }
 
-    // 4. IKAS coverage
+    // 3. IKAS Participation
     const withIkas = all.filter(s => {
         const data = ikasStore.ikasDataMap[s.slug];
         return data && data.total_rata_rata && data.total_rata_rata !== 'NA' && data.total_rata_rata !== 0;
-    }).length;
-    const ikasPct = totalSh > 0 ? Math.round((withIkas / totalSh) * 100) : 0;
-    if (ikasPct < 70) {
-        results.push({
-            type: 'warning',
-            icon: 'ri-bar-chart-2-line',
-            color: '#f5b849',
-            bg: 'rgba(245,184,73,0.1)',
-            text: `Data IKAS baru terisi ${ikasPct}%`,
-            detail: `${withIkas} dari ${totalSh} stakeholder sudah mengisi IKAS`,
-        });
-    }
-
-    // 5. Stakeholders with no activity > 30 days
-    const stagnant = all.filter(s => {
-        const d = new Date(s.updated_at || s.created_at);
-        return !isNaN(d.getTime()) && (Date.now() - d.getTime()) > 30 * 86400000;
-    }).length;
-    if (stagnant > 0) {
-        results.push({
-            type: 'warning',
-            icon: 'ri-time-line',
-            color: '#f5b849',
-            bg: 'rgba(245,184,73,0.1)',
-            text: `${stagnant} stakeholder stagnan > 30 hari`,
-            detail: 'Tidak ada pembaruan data dalam 30 hari terakhir',
-        });
-    }
-
-    // 6. If everything is good
-    if (results.length === 0) {
+    });
+    const ikasCount = withIkas.length;
+    const ikasPct = totalSh > 0 ? Math.round((ikasCount / totalSh) * 100) : 0;
+    
+    if (ikasPct >= 50) {
         results.push({
             type: 'positive',
-            icon: 'ri-check-double-line',
+            icon: 'ri-bar-chart-box-line',
             color: '#26bf94',
             bg: 'rgba(38,191,148,0.1)',
-            text: 'Semua data dalam kondisi baik',
-            detail: 'Tidak ada anomali yang terdeteksi',
+            text: `Partisipasi IKAS Positif (${ikasPct}%)`,
+            detail: `${ikasCount} instansi telah berpartisipasi dalam IKAS`,
+        });
+    } else {
+        results.push({
+            type: 'warning',
+            icon: 'ri-pie-chart-line',
+            color: '#f5b849',
+            bg: 'rgba(245,184,73,0.1)',
+            text: `Dorong Partisipasi IKAS`,
+            detail: `Masih ada ${totalSh - ikasCount} instansi belum mengisi IKAS`,
         });
     }
 
-    return results.slice(0, 5);
+    // 4. KSE Performance
+    const withKse = all.filter(s => {
+        const data = kseStore.kseDataMap[s.slug];
+        return data && data.kategoriSE && data.kategoriSE !== 'Belum Dikategorikan';
+    });
+    const kseCount = withKse.length;
+    const ksePct = totalSh > 0 ? Math.round((kseCount / totalSh) * 100) : 0;
+
+    if (ksePct >= 50) {
+        results.push({
+            type: 'positive',
+            icon: 'ri-file-shield-2-line',
+            color: '#26bf94',
+            bg: 'rgba(38,191,148,0.1)',
+            text: `Kategori SE Cukup Baik (${ksePct}%)`,
+            detail: `${kseCount} instansi telah menyelesaikan pendataan KSE`,
+        });
+    } else {
+        results.push({
+            type: 'warning',
+            icon: 'ri-file-warning-line',
+            color: '#f5b849',
+            bg: 'rgba(245,184,73,0.1)',
+            text: `Pengisian KSE`,
+            detail: `Baru ${kseCount} dari ${totalSh} instansi yang mendata KSE`,
+        });
+    }
+
+    return results.slice(0, 4);
 });
 </script>
 

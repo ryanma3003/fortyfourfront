@@ -112,9 +112,54 @@ const kpis = computed(() => {
     }).length;
     const completePct = totalSh > 0 ? Math.round((complete / totalSh) * 100) : 0;
 
-    // Last update
-    const sorted = [...all].sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
-    const lastUpdate = sorted[0] ? (sorted[0].updated_at || sorted[0].created_at) : null;
+    // Last update (comprehensive check across all entities)
+    const fIds = new Set(all.map(s => String(s.id)));
+    const fSlugs = new Set(all.map(s => s.slug));
+
+    const fCsirts = csirtStore.csirts.filter(c => fIds.has(String(c.id_perusahaan)) || (c.perusahaan && fIds.has(String(c.perusahaan.id))));
+    const fCsirtIds = new Set(fCsirts.map(c => String(c.id)));
+    
+    const fSdmIds = new Set(csirtStore.sdmList.filter(sdm => fCsirtIds.has(String(sdm.id_csirt)) || (sdm.csirt && fCsirtIds.has(String(sdm.csirt.id)))).map(sdm => String(sdm.id)));
+    const fSeIds = new Set(csirtStore.seList.filter(se => fCsirtIds.has(String(se.id_csirt)) || (se.csirt && fCsirtIds.has(String(se.csirt.id)))).map(se => String(se.id)));
+
+    const fIkasIds = new Set();
+    for (const slug of fSlugs) {
+        const id = ikasStore.backendIkasIds[slug];
+        if (id) fIkasIds.add(String(id));
+    }
+
+    let latestEvent = null;
+    for (const event of notifStore.events) {
+        let matches = false;
+        if (event.entity === 'stakeholder' && fIds.has(String(event.entity_id))) matches = true;
+        else if (event.entity === 'csirt' && fCsirtIds.has(String(event.entity_id))) matches = true;
+        else if (event.entity === 'sdm_csirt' && fSdmIds.has(String(event.entity_id))) matches = true;
+        else if (event.entity === 'se_csirt' && fSeIds.has(String(event.entity_id))) matches = true;
+        else if (event.entity === 'ikas' && fIkasIds.has(String(event.entity_id))) matches = true;
+
+        if (matches) {
+            latestEvent = event;
+            break; // notifStore.events is already ordered by timestamp descending
+        }
+    }
+
+    let lastUpdate = null;
+    let latestUpdateLabel = 'Data stakeholder';
+
+    if (latestEvent) {
+        lastUpdate = latestEvent.timestamp;
+        const verbMap = { 'created': 'Penambahan', 'updated': 'Perubahan', 'deleted': 'Penghapusan' };
+        const entityMap = { 'stakeholder': 'Stakeholder', 'csirt': 'CSIRT', 'sdm_csirt': 'SDM CSIRT', 'se_csirt': 'SE CSIRT', 'ikas': 'IKAS', 'user': 'Pengguna' };
+        
+        const verb = verbMap[latestEvent.type] || 'Update';
+        const entityLabel = entityMap[latestEvent.entity] || latestEvent.entity;
+        
+        latestUpdateLabel = `${verb} Data ${entityLabel}`;
+    } else {
+        // Fallback to basic stakeholder updated_at sorting if no events match or events are empty
+        const sorted = [...all].sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
+        lastUpdate = sorted[0] ? (sorted[0].updated_at || sorted[0].created_at) : null;
+    }
 
     return [
         {
@@ -164,7 +209,7 @@ const kpis = computed(() => {
             color: '#6366f1',
             bg: 'rgba(99,102,241,0.1)',
             delta: null,
-            sub: 'Data stakeholder',
+            sub: latestUpdateLabel,
             ring: null,
         },
     ];

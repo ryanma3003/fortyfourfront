@@ -197,32 +197,44 @@ export const ikasService = {
     },
 
     // Jawaban endpoints
-    async getJawabanIdentifikasi(): Promise<JawabanResponse[]> {
-        return api.get<JawabanResponse[]>('/api/maturity/jawaban-identifikasi');
+    async getJawabanIdentifikasi(perusahaanId?: string): Promise<JawabanResponse[]> {
+        const url = perusahaanId 
+            ? `/api/maturity/jawaban-identifikasi?perusahaan_id=${perusahaanId}` 
+            : '/api/maturity/jawaban-identifikasi';
+        return api.get<JawabanResponse[]>(url);
     },
 
     async createJawabanIdentifikasi(payload: JawabanPayload): Promise<JawabanResponse> {
         return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload);
     },
 
-    async getJawabanProteksi(): Promise<JawabanResponse[]> {
-        return api.get<JawabanResponse[]>('/api/maturity/jawaban-proteksi');
+    async getJawabanProteksi(perusahaanId?: string): Promise<JawabanResponse[]> {
+        const url = perusahaanId 
+            ? `/api/maturity/jawaban-proteksi?perusahaan_id=${perusahaanId}` 
+            : '/api/maturity/jawaban-proteksi';
+        return api.get<JawabanResponse[]>(url);
     },
 
     async createJawabanProteksi(payload: JawabanPayload): Promise<JawabanResponse> {
         return api.post<JawabanResponse>('/api/maturity/jawaban-proteksi', payload);
     },
 
-    async getJawabanDeteksi(): Promise<JawabanResponse[]> {
-        return api.get<JawabanResponse[]>('/api/maturity/jawaban-deteksi');
+    async getJawabanDeteksi(perusahaanId?: string): Promise<JawabanResponse[]> {
+        const url = perusahaanId 
+            ? `/api/maturity/jawaban-deteksi?perusahaan_id=${perusahaanId}` 
+            : '/api/maturity/jawaban-deteksi';
+        return api.get<JawabanResponse[]>(url);
     },
 
     async createJawabanDeteksi(payload: JawabanPayload): Promise<JawabanResponse> {
         return api.post<JawabanResponse>('/api/maturity/jawaban-deteksi', payload);
     },
 
-    async getJawabanGulih(): Promise<JawabanResponse[]> {
-        return api.get<JawabanResponse[]>('/api/maturity/jawaban-gulih');
+    async getJawabanGulih(perusahaanId?: string): Promise<JawabanResponse[]> {
+        const url = perusahaanId 
+            ? `/api/maturity/jawaban-gulih?perusahaan_id=${perusahaanId}` 
+            : '/api/maturity/jawaban-gulih';
+        return api.get<JawabanResponse[]>(url);
     },
 
     async createJawabanGulih(payload: JawabanPayload): Promise<JawabanResponse> {

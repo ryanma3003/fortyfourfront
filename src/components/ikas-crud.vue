@@ -82,8 +82,8 @@ const loadCurrentStakeholderIkas = async () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
-      if (result.ikasRecord?.id) {
-        await assessmentStore.hydrateAnswersFromBackend(currentSlug.value, result.ikasRecord.id);
+      if (stakeholder.id) {
+        await assessmentStore.hydrateAnswersFromBackend(currentSlug.value, stakeholder.id);
       }
       currentStep.value = 2;
       return;
