@@ -460,7 +460,8 @@
         const subId = filterStore.subSektorId;
         if (!fId && !subId) return stakeholdersStore.allStakeholders;
         return stakeholdersStore.allStakeholders.filter(s => {
-            if (subId) return String(s.sub_sektor?.id || s.id_sub_sektor) === String(subId);
+            const effectiveSubId = subId === 'ALL' ? '' : subId;
+            if (effectiveSubId) return String(s.sub_sektor?.id || s.id_sub_sektor) === String(effectiveSubId);
             if (fId) return String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId);
             return true;
         });
@@ -471,7 +472,8 @@
         const subId = filterStore.subSektorId;
         if (!fId && !subId) return csirtStore.csirts;
         return csirtStore.csirts.filter(c => {
-            if (subId) return String(c.perusahaan?.sub_sektor?.id || c.perusahaan?.id_sub_sektor) === String(subId);
+            const effectiveSubId = subId === 'ALL' ? '' : subId;
+            if (effectiveSubId) return String(c.perusahaan?.sub_sektor?.id || c.perusahaan?.id_sub_sektor) === String(effectiveSubId);
             if (fId) return String(c.perusahaan?.sub_sektor?.id_sektor || c.perusahaan?.id_sektor) === String(fId);
             return true;
         });
@@ -484,7 +486,8 @@
         return csirtStore.sdmList.filter(s => {
             const csirt = csirtStore.csirts.find(c => String(c.id) === String(s.id_csirt));
             if (!csirt) return false;
-            if (subId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(subId);
+            const effectiveSubId = subId === 'ALL' ? '' : subId;
+            if (effectiveSubId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(effectiveSubId);
             if (fId) return String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
             return true;
         });
@@ -497,7 +500,8 @@
         return csirtStore.seList.filter(se => {
             const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
             if (!csirt) return false;
-            if (subId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(subId);
+            const effectiveSubId = subId === 'ALL' ? '' : subId;
+            if (effectiveSubId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(effectiveSubId);
             if (fId) return String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
             return true;
         });
@@ -514,15 +518,18 @@
         return baseStakeholders.value.filter(s => csirtStore.hasCompleteCsirt(s.id)).length;
     });
 
-    // Count stakeholders with IKAS
-    const stakeholdersWithIkas = computed(() => {
+    // ─── Base IKAS Stakeholders ──────────────────────────────
+    const baseIkasStakeholders = computed(() => {
         return baseStakeholders.value.filter(s => {
             const data = ikasStore.ikasDataMap[s.slug];
             if (!data) return false;
             const val = data.total_rata_rata;
             return val !== null && val !== 0 && val !== 'NA';
-        }).length;
+        });
     });
+
+    // Count stakeholders with IKAS
+    const stakeholdersWithIkas = computed(() => baseIkasStakeholders.value.length);
 
     // ─── Full Summary Computed Data ─────────────────────────
     const csirtCompletionRate = computed(() => {
@@ -537,8 +544,92 @@
 
     const totalSektors = computed(() => sektorList.value.length);
     const totalSubSektors = computed(() => subSektorList.value.length);
-
     // (Re-fetch handling is managed via Pinia debounced actions internally)
+
+    // ─── Active Sub Sektor Summary computed ─────────────────
+    const activeSubSektorSummary = computed(() => {
+        const subId = filterStore.subSektorId;
+        if (!subId || subId === 'ALL') return null;
+
+        // Try to find the specific sub-sektor in the aggregated counts from the API if possible
+        // (Though usually apiSektorCounts is at sector level, we keep this for consistency)
+        const counts = apiSektorCounts.value || [];
+        const target = counts.find(s => String(s.sektor_id || s.id) === String(subId));
+        
+        // Calculate detailed metrics from the current filtered stakeholder list
+        const totalBase = baseStakeholders.value.length;
+        
+        // KSE Count: Check is_kse flag on stakeholder OR if they have KSE categorization in SE record
+        const kseCount = baseStakeholders.value.filter(s => {
+            // First check the explicit flag
+            if (s.is_kse) return true;
+            // Fallback: check if any SE associated with this stakeholder has a category assigned
+            const se = csirtStore.seList.find(se => String(se.id_perusahaan) === String(s.id));
+            return se && se.kategori_se && se.kategori_se !== 'Belum Dikategorikan';
+        }).length;
+        
+        let csirtCount = 0;
+        let ikasCount = 0;
+        let lengkapCount = 0;
+
+        baseStakeholders.value.forEach(s => {
+            // Check if ANY CSIRT record exists
+            const hasCsirtRecord = csirtStore.csirts.some(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id));
+            
+            // Check CSIRT compliance via store getter (Complete CSIRT)
+            const isCsirtComplete = csirtStore.hasCompleteCsirt(s.id);
+            
+            // Check IKAS status from synced map
+            const ikasData = ikasStore.ikasDataMap[s.slug];
+            const hasIkas = ikasData && (
+                (ikasData.total_rata_rata && ikasData.total_rata_rata !== 'NA' && Number(ikasData.total_rata_rata) !== 0) ||
+                ikasStore.backendIkasIds[s.slug]
+            );
+            
+            if (hasCsirtRecord) csirtCount++;
+            if (hasIkas) ikasCount++;
+            
+            // Data Lengkap = Has both IKAS and Complete CSIRT
+            if (isCsirtComplete && hasIkas) lengkapCount++;
+        });
+
+        // Compute percentages for the UI bars (rounded integers to match general summary)
+        const getPercent = (count) => {
+             if (totalBase === 0) return '0%';
+             if (count === 0) return '0%';
+             return Math.round((count / totalBase) * 100) + '%';
+        };
+
+        const props = {
+            csirtCount,
+            csirtPercent: getPercent(csirtCount),
+            ikasCount,
+            ikasPercent: getPercent(ikasCount),
+            lengkapCount,
+            lengkapPercent: getPercent(lengkapCount)
+        };
+
+        if (target) {
+            return {
+                ...target,
+                ...props
+            };
+        }
+
+        // Return calculated summary if not found in aggregated API counts
+        return {
+            nama_sektor: subSektorList.value.find(s => String(s.id) === String(subId))?.nama_sub_sektor || 'Detail Stakeholder',
+            total: totalBase,
+            countYear: baseStakeholders.value.filter(s => isInDateRange(s.created_at, [new Date(new Date().getFullYear(), 0, 1).toISOString(), new Date().toISOString()])).length,
+            countQuarter: 0,
+            this_month: baseStakeholders.value.filter(s => {
+                const d = new Date(s.created_at);
+                const now = new Date();
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            }).length,
+            ...props
+        };
+    });
 
     // ─── Date-filtered counts ───────────────────────────────
     const filteredStakeholders = computed(() => {
@@ -552,6 +643,10 @@
     const filteredSdm = computed(() => {
         const range = filterStore.dateRange;
         return baseSdm.value.filter(s => isInDateRange(s.created_at, range)).length;
+    });
+    const filteredIkasCount = computed(() => {
+        const range = filterStore.dateRange;
+        return baseIkasStakeholders.value.filter(s => isInDateRange(s.updated_at || s.created_at, range)).length;
     });
     const filteredSe = computed(() => {
         const range = filterStore.dateRange;
@@ -577,15 +672,87 @@
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80Zm-72,78.63V184a8,8,0,0,1-16,0V158.63a24,24,0,1,1,16,0ZM160,80H96V56a32,32,0,0,1,64,0Z"/></svg>',
         ];
 
-        // Take top 6 sektor sorted by stakeholder count (or all if less)
+        const activeSektorId = filterStore.sektorId;
+        const activeSubSektorId = filterStore.subSektorId;
+        const range = filterStore.dateRange;
+
+        // ── MODE 1: Sub Sektor (ALL or specific) ──
+        if (activeSektorId && activeSubSektorId && activeSubSektorId !== '') {
+            // Find all sub-sektors belonging to this sektor
+            let targetSubSektors = subSektorList.value.filter(ss => {
+                const pid = getSubSektorParentId(ss);
+                return pid !== undefined && String(pid) === String(activeSektorId);
+            });
+
+            return targetSubSektors.map((ss, idx) => {
+                const color = sektorColors[idx % sektorColors.length];
+                const ssName = getSubSektorName(ss);
+
+                // Count stakeholders for this sub-sektor
+                const ssStakeholders = stakeholdersStore.allStakeholders.filter(s => {
+                    const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                    return subSektorId && String(subSektorId) === String(ss.id);
+                });
+                const stakeholderCount = ssStakeholders.length;
+                const stakeholderInRange = ssStakeholders.filter(s =>
+                    isInDateRange(s.created_at, range)
+                ).length;
+
+                const trend = getMonthlyTrend(ssStakeholders);
+
+                let isActive = false;
+                let isMuted = false;
+                
+                if (activeSubSektorId !== 'ALL') {
+                    isActive = String(ss.id) === String(activeSubSektorId);
+                    isMuted = !isActive;
+                }
+
+                return {
+                    title: ssName,
+                    sektorId: ss.id,
+                    isSubSektor: true,
+                    isMuted: isMuted,
+                    avatarClass: "avatar-md flex-shrink-0",
+                    ValueClass: "fw-semibold lh-sm",
+                    smallText: "fs-12 lh-base",
+                    ValueClass1: "fs-12 lh-base",
+                    count: String(stakeholderCount),
+                    percent: String(stakeholderInRange),
+                    monthLabel: dateRangeLabel.value,
+                    iconColor: "success fw-medium",
+                    cardClass: `dashboard-main-card overflow-hidden ${color} ${isActive ? 'sektor-card-active' : ''} ${isMuted ? 'sektor-card-muted' : ''}`,
+                    priceColor: color,
+                    svgIcon: sektorIcons[idx % sektorIcons.length],
+                    id: `chart-subsektor-${idx}`,
+                    type: 'area',
+                    height: '50',
+                    width: '100',
+                    chartSeries: [{ name: ssName, data: trend.data }],
+                    chartOptions: buildSparkOptions(color, trend.labels)
+                };
+            }).sort((a, b) => Number(b.count) - Number(a.count));
+        }
+
+        // ── MODE 2 & 3: Tampilkan sektor (Default or no filter) ──
         const sorted = [...enrichedSektors.value]
             .sort((a, b) => b.stakeholderCount - a.stakeholderCount);
 
-        return sorted.slice(0, 6).map((sektor, idx) => {
+        let topSektors = sorted.slice(0, 6);
+        
+        if (activeSektorId) {
+            const hasActive = topSektors.some(s => String(s.id) === String(activeSektorId));
+            if (!hasActive) {
+                const activeSektor = sorted.find(s => String(s.id) === String(activeSektorId));
+                if (activeSektor) {
+                    topSektors.pop();
+                    topSektors.push(activeSektor);
+                }
+            }
+        }
+
+        return topSektors.map((sektor, idx) => {
             const color = sektorColors[idx % sektorColors.length];
-            const activeSektorId = filterStore.sektorId;
-            const isActive = activeSektorId && String(sektor.id) === String(activeSektorId);
-            const isMuted = activeSektorId && !isActive;
 
             const trend = getMonthlyTrend(
                 stakeholdersStore.allStakeholders.filter(s => {
@@ -597,9 +764,18 @@
                 })
             );
 
+            let isActive = false;
+            let isMuted = false;
+            
+            if (activeSektorId) {
+                isActive = String(sektor.id) === String(activeSektorId);
+                isMuted = !isActive;
+            }
+
             return {
                 title: sektor.displayName,
                 sektorId: sektor.id,
+                isMuted: isMuted,
                 avatarClass: "avatar-md flex-shrink-0",
                 ValueClass: "fw-semibold lh-sm",
                 smallText: "fs-12 lh-base",
@@ -624,7 +800,7 @@
     // ─── ROW 2 Cards: CSIRT, SE, IKAS ──────────────────────
     const operationalCards = computed(() => {
         const csirtTrend = getMonthlyTrend(baseCsirts.value, 'perusahaan.created_at');
-        const sdmTrend = getMonthlyTrend(baseSdm.value);
+        const ikasTrend = getMonthlyTrend(baseIkasStakeholders.value, 'updated_at');
         const seTrend = getMonthlyTrend(baseSeList.value);
         const stakeholderTrend = getMonthlyTrend(baseStakeholders.value);
 
@@ -650,9 +826,9 @@
                 chartOptions: buildSparkOptions('danger', csirtTrend.labels)
             },
             {
-                title: "SDM CSIRT",
-                count: String(totalSdm.value),
-                percent: String(filteredSdm.value),
+                title: "Total IKAS",
+                count: String(stakeholdersWithIkas.value),
+                percent: String(filteredIkasCount.value),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "info",
                 iconColor: "success fw-medium",
@@ -661,13 +837,13 @@
                 ValueClass: "fw-semibold lh-sm",
                 smallText: "fs-12 lh-base",
                 ValueClass1: "fs-12 lh-base",
-                svgIcon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M117.25,157.92a60,60,0,1,0-66.5,0A95.83,95.83,0,0,0,3.53,195.63a8,8,0,1,0,13.4,8.74,80,80,0,0,1,134.14,0,8,8,0,0,0,13.4-8.74A95.83,95.83,0,0,0,117.25,157.92ZM40,108a44,44,0,1,1,44,44A44,44,0,0,1,40,108Zm210.14,98.7a8,8,0,0,1-11.07-2.33A79.83,79.83,0,0,0,172,168a8,8,0,0,1,0-16,44,44,0,1,0-16.34-84.87,8,8,0,1,1-5.94-14.85,60,60,0,0,1,55.53,105.64,95.83,95.83,0,0,1,47.22,37.71A8,8,0,0,1,250.14,206.7Z"/></svg>',
-                id: 'chart-sdm',
+                svgIcon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M224,200h-16V64a8,8,0,0,0-8-8H152a8,8,0,0,0-8,8v136H96v-80a8,8,0,0,0-8-8H40a8,8,0,0,0-8,8v80H16a8,8,0,0,0,0,16H224a8,8,0,0,0,0-16ZM160,72h32v128H160ZM48,128H80v72H48Z"/></svg>',
+                id: 'chart-ikas',
                 type: 'area',
                 height: '50',
                 width: '100',
-                chartSeries: [{ name: 'SDM', data: sdmTrend.data }],
-                chartOptions: buildSparkOptions('info', sdmTrend.labels)
+                chartSeries: [{ name: 'IKAS', data: ikasTrend.data }],
+                chartOptions: buildSparkOptions('info', ikasTrend.labels)
             },
             {
                 title: "Sistem Elektronik",
@@ -750,28 +926,77 @@
 
     // ─── Drill-Down Handler ─────────────────────────────────
     function handleDrillDown(context) {
-        const all = stakeholdersStore.allStakeholders;
+        const range = filterStore.dateRange;
+        // Gunakan baseStakeholders yang sudah difilter Sektor & Sub Sektor
+        let all = baseStakeholders.value;
+        
+        // Terapkan date range filter
+        if (range && (range[0] || range[1])) {
+             all = all.filter(s => isInDateRange(s.created_at, range));
+        }
+
         drillDownTitle.value = `Detail: ${context.type || 'Data'}`;
         drillDownColumns.value = ['nama_perusahaan', 'sektor', 'created_at'];
 
-        if (context.type === 'stakeholders') {
-            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'created_at'];
-            drillDownItems.value = all.map(s => ({
-                nama_perusahaan: s.nama_perusahaan || s.nama || '-',
-                sektor: getStakeholderSektorName(s),
-                sub_sektor: getStakeholderSubSektorName(s),
-                created_at: s.created_at ? new Date(s.created_at).toLocaleDateString('id-ID') : '-',
-                slug: s.slug,
-            }));
-        } else if (context.type === 'csirt') {
-            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'created_at'];
-            drillDownItems.value = csirtStore.csirts.map(c => ({
+        if (context.type === 'stakeholders' || context.type === 'Stakeholders') {
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'csirt_status', 'ikas_score', 'created_at'];
+            drillDownItems.value = all.map(s => {
+                const hasCsirt = csirtStore.hasCompleteCsirt(s.id);
+                const ikasData = ikasStore.ikasDataMap[s.slug];
+                const hasIkas = ikasData && ikasData.total_rata_rata && ikasData.total_rata_rata !== 'NA' && ikasData.total_rata_rata !== 0;
+                return {
+                    nama_perusahaan: s.nama_perusahaan || s.nama || '-',
+                    sektor: getStakeholderSektorName(s),
+                    sub_sektor: getStakeholderSubSektorName(s),
+                    csirt_status: hasCsirt ? '✓ Ada' : '✗ Tidak',
+                    ikas_score: hasIkas ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
+                    created_at: s.created_at ? new Date(s.created_at).toLocaleDateString('id-ID') : '-',
+                    slug: s.slug,
+                };
+            });
+        } else if (context.type === 'csirt' || context.type === 'Total CSIRT') {
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'csirt_nama', 'csirt_status', 'created_at'];
+            drillDownItems.value = baseCsirts.value.map(c => ({
                 nama_perusahaan: c.perusahaan?.nama_perusahaan || c.nama_csirt || '-',
                 sektor: getCsirtSektorName(c),
                 sub_sektor: getCsirtSubSektorName(c),
+                csirt_nama: c.nama_csirt || '-',
+                csirt_status: csirtStore.hasCompleteCsirt(c.id_perusahaan || c.perusahaan?.id) ? '✓ Lengkap' : '⚠ Belum Lengkap',
                 created_at: c.perusahaan?.created_at ? new Date(c.perusahaan.created_at).toLocaleDateString('id-ID') : '-',
                 slug: c.perusahaan?.slug,
             }));
+        } else if (context.type === 'Total IKAS') {
+            // Show all stakeholders that have IKAS data
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'ikas_score', 'ikas_kategori'];
+            drillDownItems.value = all.filter(s => {
+                const data = ikasStore.ikasDataMap[s.slug];
+                return data && data.total_rata_rata && data.total_rata_rata !== 'NA' && data.total_rata_rata !== 0;
+            }).map(s => {
+                const ikasData = ikasStore.ikasDataMap[s.slug];
+                return {
+                    nama_perusahaan: s.nama_perusahaan || s.nama || '-',
+                    sektor: getStakeholderSektorName(s),
+                    sub_sektor: getStakeholderSubSektorName(s),
+                    ikas_score: ikasData?.total_rata_rata ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
+                    ikas_kategori: ikasData?.total_kategori || '-',
+                    slug: s.slug,
+                };
+            });
+        } else if (context.type === 'Sistem Elektronik') {
+            // Show all Sistem Elektronik records
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'nama_se', 'kategori_se'];
+            drillDownItems.value = baseSeList.value.map(se => {
+                const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
+                const perusahaan = csirt?.perusahaan;
+                return {
+                    nama_perusahaan: perusahaan?.nama_perusahaan || '-',
+                    sektor: csirt ? getCsirtSektorName(csirt) : '-',
+                    sub_sektor: csirt ? getCsirtSubSektorName(csirt) : '-',
+                    nama_se: se.nama_se || se.nama || '-',
+                    kategori_se: se.kategori_se || '-',
+                    slug: perusahaan?.slug,
+                };
+            });
         } else if (context.type === 'Cakupan CSIRT') {
             // Filter only stakeholders with complete CSIRT
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'csirt_nama', 'csirt_status'];
@@ -915,19 +1140,28 @@
     function handleSektorCardClick(card) {
         if (!card.sektorId) return;
         const all = stakeholdersStore.allStakeholders;
-        const subSektors = subSektorList.value;
-        
-        // Find all sub_sektors that belong to this sektor
-        const children = subSektors.filter(ss => {
-            const pid = getSubSektorParentId(ss);
-            return pid !== undefined && String(pid) === String(card.sektorId);
-        });
-        const childIds = new Set(children.map(c => String(c.id)));
-        
-        const sektorStakeholders = all.filter(s => {
-            const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
-            return subSektorId && childIds.has(String(subSektorId));
-        });
+        let sektorStakeholders;
+
+        if (card.isSubSektor) {
+            // Sub-sektor card: filter by sub-sektor ID directly
+            sektorStakeholders = all.filter(s => {
+                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                return subSektorId && String(subSektorId) === String(card.sektorId);
+            });
+        } else {
+            // Sektor card: find all sub-sektors belonging to this sektor
+            const subSektors = subSektorList.value;
+            const children = subSektors.filter(ss => {
+                const pid = getSubSektorParentId(ss);
+                return pid !== undefined && String(pid) === String(card.sektorId);
+            });
+            const childIds = new Set(children.map(c => String(c.id)));
+            
+            sektorStakeholders = all.filter(s => {
+                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                return subSektorId && childIds.has(String(subSektorId));
+            });
+        }
 
         drillDownTitle.value = `Detail: ${card.title}`;
         drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'created_at'];
@@ -1076,15 +1310,24 @@
                 />
             </div>
 
-            <!-- ═══ SEKTOR CARDS (top 3) ═══ -->
+            <!-- ═══ SEKTOR / SUB SEKTOR CARDS ═══ -->
+            <!-- Section label -->
+            <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1">
+                <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
+                    <i class="ri-building-2-line"></i>
+                    <span v-if="filterStore.subSektorId">Sub Sektor Terpilih</span>
+                    <span v-else>Semua Sub Sektor</span>
+                </span>
+                <span class="text-muted" style="font-size: 0.75rem;">{{ sektorCards.length }} item</span>
+            </div>
             <div class="row g-3">
-                <div class="col-xl-4 col-md-6"
+                <div :class="sektorCards.length === 1 ? 'col-xl-4 col-md-6' : (sektorCards.length <= 6 ? 'col-xl-4 col-md-6' : 'col-xl-3 col-md-4')"
                     v-for="(card, index) in sektorCards"
                     :key="'sektor-' + index"
-                    @click="handleSektorCardClick(card)"
-                    style="cursor: pointer; transition: transform 0.2s; transition-timing-function: ease-in-out;"
-                    onmouseover="this.style.transform='translateY(-3px)'"
-                    onmouseout="this.style.transform='translateY(0)'">
+                    @click="!card.isMuted && handleSektorCardClick(card)"
+                    :style="card.isMuted ? '' : 'cursor: pointer; transition: transform 0.2s; transition-timing-function: ease-in-out;'"
+                    :onmouseover="card.isMuted ? '' : 'this.style.transform=\'translateY(-3px)\''"
+                    :onmouseout="card.isMuted ? '' : 'this.style.transform=\'translateY(0)\''">
                     <SpkReusebleJobs
                         titleClass="fs-13 fw-medium mb-0"
                         :listCard="true"
@@ -1099,7 +1342,11 @@
             <div class="row g-3 mt-1">
                 <div class="col-xl-3 col-md-6"
                     v-for="(card, index) in operationalCards"
-                    :key="'ops-' + index">
+                    :key="'ops-' + index"
+                    @click="handleDrillDown({ type: card.title })"
+                    style="cursor: pointer; transition: transform 0.2s ease;"
+                    @mouseover="$event.currentTarget.style.transform = 'translateY(-3px)'"
+                    @mouseout="$event.currentTarget.style.transform = 'translateY(0)'">
                     <SpkReusebleJobs
                         titleClass="fs-13 fw-medium mb-0"
                         :listCard="true"
@@ -1313,8 +1560,126 @@
                                         <GeoMap @sektor-click="handleSektorClick" class="w-100" />
                                     </div>
                                     <div class="col-xl-7">
-                                        <!-- Distribusi Stakeholder per Sektor Table (from API sektor_counts) -->
-                                        <div v-if="apiSektorCounts.length" class="card custom-card mb-0 h-100">
+                                        <!-- 1. LIST STAKEHOLDER (Jika 1 Sub Sektor Dipilih) -->
+                                        <div v-if="filterStore.subSektorId && filterStore.subSektorId !== 'ALL'" class="card custom-card mb-0 h-100">
+                                            <div class="card-header d-flex flex-column gap-3 py-3">
+                                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="fs-rate-icon bg-info-transparent">
+                                                            <i class="ri-list-check-2 text-info"></i>
+                                                        </div>
+                                                        <div>
+                                                            <h6 class="mb-0 fw-bold">{{ activeSubSektorSummary?.nama_sektor || 'Data Stakeholder Aktif' }}</h6>
+                                                            <small class="text-muted">{{ baseStakeholders.length }} stakeholder di sub sektor ini</small>
+                                                        </div>
+                                                    </div>
+
+                                                    <div v-if="activeSubSektorSummary" class="d-flex gap-3 align-items-center">
+                                                        <div class="text-center">
+                                                            <span class="text-muted fs-11 d-block fw-medium">TOTAL</span>
+                                                            <span class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.total }}</span>
+                                                        </div>
+                                                        <div class="text-center">
+                                                            <span class="text-muted fs-11 d-block fw-medium">THN INI</span>
+                                                            <span v-if="activeSubSektorSummary.countYear > 0" class="badge bg-info-transparent fw-bold">{{ activeSubSektorSummary.countYear }}</span>
+                                                            <span v-else class="text-muted small">0</span>
+                                                        </div>
+                                                        <div class="text-center">
+                                                            <span class="text-muted fs-11 d-block fw-medium">QTR INI</span>
+                                                            <span v-if="activeSubSektorSummary.countQuarter > 0" class="badge bg-purple-transparent fw-bold">{{ activeSubSektorSummary.countQuarter }}</span>
+                                                            <span v-else class="text-muted small">0</span>
+                                                        </div>
+                                                        <div class="text-center">
+                                                            <span class="text-muted fs-11 d-block fw-medium">BLN INI</span>
+                                                            <span v-if="activeSubSektorSummary.this_month > 0" class="badge bg-success-transparent fw-bold">+{{ activeSubSektorSummary.this_month }}</span>
+                                                            <span v-else class="text-muted small">0</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1">
+                                                    <!-- CSIRT -->
+                                                    <div class="flex-grow-1">
+                                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                                            <span class="fs-11 text-muted fw-medium">Sudah CSIRT</span>
+                                                            <span class="fs-11 fw-bold text-danger">{{ activeSubSektorSummary.csirtPercent }}</span>
+                                                        </div>
+                                                        <div class="progress" style="height: 4px;">
+                                                            <div class="progress-bar bg-danger" role="progressbar" :style="{ width: activeSubSektorSummary.csirtPercent }"></div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- IKAS -->
+                                                    <div class="flex-grow-1">
+                                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                                            <span class="fs-11 text-muted fw-medium">Sudah IKAS</span>
+                                                            <span class="fs-11 fw-bold text-success">{{ activeSubSektorSummary.ikasPercent }}</span>
+                                                        </div>
+                                                        <div class="progress" style="height: 4px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" :style="{ width: activeSubSektorSummary.ikasPercent }"></div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- Data Lengkap -->
+                                                    <div class="flex-grow-1">
+                                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                                            <span class="fs-11 text-muted fw-medium">Data Lengkap</span>
+                                                            <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.lengkapPercent }}</span>
+                                                        </div>
+                                                        <div class="progress" style="height: 4px;">
+                                                            <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.lengkapPercent }"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="card-body p-0">
+                                                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                                                    <table class="table table-hover mb-0 fs-sektor-table">
+                                                        <thead style="position: sticky; top: 0; background-color: var(--custom-white); z-index: 1; box-shadow: 0 1px 0 rgba(0,0,0,0.05);">
+                                                            <tr>
+                                                                <th style="width:40px">#</th>
+                                                                <th>Nama Stakeholder</th>
+                                                                <th class="text-center" style="width:120px">Status CSIRT</th>
+                                                                <th class="text-center" style="width:100px">Skor IKAS</th>
+                                                                <th class="text-center" style="width:60px">Aksi</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr v-for="(s, idx) in baseStakeholders" :key="s.id">
+                                                                <td class="text-muted">{{ idx + 1 }}</td>
+                                                                <td>
+                                                                    <span class="fw-medium text-primary">{{ s.nama_perusahaan || s.nama || 'Tanpa Nama' }}</span>
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    <div v-if="csirtStore.csirts.some(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id))">
+                                                                        <i class="ri-checkbox-circle-fill text-success fs-18" v-if="csirtStore.hasCompleteCsirt(s.id)" title="CSIRT Lengkap"></i>
+                                                                        <i class="ri-checkbox-circle-line text-muted fs-18" v-else title="CSIRT Belum Lengkap (Hanya Registrasi)"></i>
+                                                                    </div>
+                                                                    <span v-else class="text-muted fs-11 fw-medium">-</span>
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    <span class="badge bg-success-transparent fw-bold" v-if="ikasStore.ikasDataMap[s.slug]?.total_rata_rata">
+                                                                        {{ Number(ikasStore.ikasDataMap[s.slug].total_rata_rata).toFixed(2) }}
+                                                                    </span>
+                                                                    <span v-else class="text-muted small">NA</span>
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    <button class="btn btn-sm btn-icon btn-primary-light" @click="router.push(`/stakeholders/${s.slug}`)" title="Lihat Detail">
+                                                                        <i class="ri-arrow-right-up-line"></i>
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                            <tr v-if="baseStakeholders.length === 0">
+                                                                <td colspan="5" class="text-center py-4 text-muted">Tidak ada data stakeholder</td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 2. TABEL DISTRIBUSI SEKTOR (Default / Jika Semua Sub Sektor Dipilih) -->
+                                        <div v-else-if="apiSektorCounts.length" class="card custom-card mb-0 h-100">
                                             <div class="card-header d-flex align-items-center justify-content-between py-3">
                                                 <div class="d-flex align-items-center gap-2">
                                                     <div class="fs-rate-icon bg-primary-transparent">

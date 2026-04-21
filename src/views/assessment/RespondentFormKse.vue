@@ -106,9 +106,6 @@ const saveProfile = () => {
       if (idx !== -1) { list[idx].namaSistem = formData.namaSistem; localStorage.setItem(listKey, JSON.stringify(list)); }
     } catch {}
   }
-
-  saveIndicator.value = 'âœ“ Disimpan otomatis';
-  setTimeout(() => { saveIndicator.value = ''; }, 2500);
 };
 
 onMounted(async () => {

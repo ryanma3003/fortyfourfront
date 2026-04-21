@@ -404,15 +404,7 @@ export default {
                String(c.id_perusahaan) === String(stakeholderId)
         );
         for (const csirt of companyCsirts) {
-          const [sdms, ses] = await Promise.all([
-            csirtService.getSdmByCsirtId(csirt.id),
-            csirtService.getSeByCsirtId(csirt.id),
-          ]);
-          await Promise.all([
-            ...sdms.map(sdm => csirtService.deleteSdm(sdm.id)),
-            ...ses.map(se => csirtService.deleteSe(se.id)),
-          ]);
-          await csirtService.delete(csirt.id);
+          await csirtStore.deleteCsirtById(csirt.id);
         }
       } catch (err) {
         console.warn('Cascade delete CSIRT failed:', err);
@@ -445,15 +437,7 @@ export default {
                String(c.id_perusahaan)  === String(stakeholderId)
         );
         for (const csirt of companyCsirts) {
-          const [sdms, ses] = await Promise.all([
-            csirtService.getSdmByCsirtId(csirt.id),
-            csirtService.getSeByCsirtId(csirt.id),
-          ]);
-          await Promise.all([
-            ...sdms.map(sdm => csirtService.deleteSdm(sdm.id)),
-            ...ses.map(se  => csirtService.deleteSe(se.id)),
-          ]);
-          await csirtService.delete(csirt.id);
+          await csirtStore.deleteCsirtById(csirt.id);
         }
       } catch (err) {
         console.warn('Cascade delete CSIRT failed:', err);

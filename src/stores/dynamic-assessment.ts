@@ -401,22 +401,33 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 return;
             }
 
-            const payload = {
-                id_ikas: backendIkasId,
-                id_pertanyaan: questionId,
+            // Backend expects domain-specific foreign key names for the question ID:
+            // pertanyaan_identifikasi_id, pertanyaan_proteksi_id, etc.
+            const domainKey = question.domainKey;
+            const pertanyaanFieldMap: Record<string, string> = {
+                identifikasi: 'pertanyaan_identifikasi_id',
+                proteksi: 'pertanyaan_proteksi_id',
+                deteksi: 'pertanyaan_deteksi_id',
+                gulih: 'pertanyaan_gulih_id',
+            };
+            const pertanyaanField = pertanyaanFieldMap[domainKey] || 'id_pertanyaan';
+
+            const payload: Record<string, any> = {
+                ikas_id: backendIkasId,
+                [pertanyaanField]: Number(questionId),
                 jawaban: index,
                 nilai: index,
             };
 
             try {
-                if (question.domainKey === 'identifikasi') {
-                    await ikasService.createJawabanIdentifikasi(payload);
-                } else if (question.domainKey === 'proteksi') {
-                    await ikasService.createJawabanProteksi(payload);
-                } else if (question.domainKey === 'deteksi') {
-                    await ikasService.createJawabanDeteksi(payload);
+                if (domainKey === 'identifikasi') {
+                    await ikasService.createJawabanIdentifikasi(payload as any);
+                } else if (domainKey === 'proteksi') {
+                    await ikasService.createJawabanProteksi(payload as any);
+                } else if (domainKey === 'deteksi') {
+                    await ikasService.createJawabanDeteksi(payload as any);
                 } else {
-                    await ikasService.createJawabanGulih(payload);
+                    await ikasService.createJawabanGulih(payload as any);
                 }
 
                 this.syncedBackendAnswersMap[stakeholderSlug][questionId] = index;
@@ -454,7 +465,11 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 }
 
                 answers.forEach((item: any) => {
-                    const questionId = String(item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || '');
+                    const questionId = String(
+                        item.pertanyaan_identifikasi_id || item.pertanyaan_proteksi_id ||
+                        item.pertanyaan_deteksi_id || item.pertanyaan_gulih_id ||
+                        item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || ''
+                    );
                     if (!questionId) return;
 
                     const indexValue = Number(item.jawaban ?? item.nilai ?? item.index ?? 0);

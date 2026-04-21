@@ -203,6 +203,7 @@
             <PerfectScrollbar
               class="list-unstyled mb-0"
               id="header-notification-scroll"
+              style="max-height: 400px; position: relative;"
             >
               <!-- Real-time events from store -->
               <template v-if="notifStore.recentForDropdown.length > 0">
@@ -581,7 +582,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { Tooltip } from "bootstrap";
@@ -589,8 +590,6 @@ import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import "vue3-perfect-scrollbar/style.css";
 import {
   Languages,
-  Notifications,
-  notificationNotes as initialNotificationNotes,
 } from "../../../data/header";
 import { switcherStore } from "../../../stores/switcher";
 import { MENUITEMS } from "../../../data/sidebar/nav";
@@ -610,11 +609,24 @@ const router = useRouter();
 // Load profile data on mount - use switchUser to handle proper initialization
 onMounted(() => {
   profileStore.switchUser();
-  // Initialize SSE notification system
+  // Try init immediately if already authenticated
   if (authStore.authenticated) {
     notifStore.init();
   }
 });
+
+// Watch for authentication state changes and initialize store
+watch(
+  () => authStore.authenticated,
+  (isAuth) => {
+    if (isAuth) {
+      notifStore.init();
+    } else {
+      notifStore.disconnect();
+    }
+  },
+  { immediate: true }
+);
 
 // Reactive profile data
 const { fotoProfileUrl } = storeToRefs(profileStore);
@@ -626,7 +638,6 @@ const dashboardPath = computed(() => authStore.isAdmin ? '/dashboard' : '/dashbo
 const isFullScreen = ref(false);
 const search = ref("");
 const showSuggestions = ref(false);
-const notificationNotes = ref([...initialNotificationNotes]);
 
 // Functions
 const colorthemeFn = (value: string) => {

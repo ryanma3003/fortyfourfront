@@ -60,11 +60,16 @@ const kpis = computed(() => {
     // Filter base array by global date filter and sector filter
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInDateRange(s.created_at, filterStore.dateRange);
+        
+        const subId = filterStore.subSektorId;
+        const fId = filterStore.sektorId;
+        const effectiveSubId = subId === 'ALL' ? '' : subId;
+        
         let inSector = true;
-        if (filterStore.subSektorId) {
-            inSector = String(s.sub_sektor?.id || s.id_sub_sektor) === String(filterStore.subSektorId);
-        } else if (filterStore.sektorId) {
-            inSector = String(s.sub_sektor?.id_sektor || s.id_sektor) === String(filterStore.sektorId);
+        if (effectiveSubId) {
+            inSector = String(s.sub_sektor?.id || s.id_sub_sektor) === String(effectiveSubId);
+        } else if (fId) {
+            inSector = String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId);
         }
         return inDate && inSector;
     });

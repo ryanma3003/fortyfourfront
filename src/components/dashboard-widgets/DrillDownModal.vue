@@ -74,6 +74,8 @@ const columnLabels = {
     ikas_score: 'Skor IKAS',
     ikas_kategori: 'Kategori IKAS',
     ikas_maturity: 'Kematangan IKAS',
+    nama_se: 'Nama SE',
+    kategori_se: 'Kategori SE',
     periode: 'Periode',
     status_data: 'Status Data',
     email: 'Email',

@@ -271,11 +271,52 @@ export const useIkasStore = defineStore('ikas', {
   },
 
   actions: {
-    // Initialize store (no localStorage — data comes from backend)
-    initialize() {
+    // Initialize store and fetch data
+    async initialize() {
       if (this.initialized) return;
-      this.initialized = true;
-      this.ikasVersion++;
+      
+      this.apiLoading = true;
+      try {
+        await this.fetchAllFromBackend();
+        this.initialized = true;
+      } catch (e) {
+        console.error('[IKAS Store] Failed to initialize:', e);
+      } finally {
+        this.apiLoading = false;
+        this.ikasVersion++;
+      }
+    },
+
+    /** Fetch all IKAS records from backend to populate global state */
+    async fetchAllFromBackend() {
+      try {
+        // We use the base maturity endpoint which usually returns a list
+        const response = await ikasService.getIkasByPerusahaan(''); 
+        // Note: if the backend requires id_perusahaan, we might need a dedicated list endpoint.
+        // But looking at getIkasByPerusahaan, it hits /api/maturity/ikas?id_perusahaan=...
+        // If id_perusahaan is empty, many backends return all or we can try /api/maturity/ikas directly.
+        
+        const records = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : []);
+        
+        records.forEach((rec: any) => {
+          if (!rec.perusahaan?.slug) return;
+          const slug = rec.perusahaan.slug;
+          
+          this.backendIkasIds[slug] = rec.id;
+          this.backendSyncedMap[slug] = true;
+          
+          // Populate summary score in map
+          if (!this.ikasDataMap[slug]) {
+             this.ikasDataMap[slug] = createDefaultIkasData();
+          }
+          this.ikasDataMap[slug].total_rata_rata = rec.nilai_kematangan || rec.total_rata_rata || 0;
+          this.ikasDataMap[slug].total_kategori = getMaturityLabel(this.ikasDataMap[slug].total_rata_rata as number);
+        });
+        
+        this.ikasVersion++;
+      } catch (error) {
+        console.error('[IKAS Store] fetchAllFromBackend failed:', error);
+      }
     },
 
     /** Refresh IKAS data */

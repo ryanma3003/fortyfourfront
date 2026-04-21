@@ -32,6 +32,7 @@ export interface ServerEvent {
     user: EventActor;
     timestamp: string;     // ISO 8601
     message: string;       // human-readable summary from server
+    is_read?: boolean;     // read state from backend
 }
 
 /** Statistics from GET /api/events/stats */

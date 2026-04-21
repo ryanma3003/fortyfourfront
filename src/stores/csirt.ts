@@ -156,11 +156,15 @@ export const useCsirtStore = defineStore('csirt', {
             try {
                 if (options.targetCsirtId) {
                     const param = String(options.targetCsirtId);
+                    // Match standard UUID: 8-4-4-4-12
                     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
+                    console.debug(`[csirtStore] Resolving targetCsirtId: ${param} (isUUID: ${isUUID})`);
+                    
                     if (/^\d+$/.test(param) || isUUID) {
                         const specific = await csirtService.getMemberById(param).catch(() => null);
                         if (specific) {
                             targetId = specific.id;
+                            console.debug(`[csirtStore] Resolved specific CSIRT ID: ${targetId}`);
                             const formatted = {
                                 ...specific,
                                 slug: specific.slug || this.generateSlug(specific.nama_csirt),
@@ -174,65 +178,67 @@ export const useCsirtStore = defineStore('csirt', {
                             else this.csirts.push(formatted);
                         }
                     } else {
+                        // slug resolution ...
                         if (this.csirts.length === 0) {
-                            const data = await csirtService.getMembers().catch(() => []);
-                            this.csirts = (Array.isArray(data) ? data : []).map(c => ({
-                                ...c,
-                                slug: c.slug || this.generateSlug(c.nama_csirt),
-                                photo_csirt: this.formatImageUrl(c.photo_csirt),
-                                file_rfc2350: this.formatImageUrl(c.file_rfc2350),
-                                file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
-                                file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi),
-                            }));
+                            await this.initialize({ fetchGlobal: true });
                         }
+                        
                         const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                        const found = this.csirts.find(c => {
+                        let found = this.csirts.find(c => {
                             if (String(c.id) === param || c.slug === param) return true;
                             const csirtPart = c.slug || toSlug(c.nama_csirt);
                             return csirtPart === param;
                         });
+
                         if (found) {
                             targetId = found.id;
+                            console.debug(`[csirtStore] Resolved slug to ID: ${targetId}`);
+                            // Optional: refresh specific data to get latest details
                             const specific = await csirtService.getMemberById(targetId).catch(() => null);
                             if (specific) {
-                                const existingIdx = this.csirts.findIndex(e => String(e.id) === String(specific.id));
                                 const formatted = {
                                     ...specific,
                                     slug: specific.slug || this.generateSlug(specific.nama_csirt),
                                     photo_csirt: this.formatImageUrl(specific.photo_csirt),
                                     file_rfc2350: this.formatImageUrl(specific.file_rfc2350),
                                     file_public_key_pgp: this.formatImageUrl(specific.file_public_key_pgp),
-                                    file_surat_tanda_registrasi: this.formatImageUrl(specific.file_surat_tanda_registrasi),
+                                    file_surat_tanda_registrasi: this.formatImageUrl(specific.file_surat_tanda_registrasi || (specific as any).file_str),
                                 };
+                                const existingIdx = this.csirts.findIndex(e => String(e.id) === String(specific.id));
                                 if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
                                 else this.csirts.push(formatted);
                             }
                         }
                     }
                 } else if (options.targetCompanyId) {
+                    console.debug(`[csirtStore] Resolving targetCompanyId: ${options.targetCompanyId}`);
                     const c = await csirtService.getCsirtByPerusahaan(options.targetCompanyId).catch(() => null);
                     if (c) {
                         targetId = c.id;
+                        console.debug(`[csirtStore] Resolved company to CSIRT ID: ${targetId}`);
+                        const formatted = {
+                            ...c,
+                            slug: c.slug || this.generateSlug(c.nama_csirt),
+                            photo_csirt: this.formatImageUrl(c.photo_csirt),
+                            file_rfc2350: this.formatImageUrl(c.file_rfc2350),
+                            file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                            file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
+                        };
                         const existingIdx = this.csirts.findIndex(e => String(e.id) === String(c.id));
-                                const formatted = {
-                                    ...c,
-                                    slug: c.slug || this.generateSlug(c.nama_csirt),
-                                    photo_csirt: this.formatImageUrl(c.photo_csirt),
-                                    file_rfc2350: this.formatImageUrl(c.file_rfc2350),
-                                    file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
-                                    file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
-                                };
                         if (existingIdx >= 0) this.csirts[existingIdx] = formatted;
                         else this.csirts.push(formatted);
                     }
                 }
 
                 if (targetId) {
+                    console.debug(`[csirtStore] Fetching child data (SDM/SE) for ID: ${targetId}`);
                     const [sdm, se] = await Promise.all([
-                        csirtService.getSdmByCsirtId(targetId).catch(() => []),
-                        csirtService.getSeByCsirtId(targetId).catch(() => [])
+                        csirtService.getSdmByCsirtId(targetId).catch((err) => { console.error('getSdm err:', err); return []; }),
+                        csirtService.getSeByCsirtId(targetId).catch((err) => { console.error('getSe err:', err); return []; })
                     ]);
-
+                    
+                    console.debug(`[csirtStore] Received SDM: ${sdm.length}, SE: ${se.length}`);
+                    
                     if (Array.isArray(sdm)) {
                         this.sdmList = this.sdmList.filter(s => String(s.id_csirt) !== String(targetId) && String((s as any).csirt?.id) !== String(targetId));
                         this.sdmList.push(...sdm);
@@ -241,6 +247,8 @@ export const useCsirtStore = defineStore('csirt', {
                         this.seList = this.seList.filter(s => String(s.id_csirt) !== String(targetId) && String((s as any).csirt?.id) !== String(targetId));
                         this.seList.push(...se);
                     }
+                } else {
+                    console.warn('[csirtStore] No targetId resolved. Child data will not be fetched.');
                 }
             } catch (err) {
                 console.error("fetchSpecific error:", err);
@@ -295,16 +303,19 @@ export const useCsirtStore = defineStore('csirt', {
             this.error = null;
 
             try {
-                // 1. Manually delete all child SDM and SE to bypass SQL 'ON DELETE RESTRICT' errors
-                const sdms = this.sdmList.filter(s => String(s.id_csirt) === String(id) || String((s as any).csirt?.id) === String(id));
-                const ses = this.seList.filter(s => String(s.id_csirt) === String(id) || String((s as any).csirt?.id) === String(id));
+                // 1. Fetch fresh lists from API to ensure we don't miss anything due to stale store state
+                const [sdms, ses] = await Promise.all([
+                    csirtService.getSdmByCsirtId(id).catch(() => []),
+                    csirtService.getSeByCsirtId(id).catch(() => [])
+                ]);
 
+                // 2. Cascade delete all child SDM and SE
                 await Promise.all([
                     ...sdms.map(sdm => csirtService.deleteSdm(sdm.id).catch(e => console.warn('Failed to cascade delete SDM:', e))),
                     ...ses.map(se => csirtService.deleteSe(se.id).catch(e => console.warn('Failed to cascade delete SE:', e)))
                 ]);
 
-                // 2. Delete the parent CSIRT
+                // 3. Delete the parent CSIRT
                 await csirtService.delete(id);
                 const index = this.csirts.findIndex(c => String(c.id) === String(id));
                 if (index !== -1) {
@@ -318,6 +329,82 @@ export const useCsirtStore = defineStore('csirt', {
                 this.error = error.message || 'Failed to delete CSIRT';
                 this.loading = false;
                 return { success: false, error: this.error };
+            }
+        },
+
+        // --- SDM CRUD ACTIONS ---
+        async createSdm(payload: Omit<SdmCsirt, 'id'>) {
+            try {
+                const response = await csirtService.createSdm(payload);
+                // Instant local update
+                this.sdmList.push({
+                    ...response,
+                    id_csirt: response.id_csirt || (response as any).csirt?.id || payload.id_csirt
+                });
+                return { success: true, data: response };
+            } catch (err: any) {
+                return { success: false, error: err.message };
+            }
+        },
+
+        async updateSdm(id: string | number, payload: Partial<SdmCsirt>) {
+            try {
+                const response = await csirtService.updateSdm(id, payload);
+                const idx = this.sdmList.findIndex(item => String(item.id) === String(id));
+                if (idx !== -1) {
+                    this.sdmList[idx] = { ...this.sdmList[idx], ...response };
+                }
+                return { success: true, data: response };
+            } catch (err: any) {
+                return { success: false, error: err.message };
+            }
+        },
+
+        async deleteSdm(id: string | number) {
+            try {
+                await csirtService.deleteSdm(id);
+                this.sdmList = this.sdmList.filter(item => String(item.id) !== String(id));
+                return { success: true };
+            } catch (err: any) {
+                return { success: false, error: err.message };
+            }
+        },
+
+        // --- SE CRUD ACTIONS ---
+        async createSe(payload: any) {
+            try {
+                const response = await csirtService.createSe(payload);
+                // Instant local update
+                this.seList.push({
+                    ...response,
+                    id_csirt: response.id_csirt || (response as any).csirt?.id || payload.id_csirt
+                });
+                return { success: true, data: response };
+            } catch (err: any) {
+                return { success: false, error: err.message };
+            }
+        },
+
+        async updateSe(id: string | number, payload: Partial<SeCsirt>) {
+            try {
+                const response = await csirtService.updateSe(id, payload);
+                const idx = this.seList.findIndex(item => String(item.id) === String(id));
+                if (idx !== -1) {
+                    this.seList[idx] = { ...this.seList[idx], ...response };
+                }
+                return { success: true, data: response };
+            } catch (err: any) {
+                return { success: false, error: err.message };
+            }
+        },
+
+        async deleteSe(id: number) {
+            try {
+                await csirtService.deleteSe(id);
+                this.seList = this.seList.filter(item => String(item.id) !== String(id));
+                return { success: true };
+            } catch (err: any) {
+                return { success: false, error: err.message };
             }
         },
 

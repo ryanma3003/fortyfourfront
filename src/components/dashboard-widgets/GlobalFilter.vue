@@ -69,6 +69,48 @@ function applyQuickRange(range) {
         filterStore.updateDateRange(range.start, range.end);
     }
 }
+
+const detailedFilterLabel = computed(() => {
+    const parts = [];
+
+    // Date
+    let dateLabel = filterStore.year ? filterStore.year : 'Semua Waktu';
+    if (filterStore.quarter) {
+        dateLabel = `Q${filterStore.quarter} ${dateLabel}`;
+    } else if (filterStore.dateRange[0] && filterStore.dateRange[1] && !filterStore.year) {
+        dateLabel = `${filterStore.dateRange[0]} s/d ${filterStore.dateRange[1]}`;
+    }
+    parts.push(dateLabel);
+
+    // Sektor
+    if (filterStore.sektorId) {
+        const s = props.sektorList.find(x => String(x.id) === String(filterStore.sektorId));
+        if (s) {
+            parts.push(s.nama_sektor || s.nama);
+        } else {
+            parts.push('Sektor Terpilih');
+        }
+    }
+
+    // Sub Sektor
+    if (filterStore.sektorId && filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+        const ss = props.subSektorList.find(x => String(x.id) === String(filterStore.subSektorId));
+        if (ss) {
+            parts.push(ss.nama_sub_sektor || ss.nama);
+        } else {
+            parts.push('Sub Sektor Terpilih');
+        }
+    } else if (filterStore.sektorId && filterStore.subSektorId === 'ALL') {
+        parts.push('Semua Sub Sektor');
+    }
+
+    // Kategori SE
+    if (filterStore.kategoriSe) {
+        parts.push(filterStore.kategoriSe);
+    }
+
+    return parts.join(' | ');
+});
 </script>
 
 
@@ -170,7 +212,8 @@ function applyQuickRange(range) {
                         <select :value="filterStore.subSektorId" 
                                 @change="filterStore.setSubSektorId($event.target.value)" 
                                 class="gf-select">
-                            <option value="">Semua Sub Sektor</option>
+                            <option value="">Default</option>
+                            <option value="ALL">Semua Sub Sektor</option>
                             <option v-for="ss in filteredSubSektorList" :key="ss.id" :value="ss.id">
                                 {{ ss.nama_sub_sektor || ss.nama }}
                             </option>
@@ -202,7 +245,7 @@ function applyQuickRange(range) {
             <transition name="gf-slide">
                 <div v-if="activeFilterCount > 0" class="gf-summary">
                     <i class="ri-filter-3-line"></i>
-                    <span>{{ filterStore.activeFilterLabel }}</span>
+                    <span>{{ detailedFilterLabel }}</span>
                 </div>
             </transition>
         </div>

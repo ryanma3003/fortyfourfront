@@ -6,8 +6,12 @@ import type { ServerEvent, NotificationStats } from '@/types/notification.types'
  * Notification Service
  *
  * 1. SSE connection to /api/events for real-time event streaming.
- *    Filters out ping/heartbeat events before dispatching.
- * 2. REST calls for stats, history, and deletion.
+ * 2. REST calls for notification history and management:
+ *    - GET    /api/notifications           → fetch all notifications
+ *    - DELETE /api/notifications           → delete all notifications
+ *    - PATCH  /api/notifications/read-all  → mark all as read
+ *    - DELETE /api/notifications/{id}      → delete a notification
+ *    - PATCH  /api/notifications/{id}/read → mark as read
  */
 
 type EventCallback = (event: ServerEvent) => void;
@@ -68,6 +72,7 @@ class NotificationService {
     }
 
     private openConnection(): void {
+        // SSE endpoint — /api/events
         const url = this.buildUrl('/api/events');
 
         try {
@@ -76,7 +81,7 @@ class NotificationService {
             this.eventSource.onopen = () => {
                 this.reconnectAttempt = 0;
                 this.setConnected(true);
-                console.log('[NotificationService] SSE connected');
+                console.log('[NotificationService] SSE connected to', url);
             };
 
             this.eventSource.onmessage = (event) => {
@@ -150,47 +155,118 @@ class NotificationService {
         return this._connected;
     }
 
-    // ── REST endpoints ──────────────────────────────────
-
-    /** Fetch notification statistics. */
-    async getStats(): Promise<NotificationStats> {
-        return api.get<NotificationStats>('/api/events/stats');
-    }
+    // ── REST endpoints (matching backend /api/notifications) ──────────
 
     /**
-     * Fetch notification history from backend.
-     * Events persist server-side — reload does not lose them.
+     * Fetch all notifications from backend.
+     * GET /api/notifications
      */
-    async getHistory(): Promise<any[]> {
+    async getAll(): Promise<any[]> {
         try {
-            const res = await api.get<any>('/api/events/history');
-            // Backend might return { data: [...] } or [...] directly
-            return Array.isArray(res) ? res : (res?.data || res?.events || res?.notifications || []);
+            const res = await api.get<any>('/api/notifications');
+            // Backend returns { notifications: [...], unread_count: X } or [...]
+            if (res && typeof res === 'object' && 'notifications' in res) {
+                return Array.isArray(res.notifications) ? res.notifications : [];
+            }
+            return Array.isArray(res) ? res : [];
         } catch (err) {
-            console.warn('[NotificationService] Failed to fetch history:', err);
+            console.warn('[NotificationService] Failed to fetch notifications:', err);
             return [];
         }
     }
 
-    /**
-     * Delete a notification on the backend (admin action).
+    /** 
+     * Alias for backwards compatibility. 
+     * @deprecated Use getAll() instead.
      */
-    async deleteNotification(id: string): Promise<void> {
+    async getHistory(): Promise<any[]> {
+        return this.getAll();
+    }
+
+    /** Fetch notification statistics (derived from getAll if no dedicated endpoint). */
+    async getStats(): Promise<NotificationStats> {
         try {
-            await api.delete(`/api/events/${id}`);
+            const all = await this.getAll();
+            const stats: NotificationStats = {
+                total: all.length,
+                unread: all.filter((n: any) => !n.is_read && !n.read_at).length,
+                by_type: {
+                    created: all.filter((n: any) => (n.type || n.action || '').toLowerCase().includes('creat')).length,
+                    updated: all.filter((n: any) => (n.type || n.action || '').toLowerCase().includes('updat')).length,
+                    deleted: all.filter((n: any) => (n.type || n.action || '').toLowerCase().includes('delet')).length,
+                },
+                by_entity: {},
+            };
+            return stats;
         } catch (err) {
-            console.warn('[NotificationService] Failed to delete notification:', err);
+            console.warn('[NotificationService] Failed to compute stats:', err);
+            return { total: 0, unread: 0, by_type: { created: 0, updated: 0, deleted: 0 }, by_entity: {} };
         }
     }
 
     /**
-     * Delete all notifications on the backend (admin action).
+     * Mark a single notification as read.
+     * PATCH /api/notifications/{id}/read
+     */
+    async markAsRead(id: string): Promise<void> {
+        try {
+            await api.patch(`/api/notifications/${id}/read`, {});
+        } catch (err) {
+            console.warn('[NotificationService] Failed to mark as read:', id, err);
+        }
+    }
+
+    /**
+     * Mark all notifications as read.
+     * PATCH /api/notifications/read-all
+     */
+    async markAllAsRead(): Promise<void> {
+        try {
+            await api.patch('/api/notifications/read-all', {});
+        } catch (err) {
+            console.warn('[NotificationService] Failed to mark all as read:', err);
+        }
+    }
+
+    /**
+     * Delete a single notification.
+     * DELETE /api/notifications/{id}
+     */
+    async deleteNotification(id: string): Promise<void> {
+        try {
+            await api.delete(`/api/notifications/${id}`);
+        } catch (err) {
+            console.warn('[NotificationService] Failed to delete notification:', id, err);
+        }
+    }
+
+    /**
+     * Delete all notifications.
+     * DELETE /api/notifications
      */
     async clearAll(): Promise<void> {
         try {
-            await api.delete('/api/events/all');
+            await api.delete('/api/notifications');
         } catch (err) {
-            console.warn('[NotificationService] Failed to clear all:', err);
+            console.warn('[NotificationService] Failed to clear all notifications:', err);
+        }
+    }
+
+    /**
+     * Persist a new notification to the database.
+     * POST /api/notifications
+     */
+    async saveNotification(event: ServerEvent): Promise<void> {
+        try {
+            await api.post('/api/notifications', {
+                id: event.id,
+                type: event.type,
+                message: event.message,
+                read: false,
+                created_at: event.timestamp
+            });
+        } catch (err) {
+            console.warn('[NotificationService] Failed to persist SSE event to database:', err);
         }
     }
 }

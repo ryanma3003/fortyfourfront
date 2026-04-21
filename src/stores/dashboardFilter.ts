@@ -35,12 +35,9 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
       if (state.dateRange[1]) params.to = state.dateRange[1];
       if (state.year) params.year = state.year;
       if (state.quarter) params.quarter = state.quarter;
-      // Only send the most specific filter — sub_sektor implies sektor
-      if (state.subSektorId) {
-        params.sub_sektor_id = state.subSektorId;
-      } else if (state.sektorId) {
-        params.sektor_id = state.sektorId;
-      }
+      // sub_sektor_id is NOT sent to API (backend SQL bug with NULL this_month).
+      // Sub-sektor filtering is handled client-side in Dashboard computed properties.
+      if (state.sektorId) params.sektor_id = state.sektorId;
       if (state.kategoriSe) params.kategori_se = state.kategoriSe;
       return params;
     },
@@ -131,7 +128,9 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
 
     setSubSektorId(id: string) {
       this.subSektorId = id;
-      this.triggerFetch();
+      // No API fetch — sub-sektor filtering is handled client-side
+      // (backend SQL bug with NULL this_month on sub_sektor_id filter)
+      this.saveToStorage();
     },
 
     setKategoriSe(kategori: string) {
