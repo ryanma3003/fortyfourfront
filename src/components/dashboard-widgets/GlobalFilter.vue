@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, watch, nextTick } from 'vue';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -12,7 +12,11 @@ const props = defineProps({
 const filterStore = useDashboardFilterStore();
 
 const currentYear = new Date().getFullYear();
-const years = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
+const startYear = 2025;
+const years = Array.from(
+    { length: Math.max(1, currentYear - startYear + 1) }, 
+    (_, i) => String(startYear + i)
+).reverse();
 
 // Computed binding for date picker (so it understands Date objects while store holds strings)
 const datePickerModel = computed({
@@ -35,8 +39,10 @@ const datePickerModel = computed({
 const activeFilterCount = computed(() => {
     let c = 0;
     if (filterStore.sektorId) c++;
-    if (filterStore.subSektorId) c++;
-    if (filterStore.year) c++;
+    // Don't count "ALL" (Semua Sub Sektor) as an active filter
+    if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') c++;
+    // Don't count the current year if it's the only time filter
+    if (filterStore.year && filterStore.year !== String(currentYear)) c++;
     if (filterStore.quarter) c++;
     if (filterStore.kategoriSe) c++;
     // if custom date range is selected (not bound cleanly to year/quarter)
@@ -44,13 +50,50 @@ const activeFilterCount = computed(() => {
     return c;
 });
 
+const isRangeActive = (range) => {
+    if (range.year) {
+        return filterStore.year === range.year && filterStore.quarter === (range.quarter || '');
+    }
+    if (range.start && range.end) {
+        const startStr = filterStore.formatDate(range.start);
+        const endStr = filterStore.formatDate(range.end);
+        return filterStore.dateRange[0] === startStr && filterStore.dateRange[1] === endStr;
+    }
+    return false;
+};
+
 const filteredSubSektorList = computed(() => {
-    if (!filterStore.sektorId) return [];
+    if (!filterStore.sektorId) return props.subSektorList;
     return props.subSektorList.filter(ss => {
         const pid = ss.id_sektor || ss.sektor_id;
         return String(pid) === String(filterStore.sektorId);
     });
 });
+
+function handleSubSektorChange(id) {
+    if (id === 'ALL_GLOBAL') {
+        filterStore.setSektorId('');
+        nextTick(() => {
+            filterStore.setSubSektorId('ALL');
+        });
+        return;
+    }
+
+    filterStore.setSubSektorId(id);
+    
+    // Auto-select parent sektor if not already selected
+    if (id && id !== 'ALL' && !filterStore.sektorId) {
+        const ss = props.subSektorList.find(x => String(x.id) === String(id));
+        const pid = ss?.id_sektor || ss?.sektor_id;
+        if (pid) {
+            filterStore.setSektorId(String(pid));
+            // Restore the subSektorId because setSektorId resets it
+            nextTick(() => {
+                filterStore.setSubSektorId(id);
+            });
+        }
+    }
+}
 
 const quickRanges = [
     { label: 'Bulan Ini', start: new Date(currentYear, new Date().getMonth(), 1), end: new Date(currentYear, new Date().getMonth() + 1, 0) },
@@ -69,6 +112,48 @@ function applyQuickRange(range) {
         filterStore.updateDateRange(range.start, range.end);
     }
 }
+
+const detailedFilterLabel = computed(() => {
+    const parts = [];
+
+    // Date
+    let dateLabel = filterStore.year ? filterStore.year : 'Semua Waktu';
+    if (filterStore.quarter) {
+        dateLabel = `Q${filterStore.quarter} ${dateLabel}`;
+    } else if (filterStore.dateRange[0] && filterStore.dateRange[1] && !filterStore.year) {
+        dateLabel = `${filterStore.dateRange[0]} s/d ${filterStore.dateRange[1]}`;
+    }
+    parts.push(dateLabel);
+
+    // Sektor
+    if (filterStore.sektorId) {
+        const s = props.sektorList.find(x => String(x.id) === String(filterStore.sektorId));
+        if (s) {
+            parts.push(s.nama_sektor || s.nama);
+        } else {
+            parts.push('Sektor Terpilih');
+        }
+    }
+
+    // Sub Sektor
+    if (filterStore.sektorId && filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+        const ss = props.subSektorList.find(x => String(x.id) === String(filterStore.subSektorId));
+        if (ss) {
+            parts.push(ss.nama_sub_sektor || ss.nama);
+        } else {
+            parts.push('Sub Sektor Terpilih');
+        }
+    } else if (filterStore.sektorId && filterStore.subSektorId === 'ALL') {
+        parts.push('Semua Sub Sektor');
+    }
+
+    // Kategori SE
+    if (filterStore.kategoriSe) {
+        parts.push(filterStore.kategoriSe);
+    }
+
+    return parts.join(' | ');
+});
 </script>
 
 
@@ -100,18 +185,20 @@ function applyQuickRange(range) {
             <!-- Quick Range Pills -->
             <div class="gf-quick-bar">
                 <span class="gf-quick-label">
-                    <i class="ri-flashlight-line"></i> Cepat
+                    <i class="ri-flashlight-line"></i> Periode
                 </span>
                 <div class="gf-quick-pills">
                     <button v-for="range in quickRanges" 
                             :key="range.label"
                             class="gf-pill"
-                            :class="{ active: (filterStore.year === range.year && filterStore.quarter === range.quarter) }"
+                            :class="{ active: isRangeActive(range) }"
                             @click="applyQuickRange(range)">
                         {{ range.label }}
                     </button>
                 </div>
             </div>
+
+
 
             <!-- Filter Controls Grid -->
             <div class="gf-controls">
@@ -122,7 +209,7 @@ function applyQuickRange(range) {
                         <select :value="filterStore.year" 
                                 @change="filterStore.updateYear($event.target.value)" 
                                 class="gf-select">
-                            <option value="">Custom Range</option>
+                            <option value="">Semua Tahun</option>
                             <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
                         </select>
                         <i class="ri-arrow-down-s-line gf-select-caret"></i>
@@ -164,13 +251,15 @@ function applyQuickRange(range) {
                 </div>
 
                 <!-- Sub Sektor -->
-                <div class="gf-field" v-if="filterStore.sektorId">
+                <div class="gf-field">
                     <label class="gf-label"><i class="ri-building-2-line"></i> Sub Sektor</label>
                     <div class="gf-select-wrap">
-                        <select :value="filterStore.subSektorId" 
-                                @change="filterStore.setSubSektorId($event.target.value)" 
+                        <select :value="filterStore.sektorId ? filterStore.subSektorId : (filterStore.subSektorId === 'ALL' ? 'ALL_GLOBAL' : filterStore.subSektorId)" 
+                                @change="handleSubSektorChange($event.target.value)" 
                                 class="gf-select">
-                            <option value="">Semua Sub Sektor</option>
+                            <option value="ALL_GLOBAL">Semua Sektor</option>
+                            <option value="">Pilih Sub Sektor</option>
+                            <option v-if="filterStore.sektorId" value="ALL">Semua Sub Sektor (Per Sektor)</option>
                             <option v-for="ss in filteredSubSektorList" :key="ss.id" :value="ss.id">
                                 {{ ss.nama_sub_sektor || ss.nama }}
                             </option>
@@ -179,21 +268,7 @@ function applyQuickRange(range) {
                     </div>
                 </div>
 
-                <!-- Kategori SE -->
-                <div class="gf-field">
-                    <label class="gf-label"><i class="ri-shield-star-line"></i> Kategori SE</label>
-                    <div class="gf-select-wrap">
-                        <select :value="filterStore.kategoriSe" 
-                                @change="filterStore.setKategoriSe($event.target.value)" 
-                                class="gf-select">
-                            <option value="">Semua</option>
-                            <option value="Strategis">Strategis</option>
-                            <option value="Tinggi">Tinggi</option>
-                            <option value="Rendah">Rendah</option>
-                        </select>
-                        <i class="ri-arrow-down-s-line gf-select-caret"></i>
-                    </div>
-                </div>
+
 
 
             </div>
@@ -202,7 +277,7 @@ function applyQuickRange(range) {
             <transition name="gf-slide">
                 <div v-if="activeFilterCount > 0" class="gf-summary">
                     <i class="ri-filter-3-line"></i>
-                    <span>{{ filterStore.activeFilterLabel }}</span>
+                    <span>{{ detailedFilterLabel }}</span>
                 </div>
             </transition>
         </div>
@@ -222,8 +297,8 @@ function applyQuickRange(range) {
     border-radius: 16px;
     overflow: hidden;
     background: #fff;
-    box-shadow: 0 2px 12px rgba(99,51,228,0.08),
-                0 1px 4px rgba(37,99,235,0.06);
+    box-shadow: 0 4px 20px rgba(30,64,175,0.08),
+                0 2px 8px rgba(30,64,175,0.05);
 }
 
 /* ── Header (clean, no background color) ── */
@@ -251,7 +326,7 @@ function applyQuickRange(range) {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    background: linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #60a5fa 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
     box-shadow: 0 4px 14px rgba(37,99,235,0.35);
 }
 
@@ -385,12 +460,21 @@ function applyQuickRange(range) {
 }
 
 .gf-pill.active {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
     border-color: transparent;
     color: #fff;
     box-shadow: 0 4px 14px rgba(37,99,235,0.35);
     transform: translateY(-1px);
 }
+
+.kse-pill.active {
+    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+    box-shadow: 0 4px 14px rgba(249,115,22,0.3);
+}
+
+.mt-n1 { margin-top: -0.25rem !important; }
+.border-0 { border: 0 !important; }
+.pt-0 { padding-top: 0 !important; }
 
 /* ── Controls grid ── */
 .gf-controls {

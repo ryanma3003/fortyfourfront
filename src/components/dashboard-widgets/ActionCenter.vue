@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useCsirtStore } from '@/stores/csirt';
 import { useIkasStore } from '@/stores/ikas';
+import { useKseStore } from '@/stores/kse';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
 const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
+const kseStore = useKseStore();
 const filterStore = useDashboardFilterStore();
 
 // Helper to filter by global date range
@@ -59,6 +61,23 @@ const actions = computed(() => {
             color: '#f5b849',
             title: `${noIkas.length} stakeholder belum memiliki IKAS`,
             desc: 'Data assessment keamanan informasi belum diisi',
+            action: 'Lihat Stakeholder',
+            route: '/stakeholders',
+        });
+    }
+
+    // Warning: stakeholders without KSE
+    const noKse = all.filter(s => {
+        const data = kseStore.kseDataMap[s.slug];
+        return !data || !data.kategoriSE || data.kategoriSE === 'Belum Dikategorikan';
+    });
+    if (noKse.length > 0) {
+        items.push({
+            severity: 'warning',
+            icon: 'ri-file-shield-2-line',
+            color: '#f5b849',
+            title: `${noKse.length} stakeholder belum mengisi KSE`,
+            desc: 'Kategorisasi Sistem Elektronik belum dilakukan',
             action: 'Lihat Stakeholder',
             route: '/stakeholders',
         });

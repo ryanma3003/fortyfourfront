@@ -13,6 +13,7 @@ import Sidebar from '../components/sidebar/sidebar.vue'
 import Footer from '../components/footer/footer.vue'
 import Switcher from '../components/switcher/switcher.vue'
 import BackToTop from '../components/backtotop/backtotop.vue'
+import NotificationToast from '../../components/notifications/NotificationToast.vue'
 
 // Reactive store
 const switcher = reactive(switcherStore())
@@ -67,6 +68,7 @@ onBeforeUnmount(() => {
     <Footer />
   </div>
   <BackToTop />
+  <NotificationToast />
 </template>
 
 <style scoped lang="scss"></style>

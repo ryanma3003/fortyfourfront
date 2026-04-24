@@ -22,6 +22,13 @@ export const useStakeholdersStore = defineStore('stakeholders', {
             return (slug: string) => this.stakeholders.find(s => s.slug === slug);
         },
 
+        // Indexes for O(1) Lookups (cached by Pinia)
+        stakeholdersByIdMap(state): Record<string, Stakeholder> {
+            const map: Record<string, Stakeholder> = {};
+            state.stakeholders.forEach(s => { map[String(s.id)] = s; });
+            return map;
+        },
+
         // Get stakeholder by id
         getStakeholderById(): (id: string) => Stakeholder | undefined {
             return (id: string) => this.stakeholders.find(s => s.id === id);

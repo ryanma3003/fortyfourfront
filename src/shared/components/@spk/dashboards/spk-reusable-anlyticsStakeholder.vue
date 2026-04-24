@@ -30,13 +30,9 @@ const handleResiko = () => {
   }
 };
 const handleCsirt = () => {
-  if (props.csirtId) {
-    router.push({
-      path: `/csirt/${props.csirtId}`,
-      query: props.stakeholderSlug ? { stakeholder: props.stakeholderSlug } : undefined,
-    });
-  } else if (props.stakeholderSlug) {
-    router.push({ path: '/csirt', query: { stakeholder: props.stakeholderSlug } });
+  const routeParam = props.stakeholderSlug || props.csirtId;
+  if (routeParam) {
+    router.push(`/csirt/${routeParam}`);
   } else {
     router.push("/csirt");
   }
@@ -74,7 +70,7 @@ const accentColorClass: Record<string, string> = {
 };
 
 const isBelum = (v: string) => v === "Belum Diisi" || v === "Belum Terdaftar";
-const isRegistered = (v: string) => v === "Terdaftar" || v === "Sudah Terdaftar";
+const isRegistered = (v: string) => v === "Terdaftar" || v === "Sudah Terdaftar" || /^\d+\s+SE\s+Terdaftar$/i.test(v);
 const isAktif = (v: string) => v === "Aktif";
 const isSedangSetup = (v: string) => v === "Sedang Setup";
 const isNumeric = (v: string) => !isNaN(parseFloat(v)) && isFinite(Number(v));

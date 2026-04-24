@@ -372,11 +372,20 @@ export default {
     // Status SDM & SE per CSIRT
     const csirtStatus = (csirtId: string) => {
       const id = String(csirtId);
+      
+      // Find the CSIRT object to get its id_perusahaan
+      const csirtObj = csirtStore.csirts.find(c => String(c.id) === id);
+      const currentPerusahaanId = String(csirtObj?.id_perusahaan || csirtObj?.perusahaan?.id);
+
       const sdmCount = csirtStore.sdmList.filter(
-        s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id
+        s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id || String((s as any).csirt_id) === id
       ).length;
+      
       const seAll = csirtStore.seList.filter(
-        s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id
+        s => String(s.id_csirt) === id || 
+             String((s as any).csirt?.id) === id || 
+             String((s as any).csirt_id) === id || 
+             (s.id_perusahaan && String(s.id_perusahaan) === currentPerusahaanId)
       );
       const seCount = seAll.length;
       const seIncomplete = seAll.filter(

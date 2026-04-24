@@ -41,12 +41,30 @@ function calcDelta(cur, prev) {
     return Math.round(((cur - prev) / prev) * 100);
 }
 
-// Last update time
-function timeAgo(dateStr) {
-    if (!dateStr) return 'N/A';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'N/A';
-    const diff = Date.now() - d.getTime();
+function timeAgo(dateVal) {
+    if (!dateVal) return 'Belum ada update';
+    
+    let then = new Date(dateVal).getTime();
+    if (isNaN(then)) return 'Belum ada update';
+    
+    let now = Date.now();
+    let diff = now - then;
+
+    // Timezone mismatch detection (sync with notifications.ts)
+    if (diff < -60000 && typeof dateVal === 'string') {
+        const localThen = new Date(dateVal.replace('Z', '')).getTime();
+        if (!isNaN(localThen)) {
+            const localDiff = now - localThen;
+            if (localDiff >= 0 && localDiff < 24 * 60 * 60 * 1000) {
+                then = localThen;
+                diff = localDiff;
+            }
+        }
+    } else if (diff < 0) {
+        // Fallback for numeric timestamps that are in the future
+        diff = Math.abs(diff); 
+    }
+
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'Baru saja';
     if (mins < 60) return `${mins} menit lalu`;
@@ -60,11 +78,16 @@ const kpis = computed(() => {
     // Filter base array by global date filter and sector filter
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInDateRange(s.created_at, filterStore.dateRange);
+        
+        const subId = filterStore.subSektorId;
+        const fId = filterStore.sektorId;
+        const effectiveSubId = subId === 'ALL' ? '' : subId;
+        
         let inSector = true;
-        if (filterStore.subSektorId) {
-            inSector = String(s.sub_sektor?.id || s.id_sub_sektor) === String(filterStore.subSektorId);
-        } else if (filterStore.sektorId) {
-            inSector = String(s.sub_sektor?.id_sektor || s.id_sektor) === String(filterStore.sektorId);
+        if (effectiveSubId) {
+            inSector = String(s.sub_sektor?.id || s.id_sub_sektor) === String(effectiveSubId);
+        } else if (fId) {
+            inSector = String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId);
         }
         return inDate && inSector;
     });
@@ -107,9 +130,167 @@ const kpis = computed(() => {
     }).length;
     const completePct = totalSh > 0 ? Math.round((complete / totalSh) * 100) : 0;
 
-    // Last update
-    const sorted = [...all].sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
-    const lastUpdate = sorted[0] ? (sorted[0].updated_at || sorted[0].created_at) : null;
+    // Last update (comprehensive check across all entities)
+    const fIds = new Set(all.map(s => String(s.id)));
+    const fSlugs = new Set(all.map(s => s.slug));
+
+    const fCsirts = [];
+    const fCsirtIds = new Set();
+    all.forEach(s => {
+        const c = csirtStore.csirtByPerusahaanMap[String(s.id)];
+        if (c) {
+            fCsirts.push(c);
+            fCsirtIds.add(String(c.id));
+        }
+    });
+    
+    const fSdmsList = [];
+    const fSdmIds = new Set();
+    const fSesList = [];
+    const fSeIds = new Set();
+    
+    fCsirts.forEach(c => {
+        const cid = String(c.id);
+        const sdms = csirtStore.sdmByCsirtMap[cid];
+        if (sdms) {
+            fSdmsList.push(...sdms);
+            sdms.forEach(sdm => fSdmIds.add(String(sdm.id)));
+        }
+        const ses = csirtStore.seByCsirtMap[cid];
+        if (ses) {
+            fSesList.push(...ses);
+            ses.forEach(se => fSeIds.add(String(se.id)));
+        }
+    });
+    
+    all.forEach(s => {
+        const ses = csirtStore.seByPerusahaanMap[String(s.id)];
+        if (ses) {
+            ses.forEach(se => {
+                if (!fSeIds.has(String(se.id))) {
+                    fSesList.push(se);
+                    fSeIds.add(String(se.id));
+                }
+            });
+        }
+    });
+
+    const fIkasIds = new Set();
+    for (const slug of fSlugs) {
+        const id = ikasStore.backendIkasIds[slug];
+        if (id) fIkasIds.add(String(id));
+    }
+
+    const isUnfiltered = all.length === stakeholdersStore.allStakeholders.length;
+
+    let latestEvent = null;
+    if (isUnfiltered && notifStore.events.length > 0) {
+        latestEvent = notifStore.events[0];
+    } else {
+        // Build sets for fast lookup of relevant entity IDs for the current filter scope
+        const relevantStIds = fIds;
+        const relevantStSlugs = fSlugs;
+        const relevantStNames = new Set(all.map(s => (s.nama_perusahaan || s.nama || '').toLowerCase()).filter(Boolean));
+        
+        const relevantCsirtIds = fCsirtIds;
+        const relevantSdmIds = fSdmIds;
+        const relevantSeIds = fSeIds;
+        const relevantIkasIds = fIkasIds;
+
+        for (const event of notifStore.events) {
+            const eId = String(event.entity_id);
+            const eName = String(event.entity_name || '').toLowerCase();
+            const entity = event.entity;
+            
+            let matches = false;
+            if (entity === 'stakeholder') {
+                matches = relevantStIds.has(eId) || relevantStSlugs.has(eId) || relevantStNames.has(eName);
+            } else if (entity === 'csirt') {
+                matches = relevantCsirtIds.has(eId);
+            } else if (entity === 'sdm_csirt') {
+                matches = relevantSdmIds.has(eId);
+            } else if (entity === 'se_csirt') {
+                matches = relevantSeIds.has(eId);
+            } else if (entity === 'ikas') {
+                matches = relevantIkasIds.has(eId) || relevantStSlugs.has(eId);
+            } else if (entity === 'unknown') {
+                // For unknown entities, try matching against everything
+                matches = relevantStIds.has(eId) || relevantStSlugs.has(eId) || relevantStNames.has(eName) ||
+                          relevantCsirtIds.has(eId) || relevantSdmIds.has(eId) || relevantSeIds.has(eId) ||
+                          relevantIkasIds.has(eId);
+            }
+
+            if (matches) {
+                latestEvent = event;
+                break;
+            }
+        }
+    }
+
+    let lastUpdate = null;
+    let latestUpdateLabel = 'Data';
+
+    const candidates = [];
+    all.forEach(s => {
+        if (s.updated_at || s.created_at) {
+            candidates.push({ time: new Date(s.updated_at || s.created_at).getTime(), label: 'Data Stakeholder' });
+        }
+    });
+    fCsirts.forEach(c => {
+        if (c.updated_at || c.created_at) {
+            candidates.push({ time: new Date(c.updated_at || c.created_at).getTime(), label: 'Data CSIRT' });
+        }
+    });
+    
+    fSdmsList.forEach(sdm => {
+        if (sdm.updated_at || sdm.created_at) {
+            candidates.push({ time: new Date(sdm.updated_at || sdm.created_at).getTime(), label: 'Data SDM CSIRT' });
+        }
+    });
+    
+    fSesList.forEach(se => {
+        if (se.updated_at || se.created_at) {
+            candidates.push({ time: new Date(se.updated_at || se.created_at).getTime(), label: 'Data Sistem Elektronik' });
+        }
+    });
+    
+    all.forEach(s => {
+        const data = ikasStore.ikasDataMap[s.slug];
+        if (data && (data.updated_at || data.created_at)) {
+            candidates.push({ time: new Date(data.updated_at || data.created_at).getTime(), label: 'Data IKAS' });
+        }
+    });
+
+    const validCandidates = candidates.filter(c => !isNaN(c.time));
+    
+    const formatEventLabel = (evt) => {
+        const verbMap = { 'created': 'menambahkan', 'updated': 'memperbarui', 'deleted': 'menghapus' };
+        const entityMap = { 'stakeholder': 'Stakeholder', 'csirt': 'CSIRT', 'sdm_csirt': 'SDM CSIRT', 'se_csirt': 'Sistem Elektronik', 'ikas': 'IKAS', 'user': 'Pengguna' };
+        const verb = verbMap[evt.type] || 'Update';
+        const entityLabel = entityMap[evt.entity] || evt.entity;
+        const userName = evt.user?.name || 'Sistem';
+        return `${userName} ${verb} Data ${entityLabel}`;
+    };
+
+    if (validCandidates.length > 0) {
+        validCandidates.sort((a, b) => b.time - a.time);
+        const bestCandidate = validCandidates[0];
+        
+        lastUpdate = bestCandidate.time;
+        latestUpdateLabel = bestCandidate.label;
+
+        if (latestEvent) {
+            const eventTime = new Date(latestEvent.timestamp).getTime();
+            // If the notification event is within 5 minutes of our max data time, or newer, use its rich detail
+            if (eventTime >= (bestCandidate.time - 300000)) {
+                lastUpdate = eventTime > bestCandidate.time ? latestEvent.timestamp : bestCandidate.time;
+                latestUpdateLabel = formatEventLabel(latestEvent);
+            }
+        }
+    } else if (latestEvent) {
+        lastUpdate = latestEvent.timestamp;
+        latestUpdateLabel = formatEventLabel(latestEvent);
+    }
 
     return [
         {
@@ -156,10 +337,10 @@ const kpis = computed(() => {
             label: 'Update Terakhir',
             value: timeAgo(lastUpdate),
             icon: 'ri-time-line',
-            color: '#6366f1',
-            bg: 'rgba(99,102,241,0.1)',
+            color: '#334155',
+            bg: 'rgba(51, 65, 85, 0.1)',
             delta: null,
-            sub: 'Data stakeholder',
+            sub: latestUpdateLabel,
             ring: null,
         },
     ];

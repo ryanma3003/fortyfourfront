@@ -14,15 +14,17 @@ const sektorList = ref([]);
 const subSektorList = ref([]);
 
 const sektorColors = [
-    '#845adf', '#e6533c', '#26bf94', '#f5b849', '#0ea5e9',
-    '#6366f1', '#14b8a6', '#8c57ff', '#ea580c', '#059669',
+    '#1e40af', '#ef4444', '#10b981', '#f59e0b', '#3b82f6',
+    '#334155', '#0d9488', '#0284c7', '#ea580c', '#059669',
     '#dc2626', '#0891b2',
 ];
 
 // Helper to filter by date range from the global filter store
+// (Not used in Peta Distribusi anymore as requested, but kept if needed elsewhere)
 function isInDateRange(createdAt) {
     const range = filterStore.dateRange;
-    if (!range || !range[0] || !range[1] || !createdAt) return true;
+    if (!range || !range[0] || !range[1]) return true;
+    if (!createdAt) return false;
     const d = new Date(createdAt);
     if (isNaN(d.getTime())) return false;
     const start = new Date(range[0]);
@@ -48,36 +50,34 @@ onMounted(async () => {
     }
 });
 
-// Group stakeholders by sektor using sub_sektor ID → parent sektor ID matching
-// Now reactive to global filter changes (date range & sektor filter)
+// Peta Distribusi Stakeholder - Always shows ALL data, unaffected by any filter.
 const sektorSummary = computed(() => {
-    const all = stakeholdersStore.allStakeholders.filter(s => isInDateRange(s.created_at));
+    // 1. ALWAYS USE RAW DATA
+    const all = stakeholdersStore.allStakeholders;
     if (!sektorList.value.length || !subSektorList.value.length) return [];
 
-    // If a specific sektor is selected in the global filter, only show that sektor
-    const activeSektorId = filterStore.sektorId;
-
-    const sektorsToShow = activeSektorId
-        ? sektorList.value.filter(s => String(s.id) === String(activeSektorId))
-        : sektorList.value;
+    // 2. ALWAYS SHOW ALL SEKTORS
+    const sektorsToShow = sektorList.value;
 
     return sektorsToShow.map((sektor, idx) => {
         const name = getSektorName(sektor);
 
-        // Find all sub_sektors belonging to this sektor
         const children = subSektorList.value.filter(ss => {
             const pid = getSubSektorParentId(ss);
             return pid !== undefined && String(pid) === String(sektor.id);
         });
         const childIds = new Set(children.map(c => String(c.id)));
 
-        // Count stakeholders whose sub_sektor.id matches any child
+        // Count ALL stakeholders for this sektor unconditionally
         const count = all.filter(s => {
-            const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
-            return subSektorId && childIds.has(String(subSektorId));
+            const currentSektorId = s.id_sektor || s.sub_sektor?.sektor_id || s.sub_sektor?.id_sektor;
+            if (currentSektorId) {
+                return String(currentSektorId) === String(sektor.id);
+            }
+            const currentSubId = s.sub_sektor?.id || s.id_sub_sektor;
+            return currentSubId && childIds.has(String(currentSubId));
         }).length;
 
-        // Use original index for color assignment when filtering
         const originalIdx = sektorList.value.findIndex(s => String(s.id) === String(sektor.id));
 
         return {
@@ -87,7 +87,7 @@ const sektorSummary = computed(() => {
             color: sektorColors[(originalIdx >= 0 ? originalIdx : idx) % sektorColors.length],
             percent: all.length > 0 ? Math.round((count / all.length) * 100) : 0,
         };
-    }).filter(s => s.count > 0).sort((a, b) => b.count - a.count);
+    }).sort((a, b) => b.count - a.count); // Always show all bars
 });
 
 const maxCount = computed(() => Math.max(1, ...sektorSummary.value.map(s => s.count)));
@@ -101,7 +101,7 @@ function handleSektorClick(sektor) {
     <div class="dw-card dw-fade-up d-flex flex-column h-100">
         <div class="dw-card-header">
             <h6 class="dw-card-header-title">
-                <div class="dw-card-header-icon" style="background: linear-gradient(135deg, #6366f1, #818cf8); color: #fff;">
+                <div class="dw-card-header-icon" style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff;">
                     <i class="ri-map-pin-line"></i>
                 </div>
                 <div>
@@ -171,7 +171,7 @@ function handleSektorClick(sektor) {
 }
 
 .dw-geo-row:hover {
-    background: rgba(132, 90, 223, 0.04);
+    background: rgba(30, 64, 175, 0.04);
 }
 
 .dw-geo-label {

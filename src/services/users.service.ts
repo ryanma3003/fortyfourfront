@@ -1,5 +1,6 @@
 import { api } from '@/config/api';
 import type { User, CreateUserPayload, UpdateUserPayload } from '@/types/user.types';
+import { useNotificationStore } from '@/stores/notifications';
 
 /**
  * Users Service
@@ -47,6 +48,7 @@ class UsersService {
      * @returns Updated user object
      */
     async update(id: string, payload: UpdateUserPayload | FormData): Promise<User> {
+        useNotificationStore().trackSelfAction('user', id);
         return api.put<User>(`/api/users/${id}`, payload);
     }
 
@@ -56,6 +58,7 @@ class UsersService {
      * @returns Success response
      */
     async delete(id: string): Promise<void> {
+        useNotificationStore().trackSelfAction('user', id);
         return api.delete<void>(`/api/users/${id}`);
     }
 
@@ -84,6 +87,15 @@ class UsersService {
      */
     async updatePassword(id: string, payload: { old_password: string; new_password: string; confirm_new_password: string }): Promise<void> {
         return api.put<void>(`/api/users/${id}/password`, payload);
+    }
+
+    /**
+     * Update user status via dedicated endpoint
+     * @param id User ID
+     * @param payload Status payload object containing the ID
+     */
+    async updateStatus(id: string, payload: { id: string; [key: string]: any }): Promise<any> {
+        return api.patch(`/api/users/${id}/status`, payload);
     }
 
     /**

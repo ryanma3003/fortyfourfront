@@ -82,8 +82,8 @@ const loadCurrentStakeholderIkas = async () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
-      if (result.ikasRecord?.id) {
-        await assessmentStore.hydrateAnswersFromBackend(currentSlug.value, result.ikasRecord.id);
+      if (stakeholder.id) {
+        await assessmentStore.hydrateAnswersFromBackend(currentSlug.value, stakeholder.id);
       }
       currentStep.value = 2;
       return;
@@ -127,56 +127,50 @@ const pageData = computed(() => {
 
 // Navigation Handlers
 const handleFormSubmit = async () => {
-  // Form is already saved to store by the component
+  // Move to penilaian (Step 2) without saving to backend.
+  const profile = assessmentStore.respondentProfile;
+  if (!profile) {
+    toast.error('Data Form Responden tidak lengkap', { autoClose: 3000, position: 'top-right' });
+    return;
+  }
+
+  // Ensure local data saved; parent form already calls saveFormData before emitting
+  currentStep.value = 2;
+};
+
+// Save respondent data to backend without advancing to step 2
+const handleSaveRespondent = async () => {
   const stakeholder = currentStakeholder.value;
   const profile = assessmentStore.respondentProfile;
 
-  // Submit respondent info to backend API
-  if (stakeholder?.id && profile) {
-    submitting.value = true;
-    try {
-      const result = await ikasStore.submitToBackend(currentSlug.value, {
-        id_perusahaan: stakeholder.id,
-        responden: profile.namaResponden || '',
-        jabatan: profile.jabatanResponden || '',
-        telepon: profile.nomorTelepon || '',
-        tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
-        target_nilai: parseTargetNilai(profile.targetNilai),
-      });
+  if (!stakeholder?.id || !profile) {
+    toast.error('Data Form Responden tidak lengkap', { autoClose: 3000, position: 'top-right' });
+    return;
+  }
 
-      if (result.success) {
-        toast.success('Data responden berhasil disimpan ke server', {
-          autoClose: 2000,
-          position: 'top-right',
-        });
-
-        // Seed assessment structure (domain/kategori/sub-kategori/ruang-lingkup)
-        // This is idempotent — if already seeded, errors are silently caught
-        await ikasStore.seedAssessmentStructure();
-
-        currentStep.value = 2; // Proceed only if successful
-      } else {
-        console.warn('[IKAS CRUD] Backend submit failed:', result.error);
-        toast.error(`Gagal sinkron ke server: ${result.error || 'Server tidak merespon'}`, {
-          autoClose: 3000,
-          position: 'top-right',
-        });
-      }
-    } catch (error: any) {
-      console.error('[IKAS CRUD] Error submitting to backend:', error);
-      toast.error('Terjadi kesalahan saat menghubungi server', {
-        autoClose: 3000,
-        position: 'top-right',
-      });
-    } finally {
-      submitting.value = false;
-    }
-  } else {
-    // If no stakeholder/profile, don't proceed
-    toast.error('Data Form Responden tidak lengkap', {
-      autoClose: 3000,
-      position: 'top-right',
+  submitting.value = true;
+  try {
+    const result = await ikasStore.submitToBackend(currentSlug.value, {
+      id_perusahaan: stakeholder.id,
+      responden: profile.namaResponden || '',
+      jabatan: profile.jabatanResponden || '',
+      telepon: profile.nomorTelepon || '',
+      tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+      target_nilai: parseTargetNilai(profile.targetNilai),
     });
+
+    if (result.success) {
+      toast.success('Data responden berhasil disimpan ke server', { autoClose: 2000, position: 'top-right' });
+      // Domain seeding / summary endpoints are disabled on this backend.
+      // Skipping `seedAssessmentStructure` to avoid calling unavailable endpoints.
+    } else {
+      toast.error(`Gagal menyimpan: ${result.error || 'Server tidak merespon'}`, { autoClose: 3000, position: 'top-right' });
+    }
+  } catch (error: any) {
+    console.error('[IKAS CRUD] Error saving respondent data:', error);
+    toast.error('Terjadi kesalahan saat menyimpan data responden', { autoClose: 3000, position: 'top-right' });
+  } finally {
+    submitting.value = false;
   }
 };
 
@@ -242,10 +236,11 @@ const backToIkas = () => {
     <!-- Step 1: Respondent Form -->
     <template v-if="currentStep === 1">
       <RespondentForm 
-        :stakeholder="currentStakeholder"
-        @submit="handleFormSubmit"
-        @cancel="backToIkas"
-      />
+          :stakeholder="currentStakeholder"
+          @submit="handleFormSubmit"
+          @save="handleSaveRespondent"
+          @cancel="backToIkas"
+        />
     </template>
 
     <!-- Step 2: Assessment View -->

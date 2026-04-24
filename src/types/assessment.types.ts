@@ -49,6 +49,8 @@ export interface Answer {
     updatedAt: number;
     backendSyncedAt?: number;
     backendSyncError?: string | null;
+    evidence?: string;
+    validasi?: string;
 }
 
 export interface AnswerMap {

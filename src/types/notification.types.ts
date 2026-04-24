@@ -24,6 +24,7 @@ export interface EventActor {
  */
 export interface ServerEvent {
     id: string;
+    api_id?: string;       // canonical notification id to send back to the backend
     type: 'created' | 'updated' | 'deleted';
     entity: string;        // e.g. 'stakeholder', 'user', 'kse', 'csirt', 'ikas'
     entity_id: string;
@@ -32,6 +33,7 @@ export interface ServerEvent {
     user: EventActor;
     timestamp: string;     // ISO 8601
     message: string;       // human-readable summary from server
+    is_read?: boolean;     // read state from backend
 }
 
 /** Statistics from GET /api/events/stats */

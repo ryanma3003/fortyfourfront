@@ -32,7 +32,8 @@ export interface BackendRuangLingkup {
 
 // Assembled assessment structure
 export interface DynamicQuestion {
-  id: string;              // sub-kategori ID
+  id: string;              // composite ID: e.g. "identifikasi_1", "proteksi_3"
+  originalId: string;      // original numeric ID from backend for API payloads
   text: string;            // sub-kategori nama
   kategoriId: string;      // parent kategori ID
   domainKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih';

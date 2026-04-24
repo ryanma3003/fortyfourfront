@@ -93,6 +93,12 @@ export default {
             return csirtStore.csirts.find(c => {
                 if (String(c.id) === slug) return true;
                 if (c.slug === slug) return true;
+                
+                // Allow matching by stakeholder slug directly
+                const stakeholder = stakeholdersStore.stakeholders.find(s => String(s.id) === String(c.id_perusahaan || (c as any).perusahaan?.id));
+                if (stakeholder && stakeholder.slug === slug) return true;
+                if ((c as any).perusahaan?.slug && (c as any).perusahaan?.slug === slug) return true;
+
                 const csirtPart = c.slug || toSlug(c.nama_csirt);
                 const perusahaanName = (c as any).perusahaan?.nama_perusahaan;
                 const perusahaanPart = perusahaanName ? toSlug(perusahaanName) : '';
@@ -101,21 +107,32 @@ export default {
             });
         });
 
-        const csirtId = computed(() => currentCsirt.value?.id || csirtSlug.value);
+        const csirtId = computed(() => currentCsirt.value?.id);
 
         // SDM & SE Lists from Store
         const items = computed(() => {
-            const id = String(csirtId.value);
+            const id = csirtId.value;
+            if (!id) return [];
+            const sid = String(id);
             return csirtStore.sdmList.filter(item => 
-                String(item.id_csirt) === id || String((item as any).csirt?.id) === id
+                String(item.id_csirt) === sid || String((item as any).csirt?.id) === sid
             );
         });
 
         const seItems = computed(() => {
-            const id = String(csirtId.value);
-            return csirtStore.seList.filter(item => 
-                String(item.id_csirt) === id || String((item as any).csirt?.id) === id
-            );
+            const id = csirtId.value;
+            if (!id) return [];
+            const sid = String(id);
+            console.log('[csirt.vue] filtering seList with target sid:', sid);
+            console.log('[csirt.vue] current seList:', csirtStore.seList);
+            return csirtStore.seList.filter((item: any) => {
+                const currentPerusahaanId = String(currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id);
+                const match = String(item.id_csirt) === sid || 
+                              String(item.csirt_id) === sid || 
+                              String(item.csirt?.id) === sid || 
+                              (item.id_perusahaan && String(item.id_perusahaan) === currentPerusahaanId);
+                return match;
+            });
         });
 
         const loading = ref(false);
@@ -274,7 +291,7 @@ export default {
         const createSdm = async () => {
             if (!validateSdmForm()) return;
             try {
-                await csirtService.createSdm({
+                const result = await csirtStore.createSdm({
                     id_csirt: sdmFormData.value.id_csirt!,
                     nama_personel: sdmFormData.value.nama_personel!,
                     jabatan_csirt: sdmFormData.value.jabatan_csirt!,
@@ -282,11 +299,17 @@ export default {
                     skill: sdmFormData.value.skill || "",
                     sertifikasi: sdmFormData.value.sertifikasi || "",
                 });
-                await loadCSIRTs();
-                showCreateSdmModal.value = false;
-                showNotification("SDM berhasil ditambahkan!", "success");
-            } catch {
-                showNotification("Gagal menambahkan SDM.", "error");
+                
+                if (result.success) {
+                    showCreateSdmModal.value = false;
+                    showNotification("SDM berhasil ditambahkan!", "success");
+                    loadCSIRTs();
+                } else {
+                    showNotification("Gagal menambahkan SDM: " + result.error, "error");
+                }
+            } catch (error: any) {
+                console.error("Gagal tambah SDM:", error);
+                showNotification("Terjadi kesalahan saat menambahkan SDM", "error");
             }
         };
 
@@ -303,7 +326,7 @@ export default {
         const updateSdm = async () => {
             if (!validateSdmForm() || !currentEditSdm.value) return;
             try {
-                await csirtService.updateSdm(currentEditSdm.value.id, {
+                const result = await csirtStore.updateSdm(currentEditSdm.value.id, {
                     id_csirt: sdmFormData.value.id_csirt!,
                     nama_personel: sdmFormData.value.nama_personel!,
                     jabatan_csirt: sdmFormData.value.jabatan_csirt!,
@@ -311,11 +334,16 @@ export default {
                     skill: sdmFormData.value.skill || "",
                     sertifikasi: sdmFormData.value.sertifikasi || "",
                 });
-                await loadCSIRTs();
-                showEditSdmModal.value = false;
-                showNotification("SDM berhasil diperbarui!", "success");
-            } catch {
-                showNotification("Gagal memperbarui SDM.", "error");
+                if (result.success) {
+                    showEditSdmModal.value = false;
+                    showNotification("SDM berhasil diperbarui!", "success");
+                    loadCSIRTs();
+                } else {
+                    showNotification("Gagal memperbarui SDM: " + result.error, "error");
+                }
+            } catch (error: any) {
+                console.error("Gagal update SDM:", error);
+                showNotification("Terjadi kesalahan saat memperbarui SDM", "error");
             }
         };
 
@@ -327,12 +355,17 @@ export default {
         const deleteSdm = async () => {
             if (!currentDeleteSdm.value) return;
             try {
-                await csirtService.deleteSdm(currentDeleteSdm.value.id);
-                await loadCSIRTs();
-                showDeleteSdmModal.value = false;
-                showNotification("SDM berhasil dihapus!", "success");
-            } catch {
-                showNotification("Gagal menghapus SDM.", "error");
+                const result = await csirtStore.deleteSdm(currentDeleteSdm.value.id);
+                if (result.success) {
+                    showDeleteSdmModal.value = false;
+                    showNotification("SDM berhasil dihapus!", "success");
+                    loadCSIRTs();
+                } else {
+                    showNotification("Gagal menghapus SDM: " + result.error, "error");
+                }
+            } catch (error: any) {
+                console.error("Gagal hapus SDM:", error);
+                showNotification("Terjadi kesalahan saat menghapus SDM", "error");
             }
         };
 
@@ -420,7 +453,7 @@ export default {
             router.push({ path: '/kse-crud', query: { seId: String(se.id), stakeholder: companySlug, mode: 'view' } });
         };
 
-        // Navigate to KSE page in edit mode (Edit SE � data responden + penilaian)
+        // Navigate to KSE page in edit mode (Edit SE  data responden + penilaian)
         const editSePenilaian = (se: SeCsirt) => {
             const p = currentCsirt.value?.perusahaan;
             const companySlug = String(
@@ -444,7 +477,7 @@ export default {
         const updateSe = async () => {
             if (!validateSeForm() || !currentEditSe.value) return;
             try {
-                await csirtService.updateSe(currentEditSe.value.id, {
+                const result = await csirtStore.updateSe(currentEditSe.value.id, {
                     id_csirt: seFormData.value.id_csirt!,
                     nama_se: seFormData.value.nama_se!,
                     ip_se: seFormData.value.ip_se!,
@@ -453,11 +486,16 @@ export default {
                     fitur_se: seFormData.value.fitur_se || "",
                     kategori_se: seFormData.value.kategori_se || "Tinggi",
                 });
-                await loadCSIRTs();
-                showEditSeModal.value = false;
-                showNotification("SE berhasil diperbarui!", "success");
-            } catch {
-                showNotification("Gagal memperbarui SE.", "error");
+                if (result.success) {
+                    showEditSeModal.value = false;
+                    showNotification("SE berhasil diperbarui!", "success");
+                    loadCSIRTs();
+                } else {
+                    showNotification("Gagal memperbarui SE: " + result.error, "error");
+                }
+            } catch (error: any) {
+                console.error("Gagal update SE:", error);
+                showNotification("Terjadi kesalahan saat memperbarui SE", "error");
             }
         };
 
@@ -469,12 +507,17 @@ export default {
         const deleteSe = async () => {
             if (!currentDeleteSe.value) return;
             try {
-                await csirtService.deleteSe(currentDeleteSe.value.id);
-                await loadCSIRTs();
-                showDeleteSeModal.value = false;
-                showNotification("SE berhasil dihapus!", "success");
-            } catch {
-                showNotification("Gagal menghapus SE.", "error");
+                const result = await csirtStore.deleteSe(currentDeleteSe.value.id);
+                if (result.success) {
+                    showDeleteSeModal.value = false;
+                    showNotification("Sistem Elektronik berhasil dihapus!", "success");
+                    loadCSIRTs();
+                } else {
+                    showNotification("Gagal menghapus SE: " + result.error, "error");
+                }
+            } catch (error: any) {
+                console.error("Gagal hapus SE:", error);
+                showNotification("Terjadi kesalahan saat menghapus Sistem Elektronik", "error");
             }
         };
 
@@ -625,8 +668,7 @@ export default {
             if (!validateProfileForm() || !currentCsirt.value) return;
             const oldId = currentCsirt.value.id;
             try {
-                await csirtService.update(currentCsirt.value.id, {
-                    id_perusahaan       : currentCsirt.value.id_perusahaan ?? currentCsirt.value.perusahaan?.id,
+                const result = await csirtStore.updateCsirtById(currentCsirt.value.id, {
                     nama_csirt          : profileFormData.value.nama_csirt!,
                     telepon_csirt       : profileFormData.value.telepon_csirt || "",
                     email_csirt         : profileFormData.value.email_csirt || "",
@@ -636,20 +678,25 @@ export default {
                     file_public_key_pgp : profileFormData.value.file_public_key_pgp_file ?? undefined,
                     file_surat_tanda_registrasi : profileFormData.value.file_surat_tanda_registrasi_file ?? undefined,
                 });
-                await csirtStore.refresh();
-                showEditProfileModal.value = false;
-                showNotification("Profil CSIRT berhasil diperbarui!", "success");
+                
+                if (result.success) {
+                    showEditProfileModal.value = false;
+                    showNotification("Profil CSIRT berhasil diperbarui!", "success");
 
-                // Redirect if name/slug changed
-                const updated = csirtStore.csirts.find(c => String(c.id) === String(oldId));
-                if (updated) {
-                    const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-$|\s+/g, '');
-                    const newSlug = updated.slug || toSlug(updated.nama_csirt);
-                    if (csirtSlug.value !== String(oldId) && csirtSlug.value !== newSlug) {
-                        router.replace(`/csirt/${newSlug}`);
+                    // Redirect if name/slug changed
+                    const updated = csirtStore.csirts.find(c => String(c.id) === String(oldId));
+                    if (updated) {
+                        const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-$|\s+/g, '');
+                        const newSlug = updated.slug || toSlug(updated.nama_csirt);
+                        if (csirtSlug.value !== String(oldId) && csirtSlug.value !== newSlug) {
+                            router.replace(`/csirt/${newSlug}`);
+                        }
                     }
+                } else {
+                    showNotification("Gagal memperbarui profil: " + result.error, "error");
                 }
-            } catch {
+            } catch (err: any) {
+                console.error("Gagal update profil:", err);
                 showNotification("Gagal memperbarui profil CSIRT.", "error");
             }
         };
@@ -1185,8 +1232,8 @@ export default {
                         <i class="ri-add-circle-line fs-15"></i>
                         <span>Tambah SE</span>
                     </button>
-                    <button @click="exportAllSePdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
-                        <i class="ri-file-pdf-line"></i>
+                    <button @click="exportPdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
+                        <i class="ri-file-list-3-line fs-15"></i>
                         <span>Rekap SE</span>
                     </button>
                 </div>

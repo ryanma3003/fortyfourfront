@@ -12,7 +12,7 @@ onMounted(() => {
 });
 
 const recentEvents = computed(() => {
-    return notifStore.enhancedEvents.slice(0, 8);
+    return notifStore.enhancedEvents.slice(0, 20);
 });
 
 const isConnected = computed(() => notifStore.connected);
@@ -21,7 +21,7 @@ function getAvatarColor(type) {
     switch (type) {
         case 'created': return 'linear-gradient(135deg, #26bf94, #6ee7b7)';
         case 'deleted': return 'linear-gradient(135deg, #e6533c, #f87171)';
-        default: return 'linear-gradient(135deg, #845adf, #a78bfa)';
+        default: return 'linear-gradient(135deg, #1e40af, #3b82f6)';
     }
 }
 
@@ -69,7 +69,7 @@ function goToNotifications() {
             </div>
 
             <!-- Activity list -->
-            <div v-else>
+            <div v-else class="dw-activity-scroll-container">
                 <div v-for="(event, idx) in recentEvents" :key="event.id"
                      class="dw-activity-item dw-slide-in"
                      :style="{ animationDelay: `${idx * 50}ms` }"
@@ -116,3 +116,28 @@ function goToNotifications() {
         </div>
     </div>
 </template>
+
+<style scoped>
+.dw-activity-scroll-container {
+    max-height: 290px; /* Approximately 5 items height */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    margin-right: -4px;
+}
+
+/* Custom scrollbar for a premium look */
+.dw-activity-scroll-container::-webkit-scrollbar {
+    width: 4px;
+}
+.dw-activity-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+.dw-activity-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.05);
+    border-radius: 10px;
+}
+.dw-activity-scroll-container:hover::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.1);
+}
+</style>
