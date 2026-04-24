@@ -51,6 +51,14 @@ class NotificationService {
         return base ? `${base}/${clean}` : `/${clean}`;
     }
 
+    /** Normalize incoming event to include read status */
+    private normalizeToServerEvent(raw: any) {
+        return {
+            ...raw,
+            is_read: !!(raw.read || raw.is_read || raw.read_at)
+        };
+    }
+
     /** Check if an SSE message is a ping/heartbeat that should be ignored. */
     private isPingEvent(data: any): boolean {
         if (!data) return true;
@@ -185,16 +193,25 @@ class NotificationService {
 
     /**
      * Mark a single notification as read.
-     * PATCH /api/notifications/{id}
+     * PATCH /api/notifications/{id}/read
      */
     async markAsRead(id: string): Promise<boolean> {
-        try {
-            await api.patch(`/api/notifications/${id}/read`, {});
-            return true;
-        } catch (err) {
-            console.warn('[NotifService] markAsRead failed:', id, err);
-            return false;
+        const cleanId = encodeURIComponent(id);
+        const paths = [
+            { method: 'PATCH', url: `/api/notifications/${cleanId}/read` },
+            { method: 'POST',  url: `/api/notifications/${cleanId}/mark-as-read` },
+            { method: 'PATCH', url: `/api/notifications/${cleanId}`, body: { is_read: true, read: true } }
+        ];
+
+        for (const p of paths) {
+            try {
+                if (p.method === 'PATCH') await api.patch(p.url, p.body || {});
+                else await api.post(p.url, p.body || {});
+                return true;
+            } catch { /* try next */ }
         }
+        console.warn('[NotifService] markAsRead failed for all paths:', id);
+        return false;
     }
 
     /**
@@ -202,13 +219,21 @@ class NotificationService {
      * PATCH /api/notifications/read-all
      */
     async markAllAsRead(): Promise<boolean> {
-        try {
-            await api.patch('/api/notifications/read-all', {});
-            return true;
-        } catch (err) {
-            console.warn('[NotifService] markAllAsRead failed:', err);
-            return false;
+        const paths = [
+            { method: 'PATCH', url: '/api/notifications/read-all' },
+            { method: 'POST',  url: '/api/notifications/mark-all-as-read' },
+            { method: 'PATCH', url: '/api/notifications', body: { is_read: true, read: true } }
+        ];
+
+        for (const p of paths) {
+            try {
+                if (p.method === 'PATCH') await api.patch(p.url, p.body || {});
+                else await api.post(p.url, p.body || {});
+                return true;
+            } catch { /* try next */ }
         }
+        console.warn('[NotifService] markAllAsRead failed for all paths');
+        return false;
     }
 
     /**
@@ -216,12 +241,20 @@ class NotificationService {
      * DELETE /api/notifications/{id}
      */
     async deleteOne(id: string): Promise<boolean> {
+        const cleanId = encodeURIComponent(id);
         try {
-            await api.delete(`/api/notifications/${id}`);
+            // 1. Try standard DELETE
+            await api.delete(`/api/notifications/${cleanId}`);
             return true;
         } catch (err) {
-            console.warn('[NotifService] deleteOne failed:', id, err);
-            return false;
+            try {
+                // 2. Try POST fallback for environments where DELETE is restricted
+                await api.post(`/api/notifications/${cleanId}/delete`, {});
+                return true;
+            } catch {
+                console.warn('[NotifService] deleteOne failed:', id, err);
+                return false;
+            }
         }
     }
 
@@ -231,11 +264,18 @@ class NotificationService {
      */
     async deleteAll(): Promise<boolean> {
         try {
+            // 1. Try standard bulk DELETE
             await api.delete('/api/notifications');
             return true;
         } catch (err) {
-            console.warn('[NotifService] deleteAll failed:', err);
-            return false;
+            try {
+                // 2. Try POST fallback
+                await api.post('/api/notifications/delete-all', {});
+                return true;
+            } catch {
+                console.warn('[NotifService] deleteAll failed:', err);
+                return false;
+            }
         }
     }
 

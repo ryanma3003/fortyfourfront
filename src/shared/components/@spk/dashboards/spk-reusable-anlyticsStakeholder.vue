@@ -70,7 +70,7 @@ const accentColorClass: Record<string, string> = {
 };
 
 const isBelum = (v: string) => v === "Belum Diisi" || v === "Belum Terdaftar";
-const isRegistered = (v: string) => v === "Terdaftar" || v === "Sudah Terdaftar";
+const isRegistered = (v: string) => v === "Terdaftar" || v === "Sudah Terdaftar" || /^\d+\s+SE\s+Terdaftar$/i.test(v);
 const isAktif = (v: string) => v === "Aktif";
 const isSedangSetup = (v: string) => v === "Sedang Setup";
 const isNumeric = (v: string) => !isNaN(parseFloat(v)) && isFinite(Number(v));

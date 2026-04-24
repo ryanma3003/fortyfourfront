@@ -90,6 +90,15 @@ class UsersService {
     }
 
     /**
+     * Update user status via dedicated endpoint
+     * @param id User ID
+     * @param payload Status payload object containing the ID
+     */
+    async updateStatus(id: string, payload: { id: string; [key: string]: any }): Promise<any> {
+        return api.patch(`/api/users/${id}/status`, payload);
+    }
+
+    /**
      * Update current authenticated user via /api/me
      * @param payload User update data
      * @returns Updated user object

@@ -19,6 +19,58 @@ export const useCsirtStore = defineStore('csirt', {
             return this.csirts;
         },
 
+        // Indexes for O(1) Lookups (cached by Pinia)
+        csirtByIdMap(state): Record<string, CsirtMember> {
+            const map: Record<string, CsirtMember> = {};
+            state.csirts.forEach(c => { map[String(c.id)] = c; });
+            return map;
+        },
+
+        csirtByPerusahaanMap(state): Record<string, CsirtMember> {
+            const map: Record<string, CsirtMember> = {};
+            state.csirts.forEach(c => {
+                const pId = String(c.id_perusahaan || (c as any).perusahaan?.id);
+                if (pId && pId !== 'undefined') map[pId] = c;
+            });
+            return map;
+        },
+
+        sdmByCsirtMap(state): Record<string, SdmCsirt[]> {
+            const map: Record<string, SdmCsirt[]> = {};
+            state.sdmList.forEach(s => {
+                const cId = String(s.id_csirt || (s as any).csirt?.id);
+                if (cId && cId !== 'undefined') {
+                    if (!map[cId]) map[cId] = [];
+                    map[cId].push(s);
+                }
+            });
+            return map;
+        },
+
+        seByCsirtMap(state): Record<string, SeCsirt[]> {
+            const map: Record<string, SeCsirt[]> = {};
+            state.seList.forEach(se => {
+                const cId = String(se.id_csirt || (se as any).csirt?.id || (se as any).csirt_id);
+                if (cId && cId !== 'undefined') {
+                    if (!map[cId]) map[cId] = [];
+                    map[cId].push(se);
+                }
+            });
+            return map;
+        },
+
+        seByPerusahaanMap(state): Record<string, SeCsirt[]> {
+            const map: Record<string, SeCsirt[]> = {};
+            state.seList.forEach(se => {
+                const pId = String(se.id_perusahaan);
+                if (pId && pId !== 'undefined') {
+                    if (!map[pId]) map[pId] = [];
+                    map[pId].push(se);
+                }
+            });
+            return map;
+        },
+
         // Get csirt by ID
         getCsirtById(): (id: number | string) => CsirtMember | undefined {
             return (id: number | string) => this.csirts.find(c => String(c.id) === String(id));
@@ -27,32 +79,25 @@ export const useCsirtStore = defineStore('csirt', {
         // Check if a stakeholder (by id_perusahaan) has a fully registered CSIRT (has both SDM and SE)
         hasCompleteCsirt(): (perusahaanId: string | number) => boolean {
             return (perusahaanId: string | number) => {
-                // Match by flat id_perusahaan OR by nested perusahaan.id (some backends embed the relation)
-                const csirt = this.csirts.find(c =>
-                    String(c.id_perusahaan) === String(perusahaanId) ||
-                    String((c as any).perusahaan?.id) === String(perusahaanId)
-                );
+                const pid = String(perusahaanId);
+                const csirt = this.csirtByPerusahaanMap[pid];
                 if (!csirt) return false;
 
-                // Check global flat lists (populated by getAllSdm / getAllSe)
-                const hasSdmFromList = this.sdmList.some(sdm =>
-                    String(sdm.id_csirt) === String(csirt.id) ||
-                    String((sdm as any).csirt?.id) === String(csirt.id)
-                );
-                // Fallback: some backends embed sdm_csirt[] directly inside the CSIRT object
-                const hasSdmFromNested = Array.isArray((csirt as any).sdm_csirt) &&
-                    (csirt as any).sdm_csirt.length > 0;
-
-                const hasSdfromList2 = this.seList.some(se =>
-                    String(se.id_csirt) === String(csirt.id) ||
-                    String((se as any).csirt?.id) === String(csirt.id)
-                );
-                // Fallback: some backends embed se_csirt[] directly inside the CSIRT object
-                const hasSefromNested = Array.isArray((csirt as any).se_csirt) &&
-                    (csirt as any).se_csirt.length > 0;
-
-                const hasSdm = hasSdmFromList || hasSdmFromNested;
-                const hasSe  = hasSdfromList2 || hasSefromNested;
+                const cid = String(csirt.id);
+                
+                // Check SDM
+                let hasSdm = false;
+                const sdmList = this.sdmByCsirtMap[cid];
+                if (sdmList && sdmList.length > 0) hasSdm = true;
+                else if (Array.isArray((csirt as any).sdm_csirt) && (csirt as any).sdm_csirt.length > 0) hasSdm = true;
+                
+                // Check SE
+                let hasSe = false;
+                const seList1 = this.seByCsirtMap[cid];
+                const seList2 = this.seByPerusahaanMap[pid];
+                if (seList1 && seList1.length > 0) hasSe = true;
+                else if (seList2 && seList2.length > 0) hasSe = true;
+                else if (Array.isArray((csirt as any).se_csirt) && (csirt as any).se_csirt.length > 0) hasSe = true;
 
                 return hasSdm && hasSe;
             };
@@ -248,7 +293,7 @@ export const useCsirtStore = defineStore('csirt', {
                         this.seList.push(...se);
                     }
                 } else {
-                    console.warn('[csirtStore] No targetId resolved. Child data will not be fetched.');
+                    console.debug('[csirtStore] No targetId resolved. Child data will not be fetched.');
                 }
             } catch (err) {
                 console.error("fetchSpecific error:", err);

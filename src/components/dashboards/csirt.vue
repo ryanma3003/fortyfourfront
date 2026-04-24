@@ -123,9 +123,16 @@ export default {
             const id = csirtId.value;
             if (!id) return [];
             const sid = String(id);
-            return csirtStore.seList.filter(item => 
-                String(item.id_csirt) === sid || String((item as any).csirt?.id) === sid
-            );
+            console.log('[csirt.vue] filtering seList with target sid:', sid);
+            console.log('[csirt.vue] current seList:', csirtStore.seList);
+            return csirtStore.seList.filter((item: any) => {
+                const currentPerusahaanId = String(currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id);
+                const match = String(item.id_csirt) === sid || 
+                              String(item.csirt_id) === sid || 
+                              String(item.csirt?.id) === sid || 
+                              (item.id_perusahaan && String(item.id_perusahaan) === currentPerusahaanId);
+                return match;
+            });
         });
 
         const loading = ref(false);
@@ -1225,8 +1232,8 @@ export default {
                         <i class="ri-add-circle-line fs-15"></i>
                         <span>Tambah SE</span>
                     </button>
-                    <button @click="exportAllSePdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
-                        <i class="ri-file-pdf-line"></i>
+                    <button @click="exportPdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
+                        <i class="ri-file-list-3-line fs-15"></i>
                         <span>Rekap SE</span>
                     </button>
                 </div>

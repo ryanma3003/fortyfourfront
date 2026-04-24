@@ -419,7 +419,7 @@ watch(selectedSektorId, () => {
 <template>
   <div class="sektor-analytics">
     <!-- ═══════════ SECTION HEADER ═══════════ -->
-    <div class="sa-section-header">
+    <div class="sa-section-header animate-show-up" style="animation-delay: 2.6s">
       <div class="sa-section-header-inner">
         <div class="sa-section-icon">
           <i class="ri-building-4-fill"></i>
@@ -483,7 +483,7 @@ watch(selectedSektorId, () => {
     <template v-else>
       <!-- ──── STATS CARDS ──── -->
       <div class="sa-stats-row">
-        <div class="sa-stat-card sa-stat-blue">
+        <div class="sa-stat-card sa-stat-blue animate-show-up" style="animation-delay: 2.7s">
           <div class="sa-stat-top">
             <div class="sa-stat-icon-wrap">
               <i class="ri-building-4-line"></i>
@@ -498,7 +498,7 @@ watch(selectedSektorId, () => {
           </div>
         </div>
 
-        <div class="sa-stat-card sa-stat-teal">
+        <div class="sa-stat-card sa-stat-teal animate-show-up" style="animation-delay: 2.8s">
           <div class="sa-stat-top">
             <div class="sa-stat-icon-wrap">
               <i class="ri-bar-chart-horizontal-line"></i>
@@ -513,7 +513,7 @@ watch(selectedSektorId, () => {
           </div>
         </div>
 
-        <div class="sa-stat-card sa-stat-amber">
+        <div class="sa-stat-card sa-stat-amber animate-show-up" style="animation-delay: 2.9s">
           <div class="sa-stat-top">
             <div class="sa-stat-icon-wrap">
               <i class="ri-trophy-line"></i>
@@ -530,7 +530,7 @@ watch(selectedSektorId, () => {
       </div>
 
       <!-- ──── FILTER BAR ──── -->
-      <div class="sa-filter-bar">
+      <div class="sa-filter-bar animate-show-up" style="animation-delay: 3.0s">
         <!-- Filter Header Row -->
         <div class="sa-filter-header">
           <div class="sa-filter-title-wrap">
@@ -670,7 +670,7 @@ watch(selectedSektorId, () => {
       <!-- ═══════ VIEW: OVERVIEW (Charts) ═══════ -->
       <div v-if="viewMode === 'overview'" class="sa-charts-section">
         <!-- Chart Level Toggle -->
-        <div class="sa-level-toggle-bar">
+        <div class="sa-level-toggle-bar animate-show-up" style="animation-delay: 3.1s">
           <div class="sa-level-toggle-label">
             <i class="ri-bar-chart-grouped-line"></i>
             <span>Tampilkan data:</span>
@@ -704,7 +704,7 @@ watch(selectedSektorId, () => {
 
         <div class="row g-4">
           <!-- Bar Chart -->
-          <div class="col-xl-7">
+          <div class="col-xl-7 animate-show-up" style="animation-delay: 3.2s">
             <div class="sa-chart-card">
               <div class="sa-chart-header">
                 <div class="sa-chart-header-inner">
@@ -739,7 +739,7 @@ watch(selectedSektorId, () => {
           </div>
 
           <!-- Donut Chart -->
-          <div class="col-xl-5">
+          <div class="col-xl-5 animate-show-up" style="animation-delay: 3.3s">
             <div class="sa-chart-card">
               <div class="sa-chart-header">
                 <div class="sa-chart-header-inner">
@@ -989,6 +989,24 @@ watch(selectedSektorId, () => {
 </template>
 
 <style scoped>
+/* ===== PREMIUM SHOW EFFECT ANIMATION ===== */
+@keyframes dashboardShowUp {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.98);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.animate-show-up {
+  animation: dashboardShowUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* ══════════════════════════════════════════════════════════
    SEKTOR ANALYTICS — Premium Dashboard Styles
    ══════════════════════════════════════════════════════════ */

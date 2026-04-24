@@ -10,7 +10,6 @@ import { useRouter } from "vue-router";
 import { picService } from "../../services/pic.service";
 import type { Pic } from "../../types/pic.types";
 import { useCsirtStore } from "../../stores/csirt";
-import { csirtService } from "../../services/csirt.service";
 import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
@@ -142,7 +141,7 @@ const penilaian = computed(() => {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,
       svgColor: "secondary",
       title: "KSE",
-      value: seCount.value > 0 ? "Sudah Terdaftar" : "Belum Terdaftar"
+      value: seCount.value > 0 ? `${seCount.value} SE Terdaftar` : "Belum Terdaftar"
     },
     {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
@@ -192,9 +191,9 @@ const getCsirtStatus = (): string => {
   const hasSdm = sdmCount.value > 0;
   const hasSe = seCount.value > 0;
 
-  // CSIRT + SDM + SE all present → fully active
+  // CSIRT + SDM + SE all present → fully registered / complete
   if (hasSdm && hasSe) {
-    return "Aktif";
+    return "Terdaftar";
   }
 
   // CSIRT exists but SDM or SE (or both) are missing
@@ -208,12 +207,29 @@ const sdmCount = ref(0);
 const loadCsirtCounts = async (csirtId: string | number | null) => {
   if (!csirtId) { seCount.value = 0; sdmCount.value = 0; return; }
   try {
-    const [seList, sdmList] = await Promise.all([
-      csirtService.getSeByCsirtId(csirtId),
-      csirtService.getSdmByCsirtId(csirtId as number),
-    ]);
-    seCount.value = seList.length;
-    sdmCount.value = sdmList.length;
+    // Use csirtStore refresh to load SDM/SE (same approach as csirt.vue)
+    const companyId = currentStakeholder.value?.id;
+    await csirtStore.refresh({
+      fetchGlobal: false,
+      targetCsirtId: csirtId,
+      targetCompanyId: companyId,
+    });
+
+    // Count from store's seList/sdmList using same multi-field matching as csirt.vue
+    const sid = String(csirtId);
+    const currentPerusahaanId = String(companyId || '');
+
+    seCount.value = csirtStore.seList.filter((item: any) =>
+      String(item.id_csirt) === sid ||
+      String(item.csirt_id) === sid ||
+      String(item.csirt?.id) === sid ||
+      (item.id_perusahaan && String(item.id_perusahaan) === currentPerusahaanId)
+    ).length;
+
+    sdmCount.value = csirtStore.sdmList.filter((item: any) =>
+      String(item.id_csirt) === sid ||
+      String(item.csirt?.id) === sid
+    ).length;
   } catch {
     seCount.value = 0;
     sdmCount.value = 0;
@@ -268,7 +284,7 @@ const companyDetails = computed(() => {
     { icon: 'ri-mail-line', label: 'Email', value: currentStakeholder.value.email, colorClass: 'stat-icon-teal' },
     { icon: 'ri-phone-line', label: 'Telepon', value: currentStakeholder.value.telepon, colorClass: 'stat-icon-violet' },
     { icon: 'ri-global-line', label: 'Website', value: currentStakeholder.value.website, colorClass: 'stat-icon-blue', isLink: true, href: currentStakeholder.value.website },
-    { icon: 'ri-shield-check-line', label: 'Status CSIRT', value: relatedCsirtId.value ? 'Terdaftar' : 'Belum Terdaftar', colorClass: relatedCsirtId.value ? 'stat-icon-teal' : 'stat-icon-violet' },
+    { icon: 'ri-shield-check-line', label: 'Status CSIRT', value: getCsirtStatus(), colorClass: getCsirtStatus() === 'Aktif' ? 'stat-icon-teal' : 'stat-icon-violet' },
   ];
 });
 </script>

@@ -64,9 +64,9 @@ export default {
           joined: (u as any).joined || (u as any).created_at || '',
           photo: formatImageUrl((u as any).photo || (u as any).foto_profile),
           status: typeof (u as any).status !== 'undefined' ? String((u as any).status) : 
-                  typeof (u as any).is_active !== 'undefined' ? ((u as any).is_active ? 'active' : 'suspend') :
-                  typeof (u as any).is_suspended !== 'undefined' ? ((u as any).is_suspended ? 'suspend' : 'active') :
-                  typeof (u as any).aktif !== 'undefined' ? ((u as any).aktif == 1 ? 'active' : 'suspend') :
+                  typeof (u as any).is_active !== 'undefined' ? ((u as any).is_active ? 'aktif' : 'suspend') :
+                  typeof (u as any).is_suspended !== 'undefined' ? ((u as any).is_suspended ? 'suspend' : 'aktif') :
+                  typeof (u as any).aktif !== 'undefined' ? ((u as any).aktif == 1 ? 'aktif' : 'suspend') :
                   typeof (u as any).status_akun !== 'undefined' ? String((u as any).status_akun) : '',
           id_perusahaan: (u as any).id_perusahaan || undefined,
           id_jabatan: (u as any).id_jabatan || undefined,
@@ -195,8 +195,8 @@ export default {
 
     const getUserStatusText = (status?: string) => {
       const s = String(status || '').toLowerCase();
-      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Suspend';
-      return 'Active';
+      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
+      return 'Aktif';
     };
 
     // Get role badge class
@@ -333,8 +333,8 @@ export default {
                         <i class="ri-user-line text-primary"></i>
                         <span class="column-label" @click="toggleSort('name')">Nama</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'name' && sortOrder === 'asc' }" @click.stop="sortField = 'name'; sortOrder = 'asc';"></i>
-                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'name' && sortOrder === 'desc' }" @click.stop="sortField = 'name'; sortOrder = 'desc';"></i>
+                          <i class="ri-arrow-up-s-line" :class="{ aktif: sortField === 'name' && sortOrder === 'asc' }" @click.stop="sortField = 'name'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ aktif: sortField === 'name' && sortOrder === 'desc' }" @click.stop="sortField = 'name'; sortOrder = 'desc';"></i>
                         </div>
                       </div>
                     </th>
@@ -367,8 +367,8 @@ export default {
                         <i class="ri-shield-user-line text-primary"></i>
                         <span class="column-label" @click="toggleSort('role')">Role</span>
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'role' && sortOrder === 'asc' }" @click.stop="sortField = 'role'; sortOrder = 'asc';"></i>
-                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'role' && sortOrder === 'desc' }" @click.stop="sortField = 'role'; sortOrder = 'desc';"></i>
+                          <i class="ri-arrow-up-s-line" :class="{ aktif: sortField === 'role' && sortOrder === 'asc' }" @click.stop="sortField = 'role'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ aktif: sortField === 'role' && sortOrder === 'desc' }" @click.stop="sortField = 'role'; sortOrder = 'desc';"></i>
                         </div>
                       </div>
                     </th>
@@ -421,7 +421,7 @@ export default {
                     </td>
                     <td class="align-middle">
                       <span :class="['badge rounded-pill px-3 py-2 fs-12', getUserStatusClass(item.status)]">
-                        <i :class="getUserStatusText(item.status) === 'Active' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
+                        <i :class="getUserStatusText(item.status) === 'Aktif' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
                         {{ getUserStatusText(item.status) }}
                       </span>
                     </td>
@@ -433,11 +433,11 @@ export default {
                     </td>
                     <td class="text-center align-middle">
                       <div class="d-flex gap-1 justify-content-center">
-                        <router-link :to="`/users/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
+                        <router-link :to="`/users-profile/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Profil">
                           <i class="ri-eye-line"></i>
                         </router-link>
                         <router-link v-if="authStore.currentUser?.id !== item.id"
-                          :to="{ path: `/users/${item.slug}`, query: { edit: 'true' } }"
+                          :to="{ path: `/users-profile/${item.slug}`, query: { edit: 'true' } }"
                           class="btn btn-sm btn-icon btn-wave btn-warning-light"
                           title="Edit User">
                           <i class="ri-pencil-line"></i>
@@ -476,7 +476,7 @@ export default {
                     </a>
                   </li>
                   <template v-for="p in totalPages" :key="p">
-                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
+                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ aktif: p === currentPage }">
                       <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
                     </li>
                     <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">

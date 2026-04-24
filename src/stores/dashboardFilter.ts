@@ -35,10 +35,9 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
       if (state.dateRange[1]) params.to = state.dateRange[1];
       if (state.year) params.year = state.year;
       if (state.quarter) params.quarter = state.quarter;
-      // sub_sektor_id is NOT sent to API (backend SQL bug with NULL this_month).
-      // Sub-sektor filtering is handled client-side in Dashboard computed properties.
+      // sub_sektor_id and kategori_se are NOT sent to API (backend SQL bug with NULL this_month).
+      // These are handled client-side in Dashboard computed properties.
       if (state.sektorId) params.sektor_id = state.sektorId;
-      if (state.kategoriSe) params.kategori_se = state.kategoriSe;
       return params;
     },
 

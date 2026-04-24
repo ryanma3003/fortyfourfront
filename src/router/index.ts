@@ -69,7 +69,7 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/dashboards/users-list.vue"),
             },
             {
-              path: 'users/:slug',
+              path: 'users-profile/:slug',
               name: 'Profile User',
               component: () => import("../components/dashboards/user-profile.vue"),
             },

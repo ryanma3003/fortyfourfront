@@ -72,8 +72,8 @@ const insights = computed(() => {
     results.push({
         type: 'positive',
         icon: 'ri-building-4-line',
-        color: '#845adf',
-        bg: 'rgba(132,90,223,0.1)',
+        color: '#1e40af',
+        bg: 'rgba(30,64,175,0.1)',
         text: `Terdapat ${totalSh} Stakeholder Aktif`,
         detail: 'Berdasarkan filter aktif saat ini',
     });
@@ -166,7 +166,7 @@ const insights = computed(() => {
     <div class="dw-card dw-fade-up">
         <div class="dw-card-header">
             <h6 class="dw-card-header-title">
-                <div class="dw-card-header-icon" style="background: linear-gradient(135deg, #845adf, #6366f1); color: #fff;">
+                <div class="dw-card-header-icon" style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff;">
                     <i class="ri-lightbulb-flash-line"></i>
                 </div>
                 <div>

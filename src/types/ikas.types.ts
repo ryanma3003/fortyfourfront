@@ -213,20 +213,104 @@ export interface PertanyaanIdentifikasiResponse {
 }
 
 export interface JawabanPayload {
+    id?: string;
     id_ikas?: string;
+    ikas_id?: string;
     id_pertanyaan?: string;
+    pertanyaan_identifikasi_id?: number | string;
+    pertanyaan_proteksi_id?: number | string;
+    pertanyaan_deteksi_id?: number | string;
+    pertanyaan_gulih_id?: number | string;
     id_perusahaan?: string;
+    perusahaan_id?: string;
     jawaban?: number | string;
+    jawaban_identifikasi?: number | string;
+    jawaban_proteksi?: number | string;
+    jawaban_deteksi?: number | string;
+    jawaban_gulih?: number | string;
     nilai?: number;
 }
 
 export interface JawabanResponse {
     id: string;
     id_ikas?: string;
+    ikas_id?: string;
     id_pertanyaan?: string;
+    pertanyaan_identifikasi_id?: number | string;
+    pertanyaan_proteksi_id?: number | string;
+    pertanyaan_deteksi_id?: number | string;
+    pertanyaan_gulih_id?: number | string;
     id_perusahaan?: string;
+    perusahaan_id?: string;
     jawaban?: number | string;
+    jawaban_identifikasi?: number | string;
+    jawaban_proteksi?: number | string;
+    jawaban_deteksi?: number | string;
+    jawaban_gulih?: number | string;
     nilai?: number;
     created_at?: string;
     updated_at?: string;
+}
+
+// Specific response shape for Gulih jawaban including nested pertanyaan structure
+export interface JawabanGulihResponse extends JawabanResponse {
+    evidence?: string;
+    jawaban_gulih?: number;
+    keterangan?: string;
+    pertanyaan_gulih?: {
+        id: number;
+        pertanyaan_gulih: string;
+        sub_kategori: {
+            id: number;
+            nama_sub_kategori: string;
+            kategori: {
+                id: number;
+                nama_kategori: string;
+                domain: {
+                    id: number;
+                    nama_domain: string;
+                };
+            };
+        };
+    };
+    perusahaan_id?: string;
+    created_at?: string;
+    updated_at?: string;
+    validasi?: string;
+}
+
+export interface JawabanIdentifikasiPayload {
+    perusahaan_id: string;                    // UUID perusahaan — WAJIB untuk filter GET
+    pertanyaan_identifikasi_id: number;       // ID pertanyaan dari backend
+    jawaban_identifikasi: number;             // nilai 0-5
+    keterangan?: string;
+    evidence?: string;
+    validasi?: string;
+}
+
+export interface JawabanProteksiPayload {
+    perusahaan_id: string;
+    pertanyaan_proteksi_id: number;
+    jawaban_proteksi: number;
+    keterangan?: string;
+    evidence?: string;
+    validasi?: string;
+}
+
+export interface JawabanDeteksiPayload {
+    perusahaan_id: string;
+    pertanyaan_deteksi_id: number;
+    jawaban_deteksi: number;
+    keterangan?: string;
+    evidence?: string;
+    validasi?: string;
+}
+
+export interface JawabanGulihPayload {
+    perusahaan_id: string;
+    pertanyaan_gulih_id: number;
+    jawaban_gulih: number;
+    keterangan?: string;
+    evidence?: string;
+    validasi?: string;
 }

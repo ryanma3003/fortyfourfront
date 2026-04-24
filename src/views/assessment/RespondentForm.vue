@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'submit'): void;
+  (e: 'save'): void;
   (e: 'cancel'): void;
 }>();
 
@@ -222,9 +223,10 @@ const saveFormData = () => {
 
 
 
-// Start assessment (emit submit event)
+// Start assessment (emit submit event) — DO NOT auto-save to backend here
 const startAssessment = () => {
   if (validateForm()) {
+    // save to local store only; parent decides when to sync to backend
     saveFormData();
     emit('submit');
   }
@@ -441,6 +443,16 @@ const startAssessment = () => {
                 <i class="ri-arrow-left-line me-1"></i>
                 Kembali ke Ringkasan
               </button>
+
+              <button
+                type="button"
+                class="btn btn-success"
+                @click="() => { saveFormData(); emit('save'); }"
+              >
+                <i class="ri-save-line me-1"></i>
+                Simpan Data Responden
+              </button>
+
               <button 
                 type="submit" 
                 class="btn btn-primary"

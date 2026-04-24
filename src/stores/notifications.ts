@@ -12,23 +12,53 @@ const MAX_EVENTS = 200;
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Check if a notification ID is a real database UUID (not a frontend-generated fallback).
- * Backend will reject operations on non-UUID IDs.
+ * Frontend-generated SSE items always use the "sse-" prefix.
+ * Anything else is treated as a backend-owned notification ID and
+ * should be allowed for mark-read / delete API calls.
  */
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isTemporarySseId(id: string): boolean {
+    return String(id).startsWith('sse-');
+}
+
 function isRealDbId(id: string): boolean {
-    // Accept UUIDs and numeric IDs from DB
-    return UUID_REGEX.test(id) || /^\d+$/.test(id);
+    return !!id && !isTemporarySseId(id);
+}
+
+function getBackendNotificationId(event?: Pick<ServerEvent, 'id' | 'api_id'> | null): string {
+    if (!event) return '';
+    const candidate = String(event.api_id || event.id || '');
+    return isRealDbId(candidate) ? candidate : '';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function timeAgo(isoDate: string): string {
-    const now = Date.now();
-    const then = new Date(isoDate).getTime();
+function timeAgo(isoDate: string, nowOverride?: number): string {
+    const now = nowOverride || Date.now();
+    let then = new Date(isoDate).getTime();
     if (isNaN(then)) return '';
-    const diff = Math.max(0, now - then);
+
+    // Calculate diff
+    let diff = now - then;
+
+    // Timezone mismatch detection:
+    // If the date is more than 1 minute in the future, it's likely that the server 
+    // sent a local time string but labeled it as UTC (with 'Z').
+    // We try to fix this by parsing it as local time.
+    if (diff < -60000) {
+        const localThen = new Date(isoDate.replace('Z', '')).getTime();
+        if (!isNaN(localThen)) {
+            const localDiff = now - localThen;
+            // If localDiff is more "sensible" (positive and not too old), use it.
+            if (localDiff >= 0 && localDiff < 24 * 60 * 60 * 1000) {
+                then = localThen;
+                diff = localDiff;
+            }
+        }
+    }
+
     const seconds = Math.floor(diff / 1000);
+    
+    // Treat any remaining slight future or very recent past as 'Baru saja'
     if (seconds < 60) return 'Baru saja';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} menit yang lalu`;
@@ -155,8 +185,36 @@ const NOISE_TYPES = new Set(['ping', 'heartbeat', 'keepalive', 'keep-alive', 'co
 function normalizeToServerEvent(raw: any): ServerEvent | null {
     if (!raw || typeof raw !== 'object') return null;
 
-    // ── ID ── Use real ID from backend, or generate a temporary one
-    const id = String(raw.id || raw.notification_id || raw.event_id || `sse-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+    let parsedData = raw.data;
+    if (typeof parsedData === 'string') {
+        try { parsedData = JSON.parse(parsedData); } catch { /* ignore */ }
+    }
+
+    const rawRecordId = raw.id != null ? String(raw.id) : '';
+    const notificationApiId = String(
+        raw.notification_id
+        || raw.notificationId
+        || raw.id_notification
+        || raw.id_notif
+        || raw.notif_id
+        || raw.notifId
+        || parsedData?.id_notification
+        || parsedData?.id_notif
+        || parsedData?.notification_id
+        || parsedData?.notificationId
+        || parsedData?.notif_id
+        || parsedData?.notifId
+        || raw.id
+        || raw.event_id
+        || raw.id_event
+        || ''
+    );
+
+    // ── ID ── Prefer dedicated notification id over generic record id.
+    const id = String(
+        notificationApiId
+        || `sse-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    );
 
     // ── Skip noise ──
     const rawType = String(raw.type || raw.action || raw.event_type || '').toLowerCase();
@@ -165,7 +223,7 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
     if (NOISE_TYPES.has(rawMsg.toLowerCase())) return null;
 
     // ── Read state ──
-    const is_read = !!(raw.read === true || raw.is_read === true || raw.read_at);
+    const is_read = !!(raw.read || raw.is_read || raw.read_at);
 
     // ── Type classification ──
     let type: 'created' | 'updated' | 'deleted' = 'updated';
@@ -193,11 +251,6 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
 
     // Extract user_id from any available field
     if (!user.id) {
-        let parsedData = raw.data;
-        if (typeof parsedData === 'string') {
-            try { parsedData = JSON.parse(parsedData); } catch { /* ignore */ }
-        }
-        
         const uid = raw.user_id || raw.userId || raw.userID
             || raw.actor_id || raw.actorId || raw.actorID
             || raw.causer_id || raw.causerId 
@@ -243,7 +296,15 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
         }
     }
 
-    const entityId = String(raw.entity_id || raw.resource_id || raw.model_id || raw.record_id || raw.data?.id || '');
+    const entityId = String(
+        raw.entity_id
+        || raw.resource_id
+        || raw.model_id
+        || raw.record_id
+        || raw.data?.id
+        || (raw.notification_id || raw.notificationId ? rawRecordId : '')
+        || ''
+    );
 
     // ── Message ──
     let message = typeof raw.message === 'string' ? raw.message : (raw.description || raw.detail || '');
@@ -256,9 +317,34 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
         message = `${verb} data ${entityName || label}`;
     }
 
-    const timestamp = raw.timestamp || raw.created_at || raw.time || raw.date || new Date().toISOString();
+    let timestamp = String(
+        raw.timestamp
+        || raw.created_at
+        || raw.time
+        || raw.date
+        || new Date().toISOString()
+    );
+    
+    // Ensure proper ISO format for database-style timestamps (e.g. "2023-01-01 12:00:00")
+    if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(timestamp)) {
+        timestamp = timestamp.replace(' ', 'T') + 'Z';
+    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(timestamp) && !timestamp.includes('Z') && !timestamp.includes('+')) {
+        timestamp += 'Z';
+    }
 
-    return { id, type, entity, entity_id: entityId, entity_name: entityName, field_changes: fieldChanges, user, timestamp, message, is_read };
+    return {
+        id,
+        api_id: notificationApiId || undefined,
+        type,
+        entity,
+        entity_id: entityId,
+        entity_name: entityName,
+        field_changes: fieldChanges,
+        user,
+        timestamp,
+        message,
+        is_read,
+    };
 }
 
 // ─── Browser Notification ────────────────────────────────────────────
@@ -304,6 +390,10 @@ export const useNotificationStore = defineStore('notifications', {
          * Used to attribute SSE events that arrive without user info.
          */
         trackedActions: [] as Array<{ entity: string; entity_id: string; timestamp: number }>,
+        /** Current time for reactive 'time ago' updates */
+        currentTime: Date.now(),
+        /** Timer for updating currentTime */
+        clockTimer: null as ReturnType<typeof setInterval> | null,
     }),
 
     getters: {
@@ -314,7 +404,7 @@ export const useNotificationStore = defineStore('notifications', {
         recentForDropdown(state): Array<ServerEvent & { timeAgoStr: string; isRead: boolean }> {
             return state.events.slice(0, 5).map(e => ({
                 ...e,
-                timeAgoStr: timeAgo(e.timestamp),
+                timeAgoStr: timeAgo(e.timestamp, state.currentTime),
                 isRead: !!e.is_read,
             }));
         },
@@ -327,9 +417,10 @@ export const useNotificationStore = defineStore('notifications', {
             details: string;
             avatarInitials: string;
         }> {
+            const now = state.currentTime;
             return state.events.map(e => ({
                 ...e,
-                timeAgoStr: timeAgo(e.timestamp),
+                timeAgoStr: timeAgo(e.timestamp, now),
                 isRead: !!e.is_read,
                 entityLabel: ENTITY_LABELS[e.entity] || e.entity,
                 actionVerb: ACTION_VERBS[e.type] || e.type,
@@ -382,6 +473,9 @@ export const useNotificationStore = defineStore('notifications', {
             await this.loadFromDatabase();
             this.loading = false;
 
+            // Start reactive clock for time-ago updates
+            this.startClock();
+
             notificationService.connect(
                 (raw: any) => this.handleSSEEvent(raw),
                 (connected: boolean) => {
@@ -392,6 +486,23 @@ export const useNotificationStore = defineStore('notifications', {
             );
 
             this.startPolling();
+        },
+
+        startClock() {
+            if (this.clockTimer) return;
+            console.log('[NotifStore] Starting reactive clock...');
+            this.currentTime = Date.now();
+            this.clockTimer = setInterval(() => {
+                this.currentTime = Date.now();
+            }, 10_000); // 10s for more frequent updates
+        },
+
+        stopClock() {
+            if (this.clockTimer) {
+                console.log('[NotifStore] Stopping reactive clock...');
+                clearInterval(this.clockTimer);
+                this.clockTimer = null;
+            }
         },
 
         // ═══════════════════════════════════════════════════════════
@@ -470,7 +581,14 @@ export const useNotificationStore = defineStore('notifications', {
                 for (const dbEvt of normalized) {
                     const local = this.events.find(e => e.id === dbEvt.id);
                     if (local) {
-                        local.is_read = dbEvt.is_read;
+                        // Optimistic UI: If locally marked as read, keep it read 
+                        // even if the backend poll still shows it as unread.
+                        if (local.is_read) {
+                            // already read locally, keep it that way
+                        } else {
+                            local.is_read = dbEvt.is_read;
+                        }
+                        
                         if (local.user.name === 'Sistem' && dbEvt.user.name !== 'Sistem') {
                             local.user = dbEvt.user;
                         }
@@ -620,8 +738,8 @@ export const useNotificationStore = defineStore('notifications', {
                 this.events = this.events.slice(0, MAX_EVENTS);
             }
 
-            // Track as pending SSE if it has a generated ID (not a real DB UUID)
-            if (!isRealDbId(event.id)) {
+            // Track only frontend-generated SSE placeholders as pending.
+            if (isTemporarySseId(event.id)) {
                 this.pendingSSEIds.add(event.id);
                 // Auto-expire pending status after 90s
                 setTimeout(() => {
@@ -666,12 +784,24 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         async markAsRead(id: string) {
             const evt = this.events.find(e => e.id === id);
+            if (!evt || evt.is_read) return;
+
+            const previousState = evt.is_read;
+            const backendId = getBackendNotificationId(evt);
             if (evt) evt.is_read = true;
+            if (this.backendUnreadCount > 0) {
+                this.backendUnreadCount -= 1;
+            }
 
             // Only call backend if this is a real DB ID
-            if (isRealDbId(id)) {
-                const ok = await notificationService.markAsRead(id);
-                if (!ok && evt) evt.is_read = false; // rollback
+            if (backendId) {
+                const ok = await notificationService.markAsRead(backendId);
+                if (!ok) {
+                    evt.is_read = previousState;
+                    if (!previousState) {
+                        this.backendUnreadCount += 1;
+                    }
+                }
             }
         },
 
@@ -680,8 +810,12 @@ export const useNotificationStore = defineStore('notifications', {
         // PATCH /api/notifications/read-all
         // ═══════════════════════════════════════════════════════════
         async markAllAsRead() {
+            const unreadBefore = this.events.filter(e => !e.is_read).length;
+            if (unreadBefore === 0) return;
+
             const previousStates = this.events.map(e => ({ id: e.id, was: e.is_read }));
             this.events.forEach(e => { e.is_read = true; });
+            this.backendUnreadCount = 0;
 
             const ok = await notificationService.markAllAsRead();
             if (!ok) {
@@ -689,6 +823,7 @@ export const useNotificationStore = defineStore('notifications', {
                     const evt = this.events.find(e => e.id === id);
                     if (evt) evt.is_read = was;
                 });
+                this.backendUnreadCount = unreadBefore;
             }
         },
 
@@ -701,12 +836,13 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         async deleteEvent(id: string) {
             const removed = this.events.find(e => e.id === id);
+            const backendId = getBackendNotificationId(removed);
             this.events = this.events.filter(e => e.id !== id);
             this.pendingSSEIds.delete(id);
 
             // Only call backend if this is a real DB ID
-            if (isRealDbId(id)) {
-                const ok = await notificationService.deleteOne(id);
+            if (backendId) {
+                const ok = await notificationService.deleteOne(backendId);
                 if (!ok && removed) {
                     this.events.unshift(removed);
                     this.events.sort((a, b) =>
@@ -771,6 +907,7 @@ export const useNotificationStore = defineStore('notifications', {
         disconnect() {
             notificationService.disconnect();
             this.stopPolling();
+            this.stopClock();
             this.connected = false;
             this.initialized = false;
             this.events = [];

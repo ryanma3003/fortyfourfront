@@ -8,7 +8,7 @@ const stakeholdersStore = useStakeholdersStore();
 const csirtStore = useCsirtStore();
 
 const props = defineProps({
-    summaryError: { type: Boolean, default: false },
+    summaryError: { type: [Boolean, String], default: false },
 });
 
 const alerts = computed(() => {

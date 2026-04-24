@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useKseStore } from '../../stores/kse';
 import { useStakeholdersStore } from '../../stores/stakeholders';
+import { useCsirtStore } from '../../stores/csirt';
 import { csirtService } from '@/services/csirt.service';
 import type { SeCsirt } from '@/types/csirt.types';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
@@ -11,6 +12,7 @@ const route  = useRoute();
 const router = useRouter();
 const kseStore          = useKseStore();
 const stakeholdersStore = useStakeholdersStore();
+const csirtStore        = useCsirtStore();
 
 // ── Props / slug ────────────────────────────────────────────
 const stakeholderSlug = computed(() => String(route.query.slug || route.params.slug || ''));
@@ -45,6 +47,7 @@ const addError        = ref('');
 // ── Initialise ───────────────────────────────────────────────
 onMounted(async () => {
   if (!stakeholdersStore.initialized) await stakeholdersStore.initialize();
+  if (!csirtStore.initialized) await csirtStore.initialize();
   kseStore.initialize();
   await loadEntries();
 });
@@ -57,19 +60,49 @@ async function loadEntries() {
     localEntries = raw ? JSON.parse(raw) : [];
   } catch { localEntries = []; }
 
-  // 2. Fetch SE from backend API for this company
+  // 2. Fetch SE from csirtStore (same approach as csirt.vue)
   let apiEntries: KseListEntry[] = [];
   try {
     const companyId = currentStakeholder.value?.id;
     if (companyId) {
+      // Find the CSIRT for this company from the store
+      const myCsirt = csirtStore.csirts.find(c =>
+        String(c.id_perusahaan) === String(companyId) ||
+        String((c as any).perusahaan?.id) === String(companyId)
+      );
+
       let companySe: SeCsirt[] = [];
-      const myCsirt = await csirtService.getCsirtByPerusahaan(companyId).catch(() => null);
+
       if (myCsirt && myCsirt.id) {
-          companySe = await csirtService.getSeByCsirtId(myCsirt.id).catch(() => []);
+        // Ensure SDM/SE are loaded for this CSIRT (like csirt.vue does)
+        await csirtStore.refresh({
+          fetchGlobal: false,
+          targetCsirtId: myCsirt.id,
+          targetCompanyId: companyId,
+        });
+
+        // Filter SE from store seList (same matching logic as csirt.vue seItems computed)
+        const csirtId = String(myCsirt.id);
+        companySe = csirtStore.seList.filter((item: any) => {
+          return String(item.id_csirt) === csirtId ||
+                 String(item.csirt_id) === csirtId ||
+                 String(item.csirt?.id) === csirtId ||
+                 (item.id_perusahaan && String(item.id_perusahaan) === String(companyId));
+        });
+      } else {
+        // No CSIRT yet — try direct API fallback
+        const csirtFromApi = await csirtService.getCsirtByPerusahaan(companyId).catch(() => null);
+        if (csirtFromApi && csirtFromApi.id) {
+          companySe = await csirtService.getSeByCsirtId(csirtFromApi.id).catch(() => []);
+        }
       }
+
       apiEntries = companySe.map(se => {
-        // Match with local entry to preserve existing store data (like isSubmitted/answers)
-        const localMatch = localEntries.find(le => String(le.seId) === String(se.id));
+        // Match with local entry to preserve existing store data
+        const localMatch = localEntries.find(le =>
+          String(le.seId) === String(se.id) ||
+          le.id === `${stakeholderSlug.value}_kse_se_${se.id}`
+        );
         const entryId = localMatch ? localMatch.id : `${stakeholderSlug.value}_kse_se_${se.id}`;
         
         return {
@@ -84,7 +117,6 @@ async function loadEntries() {
 
       // Load penilaian into KSE store for each API entry
       for (let i = 0; i < companySe.length; i++) {
-        // Important: use the resolved mapped ID so store data connects properly
         kseStore.loadAnswersFromApi(apiEntries[i].id, companySe[i]);
       }
     }
@@ -93,9 +125,12 @@ async function loadEntries() {
   }
 
   // 3. Merge: API entries first, then unique local entries
-  // Any local entry that was already matched & upgraded to an apiEntry above is ignored
   const mappedIds = new Set(apiEntries.map(e => e.id));
-  const uniqueLocal = localEntries.filter(e => !mappedIds.has(e.id));
+  const mappedSeIds = new Set(apiEntries.map(e => e.seId).filter(Boolean));
+  const uniqueLocal = localEntries.filter(e =>
+    !mappedIds.has(e.id) &&
+    !(e.seId && mappedSeIds.has(e.seId))
+  );
   kseEntries.value = [...apiEntries, ...uniqueLocal];
 }
 
@@ -281,7 +316,14 @@ const dataToPass = computed(() => {
 
 // ── Back ──────────────────────────────────────────────────────
 function goBack() {
-  router.push(`/stakeholders/${stakeholderSlug.value}`);
+  if (route.query.from === 'dashboard') {
+    router.push({ 
+      path: '/dashboard', 
+      query: { reopen: route.query.reopen } 
+    });
+  } else {
+    router.push(`/stakeholders/${stakeholderSlug.value}`);
+  }
 }
 
 // ── Category badge ────────────────────────────────────────────
@@ -333,6 +375,14 @@ function progressClass(pct: number): string {
                 {{ totalKse }} sistem terdaftar
               </div>
             </div>
+          </div>
+
+          <!-- Back to Dashboard Btn -->
+          <div v-if="route.query.from === 'dashboard'" class="ms-auto me-2">
+            <button @click="goBack" 
+                    class="btn btn-sm btn-outline-white border-0 shadow-none text-white d-flex align-items-center gap-1">
+              <i class="ri-arrow-left-line"></i> Kembali ke Dashboard
+            </button>
           </div>
 
           <!-- Right: search + add btn -->

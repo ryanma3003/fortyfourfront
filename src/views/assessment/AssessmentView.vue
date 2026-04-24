@@ -130,75 +130,109 @@ const allQuestionsAnswered = computed(() => {
 
 // Handle "Simpan Sementara" or "Simpan dan Selesai"
 const handleSaveAction = async () => {
+    const slug = currentSlug.value;
+    const stakeholder = slug ? stakeholdersStore.getStakeholderBySlug(slug) : null;
+    const profile = assessmentStore.respondentProfile;
+
+  console.log('[AssessmentView] handleSaveAction start', { slug, allQuestionsAnswered: allQuestionsAnswered.value });
+
+    if (!stakeholder?.id || !profile) {
+      toast.error('Data Form Responden tidak lengkap', {
+        autoClose: 4000,
+        position: 'top-right',
+      });
+      return;
+    }
+
+    const respondentPayload = {
+      id_perusahaan: stakeholder.id,
+      responden: profile.namaResponden || '',
+      jabatan: profile.jabatanResponden || '',
+      telepon: profile.nomorTelepon || '',
+      tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+      target_nilai: parseTargetNilai(profile.targetNilai),
+    };
+
     if (allQuestionsAnswered.value) {
-        // Simpan dan Selesai
-        assessmentStore.completeAssessment();
+      console.log('[AssessmentView] Saving final assessment', { respondentPayload });
+      try {
+        const result = await ikasStore.submitToBackend(slug, respondentPayload);
+        const answerSyncResult = await assessmentStore.syncPendingAnswersToBackend(slug);
+        // Domain summary sync is disabled for this backend. Skip submitAllDomainScores.
+        const domainResult = { success: true, errors: [], warnings: ['Domain summary sync disabled on client'] };
 
-        // Sync scores to backend API
-        const slug = currentSlug.value;
-        const stakeholder = slug ? stakeholdersStore.getStakeholderBySlug(slug) : null;
-        const profile = assessmentStore.respondentProfile;
+        console.log('[AssessmentView] save results', { result, answerSyncResult, domainResult });
 
-        if (stakeholder?.id && profile) {
-          try {
-            // AssessmentStore sync already calculated subdomains into IkasStore, now we push them
-            
-            // Submit full IKAS data (with latest scores) to backend
-            const result = await ikasStore.submitToBackend(slug, {
-              id_perusahaan: stakeholder.id,
-              responden: profile.namaResponden || '',
-              jabatan: profile.jabatanResponden || '',
-              telepon: profile.nomorTelepon || '',
-              tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
-              target_nilai: parseTargetNilai(profile.targetNilai),
-            });
+        const completed = result.success && answerSyncResult.success && assessmentStore.completeAssessment();
 
-            // Submit all domain scores (identifikasi, proteksi, deteksi, gulih)
-            const domainResult = await ikasStore.submitAllDomainScores(slug);
-            if (!domainResult.success) {
-              console.warn('[AssessmentView] Some domain scores failed:', domainResult.errors);
-            }
+        if (completed) {
+          toast.success('Assessment berhasil disimpan ke server', {
+            icon: true,
+            hideProgressBar: true,
+            autoClose: 2000,
+            position: 'top-right',
+          });
 
-            if (result.success) {
-              toast.success('Assessment berhasil disimpan ke server', {
-                theme: 'auto',
-                icon: true,
-                hideProgressBar: true,
-                autoClose: 2000,
-                position: 'top-right',
-              });
-              
-              setTimeout(() => emit('back'), 1500);
-            } else {
-              toast.error(`Gagal menyimpan ke server: ${result.error || 'Server tidak merespon'}`, {
-                autoClose: 4000,
-                position: 'top-right',
-              });
-            }
-          } catch (error) {
-            console.error('[AssessmentView] Backend sync error:', error);
-            toast.error('Terjadi kesalahan saat menghubungi server', {
-              autoClose: 4000,
-              position: 'top-right',
-            });
-          }
+          setTimeout(() => emit('back'), 1500);
         } else {
-          toast.error('Data Form Responden tidak lengkap', {
+          const message = !result.success
+            ? `Gagal menyimpan ke server: ${result.error || 'Server tidak merespon'}`
+            : !answerSyncResult.success
+              ? `Masih ada jawaban yang gagal disimpan: ${answerSyncResult.errors.length} item`
+              : `Sebagian nilai domain gagal disimpan: ${domainResult.errors.join(', ')}`;
+
+          toast.error(message, {
             autoClose: 4000,
             position: 'top-right',
           });
         }
+      } catch (error) {
+        console.error('[AssessmentView] Backend sync error:', error);
+        toast.error('Terjadi kesalahan saat menghubungi server', {
+          autoClose: 4000,
+          position: 'top-right',
+        });
+      }
     } else {
-        // Simpan Sementara
-        toast.info('Data berhasil disimpan sementara', {
+      try {
+        console.log('[AssessmentView] Saving draft', { respondentPayload });
+        const result = await ikasStore.submitToBackend(slug, respondentPayload);
+        const answerSyncResult = await assessmentStore.syncPendingAnswersToBackend(slug);
+        // Skip domain summary sync — backend doesn't expose these endpoints.
+        const domainResult = { success: true, errors: [], warnings: ['Domain summary sync disabled on client'] };
+
+        console.log('[AssessmentView] draft save results', { result, answerSyncResult, domainResult });
+
+        if (result.success && answerSyncResult.success) {
+          toast.info('Data berhasil disimpan sementara ke server', {
             theme: 'auto',
             icon: true,
             hideProgressBar: true,
             autoClose: 2000,
             position: 'top-right',
-        });
+          });
 
-        setTimeout(() => emit('back'), 1500);
+          setTimeout(() => emit('back'), 1500);
+          return;
+        }
+
+        const message = !result.success
+          ? `Gagal menyimpan draft: ${result.error || 'Server tidak merespon'}`
+          : !answerSyncResult.success
+            ? `Sebagian jawaban draft belum tersimpan: ${answerSyncResult.errors.length} item`
+            : `Nilai domain draft gagal tersimpan: ${domainResult.errors.join(', ')}`;
+
+        toast.error(message, {
+          autoClose: 4000,
+          position: 'top-right',
+        });
+      } catch (error) {
+        console.error('[AssessmentView] Draft save error:', error);
+        toast.error('Terjadi kesalahan saat menyimpan sementara ke server', {
+          autoClose: 4000,
+          position: 'top-right',
+        });
+      }
     }
 }
 

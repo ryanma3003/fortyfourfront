@@ -1,6 +1,6 @@
     <script setup>
-    import { ref, computed, onMounted, watch, onUnmounted } from "vue";
-    import { useRouter } from "vue-router";
+    import { ref, computed, onMounted, watch, onUnmounted, nextTick } from "vue";
+    import { useRouter, useRoute } from "vue-router";
     import SpkReusebleJobs from "@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
     import RadarChartIkas from '@/shared/components/@spk/charts/ikas-charts.vue';
     import SektorAnalytics from '@/components/dashboards/sektor-analytics.vue';
@@ -31,8 +31,11 @@
     import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
 
     const router = useRouter();
+    const route = useRoute();
     const showMetabase = ref(false);
+    const isFirstLoad = ref(true);
     const loading = ref(true);
+    const summaryMode = ref('KSE'); // 'KSE' or 'IKAS'
 
     // Stores
     const stakeholdersStore = useStakeholdersStore();
@@ -139,21 +142,40 @@
         return d.getFullYear() === parseInt(targetYear) && q === parseInt(targetQuarter);
     }
 
-    // --- Computed: KSE summary cards (Local Computed to support reactive sector filter) ---
     const kseStatus = computed(() => {
-        const total = baseStakeholders.value.length;
+        const stakeholders = datedStakeholders.value;
+        const allSe = datedSeList.value; // Use filtered SE list
         let sudah = 0;
-        baseStakeholders.value.forEach(s => {
-            const csirt = csirtStore.csirts.find(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id));
-            if (csirt) {
-                const hasSe = baseSeList.value.some(se => String(se.id_csirt) === String(csirt.id) || String(se.csirt?.id) === String(csirt.id));
-                if (hasSe) sudah++;
+
+        // Build a fast lookup set for SE IDs within the active date/sector filter
+        const allowedSeIds = new Set();
+        allSe.forEach(se => allowedSeIds.add(String(se.id)));
+
+        stakeholders.forEach(s => {
+            const sId = String(s.id);
+            const csirt = csirtStore.csirtByPerusahaanMap[sId];
+            
+            let hasSe = false;
+            
+            // Check direct SE associations first
+            const sePerusahaan = csirtStore.seByPerusahaanMap[sId];
+            if (sePerusahaan && sePerusahaan.some(se => allowedSeIds.has(String(se.id)))) {
+                hasSe = true;
+            } else if (csirt) {
+                // Fallback to CSIRT-associated SE
+                const seCsirt = csirtStore.seByCsirtMap[String(csirt.id)];
+                if (seCsirt && seCsirt.some(se => allowedSeIds.has(String(se.id)))) {
+                    hasSe = true;
+                }
             }
+
+            if (hasSe) sudah++;
         });
+
         return {
-            total_perusahaan: total,
+            total_perusahaan: stakeholders.length,
             sudah_mengisi_kse: sudah,
-            belum_mengisi_kse: total - sudah
+            belum_mengisi_kse: Math.max(0, stakeholders.length - sudah)
         };
     });
 
@@ -249,57 +271,181 @@
         return Math.round((s.sudah_mengisi_kse / s.total_perusahaan) * 100);
     });
 
+    const ikasSummaryData = computed(() => {
+        const stakeholders = baseIkasStakeholders.value;
+        const range = filterStore.dateRange;
+        
+        // Filter by date range if active
+        const filtered = (range && (range[0] || range[1]))
+            ? stakeholders.filter(s => isInDateRange(s.updated_at || s.created_at, range))
+            : stakeholders;
+
+        let level1 = 0, level2 = 0, level3 = 0, level4 = 0, level5 = 0;
+        let idenTotal = 0, protTotal = 0, detTotal = 0, tangTotal = 0;
+        let count = 0;
+
+        filtered.forEach(s => {
+            const data = ikasStore.ikasDataMap[s.slug];
+            if (!data) return;
+            
+            const score = Number(data.total_rata_rata || 0);
+            if (score < 1.5) level1++;
+            else if (score < 2.5) level2++;
+            else if (score < 3.5) level3++;
+            else if (score < 4.5) level4++;
+            else level5++;
+
+            idenTotal += Number(data.identifikasi?.nilai_identifikasi || 0);
+            protTotal += Number(data.proteksi?.nilai_proteksi || 0);
+            detTotal += Number(data.deteksi?.nilai_deteksi || 0);
+            tangTotal += Number(data.tanggulih?.nilai_tanggulih || 0);
+            count++;
+        });
+
+        return {
+            total: filtered.length,
+            levels: { 
+                level1: { count: level1, label: 'Level 1 - Awal', color: '#e6533c', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)' },
+                level2: { count: level2, label: 'Level 2 - Berulang', color: '#f5b849', gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)' },
+                level3: { count: level3, label: 'Level 3 - Terdefinisi', color: '#0ea5e9', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)' },
+                level4: { count: level4, label: 'Level 4 - Terkelola', color: '#23b7e5', gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)' },
+                level5: { count: level5, label: 'Level 5 - Inovatif', color: '#26bf94', gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)' }
+            },
+            averages: {
+                identifikasi: count > 0 ? (idenTotal / count).toFixed(2) : 0,
+                proteksi: count > 0 ? (protTotal / count).toFixed(2) : 0,
+                deteksi: count > 0 ? (detTotal / count).toFixed(2) : 0,
+                tanggulih: count > 0 ? (tangTotal / count).toFixed(2) : 0,
+            }
+        };
+    });
+
     // Top-level summary cards from API data
     const fullSummaryItems = computed(() => {
-        const kse = kseData.value;
-        const status = kseStatus.value;
-        if (!kse && !status) return [];
+        const katSe = filterStore.kategoriSe;
+        const range = filterStore.dateRange;
 
-        return [
-            {
-                label: 'Perusahaan',
-                value: status?.total_perusahaan ?? totalStakeholders.value,
-                icon: 'ri-building-2-line',
-                gradient: 'linear-gradient(135deg, #845adf 0%, #a78bfa 100%)',
-                color: '#845adf',
-            },
+        if (summaryMode.value === 'IKAS') {
+            const s = ikasSummaryData.value;
+            const items = [
+                {
+                    label: 'Total IKAS',
+                    value: baseIkasStakeholders.value.length,
+                    icon: 'ri-bar-chart-box-line',
+                    gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
+                    color: '#23b7e5',
+                    category: '',
+                },
+                {
+                    label: filterStore.quarter ? `IKAS Q${filterStore.quarter}` : (filterStore.year ? `IKAS ${filterStore.year}` : 'IKAS Periode Ini'),
+                    value: filteredIkasCount.value, // Filtered
+                    icon: 'ri-calendar-check-line',
+                    gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
+                    color: '#6366f1',
+                    category: '',
+                },
+                ...Object.values(s.levels).map(lvl => ({
+                    label: lvl.label,
+                    value: lvl.count,
+                    icon: 'ri-bar-chart-fill',
+                    gradient: lvl.gradient,
+                    color: lvl.color,
+                    category: lvl.label.split(' - ')[0], // 'Level 1', 'Level 2', etc.
+                }))
+            ];
+
+            if (katSe) {
+                // If a level filter is active, highlight the active level and mute others
+                return items.map(item => ({
+                    ...item,
+                    isMuted: !(item.label.includes('Total') || item.category === katSe)
+                }));
+            }
+            return items.map(item => ({ ...item, isMuted: false }));
+        }
+
+        // --- KSE MODE (Existing) ---
+        // Use dated filter for category counts
+        const datedSe = (range && (range[0] || range[1]))
+            ? baseSeList.value.filter(se => {
+                const seDate = se['created_at'] || se['updated_at'];
+                if (seDate && isInDateRange(seDate, range)) return true;
+                // Fallback to company created_at if SE date is missing
+                const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
+                if (csirt?.perusahaan?.created_at && isInDateRange(csirt.perusahaan.created_at, range)) return true;
+                return false;
+            })
+            : baseSeList.value;
+
+        let strategis = 0, tinggi = 0, rendah = 0;
+        datedSe.forEach(se => {
+            const kat = (se.kategori_se || '').toLowerCase().trim();
+            if (kat === 'strategis') strategis++;
+            else if (kat === 'tinggi') tinggi++;
+            else if (kat === 'rendah') rendah++;
+        });
+
+        // Filter total SE count (Respects global date filter)
+        const totalVal = datedSe.length;
+
+        const items = [
             {
                 label: 'Total SE (KSE)',
-                value: kse?.total_se ?? totalSe.value,
+                value: totalVal,
                 icon: 'ri-git-branch-line',
                 gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
                 color: '#23b7e5',
-            },
-            {
-                label: 'SE Strategis',
-                value: kse?.strategis ?? 0,
-                icon: 'ri-shield-star-line',
-                gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
-                color: '#e6533c',
-            },
-            {
-                label: 'SE Tinggi',
-                value: kse?.tinggi ?? 0,
-                icon: 'ri-arrow-up-circle-line',
-                gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
-                color: '#f5b849',
-            },
-            {
-                label: 'SE Rendah',
-                value: kse?.rendah ?? 0,
-                icon: 'ri-arrow-down-circle-line',
-                gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
-                color: '#26bf94',
+                category: '',
             },
             {
                 label: filterStore.quarter ? `SE Q${filterStore.quarter}` : (filterStore.year ? `SE ${filterStore.year}` : 'SE Periode Ini'),
-                value: kse?.this_month ?? 0,
+                value: filteredSe.value, // Respects global date filters
                 icon: 'ri-calendar-check-line',
                 gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
                 color: '#6366f1',
+                category: '',
+            },
+            {
+                label: 'SE Tinggi',
+                value: tinggi,
+                icon: 'ri-arrow-up-circle-line',
+                gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
+                color: '#f5b849',
+                category: 'Tinggi',
+            },
+            {
+                label: 'SE Rendah',
+                value: rendah,
+                icon: 'ri-arrow-down-circle-line',
+                gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
+                color: '#26bf94',
+                category: 'Rendah',
+            },
+            {
+                label: 'SE Strategis',
+                value: strategis,
+                icon: 'ri-shield-star-line',
+                gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
+                color: '#e6533c',
+                category: 'Strategis',
             },
         ];
+
+        // If category filter is active, highlight the active category and mute others
+        if (katSe) {
+            return items.map(item => ({
+                ...item,
+                isMuted: !(item.label.includes('Total') || item.category === katSe || item.label.includes('SE Q') || item.label.includes('SE 20') || item.label.includes('Periode'))
+            }));
+        }
+
+        return items.map(item => ({ ...item, isMuted: false }));
     });
+
+    function handleKseCardClick(item) {
+        // Trigger drill-down modal directly for all cards
+        handleDrillDown({ type: item.label });
+    }
 
     const toggleMetabase = () => {
         showMetabase.value = !showMetabase.value;
@@ -324,38 +470,113 @@
         return filterStore.activeFilterLabel.split(' |')[0];
     });
 
-    /**
-     * Generate monthly trend data (last 6 months).
-     */
     const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-    function getMonthlyTrend(items, dateField = 'created_at', monthsBack = 6) {
-        const now = new Date();
-        const buckets = [];
-        for (let i = monthsBack - 1; i >= 0; i--) {
-            const y = now.getFullYear();
-            const m = now.getMonth() - i;
-            const d = new Date(y, m, 1);
-            buckets.push({
-                year: d.getFullYear(),
-                month: d.getMonth(),
-                count: 0,
-                label: MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear(),
-            });
+    /**
+     * Generate dynamic trend data based on current global filter.
+     * Granularity (buckets) will follow the selected period:
+     * - Year: 12 monthly buckets (Jan-Dec)
+     * - Quarter: 3 monthly buckets
+     * - Month/Custom: Daily buckets
+     * - All Time: 6 monthly buckets (trailing)
+     */
+    function getTrendData(items, dateField = 'created_at') {
+        const year = filterStore.year;
+        const quarter = filterStore.quarter;
+        const range = filterStore.dateRange;
+        
+        let start, end, buckets = [], mode = 'monthly';
+
+        // 1. Determine period and granularity
+        if (quarter && year) {
+            // Quarter: 3 months
+            const qInt = parseInt(quarter);
+            start = new Date(parseInt(year), (qInt - 1) * 3, 1);
+            end = new Date(parseInt(year), qInt * 3, 0);
+            mode = 'monthly';
+        } else if (year) {
+            // Year: 12 months (Jan-Dec)
+            start = new Date(parseInt(year), 0, 1);
+            end = new Date(parseInt(year), 11, 31);
+            mode = 'monthly';
+        } else if (range[0] && range[1]) {
+            const s = new Date(range[0]);
+            const e = new Date(range[1]);
+            const diffDays = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays <= 31) {
+                // Short range (e.g. Month): Daily buckets
+                start = s;
+                end = e;
+                mode = 'daily';
+            } else {
+                // Longer custom range: Monthly buckets
+                start = s;
+                end = e;
+                mode = 'monthly';
+            }
+        } else {
+            // All Time / No range: Show last 6 months trailing
+            const now = new Date();
+            start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+            end = now;
+            mode = 'monthly';
         }
+
+        // 2. Build Buckets
+        if (mode === 'monthly') {
+            let current = new Date(start.getFullYear(), start.getMonth(), 1);
+            while (current <= end) {
+                buckets.push({
+                    year: current.getFullYear(),
+                    month: current.getMonth(),
+                    count: 0,
+                    label: MONTH_NAMES[current.getMonth()] + ' ' + current.getFullYear()
+                });
+                current.setMonth(current.getMonth() + 1);
+                // Safety break for infinite loops
+                if (buckets.length > 60) break; 
+            }
+        } else {
+            let current = new Date(start);
+            current.setHours(0,0,0,0);
+            const stop = new Date(end);
+            stop.setHours(23,59,59,999);
+            
+            while (current <= stop) {
+                buckets.push({
+                    year: current.getFullYear(),
+                    month: current.getMonth(),
+                    day: current.getDate(),
+                    count: 0,
+                    label: current.getDate() + ' ' + MONTH_NAMES[current.getMonth()]
+                });
+                current.setDate(current.getDate() + 1);
+                if (buckets.length > 40) break;
+            }
+        }
+
+        // 3. Count items into buckets
         function getField(obj, path) {
             return path.split('.').reduce((o, k) => o && o[k], obj);
         }
+        
         items.forEach(item => {
-            const raw = getField(item, dateField) || item['created_at'];
+            const raw = getField(item, dateField) || item['created_at'] || item['updated_at'];
             if (!raw || typeof raw !== 'string') return;
             const d = new Date(raw);
             if (isNaN(d.getTime())) return;
-            const bucket = buckets.find(
-                b => b.year === d.getFullYear() && b.month === d.getMonth()
-            );
+            
+            const bucket = buckets.find(b => {
+                if (mode === 'monthly') {
+                    return b.year === d.getFullYear() && b.month === d.getMonth();
+                } else {
+                    return b.year === d.getFullYear() && b.month === d.getMonth() && b.day === d.getDate();
+                }
+            });
             if (bucket) bucket.count++;
         });
+
         return {
             data: buckets.map(b => b.count),
             labels: buckets.map(b => b.label),
@@ -388,37 +609,66 @@
         initDateFromStore(); // Sync datepicker with stored filter
         
         try {
-            await Promise.all([
-                filterStore.fetchDashboardData(),
+            // Start fetching all data in parallel
+            const corePromises = [
                 stakeholdersStore.initialize(),
                 ikasStore.initialize(),
                 csirtStore.initialize(),
                 (async () => {
-                    const [sektors, subSektors] = await Promise.all([
-                        sektorService.getAll(),
-                        subSektorService.getAll(),
-                    ]);
+                    const sektors = sektorList.value.length > 0 ? sektorList.value : await sektorService.getAll();
+                    const subSektors = subSektorList.value.length > 0 ? subSektorList.value : await subSektorService.getAll();
                     sektorList.value = sektors;
                     subSektorList.value = subSektors;
                 })(),
-            ]);
+            ];
+
+            // Start summary data fetch but don't let it block the main layout if it's slow
+            const summaryPromise = filterStore.fetchDashboardData();
+
+            // Wait for core data to show the main dashboard structure
+            await Promise.all(corePromises);
+            
+            // Set loading false immediately when core data is ready
+            loading.value = false;
+            triggerAlertVisibility();
+
+            // Wait for summary data in the background (UI handles its own loading state)
+            await summaryPromise;
+            
+            // Mark initial load as complete after staggered animations would have finished
+            setTimeout(() => {
+                isFirstLoad.value = false;
+            }, 4000);
+
         } catch (e) {
             console.error("Dashboard data load error:", e);
+            loading.value = false; // Ensure we stop loading even on error
         } finally {
-            loading.value = false;
-            triggerAlertVisibility(); // Show alert indicators after all data is loaded
+            // Handle reopen modal from query param
+            if (route.query.reopen) {
+                const typeToOpen = String(route.query.reopen).replace('Detail: ', '');
+                nextTick(() => {
+                    handleDrillDown({ type: typeToOpen });
+                    setTimeout(() => {
+                        const newQuery = { ...route.query };
+                        delete newQuery.reopen;
+                        delete newQuery.from;
+                        router.replace({ query: newQuery });
+                    }, 500);
+                });
+            }
         }
     });
 
     // ─── Color Palette ──────────────────────────────────────
     function getColor(colorName) {
         const colors = {
-            primary: '#845adf', secondary: '#23b7e5', warning: '#f5b849',
-            info: '#26bf94', success: '#26bf94', danger: '#e6533c',
-            purple: '#8c57ff', teal: '#14b8a6', indigo: '#6366f1',
-            cyan: '#06b6d4', emerald: '#10b981', rose: '#f43f5e',
+            primary: '#0d47a1', secondary: '#ff9800', warning: '#fdaf22',
+            info: '#00c9ff', success: '#32d484', danger: '#ff6757',
+            slate: '#64748b', teal: '#14b8a6', blue: '#3b82f6',
+            cyan: '#06b6d4', emerald: '#10b981', orange: '#f97316',
         };
-        return colors[colorName] || '#845adf';
+        return colors[colorName] || '#0d47a1';
     }
 
     // ─── Enriched Sektor Data ───────────────────────────────
@@ -460,25 +710,40 @@
     const baseStakeholders = computed(() => {
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
-        if (!fId && !subId) return stakeholdersStore.allStakeholders;
-        return stakeholdersStore.allStakeholders.filter(s => {
-            const effectiveSubId = subId === 'ALL' ? '' : subId;
-            if (effectiveSubId) return String(s.sub_sektor?.id || s.id_sub_sektor) === String(effectiveSubId);
-            if (fId) return String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId);
-            return true;
-        });
+
+        let filtered = stakeholdersStore.allStakeholders;
+
+        // Sector/Sub-sector Filter
+        if (fId || subId) {
+            filtered = filtered.filter(s => {
+                const effectiveSubId = subId === 'ALL' ? '' : subId;
+                if (effectiveSubId) return String(s.sub_sektor?.id || s.id_sub_sektor) === String(effectiveSubId);
+                if (fId) return String(s.sub_sektor?.id_sektor || s.id_sektor) === String(fId);
+                return true;
+            });
+        }
+
+        return filtered;
     });
 
     const baseCsirts = computed(() => {
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
-        if (!fId && !subId) return csirtStore.csirts;
-        return csirtStore.csirts.filter(c => {
-            const effectiveSubId = subId === 'ALL' ? '' : subId;
-            if (effectiveSubId) return String(c.perusahaan?.sub_sektor?.id || c.perusahaan?.id_sub_sektor) === String(effectiveSubId);
-            if (fId) return String(c.perusahaan?.sub_sektor?.id_sektor || c.perusahaan?.id_sektor) === String(fId);
-            return true;
-        });
+        
+        let filtered = csirtStore.csirts;
+
+        // Sector/Sub-sector Filter
+        if (fId || subId) {
+            filtered = filtered.filter(c => {
+                const p = stakeholdersStore.stakeholdersByIdMap[String(c.id_perusahaan)] || c.perusahaan;
+                const effectiveSubId = subId === 'ALL' ? '' : subId;
+                if (effectiveSubId) return String(p?.sub_sektor?.id || p?.id_sub_sektor) === String(effectiveSubId);
+                if (fId) return String(p?.sub_sektor?.id_sektor || p?.id_sektor) === String(fId);
+                return true;
+            });
+        }
+
+        return filtered;
     });
 
     const baseSdm = computed(() => {
@@ -486,11 +751,14 @@
         const subId = filterStore.subSektorId;
         if (!fId && !subId) return csirtStore.sdmList;
         return csirtStore.sdmList.filter(s => {
-            const csirt = csirtStore.csirts.find(c => String(c.id) === String(s.id_csirt));
+            const cId = String(s.id_csirt || s.csirt?.id);
+            const csirt = csirtStore.csirtByIdMap[cId];
             if (!csirt) return false;
+            
+            const p = stakeholdersStore.stakeholdersByIdMap[String(csirt.id_perusahaan)] || csirt.perusahaan;
             const effectiveSubId = subId === 'ALL' ? '' : subId;
-            if (effectiveSubId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(effectiveSubId);
-            if (fId) return String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
+            if (effectiveSubId) return String(p?.sub_sektor?.id || p?.id_sub_sektor) === String(effectiveSubId);
+            if (fId) return String(p?.sub_sektor?.id_sektor || p?.id_sektor) === String(fId);
             return true;
         });
     });
@@ -498,22 +766,38 @@
     const baseSeList = computed(() => {
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
-        if (!fId && !subId) return csirtStore.seList;
-        return csirtStore.seList.filter(se => {
-            const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-            if (!csirt) return false;
-            const effectiveSubId = subId === 'ALL' ? '' : subId;
-            if (effectiveSubId) return String(csirt.perusahaan?.sub_sektor?.id || csirt.perusahaan?.id_sub_sektor) === String(effectiveSubId);
-            if (fId) return String(csirt.perusahaan?.sub_sektor?.id_sektor || csirt.perusahaan?.id_sektor) === String(fId);
-            return true;
-        });
+
+        let filtered = csirtStore.seList;
+
+        // Sector/Sub-sector Filter
+        if (fId || subId) {
+            filtered = filtered.filter(se => {
+                const cId = String(se.id_csirt || se.csirt_id || se.csirt?.id);
+                const csirt = csirtStore.csirtByIdMap[cId];
+                
+                const pId = csirt?.id_perusahaan || csirt?.perusahaan?.id || se.id_perusahaan;
+                const perus = pId ? stakeholdersStore.stakeholdersByIdMap[String(pId)] : null;
+                
+                if (!perus) return false;
+                
+                const effectiveSubId = subId === 'ALL' ? '' : subId;
+                if (effectiveSubId) return String(perus.sub_sektor?.id || perus.id_sub_sektor) === String(effectiveSubId);
+                if (fId) return String(perus.sub_sektor?.id_sektor || perus.id_sektor) === String(fId);
+                return true;
+            });
+        }
+
+        return filtered;
     });
 
-    // ─── CSIRT & SE Counts (All time) ───────────────────────
-    const totalCsirt = computed(() => baseCsirts.value.length);
+    // --- CSIRT & SE Counts (All time) ───────────────────────
+    const totalCsirt = computed(() => {
+        // Count ALL stakeholders that have a CSIRT record (both complete and incomplete)
+        return baseStakeholders.value.filter(s => !!csirtStore.csirtByPerusahaanMap[String(s.id)]).length;
+    });
     const totalSdm = computed(() => baseSdm.value.length);
-    const totalSe = computed(() => baseSeList.value.length);
-    const totalStakeholders = computed(() => baseStakeholders.value.length);
+    const totalSe = computed(() => datedSeList.value.length);
+    const totalStakeholders = computed(() => datedStakeholders.value.length);
 
     // Count stakeholders with complete CSIRT
     const stakeholdersWithCsirt = computed(() => {
@@ -531,7 +815,7 @@
     });
 
     // Count stakeholders with IKAS
-    const stakeholdersWithIkas = computed(() => baseIkasStakeholders.value.length);
+    const stakeholdersWithIkas = computed(() => datedIkasStakeholders.value.length);
 
     // ─── Full Summary Computed Data ─────────────────────────
     const csirtCompletionRate = computed(() => {
@@ -578,7 +862,6 @@
             // Check if ANY CSIRT record exists
             const hasCsirtRecord = csirtStore.csirts.some(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id));
             
-            // Check CSIRT compliance via store getter (Complete CSIRT)
             const isCsirtComplete = csirtStore.hasCompleteCsirt(s.id);
             
             // Check IKAS status from synced map
@@ -588,7 +871,7 @@
                 ikasStore.backendIkasIds[s.slug]
             );
             
-            if (hasCsirtRecord) csirtCount++;
+            if (isCsirtComplete) csirtCount++;
             if (hasIkas) ikasCount++;
             
             // Data Lengkap = Has both IKAS and Complete CSIRT
@@ -634,37 +917,51 @@
     });
 
     // ─── Date-filtered counts ───────────────────────────────
-    const filteredStakeholders = computed(() => {
+    const datedStakeholders = computed(() => {
         const range = filterStore.dateRange;
-        return baseStakeholders.value.filter(s => isInDateRange(s.created_at, range)).length;
+        if (!range || (!range[0] && !range[1])) return baseStakeholders.value;
+        return baseStakeholders.value.filter(s => isInDateRange(s.created_at, range));
     });
-    const filteredCsirt = computed(() => {
+    const datedCsirts = computed(() => {
         const range = filterStore.dateRange;
-        return baseCsirts.value.filter(c => isInDateRange(c.perusahaan?.created_at, range)).length;
+        const completeCsirts = baseStakeholders.value.filter(s => csirtStore.hasCompleteCsirt(s.id));
+        if (!range || (!range[0] && !range[1])) return completeCsirts;
+        return completeCsirts.filter(s => {
+            const csirt = csirtStore.csirts.find(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id));
+            return isInDateRange(csirt?.perusahaan?.created_at || s.created_at, range);
+        });
     });
-    const filteredSdm = computed(() => {
+    const datedSdm = computed(() => {
         const range = filterStore.dateRange;
-        return baseSdm.value.filter(s => isInDateRange(s.created_at, range)).length;
+        if (!range || (!range[0] && !range[1])) return baseSdm.value;
+        return baseSdm.value.filter(s => isInDateRange(s.created_at, range));
     });
-    const filteredIkasCount = computed(() => {
+    const datedIkasStakeholders = computed(() => {
         const range = filterStore.dateRange;
-        return baseIkasStakeholders.value.filter(s => isInDateRange(s.updated_at || s.created_at, range)).length;
+        if (!range || (!range[0] && !range[1])) return baseIkasStakeholders.value;
+        return baseIkasStakeholders.value.filter(s => isInDateRange(s.updated_at || s.created_at, range));
     });
-    const filteredSe = computed(() => {
+    const datedSeList = computed(() => {
         const range = filterStore.dateRange;
-        if (!range || (!range[0] && !range[1])) return totalSe.value;
+        if (!range || (!range[0] && !range[1])) return baseSeList.value;
         return baseSeList.value.filter(se => {
             const seDate = se['created_at'] || se['updated_at'];
             if (seDate && isInDateRange(seDate, range)) return true;
             const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
             if (csirt?.perusahaan?.created_at && isInDateRange(csirt.perusahaan.created_at, range)) return true;
             return false;
-        }).length;
+        });
     });
+    
+    const filteredStakeholders = computed(() => datedStakeholders.value.length);
+    const filteredCsirt = computed(() => datedCsirts.value.length);
+    const filteredSdm = computed(() => datedSdm.value.length);
+    const filteredIkasCount = computed(() => datedIkasStakeholders.value.length);
+    const filteredSe = computed(() => datedSeList.value.length);
 
     // ─── ROW 1 Cards: Sektor-based data ────────────────────
     const sektorCards = computed(() => {
-        const sektorColors = ['primary', 'success', 'warning', 'purple', 'info', 'danger', 'teal', 'indigo', 'cyan', 'emerald', 'rose', 'secondary'];
+        const sektorColors = ['primary', 'success', 'warning', 'blue', 'info', 'primary', 'teal', 'slate', 'cyan', 'emerald', 'orange', 'secondary'];
         const sektorIcons = [
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M223.45,40.07a8,8,0,0,0-7.52-7.52C139.8,28.08,78.82,51,52.82,94a87.09,87.09,0,0,0-12.76,49A101.72,101.72,0,0,0,46.7,175.2a4,4,0,0,0,6.61,1.43l85-86.3a8,8,0,0,1,11.32,11.32L56.74,195.94,42.55,210.13a8.2,8.2,0,0,0-.6,11.1,8,8,0,0,0,11.71.43l16.79-16.79c14.14,6.84,28.41,10.57,42.56,11.07q1.67.06,3.33.06A86.93,86.93,0,0,0,162,203.18C205,177.18,227.93,116.21,223.45,40.07Z"/></svg>',
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M232,120h-8.34a95.07,95.07,0,0,0-8.82-32.9l7.23-4.17a8,8,0,0,0-8-13.86l-7.25,4.19a97,97,0,0,0-24.08-24.08l4.19-7.25a8,8,0,0,0-13.86-8l-4.17,7.23A95.07,95.07,0,0,0,136,32.34V24a8,8,0,0,0-16,0v8.34a95.07,95.07,0,0,0-32.9,8.82l-4.17-7.23a8,8,0,0,0-13.86,8l4.19,7.25A97,97,0,0,0,49.18,73.26l-7.25-4.19a8,8,0,0,0-8,13.86l7.23,4.17A95.07,95.07,0,0,0,32.34,120H24a8,8,0,0,0,0,16h8.34a95.07,95.07,0,0,0,8.82,32.9l-7.23,4.17a8,8,0,0,0,4,14.93,7.92,7.92,0,0,0,4-1.07l7.25-4.19a97,97,0,0,0,24.08,24.08l-4.19,7.25a8,8,0,0,0,13.86,8l4.17-7.23a95.07,95.07,0,0,0,32.9,8.82V232a8,8,0,0,0,16,0v-8.34a95.07,95.07,0,0,0,32.9-8.82l4.17,7.23a8,8,0,0,0,13.86-8l-4.19-7.25a97,97,0,0,0,24.08-24.08l7.25,4.19A8,8,0,0,0,225,184a8,8,0,0,0-2.92-10.93l-7.23-4.17a95.07,95.07,0,0,0,8.82-32.9H232a8,8,0,0,0,0-16ZM72,128A55.91,55.91,0,0,1,93.38,84l25.38,44L93.38,172A55.91,55.91,0,0,1,72,128Zm56,56a55.67,55.67,0,0,1-20.78-4l25.4-44h50.8A56.09,56.09,0,0,1,128,184Zm4.62-64-25.4-44a56,56,0,0,1,76.2,44Z"/></svg>',
@@ -700,7 +997,7 @@
                     isInDateRange(s.created_at, range)
                 ).length;
 
-                const trend = getMonthlyTrend(ssStakeholders);
+                const trend = getTrendData(ssStakeholders);
 
                 let isActive = false;
                 let isMuted = false;
@@ -756,7 +1053,7 @@
         return topSektors.map((sektor, idx) => {
             const color = sektorColors[idx % sektorColors.length];
 
-            const trend = getMonthlyTrend(
+            const trend = getTrendData(
                 stakeholdersStore.allStakeholders.filter(s => {
                     const sid = s.sub_sektor?.id || s.id_sub_sektor;
                     return sid && new Set(subSektorList.value.filter(ss => {
@@ -785,7 +1082,7 @@
                 count: String(sektor.stakeholderCount),
                 percent: String(sektor.stakeholderInRange),
                 monthLabel: dateRangeLabel.value,
-                iconColor: "success fw-medium",
+                iconColor: color + " fw-medium",
                 cardClass: `dashboard-main-card overflow-hidden ${color} ${isActive ? 'sektor-card-active' : ''} ${isMuted ? 'sektor-card-muted' : ''}`,
                 priceColor: color,
                 svgIcon: sektorIcons[idx % sektorIcons.length],
@@ -801,19 +1098,19 @@
 
     // ─── ROW 2 Cards: CSIRT, SE, IKAS ──────────────────────
     const operationalCards = computed(() => {
-        const csirtTrend = getMonthlyTrend(baseCsirts.value, 'perusahaan.created_at');
-        const ikasTrend = getMonthlyTrend(baseIkasStakeholders.value, 'updated_at');
-        const seTrend = getMonthlyTrend(baseSeList.value);
-        const stakeholderTrend = getMonthlyTrend(baseStakeholders.value);
+        const csirtTrend = getTrendData(baseCsirts.value, 'perusahaan.created_at');
+        const ikasTrend = getTrendData(baseIkasStakeholders.value, 'updated_at');
+        const seTrend = getTrendData(baseSeList.value);
+        const stakeholderTrend = getTrendData(baseStakeholders.value);
 
         return [
             {
                 title: "Total CSIRT",
-                count: String(totalCsirt.value),
+                count: String(filteredCsirt.value),
                 percent: String(filteredCsirt.value),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "danger",
-                iconColor: "success fw-medium",
+                iconColor: "danger fw-medium",
                 cardClass: "dashboard-main-card overflow-hidden danger",
                 avatarClass: "avatar-md flex-shrink-0",
                 ValueClass: "fw-semibold lh-sm",
@@ -829,11 +1126,11 @@
             },
             {
                 title: "Total IKAS",
-                count: String(stakeholdersWithIkas.value),
+                count: String(filteredIkasCount.value),
                 percent: String(filteredIkasCount.value),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "info",
-                iconColor: "success fw-medium",
+                iconColor: "info fw-medium",
                 cardClass: "dashboard-main-card overflow-hidden info",
                 avatarClass: "avatar-md flex-shrink-0",
                 ValueClass: "fw-semibold lh-sm",
@@ -849,12 +1146,12 @@
             },
             {
                 title: "Sistem Elektronik",
-                count: String(totalSe.value),
+                count: String(filteredSe.value),
                 percent: String(filteredSe.value),
                 monthLabel: dateRangeLabel.value,
-                priceColor: "purple",
+                priceColor: "success",
                 iconColor: "success fw-medium",
-                cardClass: "dashboard-main-card overflow-hidden purple",
+                cardClass: "dashboard-main-card overflow-hidden success",
                 avatarClass: "avatar-md flex-shrink-0",
                 ValueClass: "fw-semibold lh-sm",
                 smallText: "fs-12 lh-base",
@@ -865,16 +1162,16 @@
                 height: '50',
                 width: '100',
                 chartSeries: [{ name: 'SE', data: seTrend.data }],
-                chartOptions: buildSparkOptions('purple', seTrend.labels)
+                chartOptions: buildSparkOptions('success', seTrend.labels)
             },
             {
                 title: "Stakeholders",
-                count: String(totalStakeholders.value),
+                count: String(filteredStakeholders.value),
                 percent: String(filteredStakeholders.value),
                 monthLabel: dateRangeLabel.value,
-                priceColor: "primary",
-                iconColor: "success fw-medium",
-                cardClass: "dashboard-main-card overflow-hidden primary",
+                priceColor: "secondary",
+                iconColor: "secondary fw-medium",
+                cardClass: "dashboard-main-card overflow-hidden secondary",
                 avatarClass: "avatar-md flex-shrink-0",
                 ValueClass: "fw-semibold lh-sm",
                 smallText: "fs-12 lh-base",
@@ -885,16 +1182,29 @@
                 height: '50',
                 width: '100',
                 chartSeries: [{ name: 'Stakeholders', data: stakeholderTrend.data }],
-                chartOptions: buildSparkOptions('primary', stakeholderTrend.labels)
+                chartOptions: buildSparkOptions('secondary', stakeholderTrend.labels)
             },
         ];
     });
 
     // ─── Helper: Get Stakeholder Sektor Name ──────────────────
     function getStakeholderSektorName(s) {
+        if (!s) return '-';
         // Try nested sub_sektor with multiple paths
         if (s.sub_sektor?.nama_sektor) return s.sub_sektor.nama_sektor;
         if (s.sub_sektor?.sektor?.nama_sektor) return s.sub_sektor.sektor.nama_sektor;
+        
+        // Fallback: resolve from id_sub_sektor if object is missing
+        const subId = s.id_sub_sektor || (s.sub_sektor && s.sub_sektor.id);
+        if (subId) {
+            const ss = subSektorList.value.find(item => String(item.id) === String(subId));
+            if (ss) {
+                const sId = getSubSektorParentId(ss);
+                const parent = sektorList.value.find(p => String(p.id) === String(sId));
+                if (parent) return getSektorName(parent);
+            }
+        }
+
         // Try legacy flat field
         if (s.sektor) return s.sektor;
         return '-';
@@ -902,8 +1212,17 @@
 
     // ─── Helper: Get Stakeholder Sub-Sektor Name ───────────────
     function getStakeholderSubSektorName(s) {
+        if (!s) return '-';
         // Try nested sub_sektor
         if (s.sub_sektor?.nama_sub_sektor) return s.sub_sektor.nama_sub_sektor;
+        
+        // Fallback: resolve from id_sub_sektor if object is missing
+        const subId = s.id_sub_sektor || (s.sub_sektor && s.sub_sektor.id);
+        if (subId) {
+            const ss = subSektorList.value.find(item => String(item.id) === String(subId));
+            if (ss) return getSubSektorName(ss);
+        }
+
         // Fallback to nama_sektor if available
         if (s.sub_sektor?.nama_sektor) return s.sub_sektor.nama_sektor;
         return '-';
@@ -911,17 +1230,27 @@
 
     // ─── Helper: Get CSIRT Sektor Name ─────────────────────────
     function getCsirtSektorName(c) {
+        if (!c) return '-';
         // Try nested paths
         if (c.perusahaan?.sub_sektor?.nama_sektor) return c.perusahaan.sub_sektor.nama_sektor;
         if (c.perusahaan?.sub_sektor?.sektor?.nama_sektor) return c.perusahaan.sub_sektor.sektor.nama_sektor;
+        
+        // Fallback to perusahaan resolution
+        if (c.perusahaan) return getStakeholderSektorName(c.perusahaan);
+        
         if (c.perusahaan?.sektor) return c.perusahaan.sektor;
         return '-';
     }
 
     // ─── Helper: Get CSIRT Sub-Sektor Name ─────────────────────
     function getCsirtSubSektorName(c) {
+        if (!c) return '-';
         // Try nested paths
         if (c.perusahaan?.sub_sektor?.nama_sub_sektor) return c.perusahaan.sub_sektor.nama_sub_sektor;
+        
+        // Fallback to perusahaan resolution
+        if (c.perusahaan) return getStakeholderSubSektorName(c.perusahaan);
+
         if (c.perusahaan?.sub_sektor?.nama_sektor) return c.perusahaan.sub_sektor.nama_sektor;
         return '-';
     }
@@ -950,7 +1279,7 @@
                     nama_perusahaan: s.nama_perusahaan || s.nama || '-',
                     sektor: getStakeholderSektorName(s),
                     sub_sektor: getStakeholderSubSektorName(s),
-                    csirt_status: hasCsirt ? '✓ Ada' : '✗ Tidak',
+                    csirt_status: hasCsirt ? 'Terdaftar' : 'Belum Terdaftar',
                     ikas_score: hasIkas ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
                     created_at: s.created_at ? new Date(s.created_at).toLocaleDateString('id-ID') : '-',
                     slug: s.slug,
@@ -967,18 +1296,85 @@
                     sektor: stakeholder ? getStakeholderSektorName(stakeholder) : getCsirtSektorName(c),
                     sub_sektor: stakeholder ? getStakeholderSubSektorName(stakeholder) : getCsirtSubSektorName(c),
                     csirt_nama: c.nama_csirt || '-',
-                    csirt_status: csirtStore.hasCompleteCsirt(c.id_perusahaan || c.perusahaan?.id) ? '✓ Lengkap' : '⚠ Belum Lengkap',
+                    csirt_status: csirtStore.hasCompleteCsirt(c.id_perusahaan || c.perusahaan?.id) ? 'Lengkap' : 'Belum Lengkap',
                     created_at: c.perusahaan?.created_at ? new Date(c.perusahaan.created_at).toLocaleDateString('id-ID') : '-',
                     slug: stakeholder?.slug || c.perusahaan?.slug || c.id,
                 };
             });
-        } else if (context.type === 'Total IKAS') {
-            // Show all stakeholders that have IKAS data
+        } else if (context.type === 'Sistem Elektronik' || context.type.includes('SE') || context.type.includes('Total SE')) {
+            // Show filtered Sistem Elektronik records
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'nama_se', 'kategori_se'];
+            
+            let seList = baseSeList.value;
+            const type = context.type.toLowerCase();
+
+            // 1. Filter by category if card is specific
+            if (type.includes('strategis')) seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === 'strategis');
+            else if (type.includes('tinggi')) seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === 'tinggi');
+            else if (type.includes('rendah')) seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === 'rendah');
+            
+            // 2. Filter by date if card is period-specific or if global date filter is active
+            // All cards in fullSummaryItems (including Total SE (KSE)) should respect the current global period.
+            if (range && (range[0] || range[1])) {
+                seList = seList.filter(se => {
+                    const seDate = se['created_at'] || se['updated_at'];
+                    if (seDate && isInDateRange(seDate, range)) return true;
+                    // Fallback to company created_at if SE date is missing
+                    const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
+                    if (csirt?.perusahaan?.created_at && isInDateRange(csirt.perusahaan.created_at, range)) return true;
+                    return false;
+                });
+            }
+
+            drillDownItems.value = seList.map(se => {
+                const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
+                const stakeholder = stakeholdersStore.allStakeholders.find(s => 
+                    String(s.id) === String(se.id_perusahaan || csirt?.id_perusahaan || csirt?.perusahaan?.id)
+                );
+                
+                // If we have id_sub_sektor on the SE record, we can use it to resolve names
+                let seSektor = '-';
+                let seSubSektor = '-';
+                const subId = se.id_sub_sektor || stakeholder?.id_sub_sektor || stakeholder?.sub_sektor?.id;
+                
+                if (subId) {
+                    const ss = subSektorList.value.find(item => String(item.id) === String(subId));
+                    if (ss) {
+                        seSubSektor = getSubSektorName(ss);
+                        const sId = getSubSektorParentId(ss);
+                        const parent = sektorList.value.find(p => String(p.id) === String(sId));
+                        if (parent) seSektor = getSektorName(parent);
+                    }
+                }
+
+                return {
+                    nama_perusahaan: stakeholder?.nama_perusahaan || stakeholder?.nama || se.perusahaan?.nama_perusahaan || csirt?.perusahaan?.nama_perusahaan || '-',
+                    sektor: seSektor !== '-' ? seSektor : (stakeholder ? getStakeholderSektorName(stakeholder) : (csirt ? getCsirtSektorName(csirt) : '-')),
+                    sub_sektor: seSubSektor !== '-' ? seSubSektor : (stakeholder ? getStakeholderSubSektorName(stakeholder) : (csirt ? getCsirtSubSektorName(csirt) : '-')),
+                    nama_se: se.nama_se || se.nama || '-',
+                    kategori_se: se.kategori_se || '-',
+                    slug: stakeholder?.slug || se.perusahaan?.slug || csirt?.perusahaan?.slug,
+                };
+            });
+        } else if (context.type === 'Total IKAS' || context.type.includes('Level')) {
+            // Show stakeholders filtered by maturity level if applicable
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'ikas_score', 'ikas_kategori'];
-            drillDownItems.value = all.filter(s => {
+            
+            let filteredSt = all.filter(s => {
                 const data = ikasStore.ikasDataMap[s.slug];
                 return data && data.total_rata_rata && data.total_rata_rata !== 'NA' && data.total_rata_rata !== 0;
-            }).map(s => {
+            });
+
+            // Filter by level if specified in type
+            if (context.type.includes('Level')) {
+                const levelPrefix = context.type.split(' - ')[0]; // 'Level 1'
+                filteredSt = filteredSt.filter(s => {
+                    const data = ikasStore.ikasDataMap[s.slug];
+                    return data.total_kategori.startsWith(levelPrefix);
+                });
+            }
+
+            drillDownItems.value = filteredSt.map(s => {
                 const ikasData = ikasStore.ikasDataMap[s.slug];
                 return {
                     nama_perusahaan: s.nama_perusahaan || s.nama || '-',
@@ -987,23 +1383,6 @@
                     ikas_score: ikasData?.total_rata_rata ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
                     ikas_kategori: ikasData?.total_kategori || '-',
                     slug: s.slug,
-                };
-            });
-        } else if (context.type === 'Sistem Elektronik') {
-            // Show all Sistem Elektronik records
-            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'nama_se', 'kategori_se'];
-            drillDownItems.value = baseSeList.value.map(se => {
-                const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-                const stakeholder = stakeholdersStore.allStakeholders.find(s => 
-                    String(s.id) === String(csirt?.id_perusahaan || csirt?.perusahaan?.id)
-                );
-                return {
-                    nama_perusahaan: stakeholder?.nama_perusahaan || stakeholder?.nama || csirt?.perusahaan?.nama_perusahaan || '-',
-                    sektor: stakeholder ? getStakeholderSektorName(stakeholder) : (csirt ? getCsirtSektorName(csirt) : '-'),
-                    sub_sektor: stakeholder ? getStakeholderSubSektorName(stakeholder) : (csirt ? getCsirtSubSektorName(csirt) : '-'),
-                    nama_se: se.nama_se || se.nama || '-',
-                    kategori_se: se.kategori_se || '-',
-                    slug: stakeholder?.slug || csirt?.perusahaan?.slug,
                 };
             });
         } else if (context.type === 'Cakupan CSIRT') {
@@ -1019,7 +1398,7 @@
                         sektor: getStakeholderSektorName(s),
                         sub_sektor: getStakeholderSubSektorName(s),
                         csirt_nama: csirtData?.nama_csirt || '-',
-                        csirt_status: csirtData ? 'Terdaftar' : 'Tidak Terdaftar',
+                        csirt_status: csirtData ? 'Terdaftar' : 'Belum Terdaftar',
                         slug: s.slug,
                     };
                 });
@@ -1076,7 +1455,7 @@
                     nama_perusahaan: s.nama_perusahaan || s.nama || '-',
                     sektor: getStakeholderSektorName(s),
                     sub_sektor: getStakeholderSubSektorName(s),
-                    csirt_status: csirtData ? '✓ Lengkap' : '✗ Tidak',
+                    csirt_status: csirtData ? 'Lengkap' : 'Belum Lengkap',
                     ikas_score: ikasData?.total_rata_rata ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
                     slug: s.slug,
                 };
@@ -1121,13 +1500,23 @@
                 const csirtId = String(s.id_csirt || s.csirt?.id);
                 if (csirtToSt.has(csirtId)) seToSt.set(String(s.id), csirtToSt.get(csirtId));
             });
+            
+            // Map IKAS by slug and ID
             const ikasToSt = new Map();
             for (const [slug, id] of Object.entries(ikasStore.backendIkasIds)) {
                 if (id) {
                     const st = all.find(stakeholder => stakeholder.slug === slug);
-                    if (st) ikasToSt.set(String(id), String(st.id));
+                    if (st) {
+                        ikasToSt.set(String(id), String(st.id));
+                        ikasToSt.set(slug, String(st.id));
+                    }
                 }
             }
+            // Ensure all stakeholder slugs are mapped just in case
+            all.forEach(s => {
+                if (s.slug) ikasToSt.set(s.slug, String(s.id));
+                ikasToSt.set(String(s.id), String(s.id));
+            });
 
             // Find the latest timestamp and action for each stakeholder
             const stLatestUpdate = new Map(); // st_id -> timestamp string
@@ -1136,17 +1525,25 @@
             // Events are already sorted descending
             for (const event of notifStore.events) {
                 let stId = null;
-                if (event.entity === 'stakeholder') stId = String(event.entity_id);
-                else if (event.entity === 'csirt') stId = csirtToSt.get(String(event.entity_id));
-                else if (event.entity === 'sdm_csirt') stId = sdmToSt.get(String(event.entity_id));
-                else if (event.entity === 'se_csirt') stId = seToSt.get(String(event.entity_id));
-                else if (event.entity === 'ikas') stId = ikasToSt.get(String(event.entity_id));
+                const eId = String(event.entity_id);
+                
+                if (event.entity === 'stakeholder') stId = ikasToSt.get(eId) || eId;
+                else if (event.entity === 'csirt') stId = csirtToSt.get(eId);
+                else if (event.entity === 'sdm_csirt') stId = sdmToSt.get(eId);
+                else if (event.entity === 'se_csirt') stId = seToSt.get(eId);
+                else if (event.entity === 'ikas' || event.entity === 'unknown') stId = ikasToSt.get(eId) || eId;
+
+                // Fallback attempt: if entity_id matches a stakeholder ID directly
+                if (!stId && all.some(s => String(s.id) === eId)) {
+                    stId = eId;
+                }
 
                 if (stId && !stLatestUpdate.has(stId)) {
                     stLatestUpdate.set(stId, event.timestamp);
-                    const verbMap = { 'created': 'Penambahan', 'updated': 'Perubahan', 'deleted': 'Penghapusan' };
-                    const entityMap = { 'stakeholder': 'Stakeholder', 'csirt': 'CSIRT', 'sdm_csirt': 'SDM CSIRT', 'se_csirt': 'SE CSIRT', 'ikas': 'IKAS', 'user': 'Pengguna' };
-                    stLatestAction.set(stId, `${verbMap[event.type] || 'Update'} ${entityMap[event.entity] || event.entity}`);
+                    const verbMap = { 'created': 'menambahkan', 'updated': 'memperbarui', 'deleted': 'menghapus' };
+                    const entityMap = { 'stakeholder': 'Stakeholder', 'csirt': 'CSIRT', 'sdm_csirt': 'SDM CSIRT', 'se_csirt': 'Sistem Elektronik', 'ikas': 'IKAS', 'user': 'Pengguna' };
+                    const userName = event.user?.name || 'Sistem';
+                    stLatestAction.set(stId, `${userName} ${verbMap[event.type] || 'Update'} Data ${entityMap[event.entity] || event.entity}`);
                 }
             }
 
@@ -1163,12 +1560,21 @@
                     actionLabel = 'Data Stakeholder';
                 }
 
+                let d = new Date(lastUpdate);
+                if (isNaN(d.getTime()) && typeof lastUpdate === 'string') {
+                    let cleanStr = lastUpdate.replace(' ', 'T');
+                    if (!cleanStr.includes('Z') && !cleanStr.includes('+')) cleanStr += 'Z';
+                    d = new Date(cleanStr);
+                }
+                
+                const validTime = !isNaN(d.getTime());
+
                 return {
                     nama_perusahaan: s.nama_perusahaan || s.nama || '-',
                     sektor: getStakeholderSektorName(s),
                     sub_sektor: getStakeholderSubSektorName(s),
-                    updated_at: lastUpdate ? new Date(lastUpdate).toLocaleString('id-ID', {day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '-',
-                    _rawTimestamp: lastUpdate ? new Date(lastUpdate).getTime() : 0,
+                    updated_at: validTime ? d.toLocaleString('id-ID', {day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '-',
+                    _rawTimestamp: validTime ? d.getTime() : 0,
                     status_data: actionLabel,
                     slug: s.slug,
                 };
@@ -1232,9 +1638,17 @@
     function handleDrillDownNavigate(item) {
         drillDownVisible.value = false;
         if (item && item.slug) {
-            const title = drillDownTitle.value.toLowerCase();
-            if (title.includes('kse') || title.includes('sistem elektronik')) {
-                router.push(`/kse?slug=${item.slug}`);
+            const title = drillDownTitle.value;
+            const searchTitle = title.toLowerCase();
+            if (searchTitle.includes('kse') || searchTitle.includes('sistem elektronik') || searchTitle.includes('se ')) {
+                router.push({
+                    path: '/kse',
+                    query: { 
+                        slug: item.slug, 
+                        from: 'dashboard', 
+                        reopen: title 
+                    }
+                });
             } else if (title.includes('ikas')) {
                 router.push(`/ikas?slug=${item.slug}`);
             } else if (title.includes('csirt')) {
@@ -1370,87 +1784,94 @@
                 />
             </div>
 
-            <!-- ═══ SEKTOR / SUB SEKTOR CARDS ═══ -->
-            <!-- Section label -->
-            <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1">
-                <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
-                    <i class="ri-building-2-line"></i>
-                    <span v-if="filterStore.subSektorId">Sub Sektor Terpilih</span>
-                    <span v-else>Semua Sub Sektor</span>
-                </span>
-                <span class="text-muted" style="font-size: 0.75rem;">{{ sektorCards.length }} item</span>
-            </div>
-            <div class="row g-3">
-                <div :class="sektorCards.length === 1 ? 'col-xl-4 col-md-6' : (sektorCards.length <= 6 ? 'col-xl-4 col-md-6' : 'col-xl-3 col-md-4')"
-                    v-for="(card, index) in sektorCards"
-                    :key="'sektor-' + index"
-                    @click="!card.isMuted && handleSektorCardClick(card)"
-                    :style="card.isMuted ? '' : 'cursor: pointer; transition: transform 0.2s; transition-timing-function: ease-in-out;'"
-                    :onmouseover="card.isMuted ? '' : 'this.style.transform=\'translateY(-3px)\''"
-                    :onmouseout="card.isMuted ? '' : 'this.style.transform=\'translateY(0)\''">
-                    <SpkReusebleJobs
-                        titleClass="fs-13 fw-medium mb-0"
-                        :listCard="true"
-                        :cardClass="`card ${card.cardClass}`"
-                        :list="card"
-                        :NoCountUp="true"
-                    />
-                </div>
-            </div>
-
-            <!-- ═══ OPERATIONAL CARDS ═══ -->
-            <div class="row g-3 mt-1">
-                <div class="col-xl-3 col-md-6"
-                    v-for="(card, index) in operationalCards"
-                    :key="'ops-' + index"
-                    @click="handleDrillDown({ type: card.title })"
-                    style="cursor: pointer; transition: transform 0.2s ease;"
-                    @mouseover="$event.currentTarget.style.transform = 'translateY(-3px)'"
-                    @mouseout="$event.currentTarget.style.transform = 'translateY(0)'">
-                    <SpkReusebleJobs
-                        titleClass="fs-13 fw-medium mb-0"
-                        :listCard="true"
-                        :cardClass="`card ${card.cardClass}`"
-                        :list="card"
-                        :NoCountUp="true"
-                    />
-                </div>
-            </div>
-
-
-            <!-- ═══ KPI CARDS (Meaningful KPIs) ═══ -->
-            <div v-if="!loading" class="mb-4">
-                <KpiCards @drill-down="handleDrillDown" />
-            </div>
-
-            <!-- LOADING SKELETON -->
-            <div v-if="loading" class="row g-3 mb-3">
-                <div class="col-md-4" v-for="n in 6" :key="n">
-                    <div class="card custom-card dashboard-main-card">
+            <!-- LOADING SKELETON (10s Lazy Load) -->
+            <div v-if="loading" class="row g-3 mb-4">
+                <div class="col-md-4" v-for="n in 3" :key="'skel-top-'+n">
+                    <div class="card custom-card dashboard-main-card border-0 shadow-sm" style="height: 160px; background: #fff;">
                         <div class="card-body">
                             <div class="placeholder-glow">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <span class="placeholder col-2" style="height: 40px; border-radius: 10px;"></span>
+                                    <span class="placeholder col-6" style="height: 20px; border-radius: 4px;"></span>
+                                </div>
                                 <span class="placeholder col-4 mb-2" style="height: 32px; border-radius: 8px;"></span>
-                                <span class="placeholder col-6" style="height: 14px; border-radius: 4px;"></span>
-                                <div class="d-flex justify-content-between mt-3">
-                                    <span class="placeholder col-3" style="height: 24px; border-radius: 6px;"></span>
-                                    <span class="placeholder col-4" style="height: 50px; border-radius: 6px;"></span>
+                                <div class="d-flex justify-content-between mt-2">
+                                    <span class="placeholder col-3" style="height: 14px; border-radius: 4px;"></span>
+                                    <span class="placeholder col-5" style="height: 40px; border-radius: 6px;"></span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+                <div class="col-12 mt-4 text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2 fs-12 fw-medium">Menyiapkan dashboard...</p>
+                </div>
             </div>
 
             <template v-else>
+                <!-- ═══ SEKTOR / SUB SEKTOR CARDS ═══ -->
+                <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1 animate-show-up" style="animation-delay: 0.1s">
+                    <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
+                        <i class="ri-building-2-line"></i>
+                        <span v-if="filterStore.subSektorId">Sub Sektor Terpilih</span>
+                        <span v-else>Semua Sub Sektor</span>
+                    </span>
+                    <span class="text-muted" style="font-size: 0.75rem;">{{ sektorCards.length }} item</span>
+                </div>
+                <div class="row g-3">
+                    <div :class="[
+                            sektorCards.length === 1 ? 'col-xl-4 col-md-6' : (sektorCards.length <= 6 ? 'col-xl-4 col-md-6' : 'col-xl-3 col-md-4'),
+                            'animate-show-up'
+                        ]"
+                        v-for="(card, index) in sektorCards"
+                        :key="'sektor-' + index"
+                        :style="{ animationDelay: `${0.1 + (index * 0.05)}s` }"
+                        @click="!card.isMuted && handleSektorCardClick(card)">
+                        <SpkReusebleJobs
+                            titleClass="fs-13 fw-medium mb-0"
+                            :listCard="true"
+                            :cardClass="`card ${card.cardClass}`"
+                            :list="card"
+                            :NoCountUp="true"
+                        />
+                    </div>
+                </div>
+
+                <!-- ═══ OPERATIONAL CARDS ═══ -->
+                <div class="row g-3 mt-1">
+                    <div class="col-xl-3 col-md-6 animate-show-up"
+                        v-for="(card, index) in operationalCards"
+                        :key="'ops-' + index"
+                        :style="{ animationDelay: `${0.4 + (index * 0.1)}s` }"
+                        @click="handleDrillDown({ type: card.title })">
+                        <SpkReusebleJobs
+                            titleClass="fs-13 fw-medium mb-0"
+                            :listCard="true"
+                            :cardClass="`card ${card.cardClass}`"
+                            :list="card"
+                            :NoCountUp="true"
+                        />
+                    </div>
+                </div>
+
+
+                <!-- ═══ KPI CARDS (Meaningful KPIs) ═══ -->
+                <div class="mb-4 animate-show-up" style="animation-delay: 0.8s">
+                    <KpiCards @drill-down="handleDrillDown" />
+                </div>
+
                 <!-- ═══ INSIGHT + ACTIVITY ROW ═══ -->
                 <div class="row g-3 mb-4">
-                    <div class="col-xl-4">
+                    <div class="col-xl-4 animate-show-up" style="animation-delay: 1.0s">
                         <InsightCard />
                     </div>
-                    <div class="col-xl-4">
+                    <div class="col-xl-4 animate-show-up" style="animation-delay: 1.2s">
                         <ActionCenter />
                     </div>
-                    <div class="col-xl-4">
+                    <div class="col-xl-4 animate-show-up" style="animation-delay: 1.4s">
                         <ActivityFeed />
                     </div>
                 </div>
@@ -1461,13 +1882,52 @@
                         <!-- RINGKASAN DATA LENGKAP (Full Summary) -->
                         <div class="full-summary-section">
                             <!-- Section Header -->
-                            <div class="fs-section-header">
+                            <div class="fs-section-header animate-show-up" style="animation-delay: 1.5s">
                                 <div class="fs-header-left">
                                     <div class="fs-header-icon">
                                         <i class="ri-dashboard-3-line"></i>
                                     </div>
-                                    <div>
-                                        <h2 class="fs-header-title mb-0">Ringkasan Data </h2>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <h2 class="fs-header-title mb-0">Data KSE dan IKAS</h2>
+                                        <div class="summary-mode-switcher">
+                                            <button class="summary-mode-btn"
+                                                :class="{ active: summaryMode === 'KSE' }"
+                                                @click="summaryMode = 'KSE'; filterStore.setKategoriSe('')">
+                                                KSE
+                                            </button>
+                                            <button class="summary-mode-btn"
+                                                :class="{ active: summaryMode === 'IKAS' }"
+                                                @click="summaryMode = 'IKAS'; filterStore.setKategoriSe('')">
+                                                IKAS
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Inline KSE Category Filter -->
+                                <div class="fs-header-filter d-flex align-items-center gap-3">
+                                    <div class="d-flex align-items-center gap-2 bg-white-transparent p-1 rounded-pill border shadow-sm">
+                                        <span class="text-muted fw-bold text-uppercase ms-3 me-1 d-none d-sm-inline" style="font-size: 0.65rem; letter-spacing: 0.8px;">
+                                            <i class="ri-shield-star-line me-1 text-primary"></i> KATEGORI
+                                        </span>
+                                        <div class="d-flex gap-1" v-if="summaryMode === 'KSE'">
+                                            <button v-for="cat in ['Strategis', 'Tinggi', 'Rendah']" 
+                                                    :key="cat"
+                                                    class="btn btn-sm rounded-pill px-3 fs-filter-pill transition-all"
+                                                    :class="filterStore.kategoriSe === cat ? 'active' : ''"
+                                                    @click="filterStore.setKategoriSe(cat === filterStore.kategoriSe ? '' : cat)">
+                                                {{ cat }}
+                                            </button>
+                                        </div>
+                                        <div class="d-flex gap-1" v-else>
+                                            <button v-for="cat in ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']" 
+                                                    :key="cat"
+                                                    class="btn btn-sm rounded-pill px-3 fs-filter-pill transition-all"
+                                                    :class="filterStore.kategoriSe === cat ? 'active' : ''"
+                                                    @click="filterStore.setKategoriSe(cat === filterStore.kategoriSe ? '' : cat)">
+                                                {{ cat }}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1495,11 +1955,17 @@
                             </div>
 
                             <template v-else-if="filterStore.summaryData">
-                                <!-- ROW: KSE Metric Cards (6 cards) -->
+                                <!-- ROW: KSE Metric Cards (5 cards) -->
                                 <div class="row g-3 mb-4">
-                                    <div class="col-xl-4 col-lg-4 col-md-4 col-sm-6 fs-card-animate" v-for="(item, idx) in fullSummaryItems" :key="'fs-'+idx"
-                                        :style="{ animationDelay: `${idx * 60}ms` }">
-                                        <div class="card custom-card summary-stat-card border-0 shadow-sm overflow-hidden" style="border-radius: 14px;">
+                                    <div :class="[
+                                        summaryMode === 'KSE' ? (idx < 2 ? 'col-xl-6' : 'col-xl-4') : (idx < 2 ? 'col-xl-6' : 'col-xl'),
+                                        'col-lg-4 col-md-4 col-sm-6 animate-show-up'
+                                    ]" v-for="(item, idx) in fullSummaryItems" :key="summaryMode + '-fs-' + idx"
+                                        :style="{ animationDelay: isFirstLoad ? `${1.6 + (idx * 0.15)}s` : '0s' }">
+                                        <div class="card custom-card summary-stat-card border-0 shadow-sm overflow-hidden" 
+                                             :class="{ 'active-filter-card': filterStore.kategoriSe === item.category && item.category, 'summary-card-muted': item.isMuted }"
+                                             @click="!item.isMuted && handleKseCardClick(item)"
+                                             style="border-radius: 14px; cursor: pointer;">
                                             <div class="card-body p-3 position-relative z-1">
                                                 <!-- Abstract Decor Watermark -->
                                                 <div class="position-absolute end-0 top-0 p-2" style="opacity: 0.05; z-index: -1; transform: translate(10%, -10%);">
@@ -1511,7 +1977,10 @@
                                                         :style="{ width: '40px', height: '40px', background: `${item.color}15`, border: `1px solid ${item.color}25` }">
                                                         <i :class="item.icon" class="fs-18" :style="{ color: item.color }"></i>
                                                     </div>
-                                                    <div class="summary-trend-dot mt-1" :style="{ background: item.color, opacity: 0.5 }"></div>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <span v-if="filterStore.kategoriSe === item.category && item.category" class="badge bg-primary-transparent fs-10">Aktif</span>
+                                                        <div class="summary-trend-dot mt-1" :style="{ background: item.color, opacity: 0.5 }"></div>
+                                                    </div>
                                                 </div>
                 
                                                 <div>
@@ -1532,82 +2001,81 @@
 
                                 <!-- ROW: Status Cards -->
                                 <div class="row g-3 mb-4">
-                                    <!-- Pengisian KSE -->
-                                    <div class="col-xl-4 col-lg-6 col-md-6">
-                                        <div class="card custom-card fs-rate-card">
-                                            <div class="card-body p-3">
-                                                <div class="d-flex align-items-center gap-2 mb-3">
-                                                    <div class="fs-rate-icon bg-primary-transparent">
-                                                        <i class="ri-checkbox-circle-line text-primary"></i>
+                                    <!-- Progress Pengisian KSE Card -->
+                                    <div class="col-xl-6 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.2s' : '0s' }">
+                                        <div class="card custom-card overflow-hidden" style="border-radius: 16px; border: 1px solid rgba(30, 64, 175, 0.15); background: linear-gradient(135deg, #fff 0%, #f8faff 100%);">
+                                            <div class="card-body p-4">
+                                                <div class="d-flex align-items-center justify-content-between mb-4">
+                                                    <div class="d-flex align-items-center gap-3">
+                                                        <div class="avatar avatar-lg rounded-circle bg-primary-transparent d-flex align-items-center justify-content-center" style="width: 52px; height: 52px;">
+                                                            <i :class="summaryMode === 'KSE' ? 'ri-checkbox-circle-line' : 'ri-bar-chart-box-line'" class="text-primary fs-24"></i>
+                                                        </div>
+                                                        <div>
+                                                            <h5 class="fw-bold mb-0 text-dark">Progress Pengisian {{ summaryMode }}</h5>
+                                                            <p class="text-muted mb-0 fs-12">Persentase perusahaan yang telah melengkapi data {{ summaryMode }}</p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <p class="fs-rate-label mb-0">Pengisian KSE</p>
-                                                        <small class="text-muted">Perusahaan yang sudah mengisi</small>
+                                                    <div class="text-end">
+                                                        <span class="fs-24 fw-black text-primary">{{ summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate }}%</span>
+                                                        <p class="mb-0 text-muted fs-11 fw-medium">
+                                                            {{ summaryMode === 'KSE' ? (kseStatus?.sudah_mengisi_kse ?? 0) : stakeholdersWithIkas }} 
+                                                            dari {{ summaryMode === 'KSE' ? (kseStatus?.total_perusahaan ?? 0) : totalStakeholders }}
+                                                        </p>
                                                     </div>
                                                 </div>
-                                                <div class="d-flex align-items-end justify-content-between mb-2">
-                                                    <h3 class="fw-bold mb-0 text-primary">{{ kseFillRate }}%</h3>
-                                                    <span class="fs-12 text-muted">
-                                                        {{ kseStatus?.sudah_mengisi_kse ?? 0 }} / {{ kseStatus?.total_perusahaan ?? 0 }}
-                                                    </span>
-                                                </div>
-                                                <div class="progress" style="height: 6px;">
+
+                                                <div class="progress progress-animate mb-3" style="height: 10px; border-radius: 5px; background: rgba(30, 64, 175, 0.08);">
                                                     <div class="progress-bar bg-primary" role="progressbar" 
-                                                        :style="{ width: kseFillRate + '%' }"></div>
+                                                        :style="{ width: (summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate) + '%' }"
+                                                        aria-valuenow="summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate" aria-valuemin="0" aria-valuemax="100"></div>
                                                 </div>
-                                                <div class="fs-insight-row mt-2">
-                                                    <i class="ri-close-circle-line text-muted"></i>
-                                                    <span>Belum mengisi: <strong>{{ kseStatus?.belum_mengisi_kse ?? 0 }}</strong></span>
+
+                                                <div class="row g-3">
+                                                    <div class="col-6">
+                                                        <div class="p-3 rounded-3 bg-success-transparent border border-success-transparent">
+                                                            <div class="d-flex align-items-center gap-2 mb-1">
+                                                                 <i class="ri-checkbox-circle-fill text-success fs-14"></i>
+                                                                 <span class="fs-11 fw-bold text-success text-uppercase">Sudah Mengisi</span>
+                                                            </div>
+                                                            <h4 class="fw-bold mb-0 text-dark">{{ summaryMode === 'KSE' ? (kseStatus?.sudah_mengisi_kse ?? 0) : stakeholdersWithIkas }}</h4>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <div class="p-3 rounded-3 bg-danger-transparent border border-danger-transparent">
+                                                            <div class="d-flex align-items-center gap-2 mb-1">
+                                                                 <i class="ri-close-circle-fill text-danger fs-14"></i>
+                                                                 <span class="fs-11 fw-bold text-danger text-uppercase">Belum Mengisi</span>
+                                                            </div>
+                                                            <h4 class="fw-bold mb-0 text-dark">
+                                                                {{ summaryMode === 'KSE' ? (kseStatus?.belum_mengisi_kse ?? 0) : Math.max(0, totalStakeholders - stakeholdersWithIkas) }}
+                                                            </h4>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <!-- CSIRT Completion -->
-                                    <div class="col-xl-4 col-lg-6 col-md-6">
-                                        <div class="card custom-card fs-rate-card">
-                                            <div class="card-body p-3">
-                                                <div class="d-flex align-items-center gap-2 mb-3">
-                                                    <div class="fs-rate-icon bg-danger-transparent">
-                                                        <i class="ri-shield-check-line text-danger"></i>
-                                                    </div>
-                                                    <div>
-                                                        <p class="fs-rate-label mb-0">Cakupan CSIRT</p>
-                                                        <small class="text-muted">Stakeholder dengan CSIRT</small>
-                                                    </div>
+                                    <!-- Insight Card (Dynamic KSE/IKAS) -->
+                                    <div class="col-xl-6 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.3s' : '0s' }">
+                                        <div class="card custom-card h-100" style="border-radius: 16px; border: 1px dashed rgba(30, 64, 175, 0.3); background: rgba(30, 64, 175, 0.02);">
+                                            <div class="card-body d-flex flex-column justify-content-center p-4">
+                                                <div class="mb-3">
+                                                    <span class="badge bg-primary-transparent px-3 py-2 rounded-pill fs-11 fw-bold">{{ summaryMode }} INSIGHT</span>
                                                 </div>
-                                                <div class="d-flex align-items-end justify-content-between mb-2">
-                                                    <h3 class="fw-bold mb-0 text-danger">{{ csirtCompletionRate }}%</h3>
-                                                    <span class="fs-12 text-muted">{{ stakeholdersWithCsirt }} / {{ totalStakeholders }}</span>
-                                                </div>
-                                                <div class="progress" style="height: 6px;">
-                                                    <div class="progress-bar bg-danger" role="progressbar" 
-                                                        :style="{ width: csirtCompletionRate + '%' }"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- IKAS Completion -->
-                                    <div class="col-xl-4 col-lg-6 col-md-6">
-                                        <div class="card custom-card fs-rate-card">
-                                            <div class="card-body p-3">
-                                                <div class="d-flex align-items-center gap-2 mb-3">
-                                                    <div class="fs-rate-icon bg-success-transparent">
-                                                        <i class="ri-shield-star-line text-success"></i>
-                                                    </div>
-                                                    <div>
-                                                        <p class="fs-rate-label mb-0">Cakupan IKAS</p>
-                                                        <small class="text-muted">Stakeholder dengan IKAS</small>
-                                                    </div>
-                                                </div>
-                                                <div class="d-flex align-items-end justify-content-between mb-2">
-                                                    <h3 class="fw-bold mb-0 text-success">{{ ikasCompletionRate }}%</h3>
-                                                    <span class="fs-12 text-muted">{{ stakeholdersWithIkas }} / {{ totalStakeholders }}</span>
-                                                </div>
-                                                <div class="progress" style="height: 6px;">
-                                                    <div class="progress-bar bg-success" role="progressbar" 
-                                                        :style="{ width: ikasCompletionRate + '%' }"></div>
+                                                <h6 class="fw-bold text-dark mb-2">{{ summaryMode === 'KSE' ? 'Kategorisasi Sistem Elektronik (KSE)' : 'Indeks Keamanan Siber (IKAS)' }}</h6>
+                                                <p class="text-muted fs-13 mb-3" style="line-height: 1.6;">
+                                                    <template v-if="summaryMode === 'KSE'">
+                                                        KSE membantu dalam memetakan tingkat risiko dan kepentingan strategis dari setiap sistem elektronik yang dikelola oleh stakeholder. Gunakan filter <strong>Kategori SE</strong> untuk melihat rincian spesifik per tingkat (Strategis, Tinggi, atau Rendah).
+                                                    </template>
+                                                    <template v-else>
+                                                        IKAS mengukur tingkat kematangan keamanan siber berdasarkan 4 domain utama: Identifikasi, Proteksi, Deteksi, dan Tanggulih. Skor rata-rata memberikan gambaran kesiapan organisasi menghadapi ancaman siber.
+                                                    </template>
+                                                </p>
+                                                <div class="d-flex align-items-center gap-3">
+                                                    <button class="btn btn-primary-light btn-sm rounded-pill px-3" @click="router.push(summaryMode === 'KSE' ? '/kse' : '/ikas')">
+                                                        Kelola Data {{ summaryMode }} <i class="ri-arrow-right-line ms-1"></i>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1616,17 +2084,17 @@
                                 
                                 <!-- ═══ GEO MAP + DISTRIBUSI SEKTOR TABLE ═══ -->
                                 <div class="row g-3 mt-1 align-items-stretch">
-                                    <div class="col-xl-5 d-flex">
+                                    <div class="col-xl-5 animate-show-up" style="animation-delay: 2.4s">
                                         <GeoMap @sektor-click="handleSektorClick" class="w-100" />
                                     </div>
-                                    <div class="col-xl-7">
+                                    <div class="col-xl-7 animate-show-up" style="animation-delay: 2.5s">
                                         <!-- 1. LIST STAKEHOLDER (Jika 1 Sub Sektor Dipilih) -->
                                         <div v-if="filterStore.subSektorId && filterStore.subSektorId !== 'ALL'" class="card custom-card mb-0 h-100">
                                             <div class="card-header d-flex flex-column gap-3 py-3">
                                                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                                                     <div class="d-flex align-items-center gap-2">
-                                                        <div class="fs-rate-icon bg-info-transparent">
-                                                            <i class="ri-list-check-2 text-info"></i>
+                                                        <div class="fs-rate-icon bg-primary-transparent">
+                                                            <i class="ri-list-check-2 text-primary"></i>
                                                         </div>
                                                         <div>
                                                             <h6 class="mb-0 fw-bold">{{ activeSubSektorSummary?.nama_sektor || 'Data Stakeholder Aktif' }}</h6>
@@ -1641,31 +2109,31 @@
                                                         </div>
                                                         <div class="text-center">
                                                             <span class="text-muted fs-11 d-block fw-medium">THN INI</span>
-                                                            <span v-if="activeSubSektorSummary.countYear > 0" class="badge bg-info-transparent fw-bold">{{ activeSubSektorSummary.countYear }}</span>
+                                                            <span v-if="activeSubSektorSummary.countYear > 0" class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.countYear }}</span>
                                                             <span v-else class="text-muted small">0</span>
                                                         </div>
                                                         <div class="text-center">
                                                             <span class="text-muted fs-11 d-block fw-medium">QTR INI</span>
-                                                            <span v-if="activeSubSektorSummary.countQuarter > 0" class="badge bg-purple-transparent fw-bold">{{ activeSubSektorSummary.countQuarter }}</span>
+                                                            <span v-if="activeSubSektorSummary.countQuarter > 0" class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.countQuarter }}</span>
                                                             <span v-else class="text-muted small">0</span>
                                                         </div>
                                                         <div class="text-center">
                                                             <span class="text-muted fs-11 d-block fw-medium">BLN INI</span>
-                                                            <span v-if="activeSubSektorSummary.this_month > 0" class="badge bg-success-transparent fw-bold">+{{ activeSubSektorSummary.this_month }}</span>
+                                                            <span v-if="activeSubSektorSummary.this_month > 0" class="badge bg-primary-transparent fw-bold">+{{ activeSubSektorSummary.this_month }}</span>
                                                             <span v-else class="text-muted small">0</span>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1">
+                                                <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1 animate-show-up" style="animation-delay: 2.2s">
                                                     <!-- CSIRT -->
                                                     <div class="flex-grow-1">
                                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                                             <span class="fs-11 text-muted fw-medium">Sudah CSIRT</span>
-                                                            <span class="fs-11 fw-bold text-danger">{{ activeSubSektorSummary.csirtPercent }}</span>
+                                                            <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.csirtPercent }}</span>
                                                         </div>
                                                         <div class="progress" style="height: 4px;">
-                                                            <div class="progress-bar bg-danger" role="progressbar" :style="{ width: activeSubSektorSummary.csirtPercent }"></div>
+                                                            <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.csirtPercent }"></div>
                                                         </div>
                                                     </div>
                                                     
@@ -1673,10 +2141,10 @@
                                                     <div class="flex-grow-1">
                                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                                             <span class="fs-11 text-muted fw-medium">Sudah IKAS</span>
-                                                            <span class="fs-11 fw-bold text-success">{{ activeSubSektorSummary.ikasPercent }}</span>
+                                                            <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.ikasPercent }}</span>
                                                         </div>
                                                         <div class="progress" style="height: 4px;">
-                                                            <div class="progress-bar bg-success" role="progressbar" :style="{ width: activeSubSektorSummary.ikasPercent }"></div>
+                                                            <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.ikasPercent }"></div>
                                                         </div>
                                                     </div>
                                                     
@@ -1692,7 +2160,7 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="card-body p-0">
+                                            <div class="card-body p-0 animate-show-up" style="animation-delay: 2.4s">
                                                 <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
                                                     <table class="table table-hover mb-0 fs-sektor-table">
                                                         <thead style="position: sticky; top: 0; background-color: var(--custom-white); z-index: 1; box-shadow: 0 1px 0 rgba(0,0,0,0.05);">
@@ -1712,13 +2180,13 @@
                                                                 </td>
                                                                 <td class="text-center">
                                                                     <div v-if="csirtStore.csirts.some(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id))">
-                                                                        <i class="ri-checkbox-circle-fill text-success fs-18" v-if="csirtStore.hasCompleteCsirt(s.id)" title="CSIRT Lengkap"></i>
+                                                                        <i class="ri-checkbox-circle-fill text-primary fs-18" v-if="csirtStore.hasCompleteCsirt(s.id)" title="CSIRT Lengkap"></i>
                                                                         <i class="ri-checkbox-circle-line text-muted fs-18" v-else title="CSIRT Belum Lengkap (Hanya Registrasi)"></i>
                                                                     </div>
                                                                     <span v-else class="text-muted fs-11 fw-medium">-</span>
                                                                 </td>
                                                                 <td class="text-center">
-                                                                    <span class="badge bg-success-transparent fw-bold" v-if="ikasStore.ikasDataMap[s.slug]?.total_rata_rata">
+                                                                    <span class="badge bg-primary-transparent fw-bold" v-if="ikasStore.ikasDataMap[s.slug]?.total_rata_rata">
                                                                         {{ Number(ikasStore.ikasDataMap[s.slug].total_rata_rata).toFixed(2) }}
                                                                     </span>
                                                                     <span v-else class="text-muted small">NA</span>
@@ -1781,7 +2249,7 @@
                                                                     <span v-else class="text-muted small">0</span>
                                                                 </td>
                                                                 <td class="text-center">
-                                                                    <span v-if="sektor.countQuarter > 0" class="badge bg-purple-transparent fw-bold">{{ sektor.countQuarter }}</span>
+                                                                    <span v-if="sektor.countQuarter > 0" class="badge bg-info-transparent fw-bold">{{ sektor.countQuarter }}</span>
                                                                     <span v-else class="text-muted small">0</span>
                                                                 </td>
                                                                 <td class="text-center">
@@ -1810,16 +2278,18 @@
                                     </div>
                                 </div>
                             </template>
-                        </div>
-                    </div>
+                </div>
+            </div>
+        </div>
+        
+                <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
+                <SektorAnalytics />
+
+                <!-- RADAR CHARTS -->
+                <div class="animate-show-up" style="animation-delay: 3.6s">
+                    <RadarChartIkas />
                 </div>
             </template>
-
-            <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
-            <SektorAnalytics />
-
-            <!-- RADAR CHARTS -->
-            <RadarChartIkas />
         </div>
 
         <!-- METABASE EMBED -->
@@ -1851,6 +2321,24 @@
     </template>
 
     <style scoped>
+    /* ===== PREMIUM SHOW EFFECT ANIMATION ===== */
+    @keyframes dashboardShowUp {
+        0% {
+            opacity: 0;
+            transform: translateY(30px) scale(0.98);
+            filter: blur(4px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+        }
+    }
+
+    .animate-show-up {
+        animation: dashboardShowUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
     /* ===== SUMMARY CARD ANIMATIONS ===== */
     .summary-card-animate {
         animation: summaryFadeUp 0.5s ease-out both;
@@ -1873,9 +2361,20 @@
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         cursor: default;
     }
-    .summary-stat-card:hover {
+    .summary-stat-card:not(.summary-card-muted):hover {
         transform: translateY(-4px);
         box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+    }
+    
+    .summary-card-muted {
+        opacity: 0.45 !important;
+        filter: grayscale(85%);
+        cursor: not-allowed !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    .summary-card-muted * {
+        pointer-events: none;
     }
 
     .summary-trend-dot {
@@ -1884,6 +2383,15 @@
         border-radius: 50%;
         opacity: 0.7;
     }
+
+    .active-filter-card {
+        background: linear-gradient(135deg, rgba(var(--dw-primary-rgb), 0.05) 0%, #fff 100%) !important;
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(var(--dw-primary-rgb), 0.15) !important;
+    }
+    
+    .fs-10 { font-size: 10px; }
+    .fw-black { font-weight: 900; }
 
     /* ===== SKELETON / SHIMMER ===== */
     .skeleton-icon {
@@ -1922,9 +2430,9 @@
         gap: 12px;
         margin-bottom: 1.25rem;
         padding: 16px 20px;
-        background: linear-gradient(135deg, rgba(132, 90, 223, 0.06) 0%, rgba(99, 102, 241, 0.04) 100%);
+        background: linear-gradient(135deg, rgba(30, 64, 175, 0.06) 0%, rgba(59, 130, 246, 0.04) 100%);
         border-radius: 12px;
-        border: 1px solid rgba(132, 90, 223, 0.08);
+        border: 1px solid rgba(30, 64, 175, 0.08);
     }
 
     .fs-header-left {
@@ -1937,7 +2445,7 @@
         width: 44px;
         height: 44px;
         border-radius: 12px;
-        background: linear-gradient(135deg, #845adf 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #0d47a1 0%, #23b7e5 100%);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1953,14 +2461,51 @@
         color: var(--default-text-color);
     }
 
+    /* ── Header Filter ── */
+    .fs-filter-pill {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #4a6fa5;
+        background: transparent;
+        border: 1px solid transparent;
+        padding: 5px 14px;
+        transition: all 0.25s ease;
+    }
+
+    .fs-filter-pill:hover {
+        background: rgba(var(--dw-primary-rgb), 0.05);
+        color: var(--dw-primary);
+    }
+
+    .fs-filter-pill.active {
+        background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%);
+        color: #fff !important;
+        border-color: transparent;
+        box-shadow: 0 4px 12px rgba(37,99,235,0.25);
+        transform: translateY(-1px);
+    }
+
+    .bg-white-transparent {
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(4px);
+    }
+
     /* ── Card Animation ── */
     .fs-card-animate {
         animation: fsSlideFade 0.45s ease-out both;
     }
 
     @keyframes fsSlideFade {
-        from { opacity: 0; transform: translateY(12px); }
-        to { opacity: 1; transform: translateY(0); }
+        0% {
+            opacity: 0;
+            transform: translateY(20px) scale(0.98);
+            filter: blur(2px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+        }
     }
 
     /* ── Rate Card ── */
@@ -2027,14 +2572,49 @@
     }
 
     .fs-sektor-table tbody tr:hover {
-        background: rgba(132, 90, 223, 0.03);
+        background: rgba(30, 64, 175, 0.03);
     }
 
     code {
         font-size: 0.72rem;
         padding: 2px 6px;
         border-radius: 4px;
-        background: rgba(132, 90, 223, 0.08);
-        color: #845adf;
+        background: rgba(30, 64, 175, 0.08);
+        color: #0d47a1;
+    }
+
+    /* ── Summary Mode Switcher ── */
+    .summary-mode-switcher {
+        display: flex;
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(8px);
+        padding: 4px;
+        border-radius: 50px;
+        border: 1px solid rgba(30, 64, 175, 0.15);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .summary-mode-btn {
+        border: none;
+        background: transparent;
+        padding: 6px 18px;
+        border-radius: 50px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #64748b;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+        outline: none;
+    }
+
+    .summary-mode-btn:hover {
+        color: #1e40af;
+        background: rgba(30, 64, 175, 0.05);
+    }
+
+    .summary-mode-btn.active {
+        background: #1e40af;
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
     }
     </style>

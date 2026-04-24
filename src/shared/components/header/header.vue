@@ -212,6 +212,7 @@
                   v-for="evt in notifStore.recentForDropdown"
                   :key="evt.id"
                   :class="{ 'bg-primary-transparent': !evt.isRead }"
+                  @click="!evt.isRead && notifStore.markAsRead(evt.id)"
                 >
                   <div class="d-flex align-items-start gap-3">
                     <div class="lh-1">
@@ -230,7 +231,15 @@
                     </div>
                     <div class="text-end flex-shrink-0">
                       <span class="d-block mb-1 fs-11 text-muted">{{ evt.timeAgoStr }}</span>
-                      <span v-if="!evt.isRead" class="d-block text-primary"><i class="ri-circle-fill fs-8"></i></span>
+                      <button
+                        v-if="!evt.isRead"
+                        type="button"
+                        class="btn btn-sm btn-link p-0 text-primary text-decoration-none"
+                        title="Tandai dibaca"
+                        @click.stop="notifStore.markAsRead(evt.id)"
+                      >
+                        <i class="ri-check-line fs-6"></i>
+                      </button>
                     </div>
                   </div>
                 </li>

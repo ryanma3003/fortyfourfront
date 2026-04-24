@@ -129,7 +129,11 @@ export const csirtService = {
      */
     async getAllSdm(): Promise<SdmCsirt[]> {
         const res = await api.get<any>('/api/sdm_csirt');
-        return unwrapArray<SdmCsirt>(res, 'all_sdm');
+        const list = unwrapArray<any>(res, 'all_sdm');
+        return list.map((item: any) => ({
+            ...item,
+            id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
+        }));
     },
 
     /**
@@ -167,14 +171,20 @@ export const csirtService = {
      */
     async getSeByCsirtId(id: number | string): Promise<SeCsirt[]> {
         try {
-            const result = await api.get<any>(`/api/se?id_csirt=${id}`);
+            // The backend uses /api/se/{csirt_id} to get the array of SEs for a CSIRT
+            const result = await api.get<any>(`/api/se/${id}`);
+            console.log('RAW SE RESULT:', result);
             const list = unwrapArray<any>(result, `se(id_csirt=${id})`);
+            console.log('UNWRAPPED SE LIST:', list);
             const mapped = list.map((item: any) => ({
                 ...item,
-                id_csirt: item.csirt?.id || item.id_csirt
+                // Forcefully assign id_csirt to match the parameter, ensuring local filters don't drop it!
+                id_csirt: String(item.csirt?.id || item.id_csirt || item.csirt_id || id)
             }));
-            // Enforce client-side filtering as backend may ignore ?id_csirt=
-            return mapped.filter(item => String(item.id_csirt) === String(id));
+            console.log('MAPPED SE LIST:', mapped);
+            const filtered = mapped.filter(item => String(item.id_csirt) === String(id));
+            console.log('FILTERED SE LIST (Target ID: ' + id + '):', filtered);
+            return filtered;
         } catch (err) {
             if (err instanceof ApiRequestError && err.status === 404) return [];
             throw err;
@@ -186,7 +196,11 @@ export const csirtService = {
      */
     async getAllSe(): Promise<SeCsirt[]> {
         const res = await api.get<any>('/api/se');
-        return unwrapArray<SeCsirt>(res, 'all_se');
+        const list = unwrapArray<any>(res, 'all_se');
+        return list.map((item: any) => ({
+            ...item,
+            id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
+        }));
     },
 
     /**
@@ -207,7 +221,7 @@ export const csirtService = {
      * Update a SE record
      */
     async updateSe(id: number | string, payload: Partial<Omit<SeCsirt, 'id'>>): Promise<SeCsirt> {
-        useNotificationStore().trackSelfAction('se_csirt', String(id));
+        useNotificationStore().trackSelfAction('se', String(id));
         return api.put<SeCsirt>(`/api/se/${id}`, payload);
     },
 
@@ -215,7 +229,7 @@ export const csirtService = {
      * Delete a SE record
      */
     async deleteSe(id: number): Promise<void> {
-        useNotificationStore().trackSelfAction('se_csirt', String(id));
+        useNotificationStore().trackSelfAction('se', String(id));
         return api.delete(`/api/se/${id}`);
     },
 };

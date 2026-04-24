@@ -88,31 +88,54 @@ const formatJoinedDate = (dateString: string | undefined): string => {
 };
 
 const getUserStatusText = (status?: any) => {
-  if (status === null || status === undefined) return 'Active';
+  if (status === null || status === undefined) return 'Aktif';
   const s = String(status).toLowerCase().trim();
-  if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Suspend';
-  return 'Active';
+  if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
+  return 'Aktif';
 };
 
 const loadUser = async () => {
   loading.value = true;
   try {
-    const [roles, jabatans] = await Promise.all([
-      roleService.getAll(),
-      jabatanService.getAll()
-    ]);
+    try {
+      const [roles, jabatans] = await Promise.allSettled([
+        roleService.getAll(),
+        jabatanService.getAll()
+      ]);
 
-    rolesData.value = roles;
-    jabatanList.value = jabatans;
+      rolesData.value = roles.status === 'fulfilled' ? (roles.value as any) : [];
+      jabatanList.value = jabatans.status === 'fulfilled' ? (jabatans.value as any) : [];
+      
+      if (jabatans.status === 'rejected') {
+        console.warn("⚠️ Jabatans API failed (likely 404):", jabatans.reason);
+      }
+      if (roles.status === 'rejected') {
+        console.warn("⚠️ Roles API failed:", roles.reason);
+      }
+    } catch (e) {
+      console.error("Failed to load reference data:", e);
+    }
 
     const slugVal = (route.params.slug || '') as string;
+    console.log("🔍 LOADING PROFILE FOR SLUG:", slugVal);
+
     // Fetch users (fresh fetch)
-    const usersList = await (usersService.getAll() as any);
-    const foundUser = usersList.find((u: any) => 
-      u.slug === slugVal || u.username === slugVal || u.id?.toString() === slugVal
-    );
+    const rawUsers = await (usersService.getAll() as any);
+    const usersList = rawUsers.data || rawUsers;
+
+    console.log("📋 USERS FETCHED:", Array.isArray(usersList) ? usersList.length : "NOT AN ARRAY");
+    if (Array.isArray(usersList)) {
+      console.log("🔍 MENCARI USER DENGAN SLUG:", slugVal);
+      // console.log("🔍 DATA USER PERTAMA DARI API:", usersList[0]); // Introspect one user
+    }
+
+    const foundUser = Array.isArray(usersList) ? usersList.find((u: any) => {
+      const computedSlug = u.slug || u.username || u.id?.toString();
+      return computedSlug === slugVal || u.username === slugVal || u.id?.toString() === slugVal;
+    }) : null;
 
     if (foundUser) {
+      console.log("👤 FOUND USER DATA FROM API:", JSON.parse(JSON.stringify(foundUser)));
       user.value = {
         id: foundUser.id?.toString() || "",
         slug: foundUser.slug || foundUser.username || "",
@@ -250,7 +273,7 @@ const displaySubSektor = computed(() =>
   isCurrentUser.value ? (profileStore.namaSubSektor || 'Belum terkait') : (userSubSektor.value || 'Belum terkait')
 );
 const displayStatus = computed(() =>
-  isCurrentUser.value ? 'Active' : getUserStatusText(user.value?.status)
+  isCurrentUser.value ? 'Aktif' : getUserStatusText(user.value?.status)
 );
 
 const accountDetails = computed(() => [
@@ -262,7 +285,7 @@ const accountDetails = computed(() => [
   { key: 'location', icon: "ri-map-pin-line",     label: "Lokasi",          value: displayLocation.value,    colorClass: "stat-icon-amber",  isEditable: false, type: 'text', wrap: true, badge: 'dari stakeholder' },
   { key: 'sector',   icon: "ri-pie-chart-line",   label: "Sektor",          value: displaySubSektor.value,   colorClass: "stat-icon-blue",   isEditable: false, wrap: true, badge: 'dari stakeholder' },
   { key: 'role',     icon: "ri-shield-user-line", label: "Role",            value: displayRole.value,        colorClass: "stat-icon-red",    isEditable: true, type: 'select' },
-  { key: 'status',   icon: "ri-toggle-line",      label: "Status Akun",     value: displayStatus.value,      colorClass: displayStatus.value === 'Active' ? 'stat-icon-teal' : 'stat-icon-red', isEditable: true, type: 'select' },
+  { key: 'status',   icon: "ri-toggle-line",      label: "Status Akun",     value: displayStatus.value,      colorClass: displayStatus.value === 'Aktif' ? 'stat-icon-teal' : 'stat-icon-red', isEditable: true, type: 'select' },
   { key: 'joined',   icon: "ri-calendar-line",    label: "Bergabung Sejak", value: displayJoined.value,      colorClass: "stat-icon-teal",   isEditable: false },
 ]);
 
@@ -361,13 +384,13 @@ const saveProfile = async () => {
   if (!user.value) return;
   isSaving.value = true;
   try {
-    const isStatusActive = formData.value.status === 'Active';
+    const isAktif = formData.value.status === 'Aktif';
     
     // 1. METADATA UPDATE (Nested Payload for Go binding + Shotgun Status)
     const rawPayload: any = {
       username:     (user.value.username || '').toString(),
       display_name: (formData.value.display_name || '').toString(),
-      name:         (formData.value.display_name || '').toString(), 
+      name:         (formData.value.display_name || user.value?.name || user.value?.username || '').toString(), 
       email:        (formData.value.email || '').toString(),
       telepon:      (formData.value.phone || '').toString(),
       phone:        (formData.value.phone || '').toString(),
@@ -375,11 +398,12 @@ const saveProfile = async () => {
       location:     (formData.value.location || '').toString(),
       id_jabatan:   formData.value.id_jabatan || null,
 
-      // CLEAN TARGETED STATUS
-      status:       isStatusActive ? "Active" : "Suspend", 
-      is_active:    isStatusActive,
-      is_suspended: !isStatusActive,
-      aktif:        isStatusActive ? 1 : 0,
+      // CLEAN TARGETED STATUS (Gunakan Aktif/Nonaktif sesuai permintaan)
+      status:       isAktif ? "Aktif" : "Nonaktif", 
+      is_active:    isAktif ? 1 : 0,
+      is_suspended: isAktif ? 0 : 1,
+      aktif:        isAktif ? 1 : 0,
+      status_akun:  isAktif ? "1" : "0",
       
       banner_position_x: bannerPosition.value.x,
       banner_position_y: bannerPosition.value.y,
@@ -387,25 +411,44 @@ const saveProfile = async () => {
       foto_profile_position_y: fotoPosition.value.y,
     };
 
+    console.log("🚀 SENDING PAYLOAD TO API:", JSON.parse(JSON.stringify(rawPayload)));
+
     // Role
     const roleObj = rolesData.value.find(r => r.name.toLowerCase() === formData.value.role.toLowerCase());
     if (roleObj) {
       rawPayload.role_id = roleObj.id;
     }
 
-    // Try BOTH flat and nested (common in Go)
-    const metadataPayload = {
-      ...rawPayload,
-      user: rawPayload // Nested fallback
-    };
+    // Use root payload directly (some backends fail with nested user object)
+    const metadataPayload = { ...rawPayload };
 
-    if (isCurrentUser.value) {
-      await usersService.updateMe(metadataPayload);
-    } else {
-      await usersService.update(user.value.id, metadataPayload);
+    const updatedUser = isCurrentUser.value
+      ? await usersService.updateMe(metadataPayload)
+      : await usersService.update(user.value.id, metadataPayload);
+
+    console.log("✅ API METADATA UPDATE SUCCESS:", JSON.parse(JSON.stringify(updatedUser)));
+
+    // 2. DEDICATED STATUS UPDATE (as requested: /api/users/{id}/status)
+    if (!isCurrentUser.value && isAdmin.value) {
+      try {
+        const statusVal = isAktif ? "Aktif" : "Suspend";
+        const statusPayload = {
+           id: user.value.id, // Some backends require ID in body even for sub-resources
+           status: statusVal,
+           status_akun: statusVal,
+           aktif: isAktif ? 1 : 0,
+           is_active: isAktif ? 1 : 0
+        };
+        console.log(`🚀 SENDING STATUS UPDATE (PATCH) TO: /api/users/${user.value.id}/status`, statusPayload);
+        
+        const statusRes = await usersService.updateStatus(user.value.id, statusPayload);
+        console.log("✅ DEDICATED STATUS UPDATE SUCCESS:", statusRes);
+      } catch (statusErr) {
+        console.warn("⚠️ Dedicated status endpoint failed:", statusErr);
+      }
     }
 
-    // 2. MEDIA UPLOADS (POST via FormData)
+    // 3. MEDIA UPLOADS (POST via FormData)
     // Profile Photo
     if (fotoPreview.value.startsWith('data:')) {
       try {
@@ -610,7 +653,7 @@ const toggleEditMode = () => {
                        <label class="form-label fs-12 text-muted mb-0">Display Name</label>
                        <i class="ri-pencil-line text-primary fs-13"></i>
                     </div>
-                    <input v-model="formData.display_name" type="text" class="profile-user-name-input" placeholder="Masukkan nama display" />
+                    <input v-model="formData.display_name" type="text" class="profile-user-name-input" placeholder="Masukkan nama display (opsional)" />
                  </div>
               </template>
               <h4 v-else class="profile-user-name mb-1" :class="{ 'clickable-title': isAdmin && !isCurrentUser }" @click="isAdmin && !isCurrentUser && (isEditMode = true)">{{ displayName }}</h4>
@@ -684,8 +727,8 @@ const toggleEditMode = () => {
                        </select>
                        <!-- SELECT FOR STATUS -->
                        <select v-else-if="item.key === 'status'" v-model="formData.status" class="form-item-input form-item-select border-0 bg-transparent p-0 outline-none w-100">
-                          <option value="Active">Active</option>
-                          <option value="Suspend">Suspend</option>
+                          <option value="Aktif">Aktif</option>
+                          <option value="Nonaktif">Nonaktif</option>
                        </select>
                        <!-- SELECT FOR JABATAN -->
                        <select v-else-if="item.key === 'jabatan'" v-model="formData.id_jabatan" class="form-item-input form-item-select border-0 bg-transparent p-0 outline-none w-100">

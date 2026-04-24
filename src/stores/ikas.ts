@@ -7,6 +7,7 @@ import {
   calculateSubdomainScore
 } from '@/data/assessment/assessment-ikas-mapping';
 import { ikasService } from '@/services/ikas.service';
+import { useStakeholdersStore } from '@/stores/stakeholders';
 import type { IkasPayload } from '@/types/ikas.types';
 
 // Interface untuk data IKAS per domain
@@ -271,6 +272,33 @@ export const useIkasStore = defineStore('ikas', {
   },
 
   actions: {
+    isMissingDomainEndpointError(error: any): boolean {
+      return Number(error?.status) === 404;
+    },
+
+    normalizeIkasRecords(response: any): any[] {
+      if (Array.isArray(response)) return response;
+      if (Array.isArray(response?.data)) return response.data;
+      if (response?.id) return [response];
+      return [];
+    },
+
+    findLatestIkasRecord(records: any[], perusahaanId: string): any | null {
+      const matching = records.filter((record: any) =>
+        String(record?.perusahaan?.id || '') === String(perusahaanId) ||
+        String(record?.id_perusahaan || '') === String(perusahaanId)
+      );
+
+      if (matching.length === 0) return null;
+
+      matching.sort((a: any, b: any) =>
+        new Date(b.updated_at || b.created_at || 0).getTime() -
+        new Date(a.updated_at || a.created_at || 0).getTime()
+      );
+
+      return matching[0] || null;
+    },
+
     // Initialize store and fetch data
     async initialize() {
       if (this.initialized) return;
@@ -290,13 +318,8 @@ export const useIkasStore = defineStore('ikas', {
     /** Fetch all IKAS records from backend to populate global state */
     async fetchAllFromBackend() {
       try {
-        // We use the base maturity endpoint which usually returns a list
-        const response = await ikasService.getIkasByPerusahaan(''); 
-        // Note: if the backend requires id_perusahaan, we might need a dedicated list endpoint.
-        // But looking at getIkasByPerusahaan, it hits /api/maturity/ikas?id_perusahaan=...
-        // If id_perusahaan is empty, many backends return all or we can try /api/maturity/ikas directly.
-        
-        const records = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : []);
+        const response = await ikasService.getIkasList();
+        const records = this.normalizeIkasRecords(response);
         
         records.forEach((rec: any) => {
           if (!rec.perusahaan?.slug) return;
@@ -337,12 +360,70 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     getBackendIkasId(slug: string): string | null {
-      return this.backendIkasIds[slug] || null;
+      const id = this.backendIkasIds[slug] || null;
+      console.debug('[IKAS Store] getBackendIkasId', { slug, id });
+      return id;
     },
 
     setBackendIkasId(slug: string, id: string | null) {
       this.backendIkasIds[slug] = id;
       this.backendSyncedMap[slug] = !!id;
+    },
+
+    buildRespondentPayload(slug: string, respondentData?: Partial<IkasPayload>): IkasPayload | null {
+      const stakeholdersStore = useStakeholdersStore();
+      const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+
+      const payload: IkasPayload = {
+        id_perusahaan: respondentData?.id_perusahaan || stakeholder?.id || '',
+        jabatan: respondentData?.jabatan || '',
+        responden: respondentData?.responden || '',
+        tanggal: respondentData?.tanggal || new Date().toISOString().split('T')[0],
+        target_nilai: Number(respondentData?.target_nilai || 0),
+        telepon: respondentData?.telepon || '',
+      };
+
+      return payload.id_perusahaan ? payload : null;
+    },
+
+    async ensureBackendIkasRecord(
+      slug: string,
+      respondentData?: Partial<IkasPayload>
+    ): Promise<{ success: boolean; id?: string; error?: string }> {
+      const existingId = this.getBackendIkasId(slug);
+      if (existingId) {
+        return { success: true, id: existingId };
+      }
+
+      const payload = this.buildRespondentPayload(slug, respondentData);
+      if (!payload) {
+        return { success: false, error: 'ID perusahaan tidak ditemukan' };
+      }
+
+      try {
+        const listResponse = await ikasService.getIkasByPerusahaan(payload.id_perusahaan);
+        const matchedRecord = this.findLatestIkasRecord(
+          this.normalizeIkasRecords(listResponse),
+          payload.id_perusahaan
+        );
+
+        if (matchedRecord?.id) {
+          const matchedId = String(matchedRecord.id);
+          this.setBackendIkasId(slug, matchedId);
+          return { success: true, id: matchedId };
+        }
+
+        const created = await ikasService.createIkas(payload);
+        const createdId = String(created?.id || (created as any)?.data?.id || '');
+        if (!createdId) {
+          return { success: false, error: 'Backend tidak mengembalikan ID IKAS' };
+        }
+
+        this.setBackendIkasId(slug, createdId);
+        return { success: true, id: createdId };
+      } catch (error: any) {
+        return { success: false, error: error?.message || 'Gagal membuat data IKAS' };
+      }
     },
 
     // Update subdomain value dan recalculate
@@ -563,14 +644,10 @@ export const useIkasStore = defineStore('ikas', {
       try {
         this.ensureStakeholderData(slug);
 
-        const payload: IkasPayload = {
-          id_perusahaan: respondentData.id_perusahaan,
-          jabatan: respondentData.jabatan,
-          responden: respondentData.responden,
-          tanggal: respondentData.tanggal,
-          target_nilai: respondentData.target_nilai,
-          telepon: respondentData.telepon,
-        };
+        const payload = this.buildRespondentPayload(slug, respondentData);
+        if (!payload) {
+          throw new Error('Payload IKAS tidak valid');
+        }
 
         let response: any;
         const backendIkasId = this.getBackendIkasId(slug);
@@ -581,7 +658,7 @@ export const useIkasStore = defineStore('ikas', {
         } else {
           // Create new record
           response = await ikasService.createIkas(payload);
-          this.setBackendIkasId(slug, response?.id || response?.data?.id || null);
+          this.setBackendIkasId(slug, String(response?.id || response?.data?.id || ''));
         }
 
         this.backendSyncedMap[slug] = true;
@@ -612,36 +689,10 @@ export const useIkasStore = defineStore('ikas', {
 
       try {
         const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
-
-        let matchedRecord: any = null;
-
-        // Handle various response shapes from the API
-        if (listResponse) {
-          // Response could be { data: [...] } or just an array or a single object
-          const records = Array.isArray(listResponse)
-            ? listResponse
-            : Array.isArray(listResponse.data)
-              ? listResponse.data
-              : listResponse.id
-                ? [listResponse]
-                : [];
-
-          if (records.length > 0) {
-            // Filter by perusahaan ID if needed
-            const matching = records.filter((r: any) =>
-              String(r.perusahaan?.id || '') === String(perusahaanId) ||
-              String(r.id_perusahaan || '') === String(perusahaanId)
-            );
-
-            if (matching.length > 0) {
-              // Sort by created_at descending (latest first)
-              matching.sort((a: any, b: any) =>
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-              );
-              matchedRecord = matching[0];
-            }
-          }
-        }
+        const matchedRecord = this.findLatestIkasRecord(
+          this.normalizeIkasRecords(listResponse),
+          perusahaanId
+        );
 
         if (!matchedRecord) {
           this.backendSyncedMap[slug] = false;
@@ -761,7 +812,7 @@ export const useIkasStore = defineStore('ikas', {
     /**
      * Submit identifikasi scores to the backend via POST /api/identifikasi.
      */
-    async submitIdentifikasi(slug: string): Promise<{ success: boolean; error?: string }> {
+    async submitIdentifikasi(slug: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
       try {
         this.ensureStakeholderData(slug);
         const iden = this.ikasDataMap[slug].identifikasi;
@@ -781,6 +832,10 @@ export const useIkasStore = defineStore('ikas', {
         console.log('[IKAS Store] Identifikasi submitted successfully');
         return { success: true };
       } catch (error: any) {
+        if (this.isMissingDomainEndpointError(error)) {
+          console.warn('[IKAS Store] Identifikasi endpoint not available, skipping domain summary sync');
+          return { success: true, skipped: true };
+        }
         console.error('[IKAS Store] Identifikasi submit failed:', error);
         return { success: false, error: error.message || 'Gagal menyimpan identifikasi' };
       }
@@ -789,7 +844,7 @@ export const useIkasStore = defineStore('ikas', {
     /**
      * Submit proteksi scores to the backend via POST /api/proteksi.
      */
-    async submitProteksi(slug: string): Promise<{ success: boolean; error?: string }> {
+    async submitProteksi(slug: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
       try {
         this.ensureStakeholderData(slug);
         const prot = this.ikasDataMap[slug].proteksi;
@@ -810,6 +865,10 @@ export const useIkasStore = defineStore('ikas', {
         console.log('[IKAS Store] Proteksi submitted successfully');
         return { success: true };
       } catch (error: any) {
+        if (this.isMissingDomainEndpointError(error)) {
+          console.warn('[IKAS Store] Proteksi endpoint not available, skipping domain summary sync');
+          return { success: true, skipped: true };
+        }
         console.error('[IKAS Store] Proteksi submit failed:', error);
         return { success: false, error: error.message || 'Gagal menyimpan proteksi' };
       }
@@ -818,7 +877,7 @@ export const useIkasStore = defineStore('ikas', {
     /**
      * Submit deteksi scores to the backend via POST /api/deteksi.
      */
-    async submitDeteksi(slug: string): Promise<{ success: boolean; error?: string }> {
+    async submitDeteksi(slug: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
       try {
         this.ensureStakeholderData(slug);
         const det = this.ikasDataMap[slug].deteksi;
@@ -836,6 +895,10 @@ export const useIkasStore = defineStore('ikas', {
         console.log('[IKAS Store] Deteksi submitted successfully');
         return { success: true };
       } catch (error: any) {
+        if (this.isMissingDomainEndpointError(error)) {
+          console.warn('[IKAS Store] Deteksi endpoint not available, skipping domain summary sync');
+          return { success: true, skipped: true };
+        }
         console.error('[IKAS Store] Deteksi submit failed:', error);
         return { success: false, error: error.message || 'Gagal menyimpan deteksi' };
       }
@@ -844,7 +907,7 @@ export const useIkasStore = defineStore('ikas', {
     /**
      * Submit gulih scores to the backend via POST /api/gulih.
      */
-    async submitGulih(slug: string): Promise<{ success: boolean; error?: string }> {
+    async submitGulih(slug: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
       try {
         this.ensureStakeholderData(slug);
         const tang = this.ikasDataMap[slug].tanggulih;
@@ -863,6 +926,10 @@ export const useIkasStore = defineStore('ikas', {
         console.log('[IKAS Store] Gulih submitted successfully');
         return { success: true };
       } catch (error: any) {
+        if (this.isMissingDomainEndpointError(error)) {
+          console.warn('[IKAS Store] Gulih endpoint not available, skipping domain summary sync');
+          return { success: true, skipped: true };
+        }
         console.error('[IKAS Store] Gulih submit failed:', error);
         return { success: false, error: error.message || 'Gagal menyimpan gulih' };
       }
@@ -955,22 +1022,27 @@ export const useIkasStore = defineStore('ikas', {
     /**
      * Submit all domain scores to backend in one go.
      */
-    async submitAllDomainScores(slug: string): Promise<{ success: boolean; errors: string[] }> {
+    async submitAllDomainScores(slug: string): Promise<{ success: boolean; errors: string[]; warnings: string[] }> {
       const errors: string[] = [];
+      const warnings: string[] = [];
 
       const idenResult = await this.submitIdentifikasi(slug);
       if (!idenResult.success) errors.push(`Identifikasi: ${idenResult.error}`);
+      else if (idenResult.skipped) warnings.push('Identifikasi summary endpoint tidak tersedia');
 
       const protResult = await this.submitProteksi(slug);
       if (!protResult.success) errors.push(`Proteksi: ${protResult.error}`);
+      else if (protResult.skipped) warnings.push('Proteksi summary endpoint tidak tersedia');
 
       const detResult = await this.submitDeteksi(slug);
       if (!detResult.success) errors.push(`Deteksi: ${detResult.error}`);
+      else if (detResult.skipped) warnings.push('Deteksi summary endpoint tidak tersedia');
 
       const gulihResult = await this.submitGulih(slug);
       if (!gulihResult.success) errors.push(`Gulih: ${gulihResult.error}`);
+      else if (gulihResult.skipped) warnings.push('Gulih summary endpoint tidak tersedia');
 
-      return { success: errors.length === 0, errors };
+      return { success: errors.length === 0, errors, warnings };
     },
   },
 });

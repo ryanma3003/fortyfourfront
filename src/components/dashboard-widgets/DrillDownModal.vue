@@ -1,14 +1,21 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import DrillDownRow from './DrillDownRow.vue';
 
 const props = defineProps({
     visible: { type: Boolean, default: false },
     title: { type: String, default: 'Detail' },
     items: { type: Array, default: () => [] },
     columns: { type: Array, default: () => ['nama_perusahaan', 'sektor', 'status'] },
+    isLoading: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close', 'navigate']);
+
+function goToDetail(item) {
+    emit('navigate', item);
+    emit('close');
+}
 
 const search = ref('');
 const sortKey = ref('');
@@ -154,56 +161,7 @@ function getColumnIcon(col) {
     return columnIcons[col] || 'ri-information-line';
 }
 
-function formatValue(val, col) {
-    if (val === null || val === undefined || val === '') return '-';
-    if (typeof val === 'object') return JSON.stringify(val);
-
-    // Format dates
-    if (col === 'created_at' || col === 'updated_at') {
-        try {
-            const d = new Date(val);
-            if (!isNaN(d.getTime())) {
-                return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-            }
-        } catch { /* fallback */ }
-    }
-
-    // Format IKAS score
-    if (col === 'ikas_score') {
-        const num = Number(val);
-        if (!isNaN(num)) return num.toFixed(2);
-    }
-
-    return String(val);
-}
-
-// Get badge variant for status-type cells
-function getCellBadge(col, val) {
-    if (!val || val === '-') return null;
-
-    if (col === 'csirt_status') {
-        const v = String(val).toLowerCase();
-        if (v === 'lengkap' || v === 'complete' || v === 'aktif') return { variant: 'success', icon: 'ri-check-line' };
-        if (v === 'terdaftar' || v === 'registered') return { variant: 'warning', icon: 'ri-time-line' };
-        return { variant: 'muted', icon: 'ri-subtract-line' };
-    }
-
-    if (col === 'status_data') {
-        const v = String(val).toLowerCase();
-        if (v === 'lengkap' || v === 'complete') return { variant: 'success', icon: 'ri-check-double-line' };
-        if (v === 'sebagian' || v === 'partial') return { variant: 'warning', icon: 'ri-error-warning-line' };
-        return { variant: 'danger', icon: 'ri-close-line' };
-    }
-
-    if (col === 'ikas_kategori' || col === 'ikas_maturity') {
-        const v = String(val).toLowerCase();
-        if (v.includes('tinggi') || v.includes('baik') || v.includes('high') || v.includes('matang')) return { variant: 'success', icon: 'ri-arrow-up-line' };
-        if (v.includes('sedang') || v.includes('medium') || v.includes('cukup')) return { variant: 'warning', icon: 'ri-subtract-line' };
-        return { variant: 'danger', icon: 'ri-arrow-down-line' };
-    }
-
-    return null;
-}
+// Cell rendering logic moved to DrillDownRow.vue
 
 // Get title icon based on modal title
 const titleIcon = computed(() => {
@@ -292,71 +250,45 @@ const titleIcon = computed(() => {
                                                     </span>
                                                 </div>
                                             </th>
-                                            <th class="ddm-th-action">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="(item, idx) in paginatedItems" :key="idx"
-                                            class="ddm-row"
-                                            :style="{ animationDelay: `${idx * 30}ms` }">
-                                            <td class="ddm-td-no">
-                                                {{ (currentPage - 1) * perPage + idx + 1 }}
-                                            </td>
-                                            <td v-for="col in columns" :key="col" class="ddm-td">
-                                                <!-- Status badge cells -->
-                                                <template v-if="getCellBadge(col, item[col])">
-                                                    <span :class="'ddm-status-badge ddm-status-' + getCellBadge(col, item[col]).variant">
-                                                        <i :class="getCellBadge(col, item[col]).icon" class="ddm-status-icon"></i>
-                                                        {{ formatValue(item[col], col) }}
-                                                    </span>
-                                                </template>
-                                                <!-- Score cells -->
-                                                <template v-else-if="col === 'ikas_score' && item[col]">
-                                                    <span class="ddm-score-pill">
-                                                        {{ formatValue(item[col], col) }}
-                                                    </span>
-                                                </template>
-                                                <!-- Company name (primary column) -->
-                                                <template v-else-if="col === 'nama_perusahaan'">
-                                                    <span class="ddm-cell-primary fw-semibold">
-                                                        {{ formatValue(item[col], col) }}
-                                                    </span>
-                                                </template>
-                                                <!-- Sektor badge -->
-                                                <template v-else-if="col === 'sektor' || col === 'sub_sektor'">
-                                                    <span class="ddm-sektor-tag">
-                                                        {{ formatValue(item[col], col) }}
-                                                    </span>
-                                                </template>
-                                                <!-- Date cells -->
-                                                <template v-else-if="col === 'created_at' || col === 'updated_at'">
-                                                    <span class="ddm-cell-date">
-                                                        <i class="ri-calendar-line me-1"></i>
-                                                        {{ formatValue(item[col], col) }}
-                                                    </span>
-                                                </template>
-                                                <!-- Default cell -->
-                                                <template v-else>
-                                                    {{ formatValue(item[col], col) }}
-                                                </template>
-                                            </td>
-                                            <td class="ddm-td-action">
-                                                <button class="ddm-nav-btn" @click="$emit('navigate', item)" title="Lihat Detail">
-                                                    <i class="ri-arrow-right-up-line"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
+                                        <!-- Loading State -->
+                                        <template v-if="isLoading">
+                                            <tr v-for="i in 5" :key="'skel-' + i" class="ddm-row">
+                                                <td class="ddm-td-no">
+                                                    <span class="ddm-skeleton" style="width: 20px;"></span>
+                                                </td>
+                                                <td v-for="col in columns" :key="'skel-col-' + col" class="ddm-td">
+                                                    <span class="ddm-skeleton"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+
+                                        <!-- Data Rows -->
+                                        <template v-else-if="filteredItems.length > 0">
+                                            <DrillDownRow 
+                                                v-for="(item, idx) in paginatedItems" 
+                                                :key="idx"
+                                                :item="item"
+                                                :columns="columns"
+                                                :index="idx"
+                                                :pageOffset="(currentPage - 1) * perPage"
+                                                @navigate="goToDetail"
+                                            />
+                                        </template>
+
                                         <!-- Empty State -->
-                                        <tr v-if="filteredItems.length === 0">
-                                            <td :colspan="columns.length + 2" class="ddm-empty-state">
+                                        <tr v-else>
+                                            <td :colspan="columns.length + 1" class="ddm-empty-state">
                                                 <div class="ddm-empty-icon-wrap">
                                                     <div class="ddm-empty-icon-ring">
                                                         <i class="ri-inbox-2-line"></i>
                                                     </div>
                                                 </div>
-                                                <h6 class="fw-bold mt-3 mb-1" style="color: var(--dw-text);">Tidak Ada Data</h6>
+                                                <h6 class="fw-bold mt-3 mb-1" style="color: var(--dw-text);">Data tidak tersedia</h6>
                                                 <p class="text-muted mb-0" style="font-size: 0.8rem;">
-                                                    {{ search ? 'Coba ubah kata kunci pencarian Anda' : 'Belum ada data untuk ditampilkan' }}
+                                                    {{ search ? 'Coba ubah kata kunci pencarian Anda' : 'Belum ada data untuk ditampilkan saat ini' }}
                                                 </p>
                                             </td>
                                         </tr>

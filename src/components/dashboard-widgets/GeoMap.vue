@@ -14,8 +14,8 @@ const sektorList = ref([]);
 const subSektorList = ref([]);
 
 const sektorColors = [
-    '#845adf', '#e6533c', '#26bf94', '#f5b849', '#0ea5e9',
-    '#6366f1', '#14b8a6', '#8c57ff', '#ea580c', '#059669',
+    '#1e40af', '#ef4444', '#10b981', '#f59e0b', '#3b82f6',
+    '#334155', '#0d9488', '#0284c7', '#ea580c', '#059669',
     '#dc2626', '#0891b2',
 ];
 
@@ -101,7 +101,7 @@ function handleSektorClick(sektor) {
     <div class="dw-card dw-fade-up d-flex flex-column h-100">
         <div class="dw-card-header">
             <h6 class="dw-card-header-title">
-                <div class="dw-card-header-icon" style="background: linear-gradient(135deg, #6366f1, #818cf8); color: #fff;">
+                <div class="dw-card-header-icon" style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff;">
                     <i class="ri-map-pin-line"></i>
                 </div>
                 <div>
@@ -171,7 +171,7 @@ function handleSektorClick(sektor) {
 }
 
 .dw-geo-row:hover {
-    background: rgba(132, 90, 223, 0.04);
+    background: rgba(30, 64, 175, 0.04);
 }
 
 .dw-geo-label {

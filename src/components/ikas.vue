@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
@@ -17,22 +17,41 @@ const ikasStore = useIkasStore();
 const assessmentStore = useDynamicAssessmentStore();
 const stakeholdersStore = useStakeholdersStore();
 
-// Initialize store
-onMounted(async () => {
-    ikasStore.initialize();
-    assessmentStore.initialize();
+const hydrateCurrentStakeholderIkas = async () => {
+    await ikasStore.initialize();
+    await assessmentStore.initialize();
     
     if (!stakeholdersStore.initialized) {
         await stakeholdersStore.initialize();
     }
 
-    // Sync assessment answers to IKAS store for current stakeholder
     const slug = String(route.query.slug || '');
-    if (slug) {
-        assessmentStore.setCurrentStakeholder(slug);
-        assessmentStore.syncToIkas(slug);
+    if (!slug) return;
+
+    const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+    assessmentStore.setCurrentStakeholder(slug);
+
+    if (stakeholder?.id) {
+        await ikasStore.fetchFromBackend(slug, stakeholder.id);
+        await assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id);
     }
+
+    assessmentStore.syncToIkas(slug);
+    ikasStore.recalculate(slug);
+};
+
+// Initialize store
+onMounted(async () => {
+    await hydrateCurrentStakeholderIkas();
 });
+
+watch(
+    () => route.query.slug,
+    async (newSlug, oldSlug) => {
+        if (!newSlug || newSlug === oldSlug) return;
+        await hydrateCurrentStakeholderIkas();
+    }
+);
 
 // Get current stakeholder slug and source
 const currentSlug = computed(() => String(route.query.slug || ''));
