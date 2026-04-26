@@ -154,3 +154,14 @@ export interface UpdateSoalPayload {
     jawaban_benar?: string;
     urutan?: number;
 }
+
+// ── Diskusi ──────────────────────────────────────────────────
+export interface LmsDiskusi {
+    id: string | number;
+    id_materi: string | number;
+    id_user: string | number;
+    user_name?: string;
+    komentar: string;
+    created_at: string;
+    updated_at?: string;
+}

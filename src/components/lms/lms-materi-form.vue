@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import LmsEditor from "./LmsEditor.vue";
 import { useLmsStore } from "../../stores/lms";
+import { lmsService } from "../../services/lms.service";
 import { useRouter, useRoute } from "vue-router";
 
 export default {
@@ -17,7 +18,7 @@ export default {
     const kelasId = computed(() => (route.query.kelasId as string) || history.state?.kelasId || '');
 
     const dataToPass = computed(() => ({
-      title: { label: "Daftar Materi", path: `/lms/materi?kelasId=${kelasId.value}` },
+      title: { label: "Daftar Kelas", path: `/lms/kelas` },
       currentpage: pageTitle.value,
       activepage: pageTitle.value,
     }));
@@ -60,9 +61,9 @@ export default {
     ];
 
     onMounted(async () => {
-      // Fetch classes for dropdown
+      // Use ensureKelas — skips API call if already loaded
       try {
-        await lmsStore.fetchKelas();
+        await lmsStore.ensureKelas();
       } catch (e: any) {
         console.error("Failed to load kelas:", e.message);
       }
@@ -72,8 +73,19 @@ export default {
       }
 
       if (isEdit.value) {
-        // Try loading from store first, or could fetch from API
-        const materi = lmsStore.getMateriById(route.params.id as string);
+        // Try store first, then cache
+        let materi = lmsStore.getMateriById(route.params.id as string);
+
+        // If not in store, fetch the kelas detail to populate cache
+        if (!materi && kelasId.value) {
+          try {
+            await lmsStore.fetchKelasDetail(kelasId.value);
+            materi = lmsStore.getMateriById(route.params.id as string);
+          } catch (e) {
+            console.warn('Failed to fetch kelas detail for materi lookup');
+          }
+        }
+
         if (materi) {
           selectedKelas.value = materi.id_kelas || selectedKelas.value;
           judul.value = materi.judul;
@@ -85,7 +97,7 @@ export default {
           filePendukungList.value = materi.file_pendukung || [];
         } else {
           showNotification("Materi tidak ditemukan", "error");
-          router.push("/lms/materi");
+          router.push("/lms/kelas");
         }
       }
     });
@@ -127,6 +139,17 @@ export default {
         if (isEdit.value) {
           await lmsStore.updateMateri(route.params.id as string, payload);
           showNotification("Materi berhasil diperbarui!", "success");
+          
+          // Upload pending files in edit mode
+          if (pendingFiles.value.length > 0) {
+            for (const file of pendingFiles.value) {
+              try {
+                await lmsStore.uploadFilePendukung(route.params.id as string, file);
+              } catch (e: any) {
+                console.error('Failed to upload file:', file.name, e);
+              }
+            }
+          }
         } else {
           const kid = selectedKelas.value;
           if (!kid) {
@@ -137,12 +160,14 @@ export default {
 
           // Calculate next urutan to prevent "Duplicate entry" error
           try {
-            const existingMateri = await lmsStore.fetchMateri(String(kid));
-            const maxUrutan = existingMateri.reduce((max, m) => Math.max(max, m.urutan || 0), 0);
+            const existingMateri = await lmsService.getMateriByKelas(String(kid));
+            const maxUrutan = Array.isArray(existingMateri) && existingMateri.length > 0
+              ? existingMateri.reduce((max: number, m: any) => Math.max(max, m.urutan || 0), 0)
+              : 0;
             payload.urutan = maxUrutan + 1;
           } catch (e) {
-            console.warn("Failed to calculate urutan, defaulting to 1");
-            payload.urutan = 1;
+            console.warn("Failed to calculate urutan, using timestamp fallback");
+            payload.urutan = Date.now() % 10000; // Use unique timestamp-based fallback
           }
 
           const newMateri = await lmsStore.createMateri(kid, payload);
@@ -161,7 +186,7 @@ export default {
           showNotification("Materi berhasil ditambahkan!", "success");
         }
 
-        setTimeout(() => router.push({ path: "/lms/materi", state: { kelasId: selectedKelas.value } }), 600);
+        setTimeout(() => router.push("/lms/kelas"), 600);
       } catch (e: any) {
         showNotification(e.message || "Gagal menyimpan materi", "error");
       } finally {
@@ -174,6 +199,11 @@ export default {
       const input = event.target as HTMLInputElement;
       if (input.files) {
         for (const file of Array.from(input.files)) {
+          // Validate PDF only
+          if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            showNotification(`File "${file.name}" ditolak. Hanya file PDF yang diperbolehkan.`, "error");
+            continue;
+          }
           pendingFiles.value.push(file);
         }
       }
@@ -186,11 +216,18 @@ export default {
 
     const uploadFile = async (file: File) => {
       if (!isEdit.value) return;
+
+      // Validate PDF only
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        showNotification("Hanya file PDF yang diperbolehkan.", "error");
+        return;
+      }
+
       isUploadingFile.value = true;
       try {
         const result = await lmsStore.uploadFilePendukung(route.params.id as string, file);
         if (result) filePendukungList.value.push(result);
-        showNotification("File berhasil diupload!", "success");
+        showNotification("File PDF berhasil diupload!", "success");
       } catch (e: any) {
         showNotification(e.message || "Gagal mengupload file", "error");
       } finally {
@@ -208,7 +245,7 @@ export default {
       }
     };
 
-    const goBack = () => router.push({ path: "/lms/materi", state: { kelasId: selectedKelas.value || kelasId.value } });
+    const goBack = () => router.push("/lms/kelas");
 
     return {
       dataToPass,
@@ -419,9 +456,9 @@ export default {
 
                 <div class="d-flex gap-2">
                   <label class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" style="cursor:pointer;">
-                    <i class="ri-upload-2-line"></i>
-                    <span>Pilih File</span>
-                    <input type="file" multiple class="d-none" @change="onFileSelect" />
+                    <i class="ri-file-pdf-line"></i>
+                    <span>Pilih File PDF</span>
+                    <input type="file" multiple accept="application/pdf" class="d-none" @change="onFileSelect" />
                   </label>
                 </div>
               </div>
@@ -446,8 +483,4 @@ export default {
     </div>
   </div>
 </template>
-
-<style scoped>
-/* All editor styling is inside LmsEditor.vue */
-</style>
 

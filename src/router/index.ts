@@ -149,6 +149,22 @@ const routes: RouteRecordRaw[] = [
               name: 'LMS Quiz Edit',
               component: () => import("../components/lms/lms-quiz-form.vue"),
             },
+            // Event Routes
+            {
+              path: 'event',
+              name: 'Event',
+              component: () => import("../components/event/event-list.vue"),
+            },
+            {
+              path: 'event/create',
+              name: 'Event Create',
+              component: () => import("../components/event/event-form.vue"),
+            },
+            {
+              path: 'event/edit/:id',
+              name: 'Event Edit',
+              component: () => import("../components/event/event-form.vue"),
+            },
           ]
         },
         {
@@ -1313,11 +1329,14 @@ router.beforeEach(async (to, _from, next) => {
     // Redirect to admin dashboard if already authenticated
     next('/dashboard');
   } else if (to.meta?.requiresAdmin) {
-    // Check admin role for admin-only routes
+    // Check admin/staff role for admin routes
     if (!authStore.isAdmin) {
-      // Non-admin users cannot access admin routes — log out
+      // Non-admin/staff users cannot access admin routes — log out
       await authStore.logUserOut();
       next('/');
+    } else if (authStore.isStaff && (to.path === '/users' || to.path === '/roles' || to.path.startsWith('/users-profile'))) {
+      // Staff cannot access user management or role management
+      next('/dashboard');
     } else {
       next();
     }

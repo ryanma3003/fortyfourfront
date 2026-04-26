@@ -164,12 +164,23 @@ const authStore = useAuthStore();
 
 // Filter menu based on user role
 const filterMenuByRole = (items) => {
+  const role = authStore.currentUser?.role;
   return items
     .filter((item) => {
-      // If item has requiredRole, check if user has that role
+      // If item has requiredRole, check access
       if (item.requiredRole) {
-        if (authStore.currentUser?.role !== item.requiredRole) {
-          return false;
+        if (item.requiredRole === 'fullAdmin') {
+          // Only pure admin (not staff) can see these
+          if (role !== 'admin') return false;
+        } else if (item.requiredRole === 'admin') {
+          // Both admin and staff can see these
+          if (role !== 'admin' && role !== 'staff') return false;
+        } else if (item.requiredRole === 'user') {
+          // Only regular users can see these
+          if (role !== item.requiredRole) return false;
+        } else {
+          // Generic role check
+          if (role !== item.requiredRole) return false;
         }
       }
       // Check if item is hidden
@@ -214,7 +225,7 @@ let toggledObserver = null;
 
 // Computed property for dynamic dashboard route based on user role
 const dashboardRoute = computed(() => {
-  return authStore.userRole === 'admin' ? '/dashboard' : '/dashboards';
+  return authStore.isAdmin ? '/dashboard' : '/dashboards';
 });
 
 const toggleChat = () => {

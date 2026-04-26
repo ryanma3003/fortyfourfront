@@ -112,8 +112,17 @@ export const useAuthStore = defineStore("auth", {
   }),
 
   getters: {
+    /** True for both 'admin' and 'staff' — they share the admin dashboard */
     isAdmin(): boolean {
+      return this.currentUser?.role === "admin" || this.currentUser?.role === "staff";
+    },
+    /** True ONLY for role === 'admin' — full privileges (delete, user list, role management) */
+    isFullAdmin(): boolean {
       return this.currentUser?.role === "admin";
+    },
+    /** True ONLY for role === 'staff' */
+    isStaff(): boolean {
+      return this.currentUser?.role === "staff";
     },
     userRole(): string {
       return this.currentUser?.role || "";

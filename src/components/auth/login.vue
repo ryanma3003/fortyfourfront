@@ -54,7 +54,7 @@ const login = async () => {
     if (result.authenticated) {
       if (!authStore.isAdmin) {
         await authStore.logUserOut();
-        showToast("error", "Akses ditolak. Hanya untuk admin.");
+        showToast("error", "Akses ditolak. Hanya untuk admin dan staff.");
         return;
       }
       

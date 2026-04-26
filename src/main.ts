@@ -1,6 +1,7 @@
 // main.ts
 import './style.scss';
 import './assets/css/style2.css';
+import './assets/css/lms.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router/index';

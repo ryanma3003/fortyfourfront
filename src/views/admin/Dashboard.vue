@@ -43,6 +43,12 @@
     const csirtStore = useCsirtStore();
     const filterStore = useDashboardFilterStore();
     const notifStore = useNotificationStore();
+    
+    // Analytics Chart States
+    const kseChartType = ref('donut'); // 'donut' or 'bar'
+    const ikasChartType = ref('donut'); // 'donut' or 'radar'
+    const analyticsView = ref('distribution'); // 'distribution' or 'completion'
+    const kseIkasViewMode = ref('overview'); // 'overview' or 'table'
 
     // API Data
     const sektorList = ref([]);
@@ -320,6 +326,154 @@
         };
     });
 
+    // ─── Analytics Chart Options & Series ───────────────────
+    const analyticsChartData = computed(() => {
+        if (summaryMode.value === 'KSE') {
+            if (analyticsView.value === 'distribution') {
+                const data = kseData.value;
+                return {
+                    labels: ['Strategis', 'Tinggi', 'Rendah'],
+                    series: [data.strategis, data.tinggi, data.rendah],
+                    colors: ['#e6533c', '#f5b849', '#26bf94']
+                };
+            } else {
+                const status = kseStatus.value;
+                return {
+                    labels: ['Sudah Mengisi', 'Belum Mengisi'],
+                    series: [status.sudah_mengisi_kse, status.belum_mengisi_kse],
+                    colors: ['#26bf94', '#e6533c']
+                };
+            }
+        } else {
+            // IKAS Mode
+            if (analyticsView.value === 'distribution') {
+                const levels = ikasSummaryData.value.levels;
+                return {
+                    labels: ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'],
+                    series: [levels.level1.count, levels.level2.count, levels.level3.count, levels.level4.count, levels.level5.count],
+                    colors: ['#e6533c', '#f5b849', '#0ea5e9', '#23b7e5', '#26bf94']
+                };
+            } else {
+                const avg = ikasSummaryData.value.averages;
+                return {
+                    labels: ['Identifikasi', 'Proteksi', 'Deteksi', 'Tanggulih'],
+                    series: [Number(avg.identifikasi), Number(avg.proteksi), Number(avg.deteksi), Number(avg.tanggulih)],
+                    colors: ['#23b7e5', '#6366f1', '#f5b849', '#26bf94']
+                };
+            }
+        }
+    });
+
+    const mainAnalyticsOptions = computed(() => {
+        const data = analyticsChartData.value;
+        const type = summaryMode.value === 'KSE' ? kseChartType.value : ikasChartType.value;
+        
+        // Base options
+        const options = {
+            chart: {
+                fontFamily: 'Inter, sans-serif',
+                toolbar: { show: false },
+                parentHeightOffset: 0
+            },
+            grid: {
+                padding: {
+                    top: 15,
+                    right: 15,
+                    bottom: 15,
+                    left: 15
+                }
+            },
+            colors: data.colors,
+            labels: data.labels,
+            stroke: { width: 2, colors: ['#fff'] },
+            dataLabels: { enabled: true },
+            legend: {
+                position: 'bottom',
+                fontSize: '11px',
+                fontWeight: 600,
+                markers: { radius: 12 },
+                itemMargin: { horizontal: 5, vertical: 0 }
+            },
+            tooltip: { theme: 'dark' }
+        };
+
+        if (type === 'pie' || type === 'donut') {
+            return {
+                ...options,
+                chart: { ...options.chart, type: 'donut' },
+                dataLabels: { enabled: false },
+                stroke: { width: 3, colors: ["#fff"] },
+                legend: {
+                    position: 'bottom',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    markers: { width: 10, height: 10, radius: 3 },
+                    itemMargin: { horizontal: 8, vertical: 4 }
+                },
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '68%',
+                            labels: {
+                                show: true,
+                                name: { fontSize: "13px", fontWeight: 700 },
+                                value: {
+                                    fontSize: "20px",
+                                    fontWeight: 800,
+                                    formatter: (val) => val,
+                                },
+                                total: {
+                                    show: true,
+                                    label: summaryMode.value === 'KSE' ? 'Total KSE' : 'Total IKAS',
+                                    fontSize: "12px",
+                                    color: "#94a3b8",
+                                    formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0)
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+        } else if (type === 'bar') {
+            return {
+                ...options,
+                chart: { ...options.chart, type: 'bar' },
+                plotOptions: {
+                    bar: {
+                        borderRadius: 4,
+                        horizontal: false,
+                        columnWidth: '55%',
+                        distributed: true
+                    }
+                },
+                xaxis: { categories: data.labels },
+                legend: { show: false }
+            };
+        } else if (type === 'radar') {
+            return {
+                ...options,
+                chart: { ...options.chart, type: 'radar' },
+                xaxis: { categories: data.labels },
+                fill: { opacity: 0.4 },
+                markers: { size: 4 }
+            };
+        }
+        return options;
+    });
+
+    const mainAnalyticsSeries = computed(() => {
+        const data = analyticsChartData.value;
+        const type = summaryMode.value === 'KSE' ? kseChartType.value : ikasChartType.value;
+        
+        if (type === 'bar' || type === 'radar') {
+            return [{
+                name: 'Jumlah',
+                data: data.series
+            }];
+        }
+        return data.series;
+    });
+
     // Top-level summary cards from API data
     const fullSummaryItems = computed(() => {
         const katSe = filterStore.kategoriSe;
@@ -406,6 +560,14 @@
                 category: '',
             },
             {
+                label: 'SE Strategis',
+                value: strategis,
+                icon: 'ri-shield-star-line',
+                gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
+                color: '#e6533c',
+                category: 'Strategis',
+            },
+            {
                 label: 'SE Tinggi',
                 value: tinggi,
                 icon: 'ri-arrow-up-circle-line',
@@ -420,14 +582,6 @@
                 gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
                 color: '#26bf94',
                 category: 'Rendah',
-            },
-            {
-                label: 'SE Strategis',
-                value: strategis,
-                icon: 'ri-shield-star-line',
-                gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
-                color: '#e6533c',
-                category: 'Strategis',
             },
         ];
 
@@ -1813,7 +1967,7 @@
 
             <template v-else>
                 <!-- ═══ SEKTOR / SUB SEKTOR CARDS ═══ -->
-                <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1 animate-show-up" style="animation-delay: 0.1s">
+                <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.1s' : '0s' }">
                     <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
                         <i class="ri-building-2-line"></i>
                         <span v-if="filterStore.subSektorId">Sub Sektor Terpilih</span>
@@ -1828,7 +1982,7 @@
                         ]"
                         v-for="(card, index) in sektorCards"
                         :key="'sektor-' + index"
-                        :style="{ animationDelay: `${0.1 + (index * 0.05)}s` }"
+                        :style="{ animationDelay: isFirstLoad ? `${0.1 + (index * 0.05)}s` : '0s' }"
                         @click="!card.isMuted && handleSektorCardClick(card)">
                         <SpkReusebleJobs
                             titleClass="fs-13 fw-medium mb-0"
@@ -1845,7 +1999,7 @@
                     <div class="col-xl-3 col-md-6 animate-show-up"
                         v-for="(card, index) in operationalCards"
                         :key="'ops-' + index"
-                        :style="{ animationDelay: `${0.4 + (index * 0.1)}s` }"
+                        :style="{ animationDelay: isFirstLoad ? `${0.4 + (index * 0.1)}s` : '0s' }"
                         @click="handleDrillDown({ type: card.title })">
                         <SpkReusebleJobs
                             titleClass="fs-13 fw-medium mb-0"
@@ -1859,228 +2013,338 @@
 
 
                 <!-- ═══ KPI CARDS (Meaningful KPIs) ═══ -->
-                <div class="mb-4 animate-show-up" style="animation-delay: 0.8s">
+                <div class="mb-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.8s' : '0s' }">
                     <KpiCards @drill-down="handleDrillDown" />
                 </div>
 
                 <!-- ═══ INSIGHT + ACTIVITY ROW ═══ -->
                 <div class="row g-3 mb-4">
-                    <div class="col-xl-4 animate-show-up" style="animation-delay: 1.0s">
+                    <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.0s' : '0s' }">
                         <InsightCard />
                     </div>
-                    <div class="col-xl-4 animate-show-up" style="animation-delay: 1.2s">
+                    <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.2s' : '0s' }">
                         <ActionCenter />
                     </div>
-                    <div class="col-xl-4 animate-show-up" style="animation-delay: 1.4s">
+                    <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.4s' : '0s' }">
                         <ActivityFeed />
                     </div>
                 </div>
 
                 <!-- ═══ RINGKASAN DATA (Full Width) ═══ -->
-                <div class="row g-3 mb-4">
-                    <div class="col-xl-12">
-                        <!-- RINGKASAN DATA LENGKAP (Full Summary) -->
-                        <div class="full-summary-section">
-                            <!-- Section Header -->
-                            <div class="fs-section-header animate-show-up" style="animation-delay: 1.5s">
-                                <div class="fs-header-left">
-                                    <div class="fs-header-icon">
-                                        <i class="ri-dashboard-3-line"></i>
+                <div v-if="filterStore.isLoading && !filterStore.summaryData" class="row g-3 mb-4">
+                    <div class="col-xl-4 col-lg-6 col-md-6" v-for="n in 6" :key="'skel-fs-'+n">
+                        <div class="card custom-card">
+                            <div class="card-body p-3">
+                                <div class="skeleton-icon shimmer" style="width:40px;height:40px;border-radius:10px"></div>
+                                <div class="skeleton-text shimmer mt-3" style="width:50%;height:12px"></div>
+                                <div class="skeleton-number shimmer mt-2" style="width:35%;height:22px"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Error -->
+                <div v-else-if="filterStore.error" class="alert alert-danger d-flex align-items-center gap-2 mb-4">
+                    <i class="ri-error-warning-line fs-20"></i>
+                    <span>Gagal memuat data dari API. </span>
+                    <button class="btn btn-sm btn-outline-danger ms-auto" @click="filterStore.fetchDashboardData">
+                        <i class="ri-refresh-line me-1"></i>Coba Lagi
+                    </button>
+                </div>
+
+                <template v-else-if="filterStore.summaryData">
+                    <div class="row g-3 mb-4">
+                        <div class="col-xl-12">
+                        <!-- ═══════════ ANALISIS KSE & IKAS SECTION ═══════════ -->
+                        <div class="kse-ikas-analytics mb-4">
+                            <!-- ── SECTION HEADER & FILTERS (COMBINED) ── -->
+                            <div class="ki-main-header mb-3 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.5s' : '0s' }">
+                                <div class="ki-header-left">
+                                    <div class="ki-header-icon">
+                                        <i class="ri-shield-keyhole-line"></i>
                                     </div>
-                                    <div class="d-flex align-items-center gap-3">
-                                        <h2 class="fs-header-title mb-0">Data KSE dan IKAS</h2>
-                                        <div class="summary-mode-switcher">
-                                            <button class="summary-mode-btn"
-                                                :class="{ active: summaryMode === 'KSE' }"
-                                                @click="summaryMode = 'KSE'; filterStore.setKategoriSe('')">
-                                                KSE
-                                            </button>
-                                            <button class="summary-mode-btn"
-                                                :class="{ active: summaryMode === 'IKAS' }"
-                                                @click="summaryMode = 'IKAS'; filterStore.setKategoriSe('')">
-                                                IKAS
-                                            </button>
-                                        </div>
+                                    <h2 class="ki-header-title">Analisis Data</h2>
+                                    <!-- SE | IKAS segmented control -->
+                                    <div class="ki-segmented-control">
+                                        <button class="ki-seg-btn" :class="{ active: summaryMode === 'KSE' }" @click="summaryMode = 'KSE'">KSE</button>
+                                        <button class="ki-seg-btn" :class="{ active: summaryMode === 'IKAS' }" @click="summaryMode = 'IKAS'">IKAS</button>
                                     </div>
                                 </div>
-
-                                <!-- Inline KSE Category Filter -->
-                                <div class="fs-header-filter d-flex align-items-center gap-3">
-                                    <div class="d-flex align-items-center gap-2 bg-white-transparent p-1 rounded-pill border shadow-sm">
-                                        <span class="text-muted fw-bold text-uppercase ms-3 me-1 d-none d-sm-inline" style="font-size: 0.65rem; letter-spacing: 0.8px;">
-                                            <i class="ri-shield-star-line me-1 text-primary"></i> KATEGORI
-                                        </span>
-                                        <div class="d-flex gap-1" v-if="summaryMode === 'KSE'">
-                                            <button v-for="cat in ['Strategis', 'Tinggi', 'Rendah']" 
-                                                    :key="cat"
-                                                    class="btn btn-sm rounded-pill px-3 fs-filter-pill transition-all"
-                                                    :class="filterStore.kategoriSe === cat ? 'active' : ''"
-                                                    @click="filterStore.setKategoriSe(cat === filterStore.kategoriSe ? '' : cat)">
-                                                {{ cat }}
-                                            </button>
-                                        </div>
-                                        <div class="d-flex gap-1" v-else>
-                                            <button v-for="cat in ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']" 
-                                                    :key="cat"
-                                                    class="btn btn-sm rounded-pill px-3 fs-filter-pill transition-all"
-                                                    :class="filterStore.kategoriSe === cat ? 'active' : ''"
-                                                    @click="filterStore.setKategoriSe(cat === filterStore.kategoriSe ? '' : cat)">
-                                                {{ cat }}
-                                            </button>
-                                        </div>
+                                
+                                <div class="ki-header-right">
+                                    <!-- Category Filters -->
+                                    <div class="ki-inline-filters" v-if="summaryMode === 'KSE'">
+                                        <button v-for="cat in ['Strategis', 'Tinggi', 'Rendah']" 
+                                                :key="cat"
+                                                class="ki-filter-pill"
+                                                :class="filterStore.kategoriSe === cat ? 'active' : ''"
+                                                @click="filterStore.setKategoriSe(cat === filterStore.kategoriSe ? '' : cat)">
+                                            {{ cat }}
+                                        </button>
+                                    </div>
+                                    <div class="ki-inline-filters" v-else>
+                                        <button v-for="cat in ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']" 
+                                                :key="cat"
+                                                class="ki-filter-pill"
+                                                :class="filterStore.kategoriSe === cat ? 'active' : ''"
+                                                @click="filterStore.setKategoriSe(cat === filterStore.kategoriSe ? '' : cat)">
+                                            {{ cat }}
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="ki-divider"></div>
+                                    
+                                    <!-- View Toggles -->
+                                    <div class="ki-view-toggles">
+                                        <button class="ki-view-btn" :class="{ active: kseIkasViewMode === 'overview' }" @click="kseIkasViewMode = 'overview'" title="Visual Overview">
+                                            <i class="ri-dashboard-line"></i>
+                                        </button>
+                                        <button class="ki-view-btn" :class="{ active: kseIkasViewMode === 'table' }" @click="kseIkasViewMode = 'table'" title="Metric Cards">
+                                            <i class="ri-layout-grid-line"></i>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Summary Loading -->
-                            <div v-if="filterStore.isLoading && !filterStore.summaryData" class="row g-3 mb-4">
-                                <div class="col-xl-4 col-lg-6 col-md-6" v-for="n in 6" :key="'skel-fs-'+n">
-                                    <div class="card custom-card">
-                                        <div class="card-body p-3">
-                                            <div class="skeleton-icon shimmer" style="width:40px;height:40px;border-radius:10px"></div>
-                                            <div class="skeleton-text shimmer mt-3" style="width:50%;height:12px"></div>
-                                            <div class="skeleton-number shimmer mt-2" style="width:35%;height:22px"></div>
+                            <!-- VIEW: TABLE (Premium Metric Cards) -->
+                            <div v-if="kseIkasViewMode === 'table'" class="row g-3 animate-show-up" :style="{ animationDelay: '0.1s' }">
+                                <div v-for="(item, idx) in fullSummaryItems" :key="summaryMode + '-fs-' + idx"
+                                    :class="summaryMode === 'KSE' ? (idx < 2 ? 'col-xl-6' : 'col-xl-4') : (idx < 2 ? 'col-xl-6' : 'col-xl')"
+                                    class="col-lg-4 col-md-4 col-sm-6">
+                                    <div class="ki-metric-card" 
+                                            :class="{ 'ki-metric-active': filterStore.kategoriSe === item.category && item.category, 'ki-metric-muted': item.isMuted }"
+                                            @click="!item.isMuted && handleKseCardClick(item)"
+                                            :style="{ '--ki-accent': item.color }">
+                                        <div class="ki-metric-accent" :style="{ background: item.gradient }"></div>
+                                        <div class="ki-metric-watermark">
+                                            <i :class="item.icon"></i>
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Summary Error -->
-                            <div v-else-if="filterStore.error" class="alert alert-danger d-flex align-items-center gap-2 mb-4">
-                                <i class="ri-error-warning-line fs-20"></i>
-                                <span>Gagal memuat data dari API. </span>
-                                <button class="btn btn-sm btn-outline-danger ms-auto" @click="filterStore.fetchDashboardData">
-                                    <i class="ri-refresh-line me-1"></i>Coba Lagi
-                                </button>
-                            </div>
-
-                            <template v-else-if="filterStore.summaryData">
-                                <!-- ROW: KSE Metric Cards (5 cards) -->
-                                <div class="row g-3 mb-4">
-                                    <div :class="[
-                                        summaryMode === 'KSE' ? (idx < 2 ? 'col-xl-6' : 'col-xl-4') : (idx < 2 ? 'col-xl-6' : 'col-xl'),
-                                        'col-lg-4 col-md-4 col-sm-6 animate-show-up'
-                                    ]" v-for="(item, idx) in fullSummaryItems" :key="summaryMode + '-fs-' + idx"
-                                        :style="{ animationDelay: isFirstLoad ? `${1.6 + (idx * 0.15)}s` : '0s' }">
-                                        <div class="card custom-card summary-stat-card border-0 shadow-sm overflow-hidden" 
-                                             :class="{ 'active-filter-card': filterStore.kategoriSe === item.category && item.category, 'summary-card-muted': item.isMuted }"
-                                             @click="!item.isMuted && handleKseCardClick(item)"
-                                             style="border-radius: 14px; cursor: pointer;">
-                                            <div class="card-body p-3 position-relative z-1">
-                                                <!-- Abstract Decor Watermark -->
-                                                <div class="position-absolute end-0 top-0 p-2" style="opacity: 0.05; z-index: -1; transform: translate(10%, -10%);">
-                                                    <i :class="item.icon" style="font-size: 4rem; display: block;"></i>
+                                        <div class="ki-metric-body">
+                                            <div class="ki-metric-top">
+                                                <div class="ki-metric-icon-wrap" :style="{ background: item.color + '12', border: `1px solid ${item.color}20` }">
+                                                    <i :class="item.icon" :style="{ color: item.color }"></i>
                                                 </div>
+                                                <span v-if="filterStore.kategoriSe === item.category && item.category" class="ki-metric-active-badge">Aktif</span>
+                                            </div>
+                                            <div class="ki-metric-value">{{ (item.value ?? 0).toLocaleString('id-ID') }}</div>
+                                            <div class="ki-metric-label">{{ item.label }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                                    <div class="avatar rounded-3 d-flex align-items-center justify-content-center"
-                                                        :style="{ width: '40px', height: '40px', background: `${item.color}15`, border: `1px solid ${item.color}25` }">
-                                                        <i :class="item.icon" class="fs-18" :style="{ color: item.color }"></i>
+                            <!-- VIEW: OVERVIEW (The Charts) -->
+                            <div v-else class="ki-charts-section">
+                                <!-- ── Hero Stats Banner ── -->
+                                <div class="ki-hero-banner animate-show-up" style="animation-delay: 0.1s">
+                                    <div class="ki-hero-glow"></div>
+                                    <div class="ki-hero-inner">
+                                        <!-- SVG Ring Progress -->
+                                        <div class="ki-ring-wrap">
+                                            <svg viewBox="0 0 120 120" class="ki-ring-svg">
+                                                <circle cx="60" cy="60" r="52" fill="none" stroke="#f1f5f9" stroke-width="8"/>
+                                                <circle cx="60" cy="60" r="52" fill="none" stroke="url(#ringGrad)" stroke-width="8"
+                                                    stroke-linecap="round" stroke-dasharray="326.73"
+                                                    :stroke-dashoffset="326.73 - (326.73 * (summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate) / 100)"
+                                                    class="ki-ring-progress"/>
+                                                <defs>
+                                                    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                        <stop offset="0%" stop-color="#3b82f6"/>
+                                                        <stop offset="100%" stop-color="#06b6d4"/>
+                                                    </linearGradient>
+                                                </defs>
+                                            </svg>
+                                            <div class="ki-ring-label">
+                                                <span class="ki-ring-value">{{ summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate }}%</span>
+                                                <span class="ki-ring-sub">Terisi</span>
+                                            </div>
+                                        </div>
+                                        <!-- Hero Stats -->
+                                        <div class="ki-hero-stats">
+                                            <h5 class="ki-hero-title">Progress {{ summaryMode }}</h5>
+                                            <p class="ki-hero-desc">Status kelengkapan data periode aktif</p>
+                                            <div class="ki-hero-pills">
+                                                <div class="ki-pill ki-pill-success">
+                                                    <i class="ri-checkbox-circle-fill"></i>
+                                                    <span>{{ summaryMode === 'KSE' ? (kseStatus?.sudah_mengisi_kse ?? 0) : stakeholdersWithIkas }}</span>
+                                                    <small>Sudah</small>
+                                                </div>
+                                                <div class="ki-pill ki-pill-danger">
+                                                    <i class="ri-close-circle-fill"></i>
+                                                    <span>{{ summaryMode === 'KSE' ? (kseStatus?.belum_mengisi_kse ?? 0) : Math.max(0, totalStakeholders - stakeholdersWithIkas) }}</span>
+                                                    <small>Belum</small>
+                                                </div>
+                                                <div class="ki-pill ki-pill-info">
+                                                    <i class="ri-team-fill"></i>
+                                                    <span>{{ totalStakeholders }}</span>
+                                                    <small>Total</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- CTA -->
+                                        <button class="ki-hero-cta" @click="router.push(summaryMode === 'KSE' ? '/kse' : '/ikas')">
+                                            Kelola <i class="ri-arrow-right-up-line"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 mt-1">
+                                    <!-- Main Chart Column -->
+                                    <div class="col-xl-7 animate-show-up" style="animation-delay: 0.15s">
+                                        <div class="ki-chart-card h-100">
+                                            <div class="ki-chart-header">
+                                                <div class="ki-chart-header-left">
+                                                    <div class="ki-chart-icon-wrap">
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : 'ri-bar-chart-grouped-fill'"></i>
                                                     </div>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <span v-if="filterStore.kategoriSe === item.category && item.category" class="badge bg-primary-transparent fs-10">Aktif</span>
-                                                        <div class="summary-trend-dot mt-1" :style="{ background: item.color, opacity: 0.5 }"></div>
+                                                    <div>
+                                                        <div class="ki-chart-title">Visualisasi {{ summaryMode }}</div>
+                                                        <div class="ki-chart-sub">{{ analyticsView === 'distribution' ? (summaryMode === 'KSE' ? 'Distribusi Kategori SE' : 'Distribusi Level Kematangan') : (summaryMode === 'KSE' ? 'Status Pengisian' : 'Rata-rata Domain') }}</div>
                                                     </div>
                                                 </div>
-                
-                                                <div>
-                                                    <h3 class="fw-bold mb-1 text-dark" style="font-size: 1.6rem; letter-spacing: -0.5px;">
-                                                        {{ (item.value ?? 0).toLocaleString('id-ID') }}
-                                                    </h3>
-                                                    <p class="text-muted mb-0 fw-semibold text-uppercase" style="font-size: 0.70rem; letter-spacing: 0.5px; opacity: 0.85;">
-                                                        {{ item.label }}
-                                                    </p>
+                                                <div class="ki-chart-controls">
+                                                    <div class="ki-view-toggle">
+                                                        <button class="ki-vt-btn" :class="{ active: analyticsView === 'distribution' }" @click="analyticsView = 'distribution'">
+                                                            {{ summaryMode === 'KSE' ? 'Distribusi' : 'Level' }}
+                                                        </button>
+                                                        <button class="ki-vt-btn" :class="{ active: analyticsView === 'completion' }" @click="analyticsView = 'completion'">
+                                                            {{ summaryMode === 'KSE' ? 'Status' : 'Domain' }}
+                                                        </button>
+                                                    </div>
+                                                    <div class="ki-chart-type-toggle">
+                                                        <button v-for="type in (summaryMode === 'KSE' ? ['donut', 'bar'] : ['donut', 'bar', 'radar'])" 
+                                                                :key="type"
+                                                                class="ki-ct-btn"
+                                                                :class="{ active: (summaryMode === 'KSE' ? kseChartType : ikasChartType) === type }"
+                                                                @click="summaryMode === 'KSE' ? kseChartType = type : ikasChartType = type">
+                                                            <i :class="type === 'donut' ? 'ri-donut-chart-fill' : (type === 'bar' ? 'ri-bar-chart-fill' : 'ri-radar-line')"></i>
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                
-                                                <!-- Bottom Accent Line -->
-                                                <div class="position-absolute bottom-0 start-0 w-100" style="height: 3px;" :style="{ background: item.color }"></div>
+                                            </div>
+                                            <div class="ki-chart-body d-flex flex-column justify-content-center" style="min-height: 280px; height: 100%;">
+                                                <apexchart
+                                                    height="280"
+                                                    width="100%"
+                                                    :type="summaryMode === 'KSE' ? kseChartType : ikasChartType"
+                                                    :options="mainAnalyticsOptions"
+                                                    :series="mainAnalyticsSeries"
+                                                />
                                             </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <!-- ROW: Status Cards -->
-                                <div class="row g-3 mb-4">
-                                    <!-- Progress Pengisian KSE Card -->
-                                    <div class="col-xl-6 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.2s' : '0s' }">
-                                        <div class="card custom-card overflow-hidden" style="border-radius: 16px; border: 1px solid rgba(30, 64, 175, 0.15); background: linear-gradient(135deg, #fff 0%, #f8faff 100%);">
-                                            <div class="card-body p-4">
-                                                <div class="d-flex align-items-center justify-content-between mb-4">
-                                                    <div class="d-flex align-items-center gap-3">
-                                                        <div class="avatar avatar-lg rounded-circle bg-primary-transparent d-flex align-items-center justify-content-center" style="width: 52px; height: 52px;">
-                                                            <i :class="summaryMode === 'KSE' ? 'ri-checkbox-circle-line' : 'ri-bar-chart-box-line'" class="text-primary fs-24"></i>
+                                    <!-- Right Panel: Category Breakdown + Insight -->
+                                    <div class="col-xl-5 animate-show-up" style="animation-delay: 0.25s">
+                                        <div class="ki-side-panel h-100">
+                                            <!-- Category Breakdown -->
+                                            <div class="ki-breakdown">
+                                                <div class="ki-bp-header">
+                                                    <span class="ki-bp-badge">
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : 'ri-bar-chart-box-line'"></i>
+                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : 'Level Kematangan' }}
+                                                    </span>
+                                                </div>
+                                                <div class="ki-bp-items" v-if="summaryMode === 'KSE'">
+                                                    <div v-for="(cat, ci) in [
+                                                        { label: 'Strategis', value: kseData.strategis, color: '#e6533c', icon: 'ri-shield-star-fill' },
+                                                        { label: 'Tinggi', value: kseData.tinggi, color: '#f5b849', icon: 'ri-arrow-up-circle-fill' },
+                                                        { label: 'Rendah', value: kseData.rendah, color: '#26bf94', icon: 'ri-arrow-down-circle-fill' }
+                                                    ]" :key="cat.label" class="ki-bp-row" :style="{ animationDelay: (ci * 0.08) + 's' }">
+                                                        <div class="ki-bp-left">
+                                                            <div class="ki-bp-icon" :style="{ background: cat.color + '18', color: cat.color }">
+                                                                <i :class="cat.icon"></i>
+                                                            </div>
+                                                            <div>
+                                                                <div class="ki-bp-label">{{ cat.label }}</div>
+                                                                <div class="ki-bp-count">{{ cat.value }} <span>SE</span></div>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <h5 class="fw-bold mb-0 text-dark">Progress Pengisian {{ summaryMode }}</h5>
-                                                            <p class="text-muted mb-0 fs-12">Persentase perusahaan yang telah melengkapi data {{ summaryMode }}</p>
+                                                        <div class="ki-bp-bar-wrap">
+                                                            <div class="ki-bp-bar">
+                                                                <div class="ki-bp-bar-fill" :style="{ width: (kseData.total_se ? Math.max(3, (cat.value / kseData.total_se) * 100) : 0) + '%', background: `linear-gradient(90deg, ${cat.color}88, ${cat.color})` }"></div>
+                                                            </div>
+                                                            <span class="ki-bp-pct" :style="{ color: cat.color }">{{ kseData.total_se ? Math.round((cat.value / kseData.total_se) * 100) : 0 }}%</span>
                                                         </div>
                                                     </div>
-                                                    <div class="text-end">
-                                                        <span class="fs-24 fw-black text-primary">{{ summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate }}%</span>
-                                                        <p class="mb-0 text-muted fs-11 fw-medium">
-                                                            {{ summaryMode === 'KSE' ? (kseStatus?.sudah_mengisi_kse ?? 0) : stakeholdersWithIkas }} 
-                                                            dari {{ summaryMode === 'KSE' ? (kseStatus?.total_perusahaan ?? 0) : totalStakeholders }}
+                                                </div>
+                                                <div class="ki-bp-items" v-else>
+                                                    <div v-for="(lvl, li) in [
+                                                        { key: 'level1', label: 'Level 1 · Awal', color: '#e6533c' },
+                                                        { key: 'level2', label: 'Level 2 · Berulang', color: '#f5b849' },
+                                                        { key: 'level3', label: 'Level 3 · Terdefinisi', color: '#0ea5e9' },
+                                                        { key: 'level4', label: 'Level 4 · Terkelola', color: '#23b7e5' },
+                                                        { key: 'level5', label: 'Level 5 · Inovatif', color: '#26bf94' }
+                                                    ]" :key="lvl.key" class="ki-bp-row" :style="{ animationDelay: (li * 0.06) + 's' }">
+                                                        <div class="ki-bp-left">
+                                                            <div class="ki-bp-dot" :style="{ background: lvl.color }"></div>
+                                                            <div>
+                                                                <div class="ki-bp-label">{{ lvl.label }}</div>
+                                                                <div class="ki-bp-count">{{ ikasSummaryData.levels[lvl.key]?.count ?? 0 }}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="ki-bp-bar-wrap">
+                                                            <div class="ki-bp-bar">
+                                                                <div class="ki-bp-bar-fill" :style="{ width: (ikasSummaryData.total ? Math.max(3, (ikasSummaryData.levels[lvl.key]?.count / ikasSummaryData.total) * 100) : 0) + '%', background: `linear-gradient(90deg, ${lvl.color}88, ${lvl.color})` }"></div>
+                                                            </div>
+                                                            <span class="ki-bp-pct" :style="{ color: lvl.color }">{{ ikasSummaryData.total ? Math.round((ikasSummaryData.levels[lvl.key]?.count / ikasSummaryData.total) * 100) : 0 }}%</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- IKAS Domain Scores or KSE Insight -->
+                                            <div class="ki-insight-box">
+                                                <template v-if="summaryMode === 'IKAS'">
+                                                    <div class="ki-domain-header">
+                                                        <i class="ri-focus-3-line"></i> Rata-rata Domain IKAS
+                                                    </div>
+                                                    <div class="ki-domain-grid">
+                                                        <div v-for="(dom, di) in [
+                                                            { key: 'identifikasi', label: 'Identifikasi', icon: 'ri-search-eye-line', color: '#3b82f6' },
+                                                            { key: 'proteksi', label: 'Proteksi', icon: 'ri-shield-check-line', color: '#0ea5e9' },
+                                                            { key: 'deteksi', label: 'Deteksi', icon: 'ri-radar-line', color: '#f5b849' },
+                                                            { key: 'tanggulih', label: 'Tanggulih', icon: 'ri-refresh-line', color: '#10b981' }
+                                                        ]" :key="dom.key" class="ki-domain-item">
+                                                            <div class="ki-domain-icon" :style="{ background: dom.color + '15', color: dom.color }">
+                                                                <i :class="dom.icon"></i>
+                                                            </div>
+                                                            <div class="ki-domain-info">
+                                                                <span class="ki-domain-label">{{ dom.label }}</span>
+                                                                <div class="ki-domain-score-bar">
+                                                                    <div class="ki-domain-fill" :style="{ width: Math.min(100, (Number(ikasSummaryData.averages[dom.key]) / 5) * 100) + '%', background: dom.color }"></div>
+                                                                </div>
+                                                            </div>
+                                                            <span class="ki-domain-val" :style="{ color: dom.color }">{{ ikasSummaryData.averages[dom.key] }}</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <template v-else>
+                                                    <div class="ki-insight-content">
+                                                        <div class="ki-insight-icon-wrap">
+                                                            <i class="ri-lightbulb-flash-fill"></i>
+                                                        </div>
+                                                        <h6 class="ki-insight-title">Analisa Strategis</h6>
+                                                        <p class="ki-insight-text">
+                                                            Terdapat <strong>{{ kseData.strategis }}</strong> SE Strategis dari total <strong>{{ kseData.total_se }}</strong> Sistem Elektronik. Fokus pengawasan pada SE Strategis untuk meminimalisir risiko operasional.
                                                         </p>
-                                                    </div>
-                                                </div>
-
-                                                <div class="progress progress-animate mb-3" style="height: 10px; border-radius: 5px; background: rgba(30, 64, 175, 0.08);">
-                                                    <div class="progress-bar bg-primary" role="progressbar" 
-                                                        :style="{ width: (summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate) + '%' }"
-                                                        aria-valuenow="summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate" aria-valuemin="0" aria-valuemax="100"></div>
-                                                </div>
-
-                                                <div class="row g-3">
-                                                    <div class="col-6">
-                                                        <div class="p-3 rounded-3 bg-success-transparent border border-success-transparent">
-                                                            <div class="d-flex align-items-center gap-2 mb-1">
-                                                                 <i class="ri-checkbox-circle-fill text-success fs-14"></i>
-                                                                 <span class="fs-11 fw-bold text-success text-uppercase">Sudah Mengisi</span>
-                                                            </div>
-                                                            <h4 class="fw-bold mb-0 text-dark">{{ summaryMode === 'KSE' ? (kseStatus?.sudah_mengisi_kse ?? 0) : stakeholdersWithIkas }}</h4>
+                                                        <div class="ki-insight-tip">
+                                                            <i class="ri-information-line"></i>
+                                                            <span>SE Strategis membutuhkan audit keamanan berkala</span>
                                                         </div>
                                                     </div>
-                                                    <div class="col-6">
-                                                        <div class="p-3 rounded-3 bg-danger-transparent border border-danger-transparent">
-                                                            <div class="d-flex align-items-center gap-2 mb-1">
-                                                                 <i class="ri-close-circle-fill text-danger fs-14"></i>
-                                                                 <span class="fs-11 fw-bold text-danger text-uppercase">Belum Mengisi</span>
-                                                            </div>
-                                                            <h4 class="fw-bold mb-0 text-dark">
-                                                                {{ summaryMode === 'KSE' ? (kseStatus?.belum_mengisi_kse ?? 0) : Math.max(0, totalStakeholders - stakeholdersWithIkas) }}
-                                                            </h4>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Insight Card (Dynamic KSE/IKAS) -->
-                                    <div class="col-xl-6 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.3s' : '0s' }">
-                                        <div class="card custom-card h-100" style="border-radius: 16px; border: 1px dashed rgba(30, 64, 175, 0.3); background: rgba(30, 64, 175, 0.02);">
-                                            <div class="card-body d-flex flex-column justify-content-center p-4">
-                                                <div class="mb-3">
-                                                    <span class="badge bg-primary-transparent px-3 py-2 rounded-pill fs-11 fw-bold">{{ summaryMode }} INSIGHT</span>
-                                                </div>
-                                                <h6 class="fw-bold text-dark mb-2">{{ summaryMode === 'KSE' ? 'Kategorisasi Sistem Elektronik (KSE)' : 'Indeks Keamanan Siber (IKAS)' }}</h6>
-                                                <p class="text-muted fs-13 mb-3" style="line-height: 1.6;">
-                                                    <template v-if="summaryMode === 'KSE'">
-                                                        KSE membantu dalam memetakan tingkat risiko dan kepentingan strategis dari setiap sistem elektronik yang dikelola oleh stakeholder. Gunakan filter <strong>Kategori SE</strong> untuk melihat rincian spesifik per tingkat (Strategis, Tinggi, atau Rendah).
-                                                    </template>
-                                                    <template v-else>
-                                                        IKAS mengukur tingkat kematangan keamanan siber berdasarkan 4 domain utama: Identifikasi, Proteksi, Deteksi, dan Tanggulih. Skor rata-rata memberikan gambaran kesiapan organisasi menghadapi ancaman siber.
-                                                    </template>
-                                                </p>
-                                                <div class="d-flex align-items-center gap-3">
-                                                    <button class="btn btn-primary-light btn-sm rounded-pill px-3" @click="router.push(summaryMode === 'KSE' ? '/kse' : '/ikas')">
-                                                        Kelola Data {{ summaryMode }} <i class="ri-arrow-right-line ms-1"></i>
-                                                    </button>
-                                                </div>
+                                                </template>
+                                                <button class="ki-export-btn" @click="router.push(summaryMode === 'KSE' ? '/kse' : '/ikas')">
+                                                    <i class="ri-external-link-line"></i> Lihat Detail {{ summaryMode }}
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                                 
                                 <!-- ═══ GEO MAP + DISTRIBUSI SEKTOR TABLE ═══ -->
                                 <div class="row g-3 mt-1 align-items-stretch">
@@ -2125,7 +2389,7 @@
                                                     </div>
                                                 </div>
 
-                                                <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1 animate-show-up" style="animation-delay: 2.2s">
+                                                <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.2s' : '0s' }">
                                                     <!-- CSIRT -->
                                                     <div class="flex-grow-1">
                                                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -2160,7 +2424,7 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="card-body p-0 animate-show-up" style="animation-delay: 2.4s">
+                                            <div class="card-body p-0 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.4s' : '0s' }">
                                                 <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
                                                     <table class="table table-hover mb-0 fs-sektor-table">
                                                         <thead style="position: sticky; top: 0; background-color: var(--custom-white); z-index: 1; box-shadow: 0 1px 0 rgba(0,0,0,0.05);">
@@ -2278,15 +2542,12 @@
                                     </div>
                                 </div>
                             </template>
-                </div>
-            </div>
-        </div>
         
                 <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
                 <SektorAnalytics />
 
                 <!-- RADAR CHARTS -->
-                <div class="animate-show-up" style="animation-delay: 3.6s">
+                <div class="animate-show-up" :style="{ animationDelay: isFirstLoad ? '3.6s' : '0s' }">
                     <RadarChartIkas />
                 </div>
             </template>
@@ -2616,5 +2877,419 @@
         background: #1e40af;
         color: #fff;
         box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
+    }
+
+    /* ── Analytics Styles ── */
+    .btn-ghost {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        transition: all 0.2s ease;
+    }
+    .btn-ghost:hover {
+        background: rgba(0,0,0,0.05);
+        color: #1e40af;
+    }
+    .btn-white {
+        background: #fff;
+        border: 1px solid rgba(0,0,0,0.05);
+        color: #1e40af;
+    }
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .transition-all {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .bg-light {
+        background-color: #f8f9fa !important;
+    }
+    .btn-primary-light {
+        background: rgba(30, 64, 175, 0.1);
+        color: #1e40af;
+        border: none;
+    }
+    .btn-primary-light:hover {
+        background: rgba(30, 64, 175, 0.2);
+        color: #1d4ed8;
+    }
+
+    /* ─── SektorAnalytics Style Clones for KSE/IKAS ─── */
+    .sa-section-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 1.25rem; padding: 1rem 1.5rem; border-radius: 14px;
+        background: linear-gradient(135deg, #0c1e6b 0%, #1130a0 25%, #1a3fc8 50%, #2563eb 75%, #3b82f6 100%);
+        box-shadow: 0 8px 32px rgba(37, 99, 235, 0.22); position: relative; overflow: hidden;
+    }
+    .sa-section-header-inner { display: flex; align-items: center; gap: 14px; }
+    .sa-section-icon {
+        width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+        border-radius: 12px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px);
+    }
+    .sa-section-icon i { font-size: 1.5rem; color: #fff; }
+    .sa-section-title { font-size: 1.15rem; font-weight: 800; color: #fff; margin: 0; line-height: 1.2; }
+    .sa-view-toggles { display: flex; gap: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 3px; }
+    .sa-view-btn {
+        width: 36px; height: 36px; border: none; border-radius: 8px; background: transparent;
+        color: rgba(255, 255, 255, 0.5); display: flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.2s; font-size: 1.1rem;
+    }
+    .sa-view-btn.active { color: #2563eb; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
+    
+    .sa-filter-bar {
+        border-radius: 14px; background: #fff; border: 1px solid #e2e8f0;
+        margin-bottom: 1.25rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); overflow: hidden;
+    }
+    .sa-filter-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .sa-filter-title { font-size: 13px; font-weight: 700; color: #334155; }
+    
+    .sa-stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+    .sa-stat-card {
+        border-radius: 16px; padding: 1.25rem 1.35rem; display: flex; flex-direction: column; gap: 6px;
+        position: relative; overflow: hidden; transition: all 0.25s ease; border: 1px solid transparent;
+    }
+    .sa-stat-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1); }
+    .sa-stat-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .sa-stat-icon-wrap { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+    .sa-stat-icon-wrap i { font-size: 1.3rem; }
+    .sa-stat-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; opacity: 0.8; }
+    .sa-stat-value { font-size: 1.75rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.5px; }
+    .sa-stat-label { font-size: 12.5px; font-weight: 600; opacity: 0.65; }
+    .sa-stat-detail { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; opacity: 0.5; margin-top: 4px; }
+
+    .sa-stat-blue { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-color: #bfdbfe; color: #1e40af; }
+    .sa-stat-blue .sa-stat-icon-wrap { background: rgba(37, 99, 235, 0.15); color: #2563eb; }
+    .sa-stat-blue .sa-stat-badge { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+    
+    .sa-stat-emerald { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-color: #a7f3d0; color: #065f46; }
+    .sa-stat-emerald .sa-stat-icon-wrap { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .sa-stat-emerald .sa-stat-badge { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+
+    .sa-stat-teal { background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%); border-color: #99f6e4; color: #115e59; }
+    .sa-stat-teal .sa-stat-icon-wrap { background: rgba(20, 184, 166, 0.15); color: #14b8a6; }
+    .sa-stat-teal .sa-stat-badge { background: rgba(20, 184, 166, 0.12); color: #14b8a6; }
+
+    .sa-stat-amber { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-color: #fde68a; color: #92400e; }
+    .sa-stat-amber .sa-stat-icon-wrap { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .sa-stat-amber .sa-stat-badge { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+
+    .summary-mode-switcher-alt { display: flex; background: rgba(255, 255, 255, 0.15); padding: 3px; border-radius: 10px; gap: 2px; }
+    .sm-btn {
+        border: none; background: transparent; padding: 4px 12px; border-radius: 7px;
+        font-size: 0.7rem; font-weight: 800; color: rgba(255, 255, 255, 0.7); transition: all 0.2s;
+    }
+    .sm-btn.active { background: #fff; color: #2563eb; }
+
+    .fs-filter-pill-alt { font-size: 11px; font-weight: 700; color: #64748b; background: #fff; border: 1px solid #e2e8f0; }
+    .fs-filter-pill-alt.active { background: #2563eb; color: #fff; border-color: #2563eb; box-shadow: 0 4px 12px rgba(37,99,235,0.2); }
+    .active-filter-card-alt { border: 2px solid #2563eb !important; transform: translateY(-5px); box-shadow: 0 15px 35px rgba(37,99,235,0.15) !important; }
+
+    .sa-chart-card { border-radius: 16px; overflow: hidden; background: #fff; border: 1px solid #e2e8f0; }
+    .sa-chart-header {
+        background: linear-gradient(135deg, #0c1e6b 0%, #1130a0 25%, #1a3fc8 50%, #2563eb 75%, #3b82f6 100%);
+        padding: 0.75rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .sa-chart-header-inner { display: flex; align-items: center; gap: 12px; }
+    .sa-chart-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255, 255, 255, 0.12); }
+    .sa-chart-icon i { font-size: 1.2rem; color: #fff; }
+    .sa-chart-title { font-size: 0.95rem; font-weight: 800; color: #fff; line-height: 1.2; }
+    .sa-chart-sub { font-size: 11px; color: rgba(255, 255, 255, 0.55); margin-top: 2px; }
+    .sa-chart-body { padding: 1.25rem; }
+    
+    .fs-40 { font-size: 40px; }
+    .line-height-1 { line-height: 1; }
+
+    /* ═══════════ KSE/IKAS PREMIUM REDESIGN ═══════════ */
+
+    /* ── Main Header ── */
+    .ki-main-header {
+        display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+        background: #1e40af; border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(30,64,175,0.15);
+    }
+    .ki-header-left { display: flex; align-items: center; gap: 16px; }
+    .ki-header-icon {
+        width: 36px; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.15);
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.2rem;
+    }
+    .ki-header-title { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0; }
+    
+    .ki-segmented-control {
+        display: flex; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 8px; gap: 2px;
+    }
+    .ki-seg-btn {
+        background: transparent; border: none; color: rgba(255,255,255,0.7); font-size: 0.8rem;
+        font-weight: 700; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+    }
+    .ki-seg-btn.active { background: #fff; color: #1e40af; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    
+    .ki-header-right { display: flex; align-items: center; gap: 16px; }
+    .ki-inline-filters { display: flex; gap: 6px; }
+    .ki-filter-pill {
+        background: transparent; border: 1px solid rgba(255,255,255,0.3); color: #fff;
+        font-size: 0.75rem; font-weight: 600; padding: 6px 14px; border-radius: 20px;
+        cursor: pointer; transition: all 0.2s;
+    }
+    .ki-filter-pill:hover { background: rgba(255,255,255,0.1); }
+    .ki-filter-pill.active { background: #fff; color: #1e40af; border-color: transparent; }
+    
+    .ki-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.2); }
+    
+    .ki-view-toggles { display: flex; gap: 4px; }
+    .ki-view-btn {
+        width: 34px; height: 34px; border: none; background: rgba(255,255,255,0.1); color: #fff;
+        border-radius: 8px; display: flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.2s;
+    }
+    .ki-view-btn.active { background: #fff; color: #1e40af; }
+
+    /* ── Metric Card ── */
+    .ki-metric-card {
+        position: relative; border-radius: 16px; overflow: hidden; cursor: pointer;
+        background: #fff; border: 1px solid rgba(0,0,0,0.06);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .ki-metric-card:hover { transform: translateY(-5px); box-shadow: 0 12px 32px rgba(0,0,0,0.1); }
+    .ki-metric-accent { height: 4px; width: 100%; }
+    .ki-metric-watermark {
+        position: absolute; right: -8px; top: -8px; opacity: 0.04;
+        font-size: 5rem; color: var(--ki-accent, #333); pointer-events: none;
+        transform: rotate(-15deg);
+    }
+    .ki-metric-body { padding: 1.1rem 1.25rem; position: relative; z-index: 1; }
+    .ki-metric-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .ki-metric-icon-wrap {
+        width: 42px; height: 42px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+    }
+    .ki-metric-active-badge {
+        font-size: 0.65rem; font-weight: 800; color: #fff; background: #2563eb;
+        padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .ki-metric-value {
+        font-size: 1.75rem; font-weight: 900; color: #1e293b;
+        letter-spacing: -0.5px; line-height: 1; margin-bottom: 6px;
+    }
+    .ki-metric-label {
+        font-size: 0.7rem; font-weight: 700; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .ki-metric-active { border: 2px solid #2563eb !important; transform: translateY(-5px); box-shadow: 0 15px 35px rgba(37,99,235,0.15) !important; }
+    .ki-metric-muted { opacity: 0.4; filter: grayscale(85%); cursor: not-allowed !important; transform: none !important; }
+    .ki-metric-muted * { pointer-events: none; }
+
+    /* ── Hero Banner ── */
+    .ki-hero-banner {
+        position: relative; border-radius: 18px; overflow: hidden;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+        padding: 1.25rem 1.5rem;
+    }
+    .ki-hero-glow {
+        display: none;
+    }
+    .ki-hero-inner {
+        position: relative; z-index: 1;
+        display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;
+    }
+
+    /* ── SVG Ring ── */
+    .ki-ring-wrap {
+        position: relative; width: 110px; height: 110px; flex-shrink: 0;
+    }
+    .ki-ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .ki-ring-progress { transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ki-ring-label {
+        position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+    }
+    .ki-ring-value { font-size: 1.6rem; font-weight: 900; color: #1e293b; line-height: 1; }
+    .ki-ring-sub { font-size: 0.65rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* ── Hero Stats ── */
+    .ki-hero-stats { flex: 1; min-width: 200px; }
+    .ki-hero-title { font-size: 1.15rem; font-weight: 800; color: #1e293b; margin: 0 0 4px; }
+    .ki-hero-desc { font-size: 0.75rem; color: #64748b; margin: 0 0 12px; }
+    .ki-hero-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ki-pill {
+        display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+        border-radius: 12px; font-size: 0.8rem; border: 1px solid transparent;
+    }
+    .ki-pill i { font-size: 1rem; }
+    .ki-pill span { font-weight: 800; font-size: 1.05rem; }
+    .ki-pill small { font-size: 0.65rem; font-weight: 600; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ki-pill-success { background: rgba(16, 185, 129, 0.1); color: #059669; border-color: rgba(16, 185, 129, 0.2); }
+    .ki-pill-danger { background: rgba(239, 68, 68, 0.1); color: #dc2626; border-color: rgba(239, 68, 68, 0.2); }
+    .ki-pill-info { background: rgba(59, 130, 246, 0.1); color: #2563eb; border-color: rgba(59, 130, 246, 0.2); }
+
+    .ki-hero-cta {
+        background: #f8fafc; color: #1e40af; border: 1px solid #e2e8f0;
+        padding: 10px 22px; border-radius: 12px;
+        font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all 0.25s;
+        display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0;
+    }
+    .ki-hero-cta:hover { background: #f1f5f9; border-color: #cbd5e1; transform: translateY(-2px); }
+    .ki-hero-cta i { font-size: 1rem; }
+
+    /* ── Chart Card ── */
+    .ki-chart-card {
+        border-radius: 18px; overflow: hidden; background: #fff;
+        border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+        display: flex; flex-direction: column;
+    }
+    .ki-chart-header {
+        padding: 1rem 1.25rem; display: flex; align-items: center;
+        justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .ki-chart-header-left { display: flex; align-items: center; gap: 12px; }
+    .ki-chart-icon-wrap {
+        width: 40px; height: 40px; border-radius: 12px;
+        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1.1rem; flex-shrink: 0;
+    }
+    .ki-chart-title { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
+    .ki-chart-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 1px; }
+    .ki-chart-controls { display: flex; align-items: center; gap: 8px; }
+    .ki-view-toggle {
+        display: flex; background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 10px; padding: 3px; gap: 2px;
+    }
+    .ki-vt-btn {
+        border: none; background: transparent; padding: 5px 14px; border-radius: 8px;
+        font-size: 0.72rem; font-weight: 700; color: #94a3b8; cursor: pointer;
+        transition: all 0.2s;
+    }
+    .ki-vt-btn.active { background: #1e40af; color: #fff; box-shadow: 0 2px 8px rgba(30,64,175,0.3); }
+    .ki-chart-type-toggle { display: flex; gap: 2px; background: #f1f5f9; border-radius: 10px; padding: 3px; }
+    .ki-ct-btn {
+        width: 32px; height: 32px; border: none; border-radius: 8px; background: transparent;
+        color: #94a3b8; display: flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.2s; font-size: 0.9rem;
+    }
+    .ki-ct-btn.active { background: #fff; color: #1e40af; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .ki-chart-body { padding: 1.25rem; }
+
+    /* ── Side Panel ── */
+    .ki-side-panel {
+        display: flex; flex-direction: column; gap: 1rem;
+    }
+
+    /* ── Breakdown Card ── */
+    .ki-breakdown {
+        border-radius: 18px; background: #fff; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.04); padding: 1.25rem; flex: 1;
+    }
+    .ki-bp-header { margin-bottom: 1rem; }
+    .ki-bp-badge {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem;
+        font-weight: 800; color: #1e40af; background: rgba(30,64,175,0.08);
+        padding: 5px 12px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .ki-bp-badge i { font-size: 0.9rem; }
+    .ki-bp-items { display: flex; flex-direction: column; gap: 10px; }
+    .ki-bp-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 8px 10px; border-radius: 12px; transition: all 0.2s;
+        animation: kiBpSlide 0.4s ease-out both;
+    }
+    .ki-bp-row:hover { background: #f8fafc; }
+    @keyframes kiBpSlide { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    .ki-bp-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .ki-bp-icon {
+        width: 34px; height: 34px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; flex-shrink: 0;
+    }
+    .ki-bp-dot { width: 10px; height: 10px; border-radius: 4px; flex-shrink: 0; }
+    .ki-bp-label { font-size: 0.78rem; font-weight: 700; color: #334155; white-space: nowrap; }
+    .ki-bp-count { font-size: 0.72rem; font-weight: 600; color: #94a3b8; }
+    .ki-bp-count span { font-weight: 500; }
+    .ki-bp-bar-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 80px; }
+    .ki-bp-bar { flex: 1; height: 6px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
+    .ki-bp-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ki-bp-pct { font-size: 0.72rem; font-weight: 800; min-width: 32px; text-align: right; }
+
+    /* ── Insight Box ── */
+    .ki-insight-box {
+        border-radius: 18px; overflow: hidden;
+        background: linear-gradient(145deg, #f8faff 0%, #fff 100%);
+        border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+        padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;
+    }
+    .ki-domain-header {
+        font-size: 0.78rem; font-weight: 800; color: #334155; display: flex;
+        align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .ki-domain-header i { font-size: 1rem; color: #3b82f6; }
+    .ki-domain-grid { display: flex; flex-direction: column; gap: 10px; }
+    .ki-domain-item {
+        display: flex; align-items: center; gap: 10px; padding: 8px;
+        border-radius: 12px; background: #fff; border: 1px solid #f1f5f9;
+        transition: all 0.2s;
+    }
+    .ki-domain-item:hover { border-color: #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .ki-domain-icon {
+        width: 32px; height: 32px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.9rem; flex-shrink: 0;
+    }
+    .ki-domain-info { flex: 1; min-width: 0; }
+    .ki-domain-label { font-size: 0.72rem; font-weight: 600; color: #64748b; margin-bottom: 4px; }
+    .ki-domain-score-bar { height: 5px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
+    .ki-domain-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ki-domain-val { font-size: 0.95rem; font-weight: 900; flex-shrink: 0; }
+
+    /* ── KSE Insight ── */
+    .ki-insight-content { text-align: center; padding: 0.5rem 0; }
+    .ki-insight-icon-wrap {
+        width: 48px; height: 48px; border-radius: 14px; margin: 0 auto 12px;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(251, 191, 36, 0.1));
+        display: flex; align-items: center; justify-content: center;
+    }
+    .ki-insight-icon-wrap i { font-size: 1.4rem; color: #f59e0b; }
+    .ki-insight-title { font-size: 0.85rem; font-weight: 800; color: #1e293b; margin: 0 0 8px; }
+    .ki-insight-text { font-size: 0.75rem; color: #64748b; line-height: 1.6; margin: 0 0 12px; }
+    .ki-insight-tip {
+        display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+        border-radius: 10px; background: rgba(30,64,175,0.06); border: 1px solid rgba(30,64,175,0.08);
+    }
+    .ki-insight-tip i { font-size: 0.9rem; color: #3b82f6; flex-shrink: 0; }
+    .ki-insight-tip span { font-size: 0.7rem; font-weight: 600; color: #3b82f6; }
+
+    /* ── Export Button ── */
+    .ki-export-btn {
+        width: 100%; padding: 10px; border-radius: 12px; border: 1.5px solid #e2e8f0;
+        background: #fff; color: #334155; font-size: 0.78rem; font-weight: 700;
+        cursor: pointer; transition: all 0.25s; display: flex; align-items: center;
+        justify-content: center; gap: 6px;
+    }
+    .ki-export-btn:hover { border-color: #3b82f6; color: #1e40af; background: rgba(30,64,175,0.04); }
+    .ki-export-btn i { font-size: 0.9rem; }
+
+    /* ── Responsive ── */
+    @media (max-width: 1199px) {
+        .ki-hero-inner { gap: 1.25rem; }
+        .ki-ring-wrap { width: 90px; height: 90px; }
+        .ki-ring-value { font-size: 1.3rem; }
+    }
+    @media (max-width: 767px) {
+        .ki-hero-banner { padding: 1.25rem; }
+        .ki-hero-inner { flex-direction: column; align-items: flex-start; }
+        .ki-ring-wrap { width: 80px; height: 80px; }
+        .ki-hero-cta { width: 100%; justify-content: center; }
+        .ki-chart-header { flex-direction: column; align-items: flex-start; }
+        .ki-chart-controls { width: 100%; justify-content: space-between; }
     }
     </style>

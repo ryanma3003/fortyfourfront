@@ -5,6 +5,7 @@ import type {
     LmsFilePendukung,
     LmsKuis, CreateKuisPayload, UpdateKuisPayload,
     LmsSoal, CreateSoalPayload, UpdateSoalPayload,
+    LmsDiskusi
 } from '@/types/lms.types';
 
 /**
@@ -32,6 +33,20 @@ export const lmsService = {
     },
 
     /**
+     * Get kelas detail with materi + kuis in parallel (optimized)
+     */
+    async getKelasDetail(id: string | number): Promise<{ materi: LmsMateri[], kuis: LmsKuis[] }> {
+        const [kelasRes, kuisRes] = await Promise.all([
+            api.get<any>(`/api/kelas/${id}`),
+            api.get<any>(`/api/kelas/${id}/kuis`).catch(() => [])
+        ]);
+        const kelasData = kelasRes?.data ?? kelasRes;
+        const materi = kelasData?.materi ? unwrapDataArray(kelasData.materi).map(normalizeMateri) : [];
+        const kuis = unwrapDataArray(kuisRes?.data ?? kuisRes).map(normalizeKuis);
+        return { materi, kuis };
+    },
+
+    /**
      * Create a new kelas (POST /api/kelas)
      */
     async createKelas(payload: CreateKelasPayload): Promise<LmsKelas> {
@@ -39,20 +54,23 @@ export const lmsService = {
             judul: payload.nama_kelas,
             nama_kelas: payload.nama_kelas,
             deskripsi: payload.deskripsi,
+            thumbnail: payload.thumbnail,
             status: payload.status,
         };
-        console.log('[LMS] POST /api/kelas payload:', JSON.stringify(body));
         const response = await api.post<any>('/api/kelas', body);
         return normalizeKelas(response?.data ?? response);
     },
 
     /**
-     * Update kelas (PUT /api/kelas/{id})
+     * Update an existing kelas (PUT /api/kelas/{id})
      */
     async updateKelas(id: string | number, payload: UpdateKelasPayload): Promise<LmsKelas> {
         const body = {
-            ...payload,
             judul: payload.nama_kelas,
+            nama_kelas: payload.nama_kelas,
+            deskripsi: payload.deskripsi,
+            thumbnail: payload.thumbnail,
+            status: payload.status,
         };
         const response = await api.put<any>(`/api/kelas/${id}`, body);
         return normalizeKelas(response?.data ?? response);
@@ -118,7 +136,7 @@ export const lmsService = {
             konten: payload.konten || '',
             konten_html: payload.konten_html || '',
             youtube_id: youtubeId,
-            ...(payload as any).urutan ? { urutan: (payload as any).urutan } : {}
+            urutan: (payload as any).urutan || 1
         };
         const res = await api.post(`/api/kelas/${kelasId}/materi`, requestPayload);
         return normalizeMateri(res?.data ?? res);
@@ -145,7 +163,7 @@ export const lmsService = {
             konten: payload.konten || '',
             konten_html: payload.konten_html || '',
             youtube_id: youtubeId,
-            ...(payload as any).urutan ? { urutan: (payload as any).urutan } : {}
+            ...((payload as any).urutan ? { urutan: (payload as any).urutan } : {})
         };
         const res = await api.put(`/api/materi/${id}`, requestPayload);
         return normalizeMateri(res?.data ?? res);
@@ -166,6 +184,7 @@ export const lmsService = {
     async uploadFilePendukung(materiId: string | number, file: File): Promise<LmsFilePendukung> {
         const form = new FormData();
         form.append('file', file);
+        form.append('file_pendukung', file);
         const res = await api.post<any>(`/api/materi/${materiId}/file-pendukung`, form);
         return normalizeFilePendukung(res?.data ?? res);
     },
@@ -213,11 +232,14 @@ export const lmsService = {
      */
     async createKuis(kelasId: string | number, payload: CreateKuisPayload): Promise<LmsKuis> {
         const body = {
-            ...payload,
+            judul: payload.judul,
+            deskripsi: payload.deskripsi || '',
             is_final: payload.tipe_kuis === 'final',
             id_materi: payload.tipe_kuis === 'final' ? null : (payload.id_materi || null),
-            urutan: payload.tipe_kuis === 'final' ? 99 : (payload as any).urutan || 1,
-            durasi_menit: payload.durasi || 30
+            urutan: (payload as any).urutan || (payload.tipe_kuis === 'final' ? 99 : 1),
+            durasi_menit: payload.durasi || (payload as any).durasi_menit || 30,
+            max_attempt: (payload as any).max_attempt || 3,
+            passing_grade: (payload as any).passing_grade ?? 70,
         };
         return api.post<LmsKuis>(`/api/kelas/${kelasId}/kuis`, body);
     },
@@ -227,11 +249,14 @@ export const lmsService = {
      */
     async updateKuis(id: string | number, payload: UpdateKuisPayload): Promise<LmsKuis> {
         const body = {
-            ...payload,
+            judul: payload.judul,
+            deskripsi: payload.deskripsi || '',
             is_final: payload.tipe_kuis === 'final',
             id_materi: payload.tipe_kuis === 'final' ? null : (payload.id_materi || null),
-            urutan: payload.tipe_kuis === 'final' ? 99 : (payload as any).urutan || 1,
-            durasi_menit: payload.durasi || 30
+            urutan: (payload as any).urutan || (payload.tipe_kuis === 'final' ? 99 : 1),
+            durasi_menit: payload.durasi || (payload as any).durasi_menit || 30,
+            max_attempt: (payload as any).max_attempt || 3,
+            passing_grade: (payload as any).passing_grade ?? 70,
         };
         return api.put<LmsKuis>(`/api/kuis/${id}`, body);
     },
@@ -304,6 +329,16 @@ export const lmsService = {
     async deleteSoal(id: string | number): Promise<void> {
         return api.delete(`/api/soal/${id}`);
     },
+
+    // ─── Diskusi ─────────────────────────────────────────────────
+    async getDiskusiByMateri(materiId: string | number): Promise<LmsDiskusi[]> {
+        const response = await api.get<any>(`/api/materi/${materiId}/diskusi`);
+        return unwrapDataArray(response).map(normalizeDiskusi);
+    },
+
+    async deleteDiskusi(id: string | number): Promise<void> {
+        return api.delete(`/api/diskusi/${id}`);
+    },
 };
 
 function unwrapDataArray(response: any): any[] {
@@ -334,6 +369,7 @@ function normalizeKelas(item: any): LmsKelas {
         id: item?.id ?? item?.kelas_id ?? '',
         nama_kelas: String(item?.nama_kelas ?? item?.judul ?? item?.nama ?? '').trim(),
         deskripsi: String(item?.deskripsi ?? item?.description ?? ''),
+        thumbnail: item?.thumbnail ?? item?.thumnail ?? '',
         status: String(item?.status ?? 'draft'),
     };
 }
@@ -346,9 +382,10 @@ function normalizeMateri(item: any): LmsMateri {
         judul: String(item?.judul ?? item?.nama_materi ?? 'Tanpa Judul').trim(),
         kategori: String(item?.kategori ?? 'Lainnya'),
         deskripsi: String(item?.deskripsi ?? item?.deskripsi_singkat ?? ''),
-        tipe: String(item?.tipe ?? 'teks') as any,
+        tipe: String(item?.tipe ?? item?.type ?? 'teks') as any,
         konten: String(item?.konten ?? item?.konten_html ?? ''),
-        url_video: String(item?.url_video ?? ''),
+        url_video: String(item?.url_video ?? item?.youtube_id ?? item?.id_youtube ?? item?.video_url ?? item?.video ?? item?.link_video ?? (item?.tipe === 'video' ? item?.konten : '') ?? item?.url ?? item?.path ?? item?.video_path ?? item?.materi_url ?? ''),
+        urutan: Number(item?.urutan ?? 0),
         file_pendukung: item?.file_pendukung ? unwrapDataArray(item.file_pendukung).map(normalizeFilePendukung) : []
     };
 }
@@ -374,6 +411,9 @@ function normalizeKuis(item: any): LmsKuis {
         judul: String(item?.judul ?? item?.nama_kuis ?? item?.nama ?? 'Kuis Tanpa Judul').trim(),
         deskripsi: String(item?.deskripsi ?? ''),
         tipe_kuis: String(item?.tipe_kuis ?? item?.tipe ?? (isFinal ? 'final' : 'per_materi')),
+        durasi_menit: Number(item?.durasi_menit ?? item?.durasi ?? 0),
+        max_attempt: Number(item?.max_attempt ?? item?.attempts ?? 0),
+        passing_grade: Number(item?.passing_grade ?? item?.passing_score ?? 0),
     };
 }
 
@@ -426,5 +466,17 @@ function normalizeSoal(item: any): LmsSoal {
         tipe: String(item?.tipe ?? 'pilihan_ganda') as any,
         jawaban_benar: jawabanBenar,
         opsi: mappedOpsi,
+    };
+}
+
+function normalizeDiskusi(item: any): LmsDiskusi {
+    return {
+        ...item,
+        id: item?.id ?? '',
+        id_materi: item?.id_materi ?? item?.materi_id ?? '',
+        id_user: item?.id_user ?? item?.user_id ?? '',
+        user_name: item?.user?.name ?? item?.user_name ?? 'User',
+        komentar: String(item?.komentar ?? item?.comment ?? item?.teks ?? ''),
+        created_at: item?.created_at ?? '',
     };
 }

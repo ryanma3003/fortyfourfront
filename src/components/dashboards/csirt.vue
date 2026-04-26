@@ -23,6 +23,7 @@ export default {
         const csirtStore = useCsirtStore();
         const router = useRouter();
         const isAdmin = computed(() => authStore.isAdmin);
+        const isFullAdmin = computed(() => authStore.isFullAdmin);
 
         // For user role: check if the logged-in user owns this CSIRT (same id_perusahaan)
         const isOwner = computed(() => {
@@ -35,6 +36,7 @@ export default {
 
         // Allow CRUD for admin or owner
         const canEdit = computed(() => isAdmin.value || isOwner.value);
+        const canDelete = computed(() => isFullAdmin.value || isOwner.value);
 
         // For CSIRT Creation: target stakeholder
         const newStakeholderSlug = computed(() => String(route.query.stakeholder || ''));
@@ -718,9 +720,10 @@ export default {
 
         return {
 
-            isAdmin,
+            isAdmin, isFullAdmin,
             isOwner,
             canEdit,
+            canDelete,
             canCreateCsirt,
             csirtStore,
             newStakeholder,
@@ -969,7 +972,7 @@ export default {
 
 <div class="row">
     <div class="col-xl-12">
-        <div class="card custom-card gradient-header-card">
+        <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">   
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header">
                 <div class="d-flex align-items-center gap-3 header-inner">
                     <div class="header-icon-box">
@@ -1206,7 +1209,7 @@ export default {
                                         <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
                                             <i class="ri-edit-2-line"></i>
                                         </button>
-                                        <button @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <button v-if="canDelete" @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
                                             <i class="ri-delete-bin-3-line"></i>
                                         </button>
                                     </div>
@@ -1345,7 +1348,7 @@ export default {
                                         <button v-if="canEdit" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
                                             <i class="ri-edit-2-line"></i>
                                         </button>
-                                        <button v-if="canEdit" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <button v-if="canDelete" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
                                             <i class="ri-delete-bin-3-line"></i>
                                         </button>
                                         <button @click="exportPdfSe(row)" class="btn btn-sm btn-icon btn-wave btn-secondary-light" title="Export PDF SE">

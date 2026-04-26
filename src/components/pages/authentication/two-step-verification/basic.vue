@@ -33,11 +33,10 @@ const loading = ref(false);
 const error = ref('');
 
 // =====================
-// REDIRECT HELPER
+// REDIRECT HELPER (isAdmin covers both admin & staff)
 // =====================
 const redirectByRole = () => {
-  const role = authStore.userRole;
-  return role === 'admin' ? '/dashboard' : '/dashboards';
+  return authStore.isAdmin ? '/dashboard' : '/dashboards';
 };
 
 // =====================

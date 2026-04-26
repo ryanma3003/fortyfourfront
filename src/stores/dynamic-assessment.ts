@@ -445,15 +445,13 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 questionId,
                 index,
                 updatedAt: Date.now(),
+                backendSyncedAt: undefined, // Clear this so it is marked as pending
                 backendSyncError: null,
                 evidence: meta?.evidence ?? existing.evidence,
                 validasi: meta?.validasi ?? existing.validasi,
             };
 
-            const synced = await this.syncAnswerToBackend(this.currentStakeholderSlug, questionId, index);
-            if (synced) {
-                this.syncToIkas(this.currentStakeholderSlug);
-            }
+            this.syncToIkas(this.currentStakeholderSlug);
         },
 
         async syncAnswerToBackend(stakeholderSlug: string, questionId: string, index: number): Promise<boolean> {
@@ -563,6 +561,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 } else {
                     response = await ikasService.createJawabanGulih(payload);
                 }
+                
                 // Debug logs: show request payload and server response for easier tracing
                 try {
                     console.log('[DynamicAssessment] syncAnswerToBackend payload:', payload);
@@ -601,8 +600,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     return;
                 }
                 const results = await Promise.all([
-                    // Request identifikasi without ikas_id filter as requested
-                    ikasService.getJawabanIdentifikasi().catch(() => []),
+                    ikasService.getJawabanIdentifikasi(activeIkasId).catch(() => []),
                     ikasService.getJawabanProteksi(activeIkasId).catch(() => []),
                     ikasService.getJawabanDeteksi(activeIkasId).catch(() => []),
                     ikasService.getJawabanGulih(activeIkasId).catch(() => []),
@@ -687,7 +685,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         async syncPendingAnswersToBackend(stakeholderSlug: string): Promise<{ success: boolean; errors: string[] }> {
             const answers = this.answersMap[stakeholderSlug] || {};
             const pendingAnswers = Object.values(answers).filter((answer) =>
-                !answer.backendSyncedAt || !!answer.backendSyncError
+                !answer.backendSyncedAt || !!answer.backendSyncError || (answer.updatedAt && answer.updatedAt > answer.backendSyncedAt)
             );
 
             const errors: string[] = [];

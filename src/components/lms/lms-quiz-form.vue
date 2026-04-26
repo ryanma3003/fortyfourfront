@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import LmsEditor from "./LmsEditor.vue";
 import { useLmsStore } from "../../stores/lms";
+import { lmsService } from "../../services/lms.service";
 import type { LmsSoal, LmsSoalOpsi } from "../../types/lms.types";
 import { useRouter, useRoute } from "vue-router";
 
@@ -18,7 +19,7 @@ export default {
     const kelasId = computed(() => (route.query.kelasId as string) || history.state?.kelasId || '');
 
     const dataToPass = computed(() => ({
-      title: { label: "Daftar Kuis", path: `/lms/quiz?kelasId=${kelasId.value}` },
+      title: { label: "Daftar Kelas", path: `/lms/kelas` },
       currentpage: pageTitle.value,
       activepage: pageTitle.value,
     }));
@@ -26,12 +27,17 @@ export default {
     const selectedKelas = ref<string | number>("");
     const selectedMateri = ref<string | number | null>(null);
     const availableMateri = ref<any[]>([]);
+    const currentKelasKuisList = ref<any[]>([]);
     const judul = ref("");
     const deskripsi = ref("");
     const tipeKuis = ref<string>("per_materi");
+    const durasiMenit = ref<number>(30);
+    const maxAttempt = ref<number>(3);
+    const passingGrade = ref<number>(70);
     const soalList = ref<any[]>([]);
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
+    const currentUrutan = ref<number | null>(null);
 
     // Toast
     const showToast = ref(false);
@@ -65,12 +71,23 @@ export default {
 
     const fetchMateriForKelas = async (kid: string) => {
       try {
-        await lmsStore.fetchMateri(kid);
-        availableMateri.value = lmsStore.materiList;
+        // Use cached kelas detail if available
+        const { materi, kuis } = await lmsStore.fetchKelasDetail(kid);
+        availableMateri.value = materi;
+        currentKelasKuisList.value = kuis;
       } catch (e: any) {
         console.error("Failed to fetch materi for kelas");
       }
     };
+
+    const getKuisCountForMateri = (materiId: string | number) => {
+      return currentKelasKuisList.value.filter(k => String(k.id_materi) === String(materiId)).length;
+    };
+
+    const hasFinalKuis = computed(() => {
+      const kuisId = route.params.id as string;
+      return currentKelasKuisList.value.some(k => k.tipe_kuis === 'final' && String(k.id) !== String(kuisId));
+    });
 
     const onKelasChange = async () => {
       selectedMateri.value = null; // reset
@@ -82,20 +99,35 @@ export default {
     };
 
     onMounted(async () => {
+      // Use ensureKelas — skips API if already loaded
       try {
-        await lmsStore.fetchKelas();
+        await lmsStore.ensureKelas();
       } catch (e: any) {
         console.error("Failed to load kelas:", e.message);
       }
 
       if (kelasId.value) {
         selectedKelas.value = kelasId.value;
+        // Use fetchKelasDetail (cached) instead of separate fetchMateri
         await fetchMateriForKelas(kelasId.value as string);
       }
 
       if (isEdit.value) {
         const kuisId = route.params.id as string;
-        const kuis = lmsStore.getKuisById(kuisId);
+
+        // Try store/cache first
+        let kuis = lmsStore.getKuisById(kuisId);
+
+        // If not found and kelasId available, fetch detail to populate cache
+        if (!kuis && kelasId.value) {
+          try {
+            await lmsStore.fetchKelasDetail(kelasId.value);
+            kuis = lmsStore.getKuisById(kuisId);
+          } catch (e) {
+            console.warn('Failed to fetch kelas detail for kuis lookup');
+          }
+        }
+
         if (kuis) {
           selectedKelas.value = kuis.id_kelas || selectedKelas.value;
           if (selectedKelas.value) {
@@ -105,8 +137,12 @@ export default {
           deskripsi.value = kuis.deskripsi;
           tipeKuis.value = kuis.tipe_kuis || 'per_materi';
           selectedMateri.value = kuis.id_materi || null;
+          durasiMenit.value = kuis.durasi_menit || kuis.durasi || 30;
+          maxAttempt.value = kuis.max_attempt || 3;
+          passingGrade.value = kuis.passing_grade ?? 70;
+          currentUrutan.value = kuis.urutan || null;
 
-          // Fetch soal from API
+          // Fetch soal — uses soal cache if available
           try {
             await lmsStore.fetchSoal(kuisId);
             soalList.value = JSON.parse(JSON.stringify(lmsStore.soalList));
@@ -116,7 +152,7 @@ export default {
           }
         } else {
           showNotification("Kuis tidak ditemukan", "error");
-          router.push("/lms/quiz");
+          router.push("/lms/kelas");
         }
       }
     });
@@ -148,9 +184,23 @@ export default {
       formErrors.value = {};
       if (!selectedKelas.value) formErrors.value.selectedKelas = "Kelas wajib dipilih";
       if (!judul.value.trim()) formErrors.value.judul = "Judul kuis wajib diisi";
-      if (tipeKuis.value === 'per_materi' && !selectedMateri.value) {
-        formErrors.value.selectedMateri = "Materi wajib dipilih untuk kuis per materi";
+      
+      if (tipeKuis.value === 'per_materi') {
+        if (!selectedMateri.value) {
+          formErrors.value.selectedMateri = "Materi wajib dipilih untuk kuis per materi";
+        }
+      } else if (tipeKuis.value === 'final') {
+        // Enforce only 1 final quiz per class
+        const kid = String(selectedKelas.value);
+        const cached = lmsStore.kelasCache[kid];
+        if (cached && cached.kuis) {
+          const existingFinal = cached.kuis.find(k => k.tipe_kuis === 'final' && String(k.id) !== String(route.params.id));
+          if (existingFinal) {
+            formErrors.value.tipeKuis = `Kelas ini sudah memiliki kuis Final ("${existingFinal.judul}"). Hanya diperbolehkan 1 kuis Final per kelas.`;
+          }
+        }
       }
+
       if (soalList.value.length === 0)
         formErrors.value.soal = "Minimal harus ada 1 soal";
 
@@ -179,12 +229,19 @@ export default {
       try {
         const kuisId = route.params.id as string;
         
-        const kuisPayload = {
+        const kuisPayload: any = {
           judul: judul.value,
           deskripsi: deskripsi.value,
           tipe_kuis: tipeKuis.value,
           id_materi: tipeKuis.value === 'per_materi' ? selectedMateri.value : null,
+          durasi: durasiMenit.value,
+          max_attempt: maxAttempt.value,
+          passing_grade: passingGrade.value,
         };
+        
+        if (currentUrutan.value !== null) {
+          kuisPayload.urutan = currentUrutan.value;
+        }
 
         if (isEdit.value) {
           // Update kuis data
@@ -217,6 +274,18 @@ export default {
             return;
           }
 
+          // Calculate next urutan to prevent duplicate error
+          try {
+            const existingKuis = await lmsService.getKuisByKelas(String(kid));
+            const maxUrutan = Array.isArray(existingKuis) && existingKuis.length > 0
+              ? existingKuis.reduce((max: number, k: any) => Math.max(max, k.urutan || 0), 0)
+              : 0;
+            (kuisPayload as any).urutan = maxUrutan + 1;
+          } catch (e) {
+            console.warn("Failed to calculate kuis urutan, using timestamp fallback");
+            (kuisPayload as any).urutan = Date.now() % 10000;
+          }
+
           // Create kuis
           const newKuis = await lmsStore.createKuis(kid, kuisPayload);
 
@@ -237,7 +306,7 @@ export default {
           showNotification("Kuis berhasil ditambahkan!", "success");
         }
 
-        setTimeout(() => router.push({ path: "/lms/quiz", state: { kelasId: selectedKelas.value } }), 600);
+        setTimeout(() => router.push("/lms/kelas"), 600);
       } catch (e: any) {
         showNotification(e.message || "Gagal menyimpan kuis", "error");
       } finally {
@@ -245,7 +314,7 @@ export default {
       }
     };
 
-    const goBack = () => router.push({ path: "/lms/quiz", state: { kelasId: selectedKelas.value || kelasId.value } });
+    const goBack = () => router.push("/lms/kelas");
 
     // Expand/collapse for questions
     const expandedQuestions = ref<Set<number>>(new Set());
@@ -270,6 +339,9 @@ export default {
       judul,
       deskripsi,
       tipeKuis,
+      durasiMenit,
+      maxAttempt,
+      passingGrade,
       soalList,
       formErrors,
       handleSubmit,
@@ -284,10 +356,11 @@ export default {
       toggleQuestion,
       isExpanded,
       expandedQuestions,
+      getKuisCountForMateri,
+      hasFinalKuis
     };
   },
-};
-</script>
+};</script>
 
 <template>
   <Pageheader :propData="dataToPass" />
@@ -375,7 +448,8 @@ export default {
                     >
                       <option :value="null" disabled>-- {{ selectedKelas ? 'Silakan Pilih Materi' : 'Pilih Kelas Terlebih Dahulu' }} --</option>
                       <option v-for="m in availableMateri" :key="m.id" :value="m.id">
-                        📄 {{ m.judul }}
+                        {{ getKuisCountForMateri(m.id) > 0 ? '✅' : '📄' }} {{ m.judul }} 
+                        ({{ getKuisCountForMateri(m.id) }} Kuis)
                       </option>
                     </select>
                     <div v-if="formErrors.selectedMateri" class="invalid-feedback d-block fw-medium mt-2">
@@ -399,22 +473,65 @@ export default {
               </div>
 
               <!-- Tipe Kuis -->
-              <div class="col-md-3">
+              <div class="col-md-4">
                 <label class="form-label fw-semibold">Tipe Kuis</label>
-                <select v-model="tipeKuis" class="form-select kse-modal-input">
+                <select v-model="tipeKuis" class="form-select kse-modal-input" :class="{'is-invalid': formErrors.tipeKuis}">
                   <option value="per_materi">Per Materi</option>
-                  <option value="final">Final</option>
+                  <option value="final" :disabled="hasFinalKuis">
+                    Final Kelas {{ hasFinalKuis ? '(Sudah Ada)' : '' }}
+                  </option>
                 </select>
+                <div v-if="hasFinalKuis" class="text-muted fs-11 mt-1">
+                  <i class="ri-information-line me-1"></i> Kuis Final sudah ada untuk kelas ini.
+                </div>
+                <div class="invalid-feedback">{{ formErrors.tipeKuis }}</div>
               </div>
 
               <!-- Deskripsi -->
-              <div class="col-md-5">
+              <div class="col-md-4">
                 <label class="form-label fw-semibold">Deskripsi</label>
                 <input
                   v-model="deskripsi"
                   type="text"
                   class="form-control kse-modal-input"
                   placeholder="Deskripsi singkat kuis..."
+                />
+              </div>
+
+              <!-- Durasi -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Durasi (Menit) <span class="text-danger">*</span></label>
+                <input
+                  v-model.number="durasiMenit"
+                  type="number"
+                  min="1"
+                  class="form-control kse-modal-input"
+                  placeholder="30"
+                />
+              </div>
+
+              <!-- Max Attempt -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Maks. Percobaan</label>
+                <input
+                  v-model.number="maxAttempt"
+                  type="number"
+                  min="1"
+                  class="form-control kse-modal-input"
+                  placeholder="3"
+                />
+              </div>
+
+              <!-- Passing Grade -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Passing Grade (%)</label>
+                <input
+                  v-model.number="passingGrade"
+                  type="number"
+                  min="0"
+                  max="100"
+                  class="form-control kse-modal-input"
+                  placeholder="70"
                 />
               </div>
 
@@ -544,115 +661,5 @@ export default {
       </div>
     </div>
   </div>
+
 </template>
-
-<style scoped>
-.question-card {
-  border: 1.5px solid #e2e8f0;
-  border-radius: 14px;
-  overflow: hidden;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.question-card:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.08);
-}
-
-.question-header {
-  padding: 14px 18px;
-  background: #f8fafc;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.2s;
-}
-.question-header:hover {
-  background: #eef3fb;
-}
-
-.question-number {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  color: #fff;
-  font-weight: 800;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
-}
-
-.question-preview {
-  font-size: 13px;
-  color: #475569;
-  max-height: 22px;
-  overflow: hidden;
-  line-height: 1.4;
-}
-.question-preview :deep(p) {
-  margin: 0;
-}
-
-.question-body {
-  padding: 18px;
-  border-top: 1px solid #e2e8f0;
-  background: #fff;
-}
-
-.option-label {
-  font-weight: 700;
-  font-size: 14px;
-  width: 42px;
-  justify-content: center;
-  border-radius: 10px 0 0 10px !important;
-  border-color: #dde5f4 !important;
-  background: #f1f5f9;
-  color: #475569;
-  transition: all 0.2s;
-}
-.option-correct {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-  color: #fff !important;
-  border-color: #10b981 !important;
-}
-
-.answer-btn {
-  width: 38px;
-  height: 34px;
-  border-radius: 10px !important;
-  font-weight: 700;
-  font-size: 13px;
-}
-
-.transition-icon {
-  transition: transform 0.25s ease;
-}
-.rotate-180 {
-  transform: rotate(180deg);
-}
-
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.25s ease;
-  max-height: 2000px;
-  overflow: hidden;
-}
-.slide-down-enter-from,
-.slide-down-leave-to {
-  max-height: 0;
-  opacity: 0;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-/* Editor styling is inside LmsEditor.vue */
-
-.alert-info-transparent {
-  background: rgba(6, 182, 212, 0.08);
-  border: 1px solid rgba(6, 182, 212, 0.2);
-  color: #0e7490;
-  border-radius: 10px;
-}
-</style>

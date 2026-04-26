@@ -239,9 +239,9 @@ export default {
           <div class="d-flex gap-2 align-items-center flex-wrap header-inner">
             <div class="search-container position-relative">
               <i class="ri-search-line" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#999;pointer-events:none;z-index:10;font-size:15px;"></i>
-              <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input"
+              <input v-model="searchQuery" type="text" class="form-control form-control-sm lms-search-input"
                 placeholder="Cari materi..." />
-              <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
+              <button v-if="searchQuery" @click="clearSearch" class="lms-clear-btn">
                 <i class="ri-close-circle-fill"></i>
               </button>
             </div>
