@@ -10,7 +10,6 @@ import { jabatanService } from "../../services/jabatan.service";
 import type { Jabatan } from "../../types/jabatan.types";
 import { formatImageUrl } from "../../utils/media";
 import type { User } from "../../types/user.types";
-import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -72,7 +71,6 @@ const bannerInput = ref<HTMLInputElement | null>(null);
 const fotoInput = ref<HTMLInputElement | null>(null);
 const bannerContainer = ref<HTMLElement | null>(null);
 const fotoContainer = ref<HTMLElement | null>(null);
-const dragState = ref({ type: '' as 'banner' | 'foto' | '', startX: 0, startY: 0, initialX: 0, initialY: 0 });
 
 const formatJoinedDate = (dateString: string | undefined): string => {
   if (!dateString) return "Tidak diketahui";
@@ -95,47 +93,101 @@ const getUserStatusText = (status?: any) => {
 };
 
 const loadUser = async () => {
+  const slugVal = (route.params.slug || '') as string;
+  const isNumericId = /^\d+$/.test(slugVal);
+  const isMe = authStore.currentUser?.username === slugVal || authStore.currentUser?.id?.toString() === slugVal || (!slugVal && authStore.currentUser);
+
+  // 1. Optimization: If viewing own profile, load from store immediately
+  if (isMe && authStore.currentUser) {
+    const u = authStore.currentUser;
+    isCurrentUser.value = true;
+    
+    // Ensure profileStore has data
+    if (!profileStore.fotoProfileUrl || profileStore.fotoProfileUrl.includes('/faces/9.jpg')) {
+      profileStore.fetchFromApi();
+    }
+
+    user.value = {
+      id: u.id?.toString() || "",
+      slug: u.slug || u.username || "",
+      username: u.username || "",
+      display_name: u.display_name || "",
+      name: u.name || u.username || "Unknown",
+      email: u.email || "",
+      jabatan: u.jabatan || "",
+      role: u.role || "user",
+      status: 'Aktif',
+      phone: u.phone || "",
+      location: u.location || "",
+      joined: u.createdAt || "",
+      photo: profileStore.fotoProfileUrl || formatImageUrl(u.foto_profile),
+      banner: profileStore.bannerUrl || formatImageUrl(u.banner),
+      id_jabatan: u.id_jabatan || ""
+    } as any;
+    
+    formData.value = {  
+      id: user.value.id, 
+      username: user.value.username, 
+      display_name: profileStore.display_name || user.value.display_name || u.display_name || "", 
+      email: profileStore.email || user.value.email || u.email || "", 
+      phone: profileStore.phone || user.value.phone || u.phone || "", 
+      location: profileStore.location || user.value.location || u.location || "", 
+      jabatan: profileStore.jabatan || user.value.jabatan || u.jabatan || "", 
+      id_jabatan: profileStore.idJabatan || (user.value as any).id_jabatan || u.id_jabatan || "", 
+      role: user.value.role || u.role || "user", 
+      status: 'Aktif', 
+      namaPerusahaan: profileStore.namaPerusahaan || "" 
+    };
+    
+    // Set previews and positions from profileStore
+    bannerPreview.value = profileStore.bannerUrl || formatImageUrl(u.banner) || DEFAULT_BANNER;
+    fotoPreview.value = profileStore.fotoProfileUrl || formatImageUrl(u.foto_profile) || DEFAULT_FOTO;
+    bannerPosition.value = { x: profileStore.bannerPositionX, y: profileStore.bannerPositionY }; 
+    fotoPosition.value = { x: profileStore.fotoProfilePositionX, y: profileStore.fotoProfilePositionY };
+
+    loading.value = false;
+    
+    // Background refresh for roles/jabatan/company
+    Promise.allSettled([roleService.getAll(), jabatanService.getAll()])
+      .then(([r, j]) => {
+        if (r.status === 'fulfilled') rolesData.value = r.value as any;
+        if (j.status === 'fulfilled') jabatanList.value = j.value as any;
+      });
+      
+    if (u.id_perusahaan || profileStore.idPerusahaan) {
+      stakeholdersService.getById((u.id_perusahaan || profileStore.idPerusahaan).toString()).then(c => {
+        const data = (c as any)?.data ?? c;
+        userCompanyName.value = data.nama_perusahaan || '';
+        userSubSektor.value = data.sub_sektor?.nama_sub_sektor || '';
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  // 2. Fetching other users
   loading.value = true;
   try {
-    try {
-      const [roles, jabatans] = await Promise.allSettled([
-        roleService.getAll(),
-        jabatanService.getAll()
-      ]);
+    const [rolesRes, jabatansRes, usersRes] = await Promise.allSettled([
+      roleService.getAll(),
+      jabatanService.getAll(),
+      isNumericId ? usersService.getById(slugVal) : usersService.getAll()
+    ]);
 
-      rolesData.value = roles.status === 'fulfilled' ? (roles.value as any) : [];
-      jabatanList.value = jabatans.status === 'fulfilled' ? (jabatans.value as any) : [];
-      
-      if (jabatans.status === 'rejected') {
-        console.warn("⚠️ Jabatans API failed (likely 404):", jabatans.reason);
+    rolesData.value = rolesRes.status === 'fulfilled' ? (rolesRes.value as any) : [];
+    jabatanList.value = jabatansRes.status === 'fulfilled' ? (jabatansRes.value as any) : [];
+
+    let foundUser: any = null;
+    if (usersRes.status === 'fulfilled') {
+      const data = usersRes.value as any;
+      if (isNumericId) {
+        foundUser = data.data || data;
+      } else {
+        const usersList = data.data || data;
+        foundUser = Array.isArray(usersList) ? usersList.find((u: any) => (u.slug || u.username) === slugVal || u.username === slugVal) : null;
       }
-      if (roles.status === 'rejected') {
-        console.warn("⚠️ Roles API failed:", roles.reason);
-      }
-    } catch (e) {
-      console.error("Failed to load reference data:", e);
     }
-
-    const slugVal = (route.params.slug || '') as string;
-    console.log("🔍 LOADING PROFILE FOR SLUG:", slugVal);
-
-    // Fetch users (fresh fetch)
-    const rawUsers = await (usersService.getAll() as any);
-    const usersList = rawUsers.data || rawUsers;
-
-    console.log("📋 USERS FETCHED:", Array.isArray(usersList) ? usersList.length : "NOT AN ARRAY");
-    if (Array.isArray(usersList)) {
-      console.log("🔍 MENCARI USER DENGAN SLUG:", slugVal);
-      // console.log("🔍 DATA USER PERTAMA DARI API:", usersList[0]); // Introspect one user
-    }
-
-    const foundUser = Array.isArray(usersList) ? usersList.find((u: any) => {
-      const computedSlug = u.slug || u.username || u.id?.toString();
-      return computedSlug === slugVal || u.username === slugVal || u.id?.toString() === slugVal;
-    }) : null;
 
     if (foundUser) {
-      console.log("👤 FOUND USER DATA FROM API:", JSON.parse(JSON.stringify(foundUser)));
       user.value = {
         id: foundUser.id?.toString() || "",
         slug: foundUser.slug || foundUser.username || "",
@@ -145,88 +197,39 @@ const loadUser = async () => {
         email: foundUser.email || "",
         jabatan: foundUser.jabatan_name || foundUser.jabatan || "",
         role: foundUser.role || foundUser.role_name || "user",
-        status: typeof (foundUser as any).status !== 'undefined' ? String((foundUser as any).status) : 
-                typeof (foundUser as any).is_active !== 'undefined' ? ((foundUser as any).is_active ? 'active' : 'suspend') :
-                typeof (foundUser as any).is_suspended !== 'undefined' ? ((foundUser as any).is_suspended ? 'suspend' : 'active') :
-                typeof (foundUser as any).aktif !== 'undefined' ? ((foundUser as any).aktif == 1 ? 'active' : 'suspend') :
-                typeof (foundUser as any).status_akun !== 'undefined' ? String((foundUser as any).status_akun) : '1',
+        status: String(foundUser.status || foundUser.status_akun || '1'),
         phone: foundUser.phone || "",
         location: foundUser.location || "",
-        joined: foundUser.joined || (foundUser as any).created_at || "",
+        joined: foundUser.joined || foundUser.created_at || "",
         photo: formatImageUrl(foundUser.photo || foundUser.foto_profile),
         banner: formatImageUrl(foundUser.banner),
-        id_jabatan: (foundUser as any).id_jabatan || ""
+        id_jabatan: foundUser.id_jabatan || ""
       } as any;
 
-      if (authStore.currentUser?.username === foundUser.username) {
-        isCurrentUser.value = true;
-        await profileStore.switchUser();
-      } else {
-        isCurrentUser.value = false;
-      }
-
-      // Populate formData
-      formData.value = {
-        id: foundUser.id?.toString() || "",
-        username: foundUser.username || "",
-        display_name: foundUser.display_name || "",
-        email: foundUser.email || "",
-        phone: foundUser.phone || "",
-        location: foundUser.location || "",
-        jabatan: foundUser.jabatan_name || foundUser.jabatan || "",
-        id_jabatan: foundUser.id_jabatan || "",
-        role: foundUser.role || foundUser.role_name || "user",
-        status: getUserStatusText(user.value?.status),
-        namaPerusahaan: ""
-      };
-
-      // Set image previews
-      bannerPreview.value = user.value?.banner || DEFAULT_BANNER;
-      fotoPreview.value = user.value?.photo || DEFAULT_FOTO;
+      formData.value = { id: user.value.id, username: user.value.username, display_name: user.value.display_name, email: user.value.email, phone: user.value.phone, location: user.value.location, jabatan: user.value.jabatan, id_jabatan: (user.value as any).id_jabatan, role: user.value.role, status: getUserStatusText(user.value.status), namaPerusahaan: "" };
+      bannerPreview.value = user.value.banner || DEFAULT_BANNER;
+      fotoPreview.value = user.value.photo || DEFAULT_FOTO;
+      
       bannerPosition.value = { 
-        x: (foundUser as any).banner_position_x !== undefined ? Number((foundUser as any).banner_position_x) : 50, 
-        y: (foundUser as any).banner_position_y !== undefined ? Number((foundUser as any).banner_position_y) : 50 
+        x: Number(foundUser.banner_position_x ?? 50), 
+        y: Number(foundUser.banner_position_y ?? 50) 
       };
       fotoPosition.value = { 
-        x: (foundUser as any).foto_profile_position_x !== undefined ? Number((foundUser as any).foto_profile_position_x) : 50, 
-        y: (foundUser as any).foto_profile_position_y !== undefined ? Number((foundUser as any).foto_profile_position_y) : 50 
+        x: Number(foundUser.foto_profile_position_x ?? 50), 
+        y: Number(foundUser.foto_profile_position_y ?? 50) 
       };
 
-      const idPerusahaan = foundUser.id_perusahaan;
-      if (idPerusahaan) {
-        try {
-          const company = await stakeholdersService.getById(idPerusahaan.toString());
-          const c = (company as any)?.data ?? company;
-          userCompanyName.value = c.nama_perusahaan || '';
-          userSubSektor.value = c.sub_sektor?.nama_sub_sektor || '';
-          formData.value.namaPerusahaan = userCompanyName.value;
-
-          // Pull phone & location from stakeholder data
-          const stakeholderPhone = c.telepon || '';
-          const stakeholderLocation = c.alamat || '';
-          if (stakeholderPhone) {
-            user.value!.phone = stakeholderPhone;
-            formData.value.phone = stakeholderPhone;
-          }
-          if (stakeholderLocation) {
-            user.value!.location = stakeholderLocation;
-            formData.value.location = stakeholderLocation;
-          }
-        } catch {
-          userCompanyName.value = '';
-          userSubSektor.value = '';
-        }
-      }
-
-      // Automatically trigger edit mode if query param exists
-      if (route.query.edit === 'true' && isAdmin.value && !isCurrentUser.value) {
-        isEditMode.value = true;
+      if (foundUser.id_perusahaan) {
+        stakeholdersService.getById(foundUser.id_perusahaan.toString()).then(c => {
+          const data = (c as any)?.data ?? c;
+          userCompanyName.value = data.nama_perusahaan || '';
+          userSubSektor.value = data.sub_sektor?.nama_sub_sektor || '';
+        }).catch(() => {});
       }
     } else {
       router.push("/users");
     }
   } catch (error) {
-    console.error("Failed to load user:", error);
     router.push("/users");
   } finally {
     loading.value = false;
@@ -236,15 +239,60 @@ const loadUser = async () => {
 watch(slug, loadUser);
 onMounted(loadUser);
 
-const dataToPass = computed(() => ({
-  title: { label: "Users", path: "/users" },
-  currentpage: displayName.value || "User Profile",
-  activepage: "User Profile",
-}));
+// Sync from profile store if it updates (e.g. after background fetch)
+watch(() => profileStore.fotoProfileUrl, (newVal) => {
+  if (isCurrentUser.value && !isEditMode.value && newVal) {
+    fotoPreview.value = newVal;
+  }
+});
+watch(() => profileStore.bannerUrl, (newVal) => {
+  if (isCurrentUser.value && !isEditMode.value && newVal) {
+    bannerPreview.value = newVal;
+  }
+});
+watch(() => [profileStore.bannerPositionX, profileStore.bannerPositionY], ([x, y]) => {
+  if (isCurrentUser.value && !isEditMode.value) {
+    bannerPosition.value = { x: Number(x), y: Number(y) };
+  }
+});
+watch(() => [profileStore.fotoProfilePositionX, profileStore.fotoProfilePositionY], ([x, y]) => {
+  if (isCurrentUser.value && !isEditMode.value) {
+    fotoPosition.value = { x: Number(x), y: Number(y) };
+  }
+});
 
-const displayName = computed(() =>
-  isCurrentUser.value ? profileStore.displayName : (user.value?.display_name || user.value?.name || "")
-);
+// Sync text fields from profile store
+watch(() => profileStore.display_name, (newVal) => {
+  if (isCurrentUser.value && !isEditMode.value && newVal) {
+    formData.value.display_name = newVal;
+    if (user.value) user.value.display_name = newVal;
+  }
+});
+watch(() => profileStore.email, (newVal) => {
+  if (isCurrentUser.value && !isEditMode.value && newVal) {
+    formData.value.email = newVal;
+    if (user.value) user.value.email = newVal;
+  }
+});
+watch(() => profileStore.jabatan, (newVal) => {
+  if (isCurrentUser.value && !isEditMode.value && newVal) {
+    formData.value.jabatan = newVal;
+    if (user.value) user.value.jabatan = newVal;
+  }
+});
+watch(() => profileStore.idJabatan, (newVal) => {
+  if (isCurrentUser.value && !isEditMode.value && newVal) {
+    formData.value.id_jabatan = newVal;
+    if (user.value) (user.value as any).id_jabatan = newVal;
+  }
+});
+
+const displayName = computed(() => {
+  if (isCurrentUser.value) {
+    return profileStore.display_name || profileStore.name || authStore.currentUser?.username || 'User';
+  }
+  return user.value?.display_name || user.value?.name || user.value?.username || "User";
+});
 const displayEmail = computed(() =>
   isCurrentUser.value ? profileStore.displayEmail : user.value?.email || ""
 );
@@ -289,7 +337,6 @@ const accountDetails = computed(() => [
   { key: 'joined',   icon: "ri-calendar-line",    label: "Bergabung Sejak", value: displayJoined.value,      colorClass: "stat-icon-teal",   isEditable: false },
 ]);
 
-// --- Modal & Toast ---
 const showToast = ref(false);
 const toastMessage = ref("");
 const toastType = ref<"success" | "error">("success");
@@ -301,7 +348,6 @@ const showNotification = (msg: string, type: "success" | "error" = "success") =>
   setTimeout(() => { showToast.value = false; }, 3000);
 };
 
-// --- Image Compression & Handling ---
 const compressImage = (file: File, maxWidth: number, quality: number): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -336,34 +382,6 @@ const handleImageUpload = async (type: 'foto' | 'banner', event: Event) => {
   }
 };
 
-// --- DRAG HANDLERS ---
-const getClientPos = (e: MouseEvent | TouchEvent) => 'touches' in e ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
-
-const startDrag = (type: 'banner' | 'foto', e: MouseEvent | TouchEvent) => {
-  if (!isEditMode.value) return;
-  e.preventDefault();
-  const pos = getClientPos(e);
-  const current = type === 'banner' ? bannerPosition.value : fotoPosition.value;
-  dragState.value = { type, startX: pos.x, startY: pos.y, initialX: current.x, initialY: current.y };
-  document.addEventListener('mousemove', onDrag);
-  document.addEventListener('mouseup', stopDrag);
-};
-
-const onDrag = (e: MouseEvent | TouchEvent) => {
-  if (!dragState.value.type) return;
-  const container = dragState.value.type === 'banner' ? bannerContainer.value : fotoContainer.value;
-  if (!container) return;
-  const pos = getClientPos(e);
-  const rect = container.getBoundingClientRect();
-  const deltaX = ((pos.x - dragState.value.startX) / rect.width) * 100;
-  const deltaY = ((pos.y - dragState.value.startY) / rect.height) * 100;
-  const target = dragState.value.type === 'banner' ? bannerPosition : fotoPosition;
-  target.value = {
-    x: Math.max(0, Math.min(100, dragState.value.initialX - deltaX)),
-    y: Math.max(0, Math.min(100, dragState.value.initialY - deltaY))
-  };
-};
-
 const dataURLtoBlob = (dataurl: string) => {
   const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)?.[1];
   const bstr = atob(arr[1]);
@@ -373,23 +391,13 @@ const dataURLtoBlob = (dataurl: string) => {
   return new Blob([u8arr], {type: mime});
 };
 
-const stopDrag = () => {
-  dragState.value.type = '';
-  document.removeEventListener('mousemove', onDrag);
-  document.removeEventListener('mouseup', stopDrag);
-};
-
-// --- PERSISTENCE ---
 const saveProfile = async () => {
   if (!user.value) return;
   isSaving.value = true;
   try {
     const isAktif = formData.value.status === 'Aktif';
-    
-    // 1. METADATA UPDATE (Nested Payload for Go binding + Shotgun Status)
     const rawPayload: any = {
       username:     (user.value.username || '').toString(),
-      display_name: (formData.value.display_name || '').toString(),
       name:         (formData.value.display_name || user.value?.name || user.value?.username || '').toString(), 
       email:        (formData.value.email || '').toString(),
       telepon:      (formData.value.phone || '').toString(),
@@ -397,103 +405,51 @@ const saveProfile = async () => {
       alamat:       (formData.value.location || '').toString(),
       location:     (formData.value.location || '').toString(),
       id_jabatan:   formData.value.id_jabatan || null,
-
-      // CLEAN TARGETED STATUS (Gunakan Aktif/Nonaktif sesuai permintaan)
       status:       isAktif ? "Aktif" : "Nonaktif", 
       is_active:    isAktif ? 1 : 0,
       is_suspended: isAktif ? 0 : 1,
       aktif:        isAktif ? 1 : 0,
       status_akun:  isAktif ? "1" : "0",
-      
       banner_position_x: bannerPosition.value.x,
       banner_position_y: bannerPosition.value.y,
       foto_profile_position_x: fotoPosition.value.x,
       foto_profile_position_y: fotoPosition.value.y,
     };
 
-    console.log("🚀 SENDING PAYLOAD TO API:", JSON.parse(JSON.stringify(rawPayload)));
-
-    // Role
-    const roleObj = rolesData.value.find(r => r.name.toLowerCase() === formData.value.role.toLowerCase());
-    if (roleObj) {
-      rawPayload.role_id = roleObj.id;
+    // Only add display_name if it's not empty to avoid 400 error from backend
+    if (formData.value.display_name && formData.value.display_name.trim() !== "") {
+      rawPayload.display_name = formData.value.display_name.toString();
     }
 
-    // Use root payload directly (some backends fail with nested user object)
+    const roleObj = rolesData.value.find(r => r.name.toLowerCase() === formData.value.role.toLowerCase());
+    if (roleObj) rawPayload.role_id = roleObj.id;
+
     const metadataPayload = { ...rawPayload };
+    await (isCurrentUser.value ? usersService.updateMe(metadataPayload) : usersService.update(user.value.id, metadataPayload));
 
-    const updatedUser = isCurrentUser.value
-      ? await usersService.updateMe(metadataPayload)
-      : await usersService.update(user.value.id, metadataPayload);
-
-    console.log("✅ API METADATA UPDATE SUCCESS:", JSON.parse(JSON.stringify(updatedUser)));
-
-    // 2. DEDICATED STATUS UPDATE (as requested: /api/users/{id}/status)
     if (!isCurrentUser.value && isAdmin.value) {
       try {
         const statusVal = isAktif ? "Aktif" : "Suspend";
-        const statusPayload = {
-           id: user.value.id, // Some backends require ID in body even for sub-resources
-           status: statusVal,
-           status_akun: statusVal,
-           aktif: isAktif ? 1 : 0,
-           is_active: isAktif ? 1 : 0
-        };
-        console.log(`🚀 SENDING STATUS UPDATE (PATCH) TO: /api/users/${user.value.id}/status`, statusPayload);
-        
-        const statusRes = await usersService.updateStatus(user.value.id, statusPayload);
-        console.log("✅ DEDICATED STATUS UPDATE SUCCESS:", statusRes);
-      } catch (statusErr) {
-        console.warn("⚠️ Dedicated status endpoint failed:", statusErr);
-      }
+        await usersService.updateStatus(user.value.id, { id: user.value.id, status: statusVal, status_akun: statusVal, aktif: isAktif ? 1 : 0, is_active: isAktif ? 1 : 0 });
+      } catch (statusErr) { console.warn("⚠️ Dedicated status endpoint failed:", statusErr); }
     }
 
-    // 3. MEDIA UPLOADS (POST via FormData)
-    // Profile Photo
     if (fotoPreview.value.startsWith('data:')) {
-      try {
-        const photoData = new FormData();
-        const blob = dataURLtoBlob(fotoPreview.value);
-        
-        if (isCurrentUser.value) {
-          photoData.append('profile_photo', blob, 'foto_profile.jpg');
-          await usersService.updateMePhoto(photoData);
-        } else {
-          photoData.append('profile_photo', blob, 'foto_profile.jpg');
-          await usersService.updateProfilePhoto(user.value!.id, photoData);
-        }
-      } catch (err) {
-        console.error("Failed to upload profile photo:", err);
-      }
+      const photoData = new FormData();
+      photoData.append('profile_photo', dataURLtoBlob(fotoPreview.value), 'foto_profile.jpg');
+      isCurrentUser.value ? await usersService.updateMePhoto(photoData) : await usersService.updateProfilePhoto(user.value!.id, photoData);
     }
 
-    // Banner
     if (bannerPreview.value.startsWith('data:')) {
-      try {
-        const bannerData = new FormData();
-        const blob = dataURLtoBlob(bannerPreview.value);
-        
-        if (isCurrentUser.value) {
-          bannerData.append('banner', blob, 'banner.jpg');
-          await usersService.updateMeBanner(bannerData);
-        } else {
-          bannerData.append('banner', blob, 'banner.jpg');
-          await usersService.updateBanner(user.value!.id, bannerData);
-        }
-      } catch (err) {
-        console.error("Failed to upload banner:", err);
-      }
+      const bannerData = new FormData();
+      bannerData.append('banner', dataURLtoBlob(bannerPreview.value), 'banner.jpg');
+      isCurrentUser.value ? await usersService.updateMeBanner(bannerData) : await usersService.updateBanner(user.value!.id, bannerData);
     }
 
     showNotification("Profil berhasil diperbarui", "success");
     isEditMode.value = false;
-    await loadUser(); // Reload to refresh display data
+    await loadUser(); 
   } catch (error: any) {
-    console.error("❌ SAVE FAILED:", error);
-    if (error.response) {
-      console.error("❌ SERVER ERROR DATA:", error.response.data);
-      console.error("❌ SERVER STATUS:", error.response.status);
-    }
     showNotification(error.message || "Gagal menyimpan perubahan", "error");
   } finally {
     isSaving.value = false;
@@ -502,248 +458,231 @@ const saveProfile = async () => {
 
 const handleCancel = () => {
   isEditMode.value = false;
-  // Reset state to original user data
   if (user.value) {
     bannerPreview.value = user.value.banner || DEFAULT_BANNER;
     fotoPreview.value = user.value.photo || DEFAULT_FOTO;
-    formData.value = {
-      ...formData.value,
-      display_name: user.value.display_name || "",
-      email: user.value.email || "",
-      phone: user.value.phone || "",
-      location: user.value.location || "",
-      jabatan: user.value.jabatan || "",
-      id_jabatan: (user.value as any).id_jabatan || "",
-      role: user.value.role || "user",
-      status: getUserStatusText(user.value.status)
-    };
+    formData.value = { ...formData.value, display_name: user.value.display_name || "", email: user.value.email || "", phone: user.value.phone || "", location: user.value.location || "", jabatan: user.value.jabatan || "", id_jabatan: (user.value as any).id_jabatan || "", role: user.value.role || "user", status: getUserStatusText(user.value.status) };
   }
 };
 
-const toggleEditMode = () => {
-  if (isCurrentUser.value) {
-    router.push('/profile-settings');
-  } else if (isAdmin.value) {
-    isEditMode.value = !isEditMode.value;
-  }
+const getRoleBadgeClass = (role: string) => {
+  const r = String(role || '').toLowerCase();
+  if (r === 'admin') return 'p-badge--role-red';
+  if (r === 'staff') return 'p-badge--role-green';
+  if (r === 'user_pic' || r === 'pic') return 'p-badge--role-orange';
+  return 'p-badge--role-sky';
 };
-
 </script>
 
 <template>
   <div class="row">
-    <div class="col-xxl-9 col-xl-10 col-lg-12 mx-auto">
-      <Pageheader :propData="dataToPass" />
-
-      <!-- HEADER BAR -->
-      <div class="card custom-card gradient-header-card mb-4 shadow-sm border-0">
-        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-3 users-header border-bottom-0 pb-3 pt-3">
-          <div class="d-flex align-items-center gap-3">
-            <div class="header-icon-box">
-              <i class="ri-user-3-line"></i>
-            </div>
-            <div>
-              <div class="card-title mb-0 text-white fw-bold header-card-title">
-                {{ loading ? "User Profile" : (isEditMode ? 'Edit Profile' : displayName) }}
-              </div>
-              <div class="header-subtitle mt-1">
-                {{ isEditMode ? 'Sesuaikan detail data pengguna di bawah ini' : 'Informasi akun & data pribadi pengguna' }}
+    <div class="col-xl-12">
+      <!-- Ultra-Premium Detailed Skeleton -->
+      <div v-if="loading" class="skeleton-wrapper mb-5">
+        <!-- Hero Card Skeleton -->
+        <div class="skel-card skel-hero mb-4">
+          <div class="skel-banner-main">
+            <div class="skel-overlay-p">
+              <div class="d-flex justify-content-between align-items-start w-100 p-4">
+                <div class="skel-text-block">
+                  <div class="skel-breadcrumb-h"></div>
+                  <div class="skel-h-title"></div>
+                  <div class="skel-h-sub"></div>
+                </div>
+                <div class="skel-actions-h d-flex gap-2">
+                  <div class="skel-btn-round"></div>
+                  <div class="skel-btn-round"></div>
+                </div>
               </div>
             </div>
           </div>
-          <div class="d-flex gap-2 flex-wrap">
-            <!-- VIEW MODE ACTIONS -->
-            <template v-if="!isEditMode">
-               <button v-if="isAdmin && !isCurrentUser" @click="toggleEditMode" class="btn btn-warning btn-sm rounded-pill px-3 shadow-sm">
-                <i class="ri-edit-2-line me-1"></i>Edit Data User
-              </button>
-              <router-link v-if="isCurrentUser" to="/profile-settings" class="btn btn-primary-light btn-sm rounded-pill px-3 shadow-sm">
-                <i class="ri-edit-line me-1"></i>Sunting Profil
-              </router-link>
-              <router-link to="/users" class="btn-back-profile shadow-sm">
-                <i class="ri-arrow-left-line"></i>
-                <span class="d-none d-sm-inline">Kembali</span>
-              </router-link>
-            </template>
-            <!-- EDIT MODE ACTIONS -->
-            <template v-else>
-               <button @click="handleCancel" :disabled="isSaving" class="btn-edit-action-cancel shadow-sm">
-                <i class="ri-close-circle-line"></i>
-                <span>Batal</span>
-              </button>
-              <button @click="saveProfile" :disabled="isSaving" class="btn btn-warning btn-sm rounded-pill px-3 shadow-sm">
-                <span v-if="isSaving" class="spinner-border spinner-border-sm"></span>
-                <i v-else class="ri-save-3-line"></i>
-                <span>Simpan Perubahan</span>
-              </button>
-            </template>
+          <div class="skel-profile-body p-4 pt-0">
+            <div class="d-flex gap-4 align-items-start">
+              <div class="skel-avatar-wrap"></div>
+              <div class="skel-info-block-main pt-4 flex-grow-1">
+                <div class="skel-tag-h mb-3"></div>
+                <div class="skel-name-h mb-2"></div>
+                <div class="skel-badge-row d-flex gap-2 mb-3">
+                  <div class="skel-chip-h"></div>
+                  <div class="skel-chip-h"></div>
+                  <div class="skel-chip-h"></div>
+                </div>
+                <div class="skel-meta-row-h d-flex gap-3">
+                  <div class="skel-meta-item"></div>
+                  <div class="skel-meta-item"></div>
+                  <div class="skel-meta-item"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Loading Skeleton -->
-      <div v-if="loading" class="skeleton-loading p-4">
-        <div v-for="n in 4" :key="n" class="skeleton-row">
-          <div class="skel skel-avatar"></div>
-          <div class="skel skel-name"></div>
-          <div class="skel skel-email"></div>
+        <!-- Account Info Card Skeleton -->
+        <div class="skel-card skel-info">
+          <div class="skel-card-header p-4 d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+              <div class="skel-icon-box"></div>
+              <div class="skel-line-h w-150"></div>
+            </div>
+            <div class="skel-btn-h w-80"></div>
+          </div>
+          <div class="skel-card-body p-4">
+            <div class="row g-3">
+              <div v-for="n in 6" :key="n" class="col-md-6">
+                <div class="skel-field-box"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <template v-else-if="user">
-        <!-- Hero Card -->
-        <div class="card custom-card hero-card-shell mb-4 shadow-sm border-0 rounded-4 overflow-hidden">
+        <div class="card custom-card hero-card-shell mb-4 border-0 rounded-4 overflow-hidden stakeholder-profile-shell">
           <div
             ref="bannerContainer"
             class="profile-banner"
-            :class="{ 'draggable': isEditMode, 'dragging': dragState.type === 'banner' }"
-            :style="{ 
-              backgroundImage: `url(${bannerPreview})`, 
-              backgroundPosition: `${bannerPosition.x}% ${bannerPosition.y}%` 
-            }"
-            @mousedown="startDrag('banner', $event)"
-            @touchstart="startDrag('banner', $event)"
+            :style="{ backgroundImage: `url(${bannerPreview})`, backgroundPosition: `${bannerPosition.x}% ${bannerPosition.y}%` }"
           >
-             <!-- Banner Edit UI -->
-             <div v-if="isEditMode" class="position-absolute top-0 end-0 p-3" style="z-index: 10;">
-                <button @click.stop="bannerInput?.click()" class="btn btn-primary btn-sm rounded-pill shadow-sm">
-                   <i class="ri-image-edit-line me-1"></i>Ganti Banner
-                </button>
-                <input ref="bannerInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('banner', $event)" />
-             </div>
-             <!-- Drag Hint -->
-             <div v-if="isEditMode" class="drag-hint position-absolute pointer-events-none">
-                 <div class="badge bg-dark bg-opacity-50 rounded-pill px-3 py-2">
-                    <i class="ri-drag-move-2-line me-1"></i>Seret untuk atur posisi
-                 </div>
-             </div>
+              <div class="profile-banner-overlay-premium">
+                <div class="profile-banner-top">
+                  <div class="hero-text-block">
+                    <div class="premium-breadcrumb mb-1">
+                      <span class="breadcrumb-item">USERS</span>
+                      <span class="breadcrumb-sep"><i class="ri-arrow-right-s-line"></i></span>
+                      <span class="breadcrumb-item active">PROFILE</span>
+                    </div>
+                    <h2 class="hero-main-title">
+                      {{ isEditMode ? 'Edit Profile' : 'User Profile' }}
+                    </h2>
+                    <p class="hero-sub-title mb-0">
+                      {{ isEditMode ? 'Sesuaikan detail data pengguna di bawah ini' : 'Informasi akun dan data pribadi pengguna' }}
+                    </p>
+                  </div>
+
+                  <div class="hero-action-tools">
+                    <div class="d-flex gap-2 flex-wrap justify-content-end align-items-center">
+                      <template v-if="!isEditMode">
+                        <button v-if="isAdmin && !isCurrentUser" @click="toggleEditMode" class="btn-premium btn-premium--warning shadow-sm">
+                          <i class="ri-edit-2-fill me-1"></i>Edit Profile
+                        </button>
+                        <button v-if="isCurrentUser" @click="toggleEditMode" class="btn-premium btn-premium--glass shadow-sm">
+                          <i class="ri-pencil-fill me-1"></i>Sunting Profil
+                        </button>
+                        <router-link to="/users" class="btn-premium btn-premium--glass shadow-sm">
+                          <i class="ri-arrow-left-line me-1"></i>
+                          <span>Kembali</span>
+                        </router-link>
+                      </template>
+                      <template v-else>
+                        <button @click="handleCancel" :disabled="isSaving" class="btn-premium btn-premium--glass-danger shadow-sm">
+                          <i class="ri-close-circle-fill me-1"></i>
+                          <span>Batal</span>
+                        </button>
+                        <button @click="saveProfile" :disabled="isSaving" class="btn-premium btn-premium--warning shadow-sm">
+                          <span v-if="isSaving" class="spinner-border spinner-border-sm me-1"></span>
+                          <i v-else class="ri-save-3-fill me-1"></i>
+                          <span>Simpan Perubahan</span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="isEditMode" class="position-absolute bottom-0 end-0 p-3" style="z-index: 10;">
+                 <button @click.stop="bannerInput?.click()" class="btn btn-primary btn-sm rounded-pill shadow-sm"><i class="ri-image-edit-line me-1"></i>Ganti Banner</button>
+                 <input ref="bannerInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('banner', $event)" />
+              </div>
           </div>
 
-          <div class="profile-content-body">
+          <div class="profile-content-body profile-content-body--premium">
             <div class="profile-foto-profile-container">
               <div
                 ref="fotoContainer"
                 class="profile-foto-profile-wrap"
-                :class="{ 'draggable': isEditMode, 'dragging': dragState.type === 'foto' }"
-                @mousedown="startDrag('foto', $event)"
-                @touchstart="startDrag('foto', $event)"
               >
-                <img 
-                   :src="fotoPreview" 
-                   alt="Profile Foto" 
-                   class="profile-foto-profile-img" 
-                   :style="{ objectPosition: `${fotoPosition.x}% ${fotoPosition.y}%` }"
-                />
-                <!-- Foto Edit UI -->
-                <div v-if="isEditMode" class="foto-edit-overlay">
-                   <i class="ri-drag-move-2-line text-white fs-20"></i>
-                </div>
+                <img :src="fotoPreview" alt="Profile Foto" class="profile-foto-profile-img" :style="{ objectPosition: `${fotoPosition.x}% ${fotoPosition.y}%` }"/>
               </div>
-              <button v-if="isEditMode" @click="fotoInput?.click()" class="btn btn-primary btn-icon btn-sm rounded-circle shadow foto-upload-float">
-                 <i class="ri-camera-line"></i>
+              <button v-if="isEditMode" @click="fotoInput?.click()" class="btn-upload-camera shadow-lg">
+                <i class="ri-camera-fill"></i>
               </button>
               <input ref="fotoInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('foto', $event)" />
             </div>
 
             <div class="profile-info-block">
-               <!-- Inline Edit for Display Name -->
               <template v-if="isEditMode">
-                 <div class="h4-edit-wrapper mb-2">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                       <label class="form-label fs-12 text-muted mb-0">Display Name</label>
-                       <i class="ri-pencil-line text-primary fs-13"></i>
-                    </div>
-                    <input v-model="formData.display_name" type="text" class="profile-user-name-input" placeholder="Masukkan nama display (opsional)" />
-                 </div>
+                 <div class="h4-edit-wrapper"><input v-model="formData.display_name" type="text" class="profile-user-name-input" placeholder="Masukkan nama display" /></div>
               </template>
-              <h4 v-else class="profile-user-name mb-1" :class="{ 'clickable-title': isAdmin && !isCurrentUser }" @click="isAdmin && !isCurrentUser && (isEditMode = true)">{{ displayName }}</h4>
+              <h4 v-else class="profile-user-name mb-2" :class="{ 'clickable-title': isAdmin && !isCurrentUser }" @click="isAdmin && !isCurrentUser && (isEditMode = true)">{{ displayName }}</h4>
               
-              <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                <span :class="['profile-role-badge', `profile-role-badge--${(displayRole || '').toLowerCase()}`]">
-                  <i :class="(displayRole || '').toLowerCase() === 'admin' ? 'ri-shield-user-line' : 'ri-user-line'"></i>
+              <div class="profile-badges-row mb-3">
+                <span :class="['p-badge p-badge--role', getRoleBadgeClass(displayRole)]">
+                  <i :class="(displayRole || '').toLowerCase() === 'admin' ? 'ri-shield-flash-line' : ((displayRole || '').toLowerCase() === 'staff' ? 'ri-shield-user-line' : 'ri-user-6-line')"></i>
                   {{ displayRole }}
                 </span>
-                <span class="profile-jabatan-badge">
-                  <i class="ri-briefcase-line"></i>{{ displayJabatan }}
-                </span>
-                <span class="profile-perusahaan-badge">
-                  <i class="ri-building-line"></i>{{ displayPerusahaan }}
-                </span>
-                <span class="profile-sektor-badge">
-                  <i class="ri-pie-chart-line"></i>{{ displaySubSektor }}
-                </span>
+                <span class="p-badge p-badge--jabatan"><i class="ri-medal-line"></i>{{ displayJabatan }}</span>
+                <span class="p-badge p-badge--company"><i class="ri-community-line"></i>{{ displayPerusahaan }}</span>
+                <span class="p-badge p-badge--sector"><i class="ri-microscope-line"></i>{{ displaySubSektor }}</span>
               </div>
-              <p class="profile-email-text mb-1">
-                <i class="ri-mail-line me-1"></i>{{ displayEmail }}
-              </p>
-              <div class="profile-meta-row">
-                <span><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span>
-                <span class="contact-bar-sep-inline d-none d-sm-inline"></span>
-                <span><i class="ri-map-pin-line me-1"></i>{{ displayLocation }}</span>
+
+              <div class="profile-contact-grid">
+                <div class="contact-item">
+                  <div class="contact-icon contact-icon--email"><i class="ri-mail-send-line"></i></div>
+                  <div class="contact-content">
+                    <span class="contact-label">Email Address</span>
+                    <span class="contact-value">{{ displayEmail }}</span>
+                  </div>
+                </div>
+                <div class="contact-item">
+                  <div class="contact-icon contact-icon--phone"><i class="ri-phone-camera-line"></i></div>
+                  <div class="contact-content">
+                    <span class="contact-label">Phone Number</span>
+                    <span class="contact-value">{{ displayPhone }}</span>
+                  </div>
+                </div>
+                <div class="contact-item">
+                  <div class="contact-icon contact-icon--location"><i class="ri-map-pin-user-line"></i></div>
+                  <div class="contact-content">
+                    <span class="contact-label">Location</span>
+                    <span class="contact-value">{{ displayLocation }}</span>
+                  </div>
+                </div>
+                <div class="contact-item">
+                  <div class="contact-icon contact-icon--joined"><i class="ri-calendar-check-line"></i></div>
+                  <div class="contact-content">
+                    <span class="contact-label">Joined Since</span>
+                    <span class="contact-value">{{ displayJoined }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Informasi Akun -->
-        <div class="card custom-card mb-4 shadow-sm border-0 rounded-4">
-          <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom py-3 px-4">
+        <div class="card custom-card mb-4 border-0 rounded-4 stakeholders-shell-card overflow-hidden">
+          <div class="card-header border-bottom py-3 px-4 bg-transparent d-flex align-items-center justify-content-between">
             <div class="d-flex align-items-center gap-2">
-              <div class="avatar avatar-sm bg-primary-transparent rounded-circle">
-                <i class="ri-user-settings-line text-primary fs-18"></i>
-              </div>
-              <div class="card-title mb-0 fw-bold text-dark fs-15">Informasi Akun</div>
-              <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Detail profil pengguna</div>
+              <div class="header-icon-wrap text-primary fs-18"><i class="ri-user-settings-line"></i></div>
+              <h5 class="card-title mb-0 fw-bold fs-15">Informasi Akun <span class="text-muted fs-12 fw-normal ms-2">- Detail profil pengguna</span></h5>
             </div>
+            <div class="badge bg-light text-muted rounded-pill px-3 py-2 fs-11 fw-semibold border">{{ accountDetails.length }} Attributes</div>
           </div>
-          <div class="card-body p-4 p-md-5">
-            <div class="row g-4">
+          <div class="card-body p-4 pt-3">
+            <div class="row g-3">
               <div v-for="(item, idx) in accountDetails" :key="idx" class="col-xl-6 col-lg-6 col-md-6">
-                <!-- FORM GROUP SPLIT -->
                 <div class="form-group-split">
                   <div class="form-group-split-label-card">
-                    <div class="form-item-icon" :class="item.colorClass" style="width:32px;height:32px">
-                      <i :class="item.icon" style="font-size:0.95rem"></i>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                       <label class="form-item-label mb-0 text-uppercase fs-11 fw-bold text-muted">{{ item.label }}</label>
-                       <span v-if="item.badge" class="badge-source-info">{{ item.badge }}</span>
-                    </div>
+                    <div class="form-item-icon" :class="item.colorClass" style="width:28px;height:28px"><i :class="item.icon" style="font-size:0.85rem"></i></div>
+                    <div class="d-flex align-items-center gap-2"><label class="form-item-label mb-0 text-uppercase fs-10 fw-bold text-muted">{{ item.label }}</label><span v-if="item.badge" class="badge-source-info">{{ item.badge }}</span></div>
                   </div>
-                  <div 
-                    class="form-group-split-input-card transition-all" 
-                    :class="{ 
-                      'bg-light': !item.isEditable || !isEditMode, 
-                      'form-item-card--readonly': !item.isEditable && isEditMode,
-                      'form-item-card--clickable': !isEditMode && item.isEditable 
-                    }"
-                    @click="!isEditMode && item.isEditable && (isEditMode = true)"
-                  >
-                    <!-- EDITABLE INPUTS -->
+                  <div class="form-group-split-input-card transition-all" :class="{ 'bg-light': !item.isEditable || !isEditMode, 'form-item-card--readonly': !item.isEditable && isEditMode, 'form-item-card--clickable': !isEditMode && item.isEditable }" @click="!isEditMode && item.isEditable && (isEditMode = true)">
                     <template v-if="isEditMode && item.isEditable">
-                       <!-- SELECT FOR ROLE -->
-                       <select v-if="item.key === 'role'" v-model="formData.role" class="form-item-input form-item-select border-0 bg-transparent p-0 outline-none w-100">
-                          <option v-for="r in rolesData" :key="r.id" :value="r.name">{{ r.name }}</option>
-                       </select>
-                       <!-- SELECT FOR STATUS -->
-                       <select v-else-if="item.key === 'status'" v-model="formData.status" class="form-item-input form-item-select border-0 bg-transparent p-0 outline-none w-100">
-                          <option value="Aktif">Aktif</option>
-                          <option value="Nonaktif">Nonaktif</option>
-                       </select>
-                       <!-- SELECT FOR JABATAN -->
-                       <select v-else-if="item.key === 'jabatan'" v-model="formData.id_jabatan" class="form-item-input form-item-select border-0 bg-transparent p-0 outline-none w-100">
-                          <option value="">Pilih Jabatan</option>
-                          <option v-for="j in jabatanList" :key="j.id" :value="j.id">{{ j.nama_jabatan }}</option>
-                       </select>
-                       <!-- TEXT INPUTS (Email, Phone, Location) -->
+                       <select v-if="item.key === 'role'" v-model="formData.role" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option v-for="r in rolesData" :key="r.id" :value="r.name">{{ r.name }}</option></select>
+                       <select v-else-if="item.key === 'status'" v-model="formData.status" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option value="Aktif">Aktif</option><option value="Nonaktif">Nonaktif</option></select>
+                       <select v-else-if="item.key === 'jabatan'" v-model="formData.id_jabatan" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option value="">Pilih Jabatan</option><option v-for="j in jabatanList" :key="j.id" :value="j.id">{{ j.nama_jabatan }}</option></select>
                        <input v-else v-model="formData[item.key]" type="text" class="form-item-input border-0 bg-transparent p-0 outline-none w-100" :placeholder="'Masukkan ' + item.label" />
-                       <i class="ri-pencil-line form-item-edit-action text-primary"></i>
                     </template>
-                    <!-- VIEW ONLY -->
-                    <template v-else>
-                        <div class="form-item-value" :class="{ 'wrap-text': item.wrap, 'text-muted': !item.isEditable }">{{ item.value }}</div>
-                        <i :class="item.isEditable ? 'ri-pencil-line form-item-edit-action text-primary' : 'ri-lock-line form-item-edit-action text-light-muted'" class="form-item-edit-action"></i>
-                    </template>
+                    <template v-else><div class="form-item-value" :class="{ 'wrap-text': item.wrap, 'text-muted': !item.isEditable }">{{ item.value }}</div><i :class="item.isEditable ? 'ri-pencil-line form-item-edit-action text-primary' : 'ri-lock-line form-item-edit-action text-light-muted'" class="form-item-edit-action"></i></template>
                   </div>
                 </div>
               </div>
@@ -754,17 +693,11 @@ const toggleEditMode = () => {
     </div>
   </div>
 
-  <!-- Toast Notification -->
   <transition name="toast-slide">
     <div v-if="showToast" class="toast-wrapper position-fixed p-3 top-0 end-0" style="z-index: 9999">
       <div class="toast-modern shadow-lg" :class="toastType === 'success' ? 'toast-success' : 'toast-error'" role="alert">
-        <div class="toast-icon-wrap">
-          <i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
-        </div>
-        <div class="toast-content">
-          <span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span>
-          <span class="toast-msg">{{ toastMessage }}</span>
-        </div>
+        <div class="toast-icon-wrap"><i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i></div>
+        <div class="toast-content"><span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span><span class="toast-msg">{{ toastMessage }}</span></div>
       </div>
     </div>
   </transition>
@@ -773,161 +706,250 @@ const toggleEditMode = () => {
 <style scoped>
 @import "@/assets/css/style2.css";
 
-.draggable { cursor: grab !important; }
-.dragging { cursor: grabbing !important; opacity: 0.8; }
-.drag-hint { bottom: 10px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5; }
-
-.foto-edit-overlay { 
-  position: absolute; top:0; left:0; right:0; bottom:0; 
-  background: rgba(0,0,0,0.3); border-radius: 50%; 
-  display: flex; align-items: center; justify-content: center;
+:root {
+  --profile-accent: #2f6fed;
+  --profile-accent-dark: #102a73;
+  --profile-card-border: #dbe7ff;
+  --profile-soft-bg: linear-gradient(180deg, #f8fbff 0%, #f4f7fc 100%);
 }
-.foto-upload-float { position: absolute; bottom: 5px; right: 5px; z-index: 10; }
-.min-w-200 { min-width: 200px; }
 
-.badge-source-info { 
-  font-size: 9px;
-  background: #f1f5f9;
-  color: #64748b;
-  padding: 1px 8px;
+.stakeholders-shell-card, .stakeholder-profile-shell {
+  box-shadow: 0 15px 40px rgba(15, 23, 42, 0.08) !important;
+  border: 1px solid rgba(212, 224, 255, 0.6) !important;
+}
+
+.premium-breadcrumb { display: flex; align-items: center; gap: 0.5rem; margin-top: -0.5rem; }
+.breadcrumb-item { font-size: 11px; font-weight: 800; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 0.12em; }
+.breadcrumb-item.active { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+.breadcrumb-sep { color: rgba(255, 255, 255, 0.4); font-size: 14px; }
+
+.profile-banner {
+  position: relative;
+  min-height: 220px;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+.profile-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.1) 0%, rgba(15, 23, 42, 0.7) 100%);
+  z-index: 1;
+}
+
+.profile-banner-overlay-premium {
+  position: relative;
+  z-index: 2;
+  padding: 1.75rem 2.25rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-main-title { font-size: 2.25rem; font-weight: 900; letter-spacing: -0.04em; margin-bottom: 0.25rem; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); color: #fff; }
+.hero-sub-title { font-size: 0.95rem; font-weight: 500; max-width: 500px; color: rgba(255, 255, 255, 0.8); }
+
+.btn-premium { display: inline-flex; align-items: center; justify-content: center; padding: 0.6rem 1.25rem; border-radius: 999px; font-size: 12px; font-weight: 800; transition: all 0.3s ease; border: 1px solid transparent; gap: 0.5rem; }
+.btn-premium--warning { background: #f59e0b; color: #fff; border-color: #d97706; }
+.btn-premium--warning:hover { background: #d97706; transform: translateY(-2px); }
+.btn-premium--glass { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-color: rgba(255, 255, 255, 0.2); color: #fff; }
+.btn-premium--glass:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+.btn-premium--glass-danger { background: rgba(239, 68, 68, 0.15); backdrop-filter: blur(10px); border-color: rgba(239, 68, 68, 0.3); color: #fff; }
+
+.profile-banner-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; width: 100%; }
+
+.profile-content-body--premium { position: relative; background: #fff; padding: 0 2rem 2rem; }
+
+.profile-foto-profile-container { position: relative; z-index: 5; flex: 0 0 160px; margin-top: -80px; display: flex; justify-content: center; }
+.profile-foto-profile-wrap { width: 160px; height: 160px; border-radius: 50%; overflow: hidden; box-shadow: 0 15px 40px rgba(15, 23, 42, 0.15), 0 0 0 8px #fff; background: #fff; }
+.profile-foto-profile-img { width: 100%; height: 100%; object-fit: cover; }
+
+.profile-info-block { flex: 1 1 auto; min-width: 0; padding-top: 1.75rem; padding-left: 1rem; }
+.profile-content-body { display: flex; align-items: flex-start; gap: 2rem; }
+
+.profile-identity-topline { display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.4rem 1rem; border-radius: 999px; background: #eff6ff; color: #3b82f6; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #dbeafe; }
+.profile-user-name { font-size: 2.5rem; font-weight: 900; color: #0f172a; letter-spacing: -0.04em; }
+
+.profile-badges-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.p-badge { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 12px; font-size: 12px; font-weight: 700; transition: all 0.2s ease; border: 1px solid transparent; }
+.p-badge i { font-size: 14px; opacity: 0.8; }
+
+.p-badge--role-red { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+.p-badge--role-green { background: #dcfce7; color: #14532d; border-color: #86efac; }
+.p-badge--role-orange { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
+.p-badge--role-sky { background: #e0f2fe; color: #075985; border-color: #7dd3fc; }
+
+[data-theme-mode='dark'] .p-badge--role-red { color: #f87171 !important; background: rgba(248, 113, 113, 0.1) !important; border-color: rgba(248, 113, 113, 0.2) !important; }
+[data-theme-mode='dark'] .p-badge--role-green { color: #4ade80 !important; background: rgba(74, 222, 128, 0.1) !important; border-color: rgba(74, 222, 128, 0.2) !important; }
+[data-theme-mode='dark'] .p-badge--role-orange { color: #fb923c !important; background: rgba(251, 146, 60, 0.1) !important; border-color: rgba(251, 146, 60, 0.2) !important; }
+[data-theme-mode='dark'] .p-badge--role-sky { color: #38bdf8 !important; background: rgba(56, 189, 248, 0.1) !important; border-color: rgba(56, 189, 248, 0.2) !important; }
+.p-badge--jabatan { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
+.p-badge--company { background: #fff7ed; color: #ea580c; border-color: #ffedd5; }
+.p-badge--sector { background: #f0f9ff; color: #0284c7; border-color: #e0f2fe; }
+
+.p-badge:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
+
+.profile-contact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; }
+.contact-item { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 16px; background: #f8fafc; border: 1px solid #f1f5f9; transition: all 0.3s ease; }
+.contact-item:hover { background: #fff; border-color: #e2e8f0; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.04); transform: translateY(-2px); }
+
+.contact-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.contact-icon--email { background: #e0e7ff; color: #4338ca; }
+.contact-icon--phone { background: #ede9fe; color: #6d28d9; }
+.contact-icon--location { background: #ffedd5; color: #c2410c; }
+.contact-icon--joined { background: #dcfce7; color: #15803d; }
+
+.contact-content { display: flex; flex-direction: column; min-width: 0; }
+.contact-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
+.contact-value { font-size: 14px; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.form-item-edit-action { font-size: 16px; opacity: 0.4; }
+
+.foto-upload-float { position: absolute; bottom: 8px; right: 8px; width: 36px; height: 36px; }
+
+.btn-upload-camera {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 38px;
+  height: 38px;
+  background: #104ab0;
+  border: 2px solid #fff;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  text-transform: lowercase;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.15rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.text-light-muted { color: #cbd5e1 !important; }
-
-/* REFINED EDIT STYLES */
-.h4-edit-wrapper { 
-  margin-top: -8px; 
-  margin-bottom: 0.5rem;
-  width: 100%;
+.btn-upload-camera:hover {
+  background: #0d3a8a;
+  transform: scale(1.05);
 }
-.profile-user-name-input { 
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--default-text-color);
+
+.profile-user-name-input {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #0f172a;
   background: transparent !important;
   border: none !important;
-  outline: none !important;
-  padding: 0 !important;
-  width: auto;
-  min-width: 200px;
-  max-width: 500px;
-  line-height: 1.2;
-}
-.header-edit-indicator { align-self: center; margin-top: 2px; }
-
-.form-item-input {
-  border: none !important;
-  outline: none !important;
-  background: transparent !important;
-  padding: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  padding: 0 0 4px 0 !important;
   width: 100%;
-  font-size: inherit;
-  color: inherit;
-  box-shadow: none !important;
-  appearance: none !important;
-}
-
-.form-item-input:focus, 
-.form-item-input:active,
-.profile-user-name-input:focus,
-.profile-user-name-input:active {
+  max-width: 600px;
+  transition: all 0.3s ease;
   outline: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-.form-item-input:focus {
-  color: var(--primary-color);
 }
 
 .profile-user-name-input:focus {
-  color: var(--primary-color);
+  border-bottom-style: solid !important;
+  border-bottom-color: #2563eb !important;
+  color: #2563eb;
 }
 
-.form-item-card--readonly {
-  cursor: not-allowed !important;
+.profile-user-name-input::placeholder {
+  color: #cbd5e1;
+  font-weight: 600;
 }
-
-.form-item-card--clickable {
-  cursor: pointer !important;
-}
-
-.form-item-input {
-  cursor: text;
-}
-
-.form-item-select {
-  cursor: pointer;
-}
-
-.clickable-title {
-  cursor: pointer;
-  transition: color 0.2s ease;
-}
-
-.clickable-title:hover {
-  color: var(--primary-color);
-}
-
-
-/* Transitions */
-.toast-slide-enter-active, .toast-slide-leave-active { transition: transform 0.3s ease, opacity 0.3s ease; }
-.toast-slide-enter-from { transform: translateX(100%); opacity: 0; }
-.toast-slide-leave-to { opacity: 0; }
 
 .transition-all { transition: all 0.2s ease; }
 
-/* Custom Edit Action Buttons (Matches btn-back-profile sizes) */
-.btn-edit-action-cancel {
-  background: rgba(255,255,255,0.15);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.25);
-  color: #fff;
-  padding: 0.5rem 1.25rem;
-  border-radius: 50px;
-  font-weight: 700;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.25s ease;
-  white-space: nowrap;
-  line-height: 1.5;
-}
-.btn-edit-action-cancel:hover {
-  background: rgba(255,255,255,0.25);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-  color: #fff;
+/* ULTRA-PREMIUM SKELETON STYLES */
+.skel-card {
+  background: #fff;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 15px 40px rgba(15, 23, 42, 0.05);
+  border: 1px solid #f1f5f9;
 }
 
-.btn-edit-action-save {
-  background: #f59e0b; /* Warmer yellow-orange matching the 'Edit Data User' button aesthetic */
-  color: #fff;
-  padding: 0.5rem 1.25rem;
-  border-radius: 50px;
-  border: none;
-  font-weight: 700;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.25s ease;
-  white-space: nowrap;
-  line-height: 1.5;
+.skel-shimmer {
+  background: linear-gradient(90deg, #f1f5f9 25%, #f8fafc 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer-anim 1.5s infinite;
 }
-.btn-edit-action-save:hover {
-  background: #d97706;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3);
-  color: #fff;
+
+.skel-banner-main {
+  height: 220px;
+  background: #f1f5f9;
+  position: relative;
+}
+
+.skel-overlay-p {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.1) 100%);
+}
+
+.skel-breadcrumb-h { width: 80px; height: 10px; background: rgba(0,0,0,0.1); border-radius: 4px; margin-bottom: 12px; }
+.skel-h-title { width: 250px; height: 32px; background: rgba(0,0,0,0.1); border-radius: 8px; margin-bottom: 10px; }
+.skel-h-sub { width: 400px; height: 14px; background: rgba(0,0,0,0.08); border-radius: 4px; }
+.skel-btn-round { width: 100px; height: 36px; background: rgba(255,255,255,0.2); border-radius: 20px; }
+
+.skel-avatar-wrap {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 8px solid #fff;
+  margin-top: -80px;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.skel-tag-h { width: 120px; height: 20px; background: #f1f5f9; border-radius: 20px; }
+.skel-name-h { width: 300px; height: 36px; background: #f1f5f9; border-radius: 8px; }
+.skel-chip-h { width: 80px; height: 24px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; }
+.skel-meta-item { width: 140px; height: 14px; background: #f1f5f9; border-radius: 4px; }
+
+.skel-icon-box { width: 36px; height: 36px; background: #f1f5f9; border-radius: 10px; }
+.skel-line-h { height: 16px; background: #f1f5f9; border-radius: 4px; }
+.skel-btn-h { height: 24px; background: #f1f5f9; border-radius: 12px; }
+.skel-field-box { height: 100px; background: #fcfdfe; border: 1px solid #f1f5f9; border-radius: 16px; }
+
+.w-150 { width: 150px; }
+.w-80 { width: 80px; }
+
+@keyframes skel-shimmer-anim {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Apply shimmer to placeholders */
+.skel-banner-main, .skel-breadcrumb-h, .skel-h-title, .skel-h-sub, 
+.skel-btn-round, .skel-avatar-wrap, .skel-tag-h, .skel-name-h, 
+.skel-chip-h, .skel-meta-item, .skel-icon-box, .skel-line-h, 
+.skel-btn-h, .skel-field-box {
+  @extend .skel-shimmer;
+}
+
+/* Fallback if extend is not available in scoped style or env */
+.skel-banner-main, .skel-breadcrumb-h, .skel-h-title, .skel-h-sub, 
+.skel-btn-round, .skel-avatar-wrap, .skel-tag-h, .skel-name-h, 
+.skel-chip-h, .skel-meta-item, .skel-icon-box, .skel-line-h, 
+.skel-btn-h, .skel-field-box {
+  background: linear-gradient(90deg, #f1f5f9 25%, #f8fafc 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer-anim 1.5s infinite;
+}
+
+@media (max-width: 768px) {
+  .profile-banner { min-height: 200px; }
+  .profile-banner-overlay-premium { padding: 1.5rem 1.5rem; }
+  .profile-content-body--premium { padding: 0 1.5rem 2rem; }
+  .profile-foto-profile-container { margin-top: -60px; flex: 0 0 140px; }
+  .profile-foto-profile-wrap { width: 140px; height: 140px; }
+  .profile-content-body { flex-direction: column; gap: 1rem; }
+  .profile-info-block { padding-top: 0.5rem; padding-left: 0; }
+  .profile-user-name { font-size: 1.75rem; }
 }
 </style>
-

@@ -44,7 +44,7 @@ const deriveTargetLevel = (targetNilai: string | number | null | undefined): num
 const loadCurrentStakeholderIkas = async () => {
   assessmentStore.initializeLocalData();
   await assessmentStore.fetchAssessmentStructure();
-  ikasStore.initialize();
+  await ikasStore.initialize();
   
   if (!stakeholdersStore.initialized) {
     await stakeholdersStore.initialize();
@@ -127,14 +127,39 @@ const pageData = computed(() => {
 
 // Navigation Handlers
 const handleFormSubmit = async () => {
-  // Move to penilaian (Step 2) without saving to backend.
   const profile = assessmentStore.respondentProfile;
+  const stakeholder = currentStakeholder.value;
   if (!profile) {
     toast.error('Data Form Responden tidak lengkap', { autoClose: 3000, position: 'top-right' });
     return;
   }
 
-  // Ensure local data saved; parent form already calls saveFormData before emitting
+  if (!stakeholder?.id) {
+    toast.error('Data stakeholder tidak ditemukan', { autoClose: 3000, position: 'top-right' });
+    return;
+  }
+
+  if (!ikasStore.getBackendIkasId(currentSlug.value)) {
+    submitting.value = true;
+    try {
+      const ensureResult = await ikasStore.ensureBackendIkasRecord(currentSlug.value, {
+        id_perusahaan: stakeholder.id,
+        responden: profile.namaResponden || '',
+        jabatan: profile.jabatanResponden || '',
+        telepon: profile.nomorTelepon || '',
+        tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+        target_nilai: parseTargetNilai(profile.targetNilai),
+      });
+
+      if (!ensureResult.success) {
+        toast.error(`Gagal menyiapkan sesi IKAS: ${ensureResult.error || 'ikas_id tidak tersedia'}`, { autoClose: 3000, position: 'top-right' });
+        return;
+      }
+    } finally {
+      submitting.value = false;
+    }
+  }
+
   currentStep.value = 2;
 };
 

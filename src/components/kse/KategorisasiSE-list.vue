@@ -5,7 +5,9 @@ import { useKseStore } from '../../stores/kse';
 import { useStakeholdersStore } from '../../stores/stakeholders';
 import { useCsirtStore } from '../../stores/csirt';
 import { csirtService } from '@/services/csirt.service';
+import { seEditService } from '@/services/se-edit.service';
 import type { SeCsirt } from '@/types/csirt.types';
+import type { SeEditRequest } from '@/types/se-edit.types';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 
 const route  = useRoute();
@@ -43,14 +45,26 @@ const showDeleteModal = ref(false);
 const deleteTarget    = ref<KseListEntry | null>(null);
 const newNamaSistem   = ref('');
 const addError        = ref('');
+const editRequests    = ref<SeEditRequest[]>([]);
 
 // ── Initialise ───────────────────────────────────────────────
 onMounted(async () => {
   if (!stakeholdersStore.initialized) await stakeholdersStore.initialize();
   if (!csirtStore.initialized) await csirtStore.initialize();
   kseStore.initialize();
-  await loadEntries();
+  await Promise.all([
+    loadEntries(),
+    fetchEditRequests()
+  ]);
 });
+
+async function fetchEditRequests() {
+  try {
+    editRequests.value = await seEditService.getRequests();
+  } catch (e) {
+    console.warn('Failed to fetch edit requests:', e);
+  }
+}
 
 async function loadEntries() {
   // 1. Load local entries
@@ -175,6 +189,11 @@ function fmtDateDetail(iso: string): string {
   return new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function hasPendingRequest(seId?: string): boolean {
+  if (!seId) return false;
+  return editRequests.value.some(r => String(r.id_se) === String(seId) && r.status === 'pending');
+}
+
 // ── Stats ────────────────────────────────────────────────────
 const totalKse     = computed(() => kseEntries.value.length);
 const countStrategis = computed(() => kseEntries.value.filter(e => kategoriOf(e) === 'Strategis').length);
@@ -264,7 +283,7 @@ async function confirmAdd() {
     id_sub_sektor    : String(currentStakeholder.value?.sub_sektor?.id || ''),
   }));
 
-  // Go to the KSE CRUD form with CSIRT source so SE detail fields are editable
+  // Go to the KSE CRUD form with source so SE detail fields are editable
   router.push({ path: '/kse-crud', query: { slug: id, source: 'csirt', stakeholder: stakeholderSlug.value } });
 }
 
@@ -305,6 +324,13 @@ async function confirmDelete() {
 // ── Pageheader breadcrumb ─────────────────────────────────────
 const dataToPass = computed(() => {
   const s = currentStakeholder.value;
+  if (route.query.from === 'admin') {
+    return {
+      title: { label: 'KSE Management', path: '/kse-list-admin' },
+      currentpage: 'KSE',
+      activepage: 'KSE',
+    };
+  }
   return {
     title: s
       ? { label: `Profile ${s.nama_perusahaan}`, path: `/stakeholders/${stakeholderSlug.value}` }
@@ -316,7 +342,9 @@ const dataToPass = computed(() => {
 
 // ── Back ──────────────────────────────────────────────────────
 function goBack() {
-  if (route.query.from === 'dashboard') {
+  if (route.query.from === 'admin') {
+    router.push('/kse-list-admin');
+  } else if (route.query.from === 'dashboard') {
     router.push({ 
       path: '/dashboard', 
       query: { reopen: route.query.reopen } 
@@ -327,14 +355,14 @@ function goBack() {
 }
 
 // ── Category badge ────────────────────────────────────────────
-function kategoriVariant(k: string): string {
-  if (k === 'Strategis')      return 'kategori-strategis';
-  if (k === 'Tinggi')         return 'kategori-tinggi';
-  if (k === 'Rendah')         return 'kategori-rendah';
-  return 'kategori-default';
+function kategoriBadgeClass(k: string): string {
+  if (k === 'Strategis') return 'badge-sektor-red';
+  if (k === 'Tinggi')    return 'badge-sektor-amber';
+  if (k === 'Rendah')    return 'badge-sektor-teal';
+  return 'badge-sektor-default';
 }
 
-function scoreColorClass(entry: KseListEntry): string {
+function scoreFillClass(entry: KseListEntry): string {
   const k = kategoriOf(entry);
   if (k === 'Strategis') return 'bg-danger';
   if (k === 'Tinggi')    return 'bg-warning';
@@ -342,7 +370,7 @@ function scoreColorClass(entry: KseListEntry): string {
   return 'bg-secondary';
 }
 
-function progressClass(pct: number): string {
+function progressFillClass(pct: number): string {
   if (pct === 100) return 'bg-success';
   if (pct >= 60)   return 'bg-info';
   if (pct >= 30)   return 'bg-warning';
@@ -357,154 +385,136 @@ function progressClass(pct: number): string {
   <!-- ══════════════════ PAGE ══════════════════ -->
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card gradient-header-card">
+      <!-- Premium Shell Card -->
+      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
+        
+        <!-- ══ PREMIUM HEADER ══════════════════════════════════════════ -->
+        <div class="stakeholder-header stakeholders-premium-header kse-premium-header">
+          <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
+            
+            <!-- Left: Hero Copy + Stats Stack -->
+            <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
+              <div>
+                <div class="stakeholders-inline-breadcrumb">
+                  {{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }} <span>/</span> KSE
+                </div>
+                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">
+                  Kategorisasi Sistem Elektronik
+                </div>
+                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">
+                  {{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor || 'Manajemen Kategorisasi SE' }} &bull;
+                  {{ totalKse }} sistem terdaftar
+                </div>
+              </div>
 
-        <!-- ══ HEADER ══════════════════════════════════════════ -->
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 kse-header">
-          <!-- Left: icon + title -->
-          <div class="d-flex align-items-center gap-4">
-            <div class="header-icon-box">
-              <i class="ri-shield-check-line"></i>
-              <div class="kse-icon-rings"></div>
+              <!-- Meta Stats Stack -->
+              <div class="stakeholders-meta-stack mt-3">
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Total KSE</span>
+                  <strong><i class="ri-stack-line text-primary"></i> {{ totalKse }}</strong>
+                </div>
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Strategis</span>
+                  <strong><i class="ri-alert-fill text-danger"></i> {{ countStrategis }}</strong>
+                </div>
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Tinggi</span>
+                  <strong><i class="ri-arrow-up-circle-fill text-warning"></i> {{ countTinggi }}</strong>
+                </div>
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Rendah</span>
+                  <strong><i class="ri-checkbox-circle-fill text-success"></i> {{ countRendah }}</strong>
+                </div>
+                <div class="stakeholders-meta-card">
+                  <span class="stakeholders-meta-label">Draft</span>
+                  <strong><i class="ri-draft-line text-info"></i> {{ countDraft }}</strong>
+                </div>
+              </div>
             </div>
-            <div>
-              
-              <div class="header-card-title text-white fw-bold">Kategorisasi Sistem Elektronik</div>
-              <div class="header-subtitle mt-1">
-                {{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor || '' }} &bull;
-                {{ totalKse }} sistem terdaftar
+
+            <!-- Right: Search & Back Btn -->
+            <div class="stakeholders-hero-tools d-flex flex-column align-items-end gap-3">
+              <div v-if="route.query.from === 'dashboard'">
+                <button @click="goBack" 
+                        class="btn btn-sm btn-outline-white border-0 shadow-none text-white d-flex align-items-center gap-1 opacity-75 hover-opacity-100">
+                  <i class="ri-arrow-left-line"></i> Kembali ke Dashboard
+                </button>
+              </div>
+
+              <div class="stakeholders-search position-relative">
+                <i class="ri-search-line header-search-icon"></i>
+                <input
+                  v-model="searchQuery"
+                  @input="onSearch"
+                  type="text"
+                  class="form-control form-control-sm header-search-input"
+                  placeholder="Cari sistem elektronik..."
+                />
+                <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
+                  <i class="ri-close-circle-fill"></i>
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Back to Dashboard Btn -->
-          <div v-if="route.query.from === 'dashboard'" class="ms-auto me-2">
-            <button @click="goBack" 
-                    class="btn btn-sm btn-outline-white border-0 shadow-none text-white d-flex align-items-center gap-1">
-              <i class="ri-arrow-left-line"></i> Kembali ke Dashboard
+          <!-- Rows Selector -->
+          <div class="header-rows-selector d-flex align-items-center gap-2">
+            <span class="text-white opacity-75 fs-11 fw-bold text-uppercase">Rows</span>
+            <select v-model.number="perPage" class="form-select form-select-sm header-rows-select" @change="currentPage=1">
+              <option v-for="n in [5, 10, 25, 50]" :key="n" :value="n">{{ n }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ══ CARD BODY ══════════════════════════════════════════ -->
+        <div class="card-body p-4 stakeholders-premium-body">
+
+          <!-- Add Button -->
+          <div class="d-flex justify-content-end mb-4">
+            <button @click="openAdd" class="btn btn-primary-gradient px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
+              <div class="btn-icon-pulse"><i class="ri-add-line"></i></div>
+              <span class="fw-bold">Tambah KSE Baru</span>
             </button>
           </div>
 
-          <!-- Right: search + add btn -->
-          <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-container position-relative">
-              <i class="ri-search-line card-search-icon"></i>
-              <input
-                v-model="searchQuery"
-                @input="onSearch"
-                type="text"
-                class="form-control form-control-sm header-search-input"
-                placeholder="Cari sistem elektronik..."
-              />
-              <button v-if="searchQuery" @click="clearSearch" class="clear-btn">
-                <i class="ri-close-circle-fill"></i>
-              </button>
-            </div>
-          </div>
-        </div><!-- /header -->
-
-        <div class="card-body p-4">
-
-          <!-- ══ STATS STRIP ════════════════════════════════════ -->
-          <div class="stats-strip">
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-blue"><i class="ri-stack-line"></i></div>
-              <div>
-                <div class="stat-value">{{ totalKse }}</div>
-                <div class="stat-label">Total KSE</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-red"><i class="ri-alert-fill"></i></div>
-              <div>
-                <div class="stat-value">{{ countStrategis }}</div>
-                <div class="stat-label">Strategis</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-amber"><i class="ri-arrow-up-circle-fill"></i></div>
-              <div>
-                <div class="stat-value">{{ countTinggi }}</div>
-                <div class="stat-label">Tinggi</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-teal"><i class="ri-checkbox-circle-fill"></i></div>
-              <div>
-                <div class="stat-value">{{ countRendah }}</div>
-                <div class="stat-label">Rendah</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-violet"><i class="ri-draft-line"></i></div>
-              <div>
-                <div class="stat-value">{{ countDraft }}</div>
-                <div class="stat-label">Draft</div>
-              </div>
-            </div>
-          </div><!-- /stats -->
-
-          <!-- ══ CONTROLS BAR ═══════════════════════════════════ -->
-          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 controls-bar mb-3">
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted" style="font-size:13px;">Tampilkan</span>
-              <select v-model.number="perPage" class="form-select entries-select" @change="currentPage=1">
-                <option :value="5">5</option>
-                <option :value="10">10</option>
-                <option :value="25">25</option>
-                <option :value="50">50</option>
-              </select>
-              <span class="text-muted" style="font-size:13px;">entri</span>
-            </div>
-            <!-- <div class="text-muted" style="font-size:13px;">
-              Menampilkan
-              <strong>{{ Math.min((currentPage - 1) * perPage + 1, filtered.length || 0) }}</strong>
-              –
-              <strong>{{ Math.min(currentPage * perPage, filtered.length) }}</strong>
-              dari <strong>{{ filtered.length }}</strong> hasil
-            </div> -->
-            <button @click="openAdd" class="kse-add-btn bg-warning">
-              <i class="ri-add-line me-1"></i>Tambah KSE
-            </button>
-          </div>
-
-          <!-- ══ TABLE ══════════════════════════════════════════ -->
-          <div class="kse-table-wrap">
-            <table class="table kse-table">
-              <thead class="kse-thead">
+          <!-- ══ PREMIUM TABLE ══════════════════════════════════════ -->
+          <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+            <table class="table stakeholder-table mb-0">
+              <thead class="stakeholder-thead">
                 <tr>
-                  <th class="th-no text-center">No</th>
-                  <th class="th-sistem">Nama Sistem Elektronik</th>
-                  <th class="th-kat text-center">Kategori</th>
-                  <th class="th-score text-center">Skor</th>
-                  <th class="th-progress">Kelengkapan</th>
-                  <th class="th-status text-center">Status</th>
-                  <th class="th-date">Dibuat</th>
-                  <th class="th-date">Diperbarui</th>
-                  <th class="th-act text-center">Aksi</th>
+                  <th class="text-center" style="width: 60px;">No</th>
+                  <th>Nama Sistem Elektronik</th>
+                  <th class="text-center">Kategori</th>
+                  <th class="text-center" style="width: 160px;">Skor / Kelengkapan</th>
+                  <th class="text-center">Status</th>
+                  <th>Dibuat / Diperbarui</th>
+                  <th class="text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 <!-- Empty state -->
                 <tr v-if="paginated.length === 0">
-                  <td colspan="9">
-                    <div class="empty-state text-center">
-                      <div class="empty-icon-ring">
+                  <td colspan="7">
+                    <div class="empty-state text-center py-5">
+                      <div class="empty-icon-ring mb-4">
                         <div class="empty-icon-inner">
                           <i class="ri-shield-check-line"></i>
                         </div>
                       </div>
-                      <div class="mt-4">
-                        <h6 class="fw-bold empty-state-title">
-                          {{ searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada KSE' }}
-                        </h6>
-                        <p class="text-muted mb-3" style="font-size:13px">
+                      <div class="mt-2">
+                        <h5 class="fw-bold empty-state-title">
+                          {{ searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada KSE terdaftar' }}
+                        </h5>
+                        <p class="text-muted mb-4 mx-auto" style="max-width: 400px; font-size:14px">
                           {{ searchQuery
-                            ? `Tidak ditemukan KSE dengan kata kunci "${searchQuery}"`
-                            : 'Klik tombol Tambah KSE untuk mendaftarkan Sistem Elektronik pertama.' }}
+                            ? `Kami tidak menemukan Sistem Elektronik dengan kata kunci "${searchQuery}". Coba gunakan kata kunci lain.`
+                            : 'Mulai dengan menambahkan Sistem Elektronik pertama Anda untuk melakukan penilaian kategorisasi.' }}
                         </p>
-                        <button v-if="!searchQuery" @click="openAdd" class="kse-add-btn">
-                          <i class="ri-add-line me-1"></i>Tambah KSE
+                        <button v-if="!searchQuery" @click="openAdd" class="btn btn-primary px-4 rounded-pill">
+                          <i class="ri-add-line me-1"></i>Tambah KSE Pertama
+                        </button>
+                        <button v-else @click="clearSearch" class="btn btn-outline-secondary px-4 rounded-pill">
+                          <i class="ri-refresh-line me-1"></i>Reset Pencarian
                         </button>
                       </div>
                     </div>
@@ -515,98 +525,88 @@ function progressClass(pct: number): string {
                 <tr
                   v-for="(entry, idx) in paginated"
                   :key="entry.id"
-                  class="kse-row"
+                  class="stakeholder-row"
                 >
                   <!-- No -->
-                  <td class="text-center">
+                  <td class="text-center align-middle">
                     <span class="row-number">{{ (currentPage - 1) * perPage + idx + 1 }}</span>
                   </td>
 
                   <!-- Nama Sistem -->
-                  <td>
-                    <div class="d-flex align-items-center gap-2">
-                      <div class="kse-sys-icon">
-                        <i class="ri-computer-line"></i>
+                  <td class="align-middle">
+                    <div class="d-flex align-items-center gap-3">
+                      <div class="kse-sys-avatar" :class="scoreFillClass(entry)">
+                        <i class="ri-macbook-line"></i>
                       </div>
                       <div>
-                        <div class="kse-sys-name">{{ entry.namaSistem }}</div>
-                        <div class="kse-sys-sub">{{ currentStakeholder?.nama_perusahaan }}</div>
+                        <div class="kse-sys-name fw-bold fs-14 text-dark mb-0">
+                          {{ entry.namaSistem }}
+                          <span v-if="hasPendingRequest(entry.seId)" class="badge bg-warning-transparent text-warning ms-1" style="font-size: 9px; vertical-align: middle;">
+                            PENDING REVIEW
+                          </span>
+                        </div>
+                        <div class="text-muted fs-11">ID: {{ entry.seId || entry.id.split('_').pop() }}</div>
                       </div>
                     </div>
                   </td>
 
                   <!-- Kategori -->
-                  <td class="text-center">
-                    <span class="kse-badge" :class="kategoriVariant(kategoriOf(entry))">
-                      <i class="ri-shield-fill me-1" style="font-size:10px"></i>
+                  <td class="text-center align-middle">
+                    <span class="badge-sektor" :class="kategoriBadgeClass(kategoriOf(entry))">
+                      <i class="ri-shield-fill me-1"></i>
                       {{ kategoriOf(entry) }}
                     </span>
                   </td>
 
-                  <!-- Skor -->
-                  <td class="text-center">
-                    <div class="kse-score-wrap">
-                      <span class="kse-score-num">{{ scoreOf(entry) }}</span>
-                      <span class="kse-score-max">/ {{ maxScore }}</span>
+                  <!-- Skor / Kelengkapan -->
+                  <td class="align-middle">
+                    <div class="mb-2 d-flex justify-content-between align-items-end">
+                      <span class="fs-11 fw-bold text-muted">SKOR: {{ scoreOf(entry) }}/{{ maxScore }}</span>
+                      <span class="fs-11 fw-bold" :class="completionPct(entry) === 100 ? 'text-success' : 'text-primary'">{{ completionPct(entry) }}%</span>
                     </div>
-                    <div class="kse-score-bar">
+                    <div class="progress progress-xs mb-1" style="height: 6px; border-radius: 10px;">
                       <div
-                        class="kse-score-fill"
-                        :class="scoreColorClass(entry)"
-                        :style="{ width: Math.min(Math.round((scoreOf(entry)/maxScore)*100), 100) + '%' }"
+                        class="progress-bar"
+                        :class="progressFillClass(completionPct(entry))"
+                        role="progressbar"
+                        :style="{ width: completionPct(entry) + '%' }"
                       ></div>
                     </div>
                   </td>
 
-                  <!-- Kelengkapan -->
-                  <td>
-                    <div class="d-flex align-items-center gap-2">
-                      <div class="kse-prog-bar-wrap flex-grow-1">
-                        <div
-                          class="kse-prog-fill"
-                          :class="progressClass(completionPct(entry))"
-                          :style="{ width: completionPct(entry) + '%' }"
-                        ></div>
-                      </div>
-                      <span class="kse-prog-pct">{{ completionPct(entry) }}%</span>
+                  <!-- Status -->
+                  <td class="text-center align-middle">
+                    <span v-if="isSubmitted(entry)" class="badge-sektor badge-sektor-teal">
+                      <i class="ri-lock-fill me-1"></i> FINAL
+                    </span>
+                    <span v-else class="badge-sektor badge-sektor-slate">
+                      <i class="ri-edit-2-line me-1"></i> DRAFT
+                    </span>
+                  </td>
+
+                  <!-- Dibuat / Diperbarui -->
+                  <td class="align-middle">
+                    <div class="d-flex flex-column">
+                      <div class="fs-12 text-dark fw-medium"><i class="ri-calendar-line me-1 text-muted"></i> {{ fmtDate(entry.createdAt) }}</div>
+                      <div class="fs-10 text-muted mt-1"><i class="ri-time-line me-1"></i> {{ fmtDateDetail(getKseDetail(entry).lastUpdated) }}</div>
                     </div>
                   </td>
 
-                  <!-- Status -->
-                  <td class="text-center">
-                    <span v-if="isSubmitted(entry)" class="kse-status kse-status-done">
-                      <i class="ri-lock-fill"></i> Final
-                    </span>
-                    <span v-else class="kse-status kse-status-draft">
-                      <i class="ri-edit-2-line"></i> Draft
-                    </span>
-                  </td>
-
-                  <!-- Dibuat -->
-                  <td>
-                    <span class="kse-date">{{ fmtDate(entry.createdAt) }}</span>
-                  </td>
-
-                  <!-- Diperbarui -->
-                  <td>
-                    <span class="kse-date">{{ fmtDateDetail(getKseDetail(entry).lastUpdated) }}</span>
-                  </td>
-
                   <!-- Aksi -->
-                  <td class="text-center">
-                    <div class="d-flex justify-content-center gap-1">
-                      <button @click="viewKse(entry)" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Detail">
+                  <td class="text-center align-middle">
+                    <div class="d-flex justify-content-center gap-2">
+                      <button @click="viewKse(entry)" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="Lihat Detail">
                         <i class="ri-eye-line"></i>
                       </button>
                       <button
                         @click="editKse(entry)"
-                        class="btn btn-sm btn-icon btn-wave btn-success-light"
+                        class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn"
                         title="Isi / Edit"
                       >
                         <i class="ri-pencil-line"></i>
                       </button>
-                      <button @click="openDelete(entry)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
-                        <i class="ri-delete-bin-2-line"></i>
+                      <button @click="openDelete(entry)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
+                        <i class="ri-delete-bin-line"></i>
                       </button>
                     </div>
                   </td>
@@ -616,123 +616,275 @@ function progressClass(pct: number): string {
           </div><!-- /table-wrap -->
 
           <!-- ══ PAGINATION ═════════════════════════════════════ -->
-          <div v-if="totalPages > 1" class="d-flex justify-content-center mt-4">
-            <nav>
-              <ul class="pagination mb-0">
-                <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                  <button class="page-link" @click="currentPage--">
-                    <i class="ri-arrow-left-s-line"></i>
-                  </button>
-                </li>
-                <li
-                  v-for="p in pageNumbers"
-                  :key="p"
-                  class="page-item"
-                  :class="{ active: currentPage === p }"
-                >
-                  <button class="page-link" @click="currentPage = p">{{ p }}</button>
-                </li>
-                <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                  <button class="page-link" @click="currentPage++">
-                    <i class="ri-arrow-right-s-line"></i>
-                  </button>
-                </li>
-              </ul>
-            </nav>
+          <div class="pagination-container stakeholders-pagination mt-4">
+            <div class="stakeholders-pagination-copy">
+              Menampilkan {{ filtered.length ? (currentPage - 1) * perPage + 1 : 0 }}-{{ Math.min(currentPage * perPage, filtered.length) }} dari {{ filtered.length }} KSE
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+              <span class="stakeholders-page-pill">Halaman {{ currentPage }} dari {{ totalPages || 1 }}</span>
+              <nav v-if="totalPages > 1">
+                <ul class="pagination pagination-sm mb-0 gap-1">
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <button class="page-link rounded-circle" @click="currentPage = 1" title="First">
+                      <i class="ri-skip-back-mini-line"></i>
+                    </button>
+                  </li>
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                    <button class="page-link rounded-circle" @click="currentPage--" title="Previous">
+                      <i class="ri-arrow-left-s-line"></i>
+                    </button>
+                  </li>
+                  <template v-for="p in totalPages" :key="p">
+                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
+                      <button class="page-link rounded-circle" @click="currentPage = p">{{ p }}</button>
+                    </li>
+                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">
+                      <span class="page-link border-0 bg-transparent">...</span>
+                    </li>
+                  </template>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                    <button class="page-link rounded-circle" @click="currentPage++" title="Next">
+                      <i class="ri-arrow-right-s-line"></i>
+                    </button>
+                  </li>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                    <button class="page-link rounded-circle" @click="currentPage = totalPages" title="Last">
+                      <i class="ri-skip-forward-mini-line"></i>
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+            </div>
           </div>
 
         </div><!-- /card-body -->
-      </div><!-- /card -->
+      </div><!-- /card shell -->
     </div>
   </div>
 
-  <!-- ══ ADD MODAL ══════════════════════════════════════════════ -->  <teleport to="body">
-    <transition name="kse-modal-fade">
-      <div v-if="showAddModal" class="kse-modal-overlay" @click.self="closeAdd">
-        <div class="kse-modal-box">
-          <!-- Header -->
-          <div class="kse-modal-header">
-            <div class="d-flex align-items-center gap-3">
-              <div class="kse-modal-icon-wrap">
-                <i class="ri-add-circle-fill"></i>
+  <!-- ══ ADD MODAL ══════════════════════════════════════════════ -->
+  <teleport to="body">
+    <div v-if="showAddModal" class="modal-overlay" @click.self="closeAdd">
+      <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
+        <div class="modal-content border-0 bg-transparent">
+          <div class="kse-modal-box kse-modal-sm w-100">
+            <div class="kse-modal-header pb-3 mb-2" style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+              <div class="d-flex align-items-center gap-3">
+                <div class="kse-modal-icon-wrap" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+                  <i class="ri-add-circle-fill"></i>
+                </div>
+                <div>
+                  <div class="kse-modal-title">Tambah KSE Baru</div>
+                  <div class="kse-modal-sub fs-11 text-muted">{{ currentStakeholder?.nama_perusahaan }}</div>
+                </div>
               </div>
-              <div>
-                <div class="kse-modal-title">Tambah KSE Baru</div>
-                <div class="kse-modal-sub">{{ currentStakeholder?.nama_perusahaan }}</div>
+              <button @click="closeAdd" class="btn-close ms-auto shadow-none"></button>
+            </div>
+            
+            <div class="kse-modal-body text-start">
+              <p class="text-muted mb-4 fs-13">
+                Masukkan nama Sistem Elektronik yang akan dikategorisasi.
+                Setiap sistem akan dinilai secara terpisah.
+              </p>
+              
+              <div class="mb-3">
+                <label class="form-label fs-12 fw-bold text-uppercase tracking-wider text-muted">Nama Sistem Elektronik <span class="text-danger">*</span></label>
+                <input
+                  v-model="newNamaSistem"
+                  @keyup.enter="confirmAdd"
+                  type="text"
+                  class="form-control form-control-lg fs-14 border-2"
+                  style="border-radius: 12px;"
+                  :class="{ 'is-invalid': addError }"
+                  placeholder="cth: SIMKEU, Core Banking System..."
+                  autofocus
+                />
+                <div v-if="addError" class="invalid-feedback">{{ addError }}</div>
+              </div>
+              
+              <div class="alert alert-light border d-flex gap-2 p-2 mb-0" style="border-radius: 10px;">
+                <i class="ri-information-line text-primary fs-16"></i>
+                <div class="fs-11 text-muted">Setelah ini Anda akan diarahkan ke halaman kuesioner penilaian KSE.</div>
               </div>
             </div>
-            <button @click="closeAdd" class="kse-modal-close"><i class="ri-close-line"></i></button>
-          </div>
-          <!-- Body -->
-          <div class="kse-modal-body">
-            <p class="text-muted mb-3" style="font-size:13px">
-              Masukkan nama Sistem Elektronik yang akan dikategorisasi.
-              Setiap sistem dinilai secara terpisah.
-            </p>
-            <label class="form-label fw-semibold" style="font-size:13px">
-              Nama Sistem Elektronik <span class="text-danger">*</span>
-            </label>
-            <input
-              v-model="newNamaSistem"
-              @keyup.enter="confirmAdd"
-              type="text"
-              class="form-control kse-modal-input"
-              :class="{ 'is-invalid': addError }"
-              placeholder="cth: SIMKEU, SIMPEG, Core Banking System..."
-              autofocus
-            />
-            <div v-if="addError" class="invalid-feedback">{{ addError }}</div>
-            <div class="mt-2 d-flex align-items-center gap-1 text-muted" style="font-size:12px">
-              <i class="ri-information-line"></i>
-              Setelah ini Anda akan langsung diarahkan ke halaman pengisian KSE.
+
+            <div class="kse-modal-footer mt-4 d-flex gap-2">
+              <button @click="closeAdd" class="btn btn-light flex-grow-1 py-2 rounded-pill">Batal</button>
+              <button @click="confirmAdd" class="btn btn-primary flex-grow-1 py-2 rounded-pill shadow-sm">
+                Lanjut Isi KSE <i class="ri-arrow-right-line ms-1"></i>
+              </button>
             </div>
-          </div>
-          <!-- Footer -->
-          <div class="kse-modal-footer">
-            <button @click="closeAdd" class="btn btn-light kse-modal-cancel">Batal</button>
-            <button @click="confirmAdd" class="kse-modal-confirm-btn">
-              <i class="ri-arrow-right-line me-1"></i> Lanjut Isi KSE
-            </button>
           </div>
         </div>
       </div>
-    </transition>
+    </div>
   </teleport>
 
   <!-- ══ DELETE MODAL ═══════════════════════════════════════════ -->
   <teleport to="body">
-    <transition name="kse-modal-fade">
-      <div v-if="showDeleteModal" class="kse-modal-overlay" @click.self="closeDelete">
-        <div class="kse-modal-box kse-modal-sm">
-          <div class="kse-modal-header kse-modal-header-danger">
-            <div class="d-flex align-items-center gap-3">
-              <div class="kse-modal-icon-wrap kse-icon-danger">
-                <i class="ri-delete-bin-2-fill"></i>
-              </div>
-              <div>
-                <div class="kse-modal-title">Hapus KSE</div>
-                <div class="kse-modal-sub">Tindakan ini tidak dapat dibatalkan</div>
+    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDelete">
+      <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
+        <div class="modal-content border-0 bg-transparent">
+          <div class="kse-modal-box kse-modal-sm w-100">
+            <div class="kse-modal-header kse-modal-header-danger pb-3 mb-2">
+              <div class="d-flex align-items-center gap-3">
+                <div class="kse-modal-icon-wrap" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">
+                  <i class="ri-delete-bin-2-fill"></i>
+                </div>
+                <div>
+                  <div class="kse-modal-title">Hapus KSE</div>
+                  <div class="kse-modal-sub text-danger opacity-75 fs-11">Tindakan permanen</div>
+                </div>
               </div>
             </div>
-            <button @click="closeDelete" class="kse-modal-close"><i class="ri-close-line"></i></button>
-          </div>
-          <div class="kse-modal-body">
-            <p style="font-size:13.5px">
-              Apakah Anda yakin ingin menghapus KSE
-              <strong>&ldquo;{{ deleteTarget?.namaSistem }}&rdquo;</strong>?
-              Semua data penilaian yang telah diisi akan terhapus permanen.
-            </p>
-          </div>
-          <div class="kse-modal-footer">
-            <button @click="closeDelete" class="btn btn-light kse-modal-cancel">Batal</button>
-            <button @click="confirmDelete" class="kse-modal-del-btn">
-              <i class="ri-delete-bin-2-line me-1"></i>Ya, Hapus
-            </button>
+            
+            <div class="kse-modal-body text-center py-4">
+              <div class="mb-3 fs-14">
+                Apakah Anda yakin ingin menghapus KSE <br>
+                <strong class="text-dark">&ldquo;{{ deleteTarget?.namaSistem }}&rdquo;</strong>?
+              </div>
+              <p class="text-muted fs-12 mb-0 px-3">
+                Semua data penilaian dan riwayat yang telah diisi akan terhapus secara permanen dari sistem.
+              </p>
+            </div>
+            
+            <div class="kse-modal-footer d-flex gap-2">
+              <button @click="closeDelete" class="btn btn-light flex-grow-1 py-2 rounded-pill">Batal</button>
+              <button @click="confirmDelete" class="btn btn-danger flex-grow-1 py-2 rounded-pill shadow-sm">
+                Ya, Hapus
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </transition>
+    </div>
   </teleport>
 
 </template>
 
+<style scoped>
+/* Component Specific Premium Styles */
+.kse-premium-header {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.15), transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(124, 58, 237, 0.1), transparent 40%),
+    linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #2563eb 100%) !important;
+}
+
+.kse-sys-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.btn-primary-gradient {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  border: none;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.btn-primary-gradient:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3) !important;
+  color: white;
+}
+
+.btn-icon-pulse {
+  width: 24px;
+  height: 24px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-xs {
+  background-color: rgba(0,0,0,0.05);
+  overflow: visible;
+}
+
+[data-theme-mode="dark"] .progress-xs {
+  background-color: rgba(255,255,255,0.05);
+}
+
+.hover-opacity-100:hover {
+  opacity: 1 !important;
+}
+
+.stakeholders-action-btn {
+  border-radius: 10px !important;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.stakeholders-action-btn:hover {
+  transform: translateY(-2px);
+}
+
+.kse-modal-box {
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme-mode="dark"] .kse-modal-box {
+  background: #1e293b;
+  color: #f1f5f9;
+}
+
+[data-theme-mode="dark"] .kse-sys-name {
+  color: #f1f5f9 !important;
+}
+
+[data-theme-mode="dark"] .text-dark {
+  color: #f1f5f9 !important;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Animations */
+.stakeholder-row {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.btn-icon-pulse i {
+  animation: pulse-icon 2s infinite;
+}
+
+@keyframes pulse-icon {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+</style>

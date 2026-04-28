@@ -33,6 +33,20 @@ import type {
  * Handles all API calls for IKAS assessment endpoints.
  */
 export const ikasService = {
+    async deleteIkas(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/ikas/${id}`);
+    },
+    resolveKategoriKey(kategori: string): 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih' {
+        const normalized = String(kategori || '').toLowerCase();
+        if (normalized === 'identifikasi' || normalized === 'proteksi' || normalized === 'deteksi' || normalized === 'gulih') {
+            return normalized;
+        }
+        if (normalized === 'tanggulih' || normalized === 'pemulihan') {
+            return 'gulih';
+        }
+        throw new Error(`Kategori maturity tidak dikenali: ${kategori}`);
+    },
+
     // ─── IKAS (main record) ────────────────────────────────────────
 
     /** Create a new IKAS assessment record */
@@ -363,6 +377,11 @@ export const ikasService = {
         return api.delete<any>(`/api/maturity/pertanyaan-gulih/${id}`);
     },
 
+    async getPertanyaanByKategori(kategori: string): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        return api.get<any>(`/api/maturity/pertanyaan-${resolved}`);
+    },
+
     // Jawaban endpoints
     async getJawabanIdentifikasi(ikasId?: string): Promise<any> {
         const url = ikasId 
@@ -454,5 +473,23 @@ export const ikasService = {
 
     async deleteJawabanGulih(id: string): Promise<any> {
         return api.delete<any>(`/api/maturity/jawaban-gulih/${id}`);
+    },
+
+    async getJawabanByKategori(kategori: string, ikasId: string): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        if (!ikasId) {
+            throw new Error('ikas_id wajib ada untuk mengambil jawaban maturity');
+        }
+        return api.get<any>(`/api/maturity/jawaban-${resolved}?ikas_id=${ikasId}`);
+    },
+
+    async createJawabanByKategori(kategori: string, payload: JawabanPayload): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        return api.post<any>(`/api/maturity/jawaban-${resolved}`, payload);
+    },
+
+    async updateJawabanByKategori(kategori: string, id: string, payload: JawabanPayload): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        return api.put<any>(`/api/maturity/jawaban-${resolved}/${id}`, payload);
     },
 };

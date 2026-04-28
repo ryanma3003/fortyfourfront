@@ -215,7 +215,7 @@ export interface PertanyaanIdentifikasiResponse {
 export interface JawabanPayload {
     id?: string;
     id_ikas?: string;
-    ikas_id?: string;
+    ikas_id ?: string;
     id_pertanyaan?: string;
     pertanyaan_identifikasi_id?: number | string;
     pertanyaan_proteksi_id?: number | string;

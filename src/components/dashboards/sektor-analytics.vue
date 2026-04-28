@@ -881,7 +881,7 @@ watch(selectedSektorId, () => {
       <div v-if="viewMode === 'cards'" class="sa-cards-section animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.4s' }">
         <div class="row g-3">
           <div
-            class="col-xl-4 col-lg-6 col-md-6"
+            class="col-xl-3 col-lg-6 col-md-6"
             v-for="(sektor, idx) in filteredSektors"
             :key="sektor.id"
           >

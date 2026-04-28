@@ -5,6 +5,7 @@ import { authService } from "@/services/auth.service";
 import { api } from "@/config/api";
 import router from "@/router/index";
 import type { LoginPayload, RegisterPayload } from "@/types/auth.types";
+import { formatImageUrl } from "@/utils/media";
 
 interface CurrentUser {
   id: string;
@@ -68,17 +69,6 @@ if (typeof window !== 'undefined') {
  */
 function mapToCurrentUser(data: any): CurrentUser {
   const u = data?.user ?? data;
-
-  const formatImageUrl = (path: string | undefined | null) => {
-    if (!path) return '';
-    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('/images/')) {
-        return path;
-    }
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
-    const cleanBaseUrl = baseUrl ? baseUrl.replace(/\/$/, '') : '';
-    const cleanPath = path.replace(/^\//, '');
-    return cleanBaseUrl ? `${cleanBaseUrl}/${cleanPath}` : `/${cleanPath}`;
-  };
 
   return {
     id: u.id,

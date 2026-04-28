@@ -1977,7 +1977,7 @@
                 </div>
                 <div class="row g-3">
                     <div :class="[
-                            sektorCards.length === 1 ? 'col-xl-4 col-md-6' : (sektorCards.length <= 6 ? 'col-xl-4 col-md-6' : 'col-xl-3 col-md-4'),
+                            sektorCards.length === 1 ? 'col-xl-4 col-md-6' : (sektorCards.length === 4 ? 'col-xl-3 col-md-6' : (sektorCards.length <= 6 ? 'col-xl-4 col-md-6' : 'col-xl-3 col-md-4')),
                             'animate-show-up'
                         ]"
                         v-for="(card, index) in sektorCards"

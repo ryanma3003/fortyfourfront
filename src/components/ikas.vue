@@ -129,6 +129,32 @@ const goToIkasCrud = () => {
     router.push({ path: '/ikas-crud', query });
 };
 
+const isDeleting = ref(false);
+const deleteAssessment = async () => {
+    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    if (!ikasId) {
+        alert('Tidak ada data penilaian untuk dihapus.');
+        return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin menghapus data penilaian IKAS ini? Tindakan ini tidak dapat dibatalkan.')) {
+        return;
+    }
+
+    isDeleting.value = true;
+    try {
+        await ikasStore.deleteFromBackend(ikasId);
+        alert('Data penilaian berhasil dihapus.');
+        // Refresh page or redirect
+        router.push({ path: '/stakeholders' });
+    } catch (error) {
+        console.error('Delete error:', error);
+        alert('Gagal menghapus data penilaian: ' + (error.message || 'Unknown error'));
+    } finally {
+        isDeleting.value = false;
+    }
+};
+
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);
 const selectedFile = ref(null);
@@ -180,7 +206,7 @@ const uploadExcel = async () => {
 
     try {
         // Mengirim file ke endpoint backend
-        const response = await fetch('/api/ikas/import', {
+        const response = await fetch('/api/maturity/ikas/import', {
             method: 'POST',
             body: formData,
             // Headers untuk Content-Type otomatis diatur oleh browser saat menggunakan FormData
@@ -404,6 +430,17 @@ const exportToPdf = async () => {
 }
 .btn-ikas-pdf:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-pdf:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.btn-ikas-delete {
+  background: linear-gradient(135deg, #991b1b, #dc2626);
+  border: none; border-radius: 50px; padding: 8px 22px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(220,38,38,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-ikas-delete:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-delete:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 /* ── Domain score summary strip ─────────────────────────── */
 .domain-strip {
@@ -688,6 +725,11 @@ const exportToPdf = async () => {
               <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
               <i v-else class="ri-file-pdf-line"></i>
               {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
+            </button>
+            <button v-if="ikasStore.getBackendIkasId(currentSlug)" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
+              <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <i v-else class="ri-delete-bin-line"></i>
+              {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
             </button>
           </div>
 

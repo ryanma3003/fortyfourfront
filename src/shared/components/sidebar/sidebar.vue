@@ -25,7 +25,7 @@
     </div>
 
     <!-- ── Scrollable Menu ── -->
-    <PerfectScrollbar class="main-sidebar sb2-scroll" id="sidebar-scroll">
+    <div class="main-sidebar sb2-scroll" id="sidebar-scroll">
       <nav class="main-menu-container nav nav-pills flex-column sub-open">
 
         <div class="slide-left" id="slide-left" @click="leftArrowFn">
@@ -114,7 +114,7 @@
           </li>
         </ul>
       </nav>
-    </PerfectScrollbar>
+    </div>
 
     <!-- ── AI Assistant Footer ── -->
     <div class="sidebar-chatbot-footer sb2-footer">
@@ -152,8 +152,8 @@ import {
 } from "vue";
 import { MENUITEMS as staticMenuData } from "../../../data/sidebar/nav.ts";
 import { useRoute, useRouter } from "vue-router";
-import { PerfectScrollbar } from "vue3-perfect-scrollbar";
-import "vue3-perfect-scrollbar/style.css";
+// import { PerfectScrollbar } from "vue3-perfect-scrollbar";
+// import "vue3-perfect-scrollbar/style.css";
 import media80 from "/images/media/media-80.png";
 import { switcherStore } from "../../../stores/switcher";
 import { useAuthStore } from "../../../stores/auth";
@@ -332,14 +332,14 @@ function toggleSubmenu(
           }
         }
       }
-      setTimeout(() => {
-        let computedValue = siblingUL.getBoundingClientRect();
-        if (computedValue.bottom > window.innerHeight) {
-          siblingUL.style.height =
-            window.innerHeight - computedValue.top - 8 + "px";
-          siblingUL.style.overflow = "auto";
-        }
-      }, 100);
+      // setTimeout(() => {
+      //   let computedValue = siblingUL.getBoundingClientRect();
+      //   if (computedValue.bottom > window.innerHeight) {
+      //     siblingUL.style.height =
+      //       window.innerHeight - computedValue.top - 8 + "px";
+      //     siblingUL.style.overflow = "auto";
+      //   }
+      // }, 100);
     }
   }
 }

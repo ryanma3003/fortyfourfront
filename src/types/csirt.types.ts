@@ -93,6 +93,20 @@ export interface SeCsirt {
     nilai_investasi?: string;
     potensi_kerugian_dan_dampak_negatif?: string;
     teknik_kriptografi?: string;
+    // Optional joined data
+    perusahaan?: {
+        id: string;
+        nama_perusahaan: string;
+        slug: string;
+        sub_sektor?: {
+            id: string;
+            nama_sektor: string;
+            nama_sub_sektor: string;
+        };
+    };
+    // Metadata
+    created_at?: string;
+    updated_at?: string;
 }
 
 export interface CreateSePayload {

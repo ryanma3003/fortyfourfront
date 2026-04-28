@@ -165,6 +165,11 @@ const routes: RouteRecordRaw[] = [
               name: 'Event Edit',
               component: () => import("../components/event/event-form.vue"),
             },
+            {
+              path: 'kse-list-admin',
+              name: 'Admin KSE List',
+              component: () => import("../components/dashboards/kse-list-admin.vue"),
+            },
           ]
         },
         {

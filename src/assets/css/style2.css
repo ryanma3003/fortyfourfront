@@ -3027,8 +3027,14 @@ html.dark .btn-gradient-blue:hover { color: #ffffff !important; }
   scrollbar-width: none !important;        /* Firefox */
   -ms-overflow-style: none !important;     /* IE/Edge */
 }
-.sidebar-v2 .main-sidebar::-webkit-scrollbar {
+.sidebar-v2 .main-sidebar::-webkit-scrollbar,
+.sidebar-v2 *::-webkit-scrollbar {
   display: none !important;                /* Chrome/Safari/Opera */
+}
+.sidebar-v2 *,
+.sidebar-v2 * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 /* ── Menu list wrapper ──────────────────────────────────────────── */
