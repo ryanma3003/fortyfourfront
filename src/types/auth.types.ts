@@ -4,6 +4,12 @@ export interface LoginPayload {
     turnstileToken?: string;
 }
 
+export interface LoginRequestBody {
+    "cf-turnstile-response": string;
+    identifier: string;
+    password: string;
+}
+
 export interface RegisterPayload {
     username: string;
     email: string;
@@ -15,14 +21,14 @@ export interface RegisterPayload {
 
 /**
  * Login response from backend.
- * Returns one of: setup_token (MFA first-time), mfa_token (MFA verify), or access_token (direct login).
+ * Direct-login tokens are set via HTTP-only cookies, not returned in the body.
+ * MFA flows may still return continuation tokens for the next verification step.
  */
 export interface AuthResponse {
     message?: string;
     // MFA tokens — mutually exclusive
     setup_token?: string;
     mfa_token?: string;
-    access_token?: string;
     user?: AuthUser;
     // Allow additional properties from backend
     [key: string]: any;
@@ -50,13 +56,11 @@ export interface MfaSetupResponse {
 /** POST /api/mfa/enable response */
 export interface MfaEnableResponse {
     message?: string;
-    access_token: string;
-    user: AuthUser;
+    user?: AuthUser;
 }
 
 /** POST /api/mfa/verify response */
 export interface MfaVerifyResponse {
     message?: string;
-    access_token: string;
-    user: AuthUser;
+    user?: AuthUser;
 }
