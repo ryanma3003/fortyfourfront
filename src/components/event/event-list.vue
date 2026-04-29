@@ -212,7 +212,7 @@ export default {
                   <td colspan="6" class="text-center py-5">
                     <div class="empty-state">
                       <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-calendar-event-line"></i></div></div>
-                      <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Data</h6>
+                      <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Dataa</h6>
                       <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Event / Berita" untuk membuat berita acara baru.</p>
                     </div>
                   </td>
