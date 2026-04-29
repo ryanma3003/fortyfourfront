@@ -53,6 +53,9 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/kse-list-admin", icon: Svgicons.Todoicon, title: "KSE List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
+    path: "/ikas-list", icon: Svgicons.Analyticsicon, title: "IKAS List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+  },
+  {
     path: "/users", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "fullAdmin"
   },
   {
