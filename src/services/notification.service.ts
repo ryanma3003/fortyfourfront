@@ -162,29 +162,39 @@ class NotificationService {
      * GET /api/notifications
      *
      * Expected response:
-     * { notifications: [{id, message, type, read, created_at, user_id?, ...}], unread_count: number }
+     * { data: [{id, message, type, read, created_at, user_id?, ...}], unread_count?: number }
      */
     async fetchAll(): Promise<{ notifications: any[]; unread_count: number }> {
         try {
             const res = await api.get<any>('/api/notifications');
-
-            // Shape: { notifications: [...], unread_count: X }
-            if (res && typeof res === 'object' && 'notifications' in res) {
-                return {
-                    notifications: Array.isArray(res.notifications) ? res.notifications : [],
-                    unread_count: typeof res.unread_count === 'number' ? res.unread_count : 0,
-                };
-            }
-
-            // Fallback: backend returned a flat array
+            
+            let notifsArray: any[] = [];
+            
             if (Array.isArray(res)) {
-                return {
-                    notifications: res,
-                    unread_count: res.filter((n: any) => !n.read).length,
-                };
+                notifsArray = res;
+            } else if (res && typeof res === 'object') {
+                if (Array.isArray(res.data)) {
+                    notifsArray = res.data;
+                } else if (Array.isArray(res.notifications)) {
+                    notifsArray = res.notifications;
+                } else if (res.data && Array.isArray(res.data.notifications)) {
+                    notifsArray = res.data.notifications;
+                }
             }
 
-            return { notifications: [], unread_count: 0 };
+            let unreadCount = 0;
+            if (res && typeof res === 'object' && typeof res.unread_count === 'number') {
+                unreadCount = res.unread_count;
+            } else if (res && res.data && typeof res.data.unread_count === 'number') {
+                unreadCount = res.data.unread_count;
+            } else {
+                unreadCount = notifsArray.filter((n: any) => !(n.read || n.is_read || n.read_at)).length;
+            }
+
+            return {
+                notifications: notifsArray,
+                unread_count: unreadCount,
+            };
         } catch (err) {
             console.warn('[NotifService] fetchAll failed:', err);
             return { notifications: [], unread_count: 0 };
@@ -197,21 +207,13 @@ class NotificationService {
      */
     async markAsRead(id: string): Promise<boolean> {
         const cleanId = encodeURIComponent(id);
-        const paths = [
-            { method: 'PATCH', url: `/api/notifications/${cleanId}/read` },
-            { method: 'POST',  url: `/api/notifications/${cleanId}/mark-as-read` },
-            { method: 'PATCH', url: `/api/notifications/${cleanId}`, body: { is_read: true, read: true } }
-        ];
-
-        for (const p of paths) {
-            try {
-                if (p.method === 'PATCH') await api.patch(p.url, p.body || {});
-                else await api.post(p.url, p.body || {});
-                return true;
-            } catch { /* try next */ }
+        try {
+            await api.patch(`/api/notifications/${cleanId}/read`, {});
+            return true;
+        } catch (err) {
+            console.warn('[NotifService] markAsRead failed:', id, err);
+            return false;
         }
-        console.warn('[NotifService] markAsRead failed for all paths:', id);
-        return false;
     }
 
     /**
@@ -219,21 +221,13 @@ class NotificationService {
      * PATCH /api/notifications/read-all
      */
     async markAllAsRead(): Promise<boolean> {
-        const paths = [
-            { method: 'PATCH', url: '/api/notifications/read-all' },
-            { method: 'POST',  url: '/api/notifications/mark-all-as-read' },
-            { method: 'PATCH', url: '/api/notifications', body: { is_read: true, read: true } }
-        ];
-
-        for (const p of paths) {
-            try {
-                if (p.method === 'PATCH') await api.patch(p.url, p.body || {});
-                else await api.post(p.url, p.body || {});
-                return true;
-            } catch { /* try next */ }
+        try {
+            await api.patch('/api/notifications/read-all', {});
+            return true;
+        } catch (err) {
+            console.warn('[NotifService] markAllAsRead failed:', err);
+            return false;
         }
-        console.warn('[NotifService] markAllAsRead failed for all paths');
-        return false;
     }
 
     /**
@@ -243,18 +237,11 @@ class NotificationService {
     async deleteOne(id: string): Promise<boolean> {
         const cleanId = encodeURIComponent(id);
         try {
-            // 1. Try standard DELETE
             await api.delete(`/api/notifications/${cleanId}`);
             return true;
         } catch (err) {
-            try {
-                // 2. Try POST fallback for environments where DELETE is restricted
-                await api.post(`/api/notifications/${cleanId}/delete`, {});
-                return true;
-            } catch {
-                console.warn('[NotifService] deleteOne failed:', id, err);
-                return false;
-            }
+            console.warn('[NotifService] deleteOne failed:', id, err);
+            return false;
         }
     }
 
@@ -264,18 +251,11 @@ class NotificationService {
      */
     async deleteAll(): Promise<boolean> {
         try {
-            // 1. Try standard bulk DELETE
             await api.delete('/api/notifications');
             return true;
         } catch (err) {
-            try {
-                // 2. Try POST fallback
-                await api.post('/api/notifications/delete-all', {});
-                return true;
-            } catch {
-                console.warn('[NotifService] deleteAll failed:', err);
-                return false;
-            }
+            console.warn('[NotifService] deleteAll failed:', err);
+            return false;
         }
     }
 

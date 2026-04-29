@@ -11,11 +11,15 @@
  */
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
 
 export const config = {
     api: {
         baseUrl,
         timeout: 30000,
+    },
+    turnstile: {
+        siteKey: turnstileSiteKey,
     },
     isProduction: import.meta.env.PROD,
     isDev: import.meta.env.DEV,

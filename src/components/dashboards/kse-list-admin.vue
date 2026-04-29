@@ -198,6 +198,7 @@ const handleReview = async (status: 'approved' | 'rejected') => {
         });
         reviewModal.value = false;
         fetchData();
+        window.dispatchEvent(new Event('se-requests-updated'));
     } catch (error) {
         console.error('Review failed:', error);
     } finally {
@@ -284,6 +285,8 @@ const getFilteredChanges = (req: any) => {
     return changes;
 };
 
+const getFilteredChangesCount = (req: any) => Object.keys(getFilteredChanges(req)).length;
+
 const assessmentLabels: Record<string, string> = {
   nama_se: 'Nama Sistem Elektronik',
   id_perusahaan: 'Stakeholder',
@@ -353,18 +356,22 @@ const getFullStakeholder = (se: SeCsirt) => {
                                     <span class="stakeholders-meta-label">Total Sistem</span>
                                     <strong><i class="ri-computer-line text-primary"></i> {{ seList.length }}</strong>
                                 </div>
-                                <div class="stakeholders-meta-card border-danger-subtle">
+                                <div class="stakeholders-meta-card">
                                     <span class="stakeholders-meta-label">Strategis</span>
                                     <strong><i class="ri-shield-flash-fill text-danger"></i> {{ countStrategis }}</strong>
                                 </div>
-                                <div class="stakeholders-meta-card border-warning-subtle">
+                                <div class="stakeholders-meta-card">
                                     <span class="stakeholders-meta-label">Tinggi</span>
                                     <strong><i class="ri-shield-fill text-warning"></i> {{ countTinggi }}</strong>
                                 </div>
+                                <div class="stakeholders-meta-card">
+                                    <span class="stakeholders-meta-label">Rendah</span>
+                                    <strong><i class="ri-shield-line text-info"></i> {{ countRendah }}</strong>
+                                </div>
                                 <div class="stakeholders-meta-card" 
-                                     :class="{ 'bg-warning-transparent border-warning-light shadow-sm': pendingRequests.length > 0 }">
+                                     :class="{ 'active-review': pendingRequests.length > 0 }">
                                     <span class="stakeholders-meta-label">Antrian Review</span>
-                                    <strong :class="pendingRequests.length > 0 ? 'text-warning' : 'text-white-50'">
+                                    <strong :class="pendingRequests.length > 0 ? 'text-indigo' : 'text-white-50'">
                                         <i class="ri-edit-2-line" :class="{ 'pulse-icon': pendingRequests.length > 0 }"></i> 
                                         {{ pendingRequests.length }}
                                     </strong>
@@ -744,30 +751,35 @@ const getFullStakeholder = (se: SeCsirt) => {
     <!-- Premium Review Modal -->
     <Teleport to="body">
         <div v-if="reviewModal" class="modal-overlay" @click.self="reviewModal = false">
-            <div class="modal-dialog modal-dialog-centered custom-modal-size">
-                <div class="modal-content border-0 shadow-lg overflow-hidden" style="border-radius: 24px; background: #fff;">
+            <div
+                class="modal-dialog modal-dialog-centered custom-modal-size"
+                style="width: min(84vw, 860px); max-width: 860px; margin: 1rem auto;"
+            >
+                <div class="modal-content review-modal-content border-0 shadow-lg overflow-hidden" style="border-radius: 24px; background: #fff; width: 100%; max-width: none;">
                     <!-- Modal Header -->
-                    <div class="modal-header-premium p-4 d-flex align-items-center justify-content-between" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="header-icon-box bg-white bg-opacity-20 rounded-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 52px; height: 52px;">
+                    <div class="modal-header-premium review-modal-header p-4 d-flex align-items-center justify-content-between" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
+                        <div class="d-flex align-items-center gap-3 review-modal-header-main">
+                            <div class="header-icon-box bg-white bg-opacity-20 rounded-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
                                 <i class="ri-edit-box-line fs-24 text-white"></i>
                             </div>
-                            <div>
-                                <h4 class="mb-0 fw-bold tracking-tight text-white">Peninjauan Perubahan Data</h4>
-                                <p class="mb-0 fs-13 text-white text-opacity-80">
-                                    Sistem: <span class="text-white fw-bold">{{ (selectedRequest as any)?.display_se_name }}</span> 
-                                    <span class="mx-2 opacity-50">|</span>
-                                    Oleh: <span class="text-white fw-bold">{{ (selectedRequest as any)?.display_user_name }}</span>
+                            <div class="review-modal-header-copy">
+                                <div class="review-modal-kicker">Review Pengajuan Perubahan</div>
+                                <h4 class="mb-1 fw-bold tracking-tight text-white">Peninjauan Perubahan Data</h4>
+                                <p class="mb-0 fs-13 text-white text-opacity-80 d-flex flex-wrap gap-2 align-items-center">
+                                    <span class="review-modal-meta-pill">Sistem: <strong>{{ (selectedRequest as any)?.display_se_name }}</strong></span>
+                                    <span class="review-modal-meta-pill">Oleh: <strong>{{ (selectedRequest as any)?.display_user_name }}</strong></span>
                                 </p>
                             </div>
                         </div>
-                        <button type="button" class="btn-close btn-close-white shadow-none" @click="reviewModal = false"></button>
+                        <button type="button" class="btn review-modal-close-btn" @click="reviewModal = false">
+                            <i class="ri-close-line"></i>
+                        </button>
                     </div>
 
-                    <div class="modal-body p-0" v-if="selectedRequest">
+                    <div class="modal-body p-0 review-modal-scroll-body" v-if="selectedRequest">
                         <!-- Upper Banner: User Message -->
-                        <div v-if="(selectedRequest as any).catatan_user" class="p-4 bg-info-transparent border-bottom">
-                            <div class="d-flex gap-3">
+                        <div v-if="(selectedRequest as any).catatan_user" class="p-4 review-user-note">
+                            <div class="d-flex gap-3 review-user-note-inner">
                                 <div class="flex-shrink-0">
                                     <div class="avatar avatar-md rounded-circle bg-info text-white shadow-sm">
                                         <i class="ri-message-3-line"></i>
@@ -775,24 +787,27 @@ const getFullStakeholder = (se: SeCsirt) => {
                                 </div>
                                 <div class="flex-grow-1">
                                     <div class="fs-11 fw-bold text-info text-uppercase mb-1">Pesan dari Pengaju (User)</div>
-                                    <div class="fs-14 text-dark italic lh-sm">
+                                    <div class="fs-14 text-dark lh-sm review-user-note-text">
                                         "{{ (selectedRequest as any).catatan_user }}"
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="p-4">
+                        <div class="p-4 p-md-4 review-modal-body">
                             <!-- Comparison Grid Header -->
-                            <div class="row g-0 mb-3 text-uppercase fs-10 fw-bold letter-spacing-1 text-muted px-2">
+                            <div class="row g-0 mb-3 text-uppercase fs-10 fw-bold letter-spacing-1 text-muted px-2 review-grid-header">
                                 <div class="col-md-4">Informasi / Parameter</div>
                                 <div class="col-md-4">Data Saat Ini</div>
                                 <div class="col-md-4">Perubahan Baru</div>
                             </div>
 
                             <!-- Comparison Rows -->
-                            <div class="comparison-container rounded-3 border overflow-hidden shadow-xs bg-light bg-opacity-50">
-                                <div v-if="Object.keys(getFilteredChanges(selectedRequest)).length === 0" class="p-5 text-center">
+                            <div
+                                class="comparison-container review-comparison-container rounded-4 overflow-hidden"
+                                :class="{ 'review-comparison-scrollable': getFilteredChangesCount(selectedRequest) > 1 }"
+                            >
+                                <div v-if="getFilteredChangesCount(selectedRequest) === 0" class="p-5 text-center">
                                     <div class="text-muted fs-13 italic">
                                         <i class="ri-information-line fs-20 d-block mb-2"></i>
                                         Tidak ada perubahan data teknis yang perlu ditinjau.
@@ -800,21 +815,24 @@ const getFullStakeholder = (se: SeCsirt) => {
                                 </div>
                                 <template v-else>
                                     <div v-for="(val, key) in getFilteredChanges(selectedRequest)" :key="key" 
-                                         class="comparison-row d-flex align-items-center p-3 border-bottom bg-white hover-light transition-base">
-                                        <div class="col-md-4">
+                                         class="comparison-row review-comparison-row d-flex align-items-center p-3 bg-white transition-base">
+                                        <div class="col-md-4 review-comparison-cell review-comparison-label">
+                                            <div class="review-mobile-label">Informasi / Parameter</div>
                                             <div class="fw-bold text-slate fs-12">{{ assessmentLabels[key] || key.replace(/_/g, ' ') }}</div>
                                             <div class="text-muted fs-9 text-uppercase letter-spacing-1">{{ key }}</div>
                                         </div>
-                                        <div class="col-md-4">
-                                            <div class="text-muted fs-13 d-flex align-items-center gap-2">
+                                        <div class="col-md-4 review-comparison-cell">
+                                            <div class="review-mobile-label">Data Saat Ini</div>
+                                            <div class="review-value review-value-old text-muted fs-13 d-flex align-items-center gap-2">
                                                 <i class="ri-history-line opacity-50"></i>
                                                 {{ getOptionLabel(key, selectedRequest.se ? (selectedRequest.se as any)[key] : '-') }}
                                             </div>
                                         </div>
-                                        <div class="col-md-4">
-                                            <div class="text-primary fw-bold fs-13 d-flex align-items-center gap-2">
+                                        <div class="col-md-4 review-comparison-cell">
+                                            <div class="review-mobile-label">Perubahan Baru</div>
+                                            <div class="review-value review-value-new text-primary fw-bold fs-13 d-flex align-items-center gap-2">
                                                 <i class="ri-arrow-right-line opacity-50"></i>
-                                                <span class="bg-primary-transparent px-2 py-1 rounded">{{ getOptionLabel(key, val) }}</span>
+                                                <span class="review-value-badge">{{ getOptionLabel(key, val) }}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -822,17 +840,17 @@ const getFullStakeholder = (se: SeCsirt) => {
                             </div>
 
                             <!-- Admin Feedback Section -->
-                            <div class="mt-4 p-4 rounded-4 bg-slate-50 border border-dashed">
+                            <div class="mt-4 p-4 rounded-4 review-feedback-card">
                                 <div class="d-flex align-items-center gap-2 mb-3">
                                     <i class="ri-feedback-line text-primary fs-18"></i>
                                     <h6 class="mb-0 fw-bold fs-14">Umpan Balik Peninjauan</h6>
                                 </div>
                                 <textarea 
                                     v-model="adminNotes" 
-                                    class="form-control border-2 shadow-sm focus-ring-primary" 
+                                    class="form-control review-feedback-input bo    rder-2 shadow-sm focus-ring-primary" 
                                     rows="3" 
                                     placeholder="Masukkan alasan persetujuan, penolakan, atau instruksi tambahan untuk stakeholder..."
-                                    style="border-radius: 16px; font-size: 13px;"
+                                    style="font-size: 13px;"
                                 ></textarea>
                                 <div class="d-flex align-items-center gap-2 mt-2 px-1">
                                     <i class="ri-information-fill text-muted fs-14"></i>
@@ -843,16 +861,16 @@ const getFullStakeholder = (se: SeCsirt) => {
                     </div>
 
                     <!-- Modal Footer -->
-                    <div class="modal-footer-premium p-4 border-top bg-light bg-opacity-50 d-flex gap-3">
-                        <button type="button" class="btn btn-light rounded-pill px-4 fw-bold text-muted transition-base" @click="reviewModal = false">
+                    <div class="modal-footer-premium review-modal-footer p-4 d-flex gap-3">
+                        <button type="button" class="btn btn-primary-light rounded-pill px-4 fw-bold transition-base" @click="reviewModal = false">
                             Batal & Tutup
                         </button>
-                        <div class="ms-auto d-flex gap-3">
-                            <button type="button" class="btn btn-outline-danger border-2 rounded-pill px-4 fw-bold d-flex align-items-center gap-2 transition-base" 
+                        <div class="ms-auto d-flex gap-3 review-footer-actions">
+                            <button type="button" class="btn btn-danger-light rounded-pill px-4 fw-bold d-flex align-items-center gap-2 transition-base" 
                                     :disabled="isSubmitting" @click="handleReview('rejected')">
                                 <i class="ri-close-circle-line"></i> TOLAK PERUBAHAN
                             </button>
-                            <button type="button" class="btn btn-success rounded-pill px-5 fw-bold shadow-success d-flex align-items-center gap-2 transition-base" 
+                            <button type="button" class="btn btn-success rounded-pill px-5 fw-bold d-flex align-items-center gap-2 transition-base shadow-sm" 
                                     :disabled="isSubmitting" @click="handleReview('approved')">
                                 <i class="ri-checkbox-circle-line"></i> SETUJUI & UPDATE
                             </button>
@@ -877,6 +895,371 @@ const getFullStakeholder = (se: SeCsirt) => {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.review-modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 2rem);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24) !important;
+}
+
+.review-modal-scroll-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.review-modal-scroll-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.review-modal-scroll-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.review-modal-scroll-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
+    border-radius: 999px;
+}
+
+.review-modal-header {
+    gap: 1rem;
+}
+
+.review-modal-header-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.review-modal-header-copy {
+    min-width: 0;
+}
+
+.review-modal-kicker {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+    margin-bottom: 0.25rem;
+}
+
+.review-modal-meta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(8px);
+}
+
+.review-modal-close-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+    transition: all 0.2s ease;
+}
+
+.review-modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+    transform: rotate(90deg);
+}
+
+.review-modal-close-btn i {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.review-user-note {
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, rgba(255, 255, 255, 0.92) 100%);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.review-user-note-text {
+    color: #334155 !important;
+    font-style: italic;
+}
+
+.review-modal-body {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.review-grid-header {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+.review-mobile-label {
+    display: none;
+    margin-bottom: 0.35rem;
+    font-size: 0.63rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.review-comparison-container {
+    background: #ffffff;
+    border: 1px solid #dbe7f5;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
+}
+
+.review-comparison-scrollable {
+    max-height: min(44vh, 420px);
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+
+.review-comparison-scrollable::-webkit-scrollbar {
+    width: 8px;
+}
+
+.review-comparison-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.review-comparison-scrollable::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.55);
+    border-radius: 999px;
+}
+
+.review-comparison-row {
+    min-height: 88px;
+    border-bottom: 1px solid #e9f0f8;
+}
+
+.review-comparison-cell {
+    min-width: 0;
+}
+
+.review-comparison-label {
+    padding-right: 0.75rem;
+}
+
+.review-comparison-row:last-child {
+    border-bottom: none;
+}
+
+.review-value {
+    line-height: 1.5;
+}
+
+.review-value-old {
+    color: #64748b !important;
+}
+
+.review-value-new {
+    color: #1d4ed8 !important;
+}
+
+.review-value-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 0.8rem;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #eef4ff 0%, #dbeafe 100%);
+    color: #1d4ed8;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.review-feedback-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px dashed #cbd5e1;
+}
+
+.review-feedback-input {
+    border-radius: 16px !important;
+    border-color: #d7e2f0 !important;
+    padding: 0.9rem 1rem !important;
+    min-height: 108px;
+    resize: vertical;
+}
+
+.review-feedback-input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.12) !important;
+}
+
+.review-modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex-shrink: 0;
+    border-top: 1px solid #e5edf6;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.transition-base:hover {
+    transform: translateY(-1px);
+}
+
+@media (max-width: 767.98px) {
+    .custom-modal-size {
+        width: min(94vw, 94vw) !important;
+        max-width: 94vw !important;
+        margin: 0.65rem auto !important;
+    }
+
+    .review-modal-content {
+        max-height: calc(100vh - 1.3rem);
+    }
+
+    .review-modal-scroll-body {
+        overflow-y: auto;
+    }
+
+    .review-modal-header {
+        align-items: flex-start !important;
+        gap: 0.75rem;
+        padding: 1rem !important;
+    }
+
+    .review-modal-header-main {
+        align-items: flex-start !important;
+        gap: 0.7rem !important;
+    }
+
+    .review-modal-header .header-icon-box {
+        width: 40px !important;
+        height: 40px !important;
+        border-radius: 12px !important;
+    }
+
+    .review-modal-header .header-icon-box i {
+        font-size: 18px !important;
+    }
+
+    .review-modal-kicker {
+        font-size: 0.62rem;
+        margin-bottom: 0.15rem;
+    }
+
+    .review-modal-header-copy h4 {
+        font-size: 0.98rem;
+        line-height: 1.2;
+        max-width: 11ch;
+    }
+
+    .review-modal-meta-pill {
+        width: calc(50% - 0.25rem);
+        min-width: 0;
+        justify-content: flex-start;
+        align-items: center;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        padding: 0.24rem 0.65rem;
+        font-size: 0.78rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .review-modal-meta-pill strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .review-modal-close-btn {
+        flex-shrink: 0;
+        width: 34px;
+        height: 34px;
+        margin-top: 0;
+    }
+
+    .review-modal-close-btn i {
+        font-size: 17px;
+    }
+
+    .review-user-note,
+    .review-modal-body,
+    .review-modal-footer {
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+    }
+
+    .review-user-note-inner {
+        align-items: flex-start !important;
+    }
+
+    .review-grid-header {
+        display: none !important;
+    }
+
+    .review-comparison-row {
+        align-items: stretch !important;
+        flex-direction: column;
+        gap: 0.9rem;
+        padding: 1rem !important;
+    }
+
+    .review-comparison-scrollable {
+        max-height: min(24vh, 220px);
+    }
+
+    .review-comparison-cell {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 0 0 100% !important;
+    }
+
+    .review-comparison-label {
+        padding-right: 0;
+    }
+
+    .review-mobile-label {
+        display: block;
+    }
+
+    .review-value {
+        align-items: flex-start !important;
+        gap: 0.5rem !important;
+    }
+
+    .review-value-badge {
+        width: 100%;
+        justify-content: flex-start;
+        line-height: 1.45;
+    }
+
+    .review-feedback-card {
+        padding: 1rem !important;
+    }
+
+    .review-feedback-input {
+        min-height: 96px;
+    }
+
+    .review-footer-actions {
+        width: 100%;
+        margin-left: 0 !important;
+        flex-direction: column;
+        gap: 0.75rem !important;
+    }
+
+    .review-footer-actions .btn,
+    .review-modal-footer > .btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 46px;
+    }
+
+    .review-modal-footer {
+        flex-direction: column;
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.08);
+    }
 }
 
 .kse-modal-box {
@@ -1059,18 +1442,88 @@ const getFullStakeholder = (se: SeCsirt) => {
     to { transform: rotate(360deg); }
 }
 
+/* Match User List Stats Style */
+.stakeholders-meta-stack {
+  display: flex !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+}
+
+.stakeholders-meta-card {
+  flex: 1 1 auto !important;
+  min-width: 100px !important;
+  max-width: 140px !important;
+  width: auto !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  padding: 8px 10px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  transition: all 0.3s ease !important;
+  box-shadow: none !important;
+}
+
+.stakeholders-meta-card:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  transform: translateY(-2px);
+}
+
+.stakeholders-meta-card.active-review {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+.stakeholders-meta-label {
+  font-size: 9px !important;
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  margin-bottom: 4px !important;
+  white-space: nowrap !important;
+}
+
+.stakeholders-meta-card strong {
+  font-size: 18px !important;
+  color: white !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.stakeholders-meta-card strong i {
+  font-size: 16px !important;
+}
+
+/* Utility Colors */
+.text-indigo { color: #818cf8 !important; }
+.text-info { color: #22d3ee !important; }
+.text-warning { color: #fbbf24 !important; }
+.text-danger { color: #f87171 !important; }
+
 </style>
 
 <style>
 .custom-modal-size {
-    max-width: 1300px !important;
-    width: 92% !important;
+    max-width: 860px !important;
+    width: min(84vw, 860px) !important;
+    margin: 1rem auto !important;
+}
+
+.custom-modal-size .modal-content {
+    width: 100%;
 }
 
 @media (max-width: 1200px) {
     .custom-modal-size {
-        max-width: 95% !important;
-        width: 95% !important;
+        max-width: 96% !important;
+        width: 96% !important;
+        margin: 0.75rem auto !important;
     }
 }
 </style>

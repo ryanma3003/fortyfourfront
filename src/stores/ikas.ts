@@ -94,6 +94,9 @@ export interface IkasData {
   proteksi: IkasProteksi;
   deteksi: IkasDeteksi;
   tanggulih: IkasTanggulih;
+  is_validated: boolean;
+  edit_request_status: string;
+  edit_request_reason: string;
   details: Record<string, Record<string, Record<string, number>>>;
 }
 
@@ -146,6 +149,9 @@ const createDefaultIkasData = (): IkasData => ({
     nilai_subdomain3: 0,
     nilai_subdomain4: 0,
   },
+  is_validated: false,
+  edit_request_status: 'none',
+  edit_request_reason: '',
   details: {}
 });
 
@@ -364,6 +370,9 @@ export const useIkasStore = defineStore('ikas', {
           }
           this.ikasDataMap[slug].total_rata_rata = rec.nilai_kematangan || rec.total_rata_rata || 0;
           this.ikasDataMap[slug].total_kategori = getMaturityLabel(this.ikasDataMap[slug].total_rata_rata as number);
+          this.ikasDataMap[slug].is_validated = rec.is_validated || false;
+          this.ikasDataMap[slug].edit_request_status = rec.edit_request_status || 'none';
+          this.ikasDataMap[slug].edit_request_reason = rec.edit_request_reason || '';
         });
         
         this.ikasVersion++;
@@ -778,6 +787,9 @@ export const useIkasStore = defineStore('ikas', {
           data.tanggulih.nilai_subdomain3 = response.gulih.nilai_subdomain3 || 0;
           data.tanggulih.nilai_subdomain4 = response.gulih.nilai_subdomain4 || 0;
         }
+        data.is_validated = response.is_validated || false;
+        data.edit_request_status = response.edit_request_status || 'none';
+        data.edit_request_reason = response.edit_request_reason || '';
 
         // Recalculate averages from fetched data
         this.recalculate(slug);
@@ -1062,6 +1074,69 @@ export const useIkasStore = defineStore('ikas', {
       } catch (error: any) {
         console.error('[IKAS Store] Seed assessment structure failed:', error);
         return { success: false, error: error.message || 'Gagal membuat struktur assessment' };
+      }
+    },
+
+    /**
+     * Validate an IKAS record on the backend.
+     */
+    async validateIkas(slug: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        await ikasService.validateIkas(ikasId);
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] validateIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal memvalidasi IKAS' };
+      } finally {
+        this.apiLoading = false;
+      }
+    },
+
+    /**
+     * Approve an edit request for an IKAS record.
+     */
+    async approveEditIkas(slug: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        await ikasService.approveEditIkas(ikasId);
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] approveEditIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal menyetujui edit IKAS' };
+      } finally {
+        this.apiLoading = false;
+      }
+    },
+
+    /**
+     * Reject an edit request for an IKAS record.
+     */
+    async rejectEditIkas(slug: string, reason?: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        await ikasService.rejectEditIkas(ikasId, reason);
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] rejectEditIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal menolak edit IKAS' };
+      } finally {
+        this.apiLoading = false;
       }
     },
 

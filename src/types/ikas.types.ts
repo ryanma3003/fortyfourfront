@@ -55,6 +55,9 @@ export interface IkasResponse {
     deteksi?: any;
     gulih?: any;
     nilai_kematangan?: number;
+    is_validated: boolean;
+    edit_request_status: string;
+    edit_request_reason: string;
     created_at: string;
     updated_at: string;
 }

@@ -59,6 +59,33 @@ export const ikasService = {
         return api.get<IkasResponse>(`/api/maturity/ikas/${id}`);
     },
 
+    /** Validate an IKAS assessment record */
+    async validateIkas(id: string): Promise<any> {
+        return api.put<any>(`/api/maturity/ikas/${id}/validate`, {
+            is_validated: true,
+            status: true
+        });
+    },
+
+    /** Approve an edit request for an IKAS record */
+    async approveEditIkas(id: string): Promise<any> {
+        return api.put<any>(`/api/maturity/ikas/${id}/approve-edit`, {
+            edit_request_status: 'approved',
+            is_validated: false,
+            status: false
+        });
+    },
+
+    /** Reject an edit request for an IKAS record */
+    async rejectEditIkas(id: string, reason?: string): Promise<any> {
+        return api.put<any>(`/api/maturity/ikas/${id}/reject-edit`, {
+            edit_request_status: 'rejected',
+            reason: reason || ''
+        });
+    },
+
+
+
     /** Get all IKAS records */
     async getIkasList(): Promise<any> {
         return api.get<any>('/api/maturity/ikas');

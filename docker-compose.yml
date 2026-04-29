@@ -4,12 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Injected from .env file or CI secrets — never hardcode
+        # Injected from .env file or CI secrets, never hardcode
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY}
     container_name: fortyfour-front
     restart: unless-stopped
     ports:
-      # Expose on localhost only — the host NGINX reverse-proxy
+      # Expose on localhost only, the host NGINX reverse-proxy
       # will forward traffic from the public domain to this port.
       - "127.0.0.1:3080:3080"
     healthcheck:

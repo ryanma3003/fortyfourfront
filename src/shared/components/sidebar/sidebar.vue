@@ -149,6 +149,7 @@ import {
   watchEffect,
   computed,
   onUnmounted,
+  watch,
 } from "vue";
 import { MENUITEMS as staticMenuData } from "../../../data/sidebar/nav.ts";
 import { useRoute, useRouter } from "vue-router";
@@ -159,6 +160,7 @@ import { switcherStore } from "../../../stores/switcher";
 import { useAuthStore } from "../../../stores/auth";
 import RecursiveMenu from "../../UI/recursiveMenu.vue";
 import ChatModal from "../chatbot/ChatModal.vue";
+import { seEditService } from "../../../services/se-edit.service";
 
 const authStore = useAuthStore();
 
@@ -207,6 +209,7 @@ watchEffect(() => {
   filteredItems.forEach((item) => menuData.push(item));
 });
 
+
 let level = 0;
 let isChild = false;
 let setMenu = false;
@@ -217,6 +220,40 @@ const previousUrl = ref("/");
 
 const router = useRouter();
 const route = useRoute();
+
+// Fetch and update pending SE requests badge
+const updatePendingBadge = async () => {
+  if (authStore.isAdmin || authStore.currentUser?.role === 'staff') {
+    try {
+      const requests = await seEditService.getRequests();
+      const pendingCount = requests.filter(r => r.status === 'pending').length;
+      
+      const kseItem = menuData.find(item => item.title === 'KSE List');
+      if (kseItem) {
+        if (pendingCount > 0) {
+          kseItem.badgetxt = `<span class="sb2-notif-badge">${pendingCount}</span>`;
+        } else {
+          kseItem.badgetxt = '';
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch pending requests for badge", e);
+    }
+  }
+};
+
+onMounted(() => {
+  updatePendingBadge();
+  window.addEventListener('se-requests-updated', updatePendingBadge);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('se-requests-updated', updatePendingBadge);
+});
+
+watch(() => route.path, () => {
+  updatePendingBadge();
+});
 
 const isChatOpen = ref(false);
 
