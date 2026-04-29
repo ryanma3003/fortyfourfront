@@ -196,8 +196,14 @@ class ApiClient {
                 return {} as T;
             }
 
-            // Parse successful response
-            return await response.json();
+            // Parse successful response. Some cookie-auth endpoints only set
+            // HTTP-only cookies and return an empty body.
+            const text = await response.text();
+            if (!text) {
+                return {} as T;
+            }
+
+            return JSON.parse(text);
         } catch (error) {
             if (error instanceof ApiRequestError) {
                 throw error;

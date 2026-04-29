@@ -2,6 +2,7 @@
 import { defineStore } from "pinia";
 import { useProfileStore } from "./profile";
 import { authService } from "@/services/auth.service";
+import { usersService } from "@/services/users.service";
 import { api } from "@/config/api";
 import router from "@/router/index";
 import type { LoginPayload, RegisterPayload } from "@/types/auth.types";
@@ -170,8 +171,10 @@ export const useAuthStore = defineStore("auth", {
           return { authenticated: false, mfaVerify: true };
         }
 
-        // Case 3: Direct login (access_token or cookie-based)
-        const userData = mapToCurrentUser(response);
+        // Case 3: Direct login. Tokens are in HTTP-only cookies, so fetch
+        // the current user when the login body does not include user data.
+        const currentUserResponse = response.user ? response : await usersService.getCurrentUser();
+        const userData = mapToCurrentUser(currentUserResponse);
         sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData));
         setSessionActiveCookie();
         this.authenticated = true;
@@ -196,9 +199,10 @@ export const useAuthStore = defineStore("auth", {
     // ================================
     // MFA SETUP COMPLETE — after successful /api/mfa/enable
     // ================================
-    completeMfaSetup(response: any) {
+    async completeMfaSetup(response: any) {
       this.authenticated = true;
-      this.currentUser = mapToCurrentUser(response);
+      const currentUserResponse = response?.user ? response : await usersService.getCurrentUser();
+      this.currentUser = mapToCurrentUser(currentUserResponse);
       sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
       setSessionActiveCookie();
       this.clearMfaState();
@@ -207,9 +211,10 @@ export const useAuthStore = defineStore("auth", {
     // ================================
     // MFA VERIFY COMPLETE — after successful /api/mfa/verify
     // ================================
-    completeMfaVerify(response: any) {
+    async completeMfaVerify(response: any) {
       this.authenticated = true;
-      this.currentUser = mapToCurrentUser(response);
+      const currentUserResponse = response?.user ? response : await usersService.getCurrentUser();
+      this.currentUser = mapToCurrentUser(currentUserResponse);
       sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(this.currentUser));
       setSessionActiveCookie();
       this.clearMfaState();

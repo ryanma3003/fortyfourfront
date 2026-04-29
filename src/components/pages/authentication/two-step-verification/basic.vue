@@ -176,12 +176,12 @@ async function verifyCode() {
     if (isSetupMode.value) {
       // MFA Enable (first-time setup)
       const response = await authService.mfaEnable(authStore.setupToken!, code);
-      authStore.completeMfaSetup(response);
+      await authStore.completeMfaSetup(response);
       router.push(redirectByRole());
     } else {
       // MFA Verify (returning user)
       const response = await authService.mfaVerify(authStore.mfaToken!, code);
-      authStore.completeMfaVerify(response);
+      await authStore.completeMfaVerify(response);
       router.push(redirectByRole());
     }
   } catch (err: any) {

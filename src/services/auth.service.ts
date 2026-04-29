@@ -1,6 +1,7 @@
 import { api } from '@/config/api';
 import type {
     LoginPayload,
+    LoginRequestBody,
     RegisterPayload,
     AuthResponse,
     MfaSetupResponse,
@@ -15,15 +16,16 @@ import type {
  */
 class AuthService {
     /**
-     * Login — backend returns setup_token, mfa_token, or access_token.
+     * Login - backend sets auth tokens via HTTP-only cookies.
      */
     async login(payload: LoginPayload): Promise<AuthResponse> {
-        return api.post<AuthResponse>('/api/login', {
+        const body: LoginRequestBody = {
+            "cf-turnstile-response": payload.turnstileToken ?? '',
             identifier: payload.identifier,
             password: payload.password,
-            turnstileToken: payload.turnstileToken,
-            turnstile_token: payload.turnstileToken,
-        });
+        };
+
+        return api.post<AuthResponse>('/api/login', body);
     }
 
     /**
@@ -76,7 +78,7 @@ class AuthService {
 
     /**
      * MFA Enable — verify the 6-digit code during first-time setup.
-     * On success, returns access_token + user data.
+     * On success, backend sets auth tokens via HTTP-only cookies.
      */
     async mfaEnable(setupToken: string, code: string): Promise<MfaEnableResponse> {
         return api.post<MfaEnableResponse>('/api/mfa/enable', {
@@ -87,7 +89,7 @@ class AuthService {
 
     /**
      * MFA Verify — verify the 6-digit code for returning users.
-     * On success, returns access_token + user data.
+     * On success, backend sets auth tokens via HTTP-only cookies.
      */
     async mfaVerify(mfaToken: string, code: string): Promise<MfaVerifyResponse> {
         return api.post<MfaVerifyResponse>('/api/mfa/verify', {
