@@ -170,6 +170,11 @@ const routes: RouteRecordRaw[] = [
               name: 'Admin KSE List',
               component: () => import("../components/dashboards/kse-list-admin.vue"),
             },
+            {
+              path: 'ikas-list',
+              name: 'Admin IKAS List',
+              component: () => import("../components/dashboards/ikas-list.vue"),
+            },
           ]
         },
         {
