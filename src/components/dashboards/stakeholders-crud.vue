@@ -22,6 +22,7 @@ export default {
     const authStore = useAuthStore();
     const stakeholdersStore = useStakeholdersStore();
     const isAdmin = computed(() => authStore.isAdmin);
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
     
     // Derived from store
     const items = computed(() => stakeholdersStore.stakeholders);
@@ -315,7 +316,7 @@ export default {
     };
 
     return {
-      isAdmin,
+      isAdmin, isFullAdmin,
       items,
       loading,
       searchQuery,
@@ -554,7 +555,7 @@ export default {
                       >
                         <i class="ri-edit-line"></i>
                       </button>
-                      <button v-if="isAdmin"
+                      <button v-if="isFullAdmin"
                         @click="openDeleteModal(item)"
                         class="btn btn-sm btn-danger-light"
                         title="Delete"

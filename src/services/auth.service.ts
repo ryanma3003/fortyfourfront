@@ -21,6 +21,8 @@ class AuthService {
         return api.post<AuthResponse>('/api/login', {
             identifier: payload.identifier,
             password: payload.password,
+            turnstileToken: payload.turnstileToken,
+            turnstile_token: payload.turnstileToken,
         });
     }
 

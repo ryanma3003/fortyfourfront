@@ -138,7 +138,7 @@
         </li>
         <!-- End::header-element -->
 
-        <!-- Start::header-element (Admin Only) -->
+        <!-- Start::header-element (Admin & Staff) -->
         <li v-if="authStore.isAdmin" class="header-element notifications-dropdown d-block dropdown">
           <!-- Start::header-link|dropdown-toggle -->
           <a

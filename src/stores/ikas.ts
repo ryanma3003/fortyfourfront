@@ -94,6 +94,9 @@ export interface IkasData {
   proteksi: IkasProteksi;
   deteksi: IkasDeteksi;
   tanggulih: IkasTanggulih;
+  is_validated: boolean;
+  edit_request_status: string;
+  edit_request_reason: string;
   details: Record<string, Record<string, Record<string, number>>>;
 }
 
@@ -146,6 +149,9 @@ const createDefaultIkasData = (): IkasData => ({
     nilai_subdomain3: 0,
     nilai_subdomain4: 0,
   },
+  is_validated: false,
+  edit_request_status: 'none',
+  edit_request_reason: '',
   details: {}
 });
 
@@ -316,6 +322,36 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     /** Fetch all IKAS records from backend to populate global state */
+    async deleteFromBackend(id: string) {
+      this.apiLoading = true;
+      try {
+        await ikasService.deleteIkas(id);
+        
+        // Find slug associated with this ID to clear local state
+        let slugToClear = '';
+        for (const [slug, ikasId] of Object.entries(this.backendIkasIds)) {
+          if (ikasId === id) {
+            slugToClear = slug;
+            break;
+          }
+        }
+        
+        if (slugToClear) {
+          delete this.backendIkasIds[slugToClear];
+          delete this.backendSyncedMap[slugToClear];
+          delete this.ikasDataMap[slugToClear];
+        }
+        
+        this.ikasVersion++;
+        return true;
+      } catch (error) {
+        console.error('[IKAS Store] deleteFromBackend failed:', error);
+        throw error;
+      } finally {
+        this.apiLoading = false;
+      }
+    },
+
     async fetchAllFromBackend() {
       try {
         const response = await ikasService.getIkasList();
@@ -334,6 +370,9 @@ export const useIkasStore = defineStore('ikas', {
           }
           this.ikasDataMap[slug].total_rata_rata = rec.nilai_kematangan || rec.total_rata_rata || 0;
           this.ikasDataMap[slug].total_kategori = getMaturityLabel(this.ikasDataMap[slug].total_rata_rata as number);
+          this.ikasDataMap[slug].is_validated = rec.is_validated || false;
+          this.ikasDataMap[slug].edit_request_status = rec.edit_request_status || 'none';
+          this.ikasDataMap[slug].edit_request_reason = rec.edit_request_reason || '';
         });
         
         this.ikasVersion++;
@@ -370,6 +409,15 @@ export const useIkasStore = defineStore('ikas', {
       this.backendSyncedMap[slug] = !!id;
     },
 
+    requireBackendIkasId(slug: string): string | null {
+      const id = this.getBackendIkasId(slug);
+      if (!id) {
+        this.apiError = 'ikas_id belum tersedia';
+        return null;
+      }
+      return id;
+    },
+
     buildRespondentPayload(slug: string, respondentData?: Partial<IkasPayload>): IkasPayload | null {
       const stakeholdersStore = useStakeholdersStore();
       const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
@@ -401,18 +449,6 @@ export const useIkasStore = defineStore('ikas', {
       }
 
       try {
-        const listResponse = await ikasService.getIkasByPerusahaan(payload.id_perusahaan);
-        const matchedRecord = this.findLatestIkasRecord(
-          this.normalizeIkasRecords(listResponse),
-          payload.id_perusahaan
-        );
-
-        if (matchedRecord?.id) {
-          const matchedId = String(matchedRecord.id);
-          this.setBackendIkasId(slug, matchedId);
-          return { success: true, id: matchedId };
-        }
-
         const created = await ikasService.createIkas(payload);
         const createdId = String(created?.id || (created as any)?.data?.id || '');
         if (!createdId) {
@@ -653,13 +689,16 @@ export const useIkasStore = defineStore('ikas', {
         const backendIkasId = this.getBackendIkasId(slug);
 
         if (backendIkasId) {
-          // Update existing record
           response = await ikasService.updateIkas(backendIkasId, payload);
         } else {
-          // Create new record
           response = await ikasService.createIkas(payload);
-          this.setBackendIkasId(slug, String(response?.id || response?.data?.id || ''));
         }
+
+        const resolvedId = String(response?.id || response?.data?.id || backendIkasId || '');
+        if (!resolvedId) {
+          throw new Error('Backend tidak mengembalikan ikas_id');
+        }
+        this.setBackendIkasId(slug, resolvedId);
 
         this.backendSyncedMap[slug] = true;
         this.apiLoading = false;
@@ -748,6 +787,9 @@ export const useIkasStore = defineStore('ikas', {
           data.tanggulih.nilai_subdomain3 = response.gulih.nilai_subdomain3 || 0;
           data.tanggulih.nilai_subdomain4 = response.gulih.nilai_subdomain4 || 0;
         }
+        data.is_validated = response.is_validated || false;
+        data.edit_request_status = response.edit_request_status || 'none';
+        data.edit_request_reason = response.edit_request_reason || '';
 
         // Recalculate averages from fetched data
         this.recalculate(slug);
@@ -816,9 +858,13 @@ export const useIkasStore = defineStore('ikas', {
       try {
         this.ensureStakeholderData(slug);
         const iden = this.ikasDataMap[slug].identifikasi;
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          return { success: false, error: 'ikas_id belum tersedia' };
+        }
 
         const payload = {
-          ikas_id: this.getBackendIkasId(slug),
+          ikas_id: ikasId,
           id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_identifikasi: Number(iden.nilai_identifikasi) || 0,
           nilai_subdomain1: Number(iden.nilai_subdomain1) || 0,
@@ -848,9 +894,13 @@ export const useIkasStore = defineStore('ikas', {
       try {
         this.ensureStakeholderData(slug);
         const prot = this.ikasDataMap[slug].proteksi;
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          return { success: false, error: 'ikas_id belum tersedia' };
+        }
 
         const payload = {
-          ikas_id: this.getBackendIkasId(slug),
+          ikas_id: ikasId,
           id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_proteksi: Number(prot.nilai_proteksi) || 0,
           nilai_subdomain1: Number(prot.nilai_subdomain1) || 0,
@@ -881,9 +931,13 @@ export const useIkasStore = defineStore('ikas', {
       try {
         this.ensureStakeholderData(slug);
         const det = this.ikasDataMap[slug].deteksi;
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          return { success: false, error: 'ikas_id belum tersedia' };
+        }
 
         const payload = {
-          ikas_id: this.getBackendIkasId(slug),
+          ikas_id: ikasId,
           id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_deteksi: Number(det.nilai_deteksi) || 0,
           nilai_subdomain1: Number(det.nilai_subdomain1) || 0,
@@ -911,9 +965,13 @@ export const useIkasStore = defineStore('ikas', {
       try {
         this.ensureStakeholderData(slug);
         const tang = this.ikasDataMap[slug].tanggulih;
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          return { success: false, error: 'ikas_id belum tersedia' };
+        }
 
         const payload = {
-          ikas_id: this.getBackendIkasId(slug),
+          ikas_id: ikasId,
           id_perusahaan: useStakeholdersStore().getStakeholderBySlug(slug)?.id,
           nilai_gulih: Number(tang.nilai_tanggulih) || 0,
           nilai_subdomain1: Number(tang.nilai_subdomain1) || 0,
@@ -1016,6 +1074,69 @@ export const useIkasStore = defineStore('ikas', {
       } catch (error: any) {
         console.error('[IKAS Store] Seed assessment structure failed:', error);
         return { success: false, error: error.message || 'Gagal membuat struktur assessment' };
+      }
+    },
+
+    /**
+     * Validate an IKAS record on the backend.
+     */
+    async validateIkas(slug: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        await ikasService.validateIkas(ikasId);
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] validateIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal memvalidasi IKAS' };
+      } finally {
+        this.apiLoading = false;
+      }
+    },
+
+    /**
+     * Approve an edit request for an IKAS record.
+     */
+    async approveEditIkas(slug: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        await ikasService.approveEditIkas(ikasId);
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] approveEditIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal menyetujui edit IKAS' };
+      } finally {
+        this.apiLoading = false;
+      }
+    },
+
+    /**
+     * Reject an edit request for an IKAS record.
+     */
+    async rejectEditIkas(slug: string, reason?: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        await ikasService.rejectEditIkas(ikasId, reason);
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] rejectEditIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal menolak edit IKAS' };
+      } finally {
+        this.apiLoading = false;
       }
     },
 

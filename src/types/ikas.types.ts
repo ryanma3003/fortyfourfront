@@ -55,6 +55,9 @@ export interface IkasResponse {
     deteksi?: any;
     gulih?: any;
     nilai_kematangan?: number;
+    is_validated: boolean;
+    edit_request_status: string;
+    edit_request_reason: string;
     created_at: string;
     updated_at: string;
 }
@@ -215,7 +218,7 @@ export interface PertanyaanIdentifikasiResponse {
 export interface JawabanPayload {
     id?: string;
     id_ikas?: string;
-    ikas_id?: string;
+    ikas_id ?: string;
     id_pertanyaan?: string;
     pertanyaan_identifikasi_id?: number | string;
     pertanyaan_proteksi_id?: number | string;

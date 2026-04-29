@@ -36,6 +36,7 @@ export default {
     const kseStore = useKseStore();
     const csirtStore = useCsirtStore();
     const isAdmin = computed(() => authStore.isAdmin);
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
 
     const loading = computed(() => stakeholdersStore.loading);
 
@@ -741,7 +742,7 @@ export default {
       sektorFilter,
       subSektorFilter,
       hasUser,
-      isAdmin,
+      isAdmin, isFullAdmin,
       stakeholdersStore,
       csirtStore,
       loading,
@@ -1174,7 +1175,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                           <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
                             <i class="ri-edit-2-line"></i>
                           </button>
-                          <button v-if="isAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
+                          <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
                             <i class="ri-delete-bin-3-line"></i>
                           </button>
                         </div>
@@ -1244,7 +1245,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
                       <i class="ri-edit-2-line"></i>
                     </button>
-                    <button v-if="isAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
+                    <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
                       <i class="ri-delete-bin-3-line"></i>
                     </button>
                   </div>

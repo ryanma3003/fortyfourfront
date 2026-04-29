@@ -1,6 +1,7 @@
 export interface LoginPayload {
     identifier: string;
     password: string;
+    turnstileToken?: string;
 }
 
 export interface RegisterPayload {

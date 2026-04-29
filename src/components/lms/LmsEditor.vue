@@ -608,4 +608,104 @@ const editorMinHeight = computed(() => `${props.minHeight}px`)
   :deep(.ck-editor__editable) { padding: 16px 18px !important; }
   :deep(.ck.ck-toolbar) { padding: 4px 6px !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DARK MODE
+   ═══════════════════════════════════════════════════════════ */
+[data-theme-mode='dark'] .lms-editor-wrap {
+  background: #000000a8 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap:focus-within {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-toolbar) {
+  background: #0f172a !important;
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-toolbar .ck-toolbar__separator) {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-button) {
+  color: #cbd5e1 !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-button:hover) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-button.ck-on) {
+  background: rgba(59, 130, 246, 0.2) !important;
+  color: #60a5fa !important;
+  box-shadow: none !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-button.ck-on .ck-icon) {
+  color: #60a5fa !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-dropdown__panel) {
+  background: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-list) {
+  background: #1e293b !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck.ck-list__item .ck-button:hover) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable) {
+  color: #f1f5f9 !important;
+  background: transparent !important;
+}
+/* Strip inline backgrounds from pasted content */
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable *) {
+  background-color: transparent !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable.ck-placeholder::before) {
+  color: #64748b !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable h1) { color: #f8fafc !important; }
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable h2) { color: #f1f5f9 !important; }
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable h3) { color: #e2e8f0 !important; }
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable h4) { color: #cbd5e1 !important; }
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable h5) { color: #94a3b8 !important; }
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable h6) { color: #64748b !important; }
+
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable code) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f472b6 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable pre) {
+  background: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  color: #e2e8f0 !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable blockquote) {
+  background: rgba(59, 130, 246, 0.05) !important;
+  border-left-color: #3b82f6 !important;
+  color: #93c5fd !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable .table th) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable .table td),
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable .table th) {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme-mode='dark'] .lms-editor-wrap :deep(.ck-editor__editable hr) {
+  border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme-mode='dark'] .lms-editor-footer {
+  background: #0f172a !important;
+  border-top-color: rgba(255, 255, 255, 0.05) !important;
+}
+[data-theme-mode='dark'] .lms-editor-footer-left {
+  color: #64748b !important;
+}
+[data-theme-mode='dark'] .lms-editor-stat {
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: #93c5fd !important;
+}
 </style>

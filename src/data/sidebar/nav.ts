@@ -50,7 +50,10 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/csirt-list", icon: Svgicons.Csirticon, title: "CSIRT List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
   },
   {
-    path: "/users", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/kse-list-admin", icon: Svgicons.Todoicon, title: "KSE List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+  },
+  {
+    path: "/users", icon: Svgicons.UserListicon, title: "User List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "fullAdmin"
   },
   {
     path: "/ikas", icon: Svgicons.Analyticsicon, title: "IKAS", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
@@ -62,10 +65,13 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/csirt", icon: Svgicons.Csirticon, title: "CSIRT", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
   {
-    path: "/roles", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/roles", icon: Svgicons.RoleListicon, title: "Role List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "fullAdmin"
   },
   {
     path: "/lms/kelas", icon: Svgicons.LMSicon, title: "LMS", type: "link", active: false, dirchange: false, selected: false, requiredRole: "admin"
+  },
+  {
+    path: "/event", icon: Svgicons.Blogicon, title: "Event", type: "link", active: false, dirchange: false, selected: false, requiredRole: "admin"
   },
 ]
 

@@ -9,12 +9,6 @@ import type {
 import { useIkasStore } from '@/stores/ikas';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 
-const STORAGE_KEYS = {
-    RESPONDENT_PROFILES: 'dynamic_respondent_profiles_map',
-    ASSESSMENT_ANSWERS: 'dynamic_assessment_answers_map',
-    ASSESSMENT_PROGRESS: 'dynamic_assessment_progress_map'
-};
-
 const genericIndexDescriptions: Record<number, string> = {
   0: 'Belum ada implementasi',
   1: 'Ad-hoc / Informal',
@@ -192,12 +186,38 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
 
         initializeLocalData() {
             if (this.initialized) return;
-            // Hapus cache legacy supaya data IKAS/responden tidak bocor antar perusahaan.
-            localStorage.removeItem(STORAGE_KEYS.RESPONDENT_PROFILES);
-            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
-            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
-
             this.initialized = true;
+        },
+
+        normalizeApiCollection(response: any): any[] {
+            if (Array.isArray(response)) return response;
+            if (Array.isArray(response?.data)) return response.data;
+            if (response?.data && typeof response.data === 'object') return [response.data];
+            if (response && typeof response === 'object') return [response];
+            return [];
+        },
+
+        findExistingBackendAnswer(items: any[], question: DynamicQuestion, ikasId: string) {
+            const questionId = String(question.originalId || question.id.split('_').pop() || '');
+            return items.find((item: any) => {
+                const itemIkasId = String(item?.ikas_id || item?.id_ikas || '');
+                const itemQuestionId = String(
+                    item?.pertanyaan_identifikasi_id ||
+                    item?.pertanyaan_proteksi_id ||
+                    item?.pertanyaan_deteksi_id ||
+                    item?.pertanyaan_gulih_id ||
+                    item?.pertanyaan_identifikasi?.id ||
+                    item?.pertanyaan_proteksi?.id ||
+                    item?.pertanyaan_deteksi?.id ||
+                    item?.pertanyaan_gulih?.id ||
+                    item?.pertanyaan_id ||
+                    item?.id_pertanyaan ||
+                    item?.pertanyaan?.id ||
+                    ''
+                );
+
+                return itemIkasId === String(ikasId) && itemQuestionId === questionId;
+            }) || null;
         },
 
         async fetchAssessmentStructure() {
@@ -283,10 +303,10 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
 
                 // 2. Fetch Pertanyaan for all 4 endpoints concurrently but safely
                 const apiPromises = [
-                    ikasService.getPertanyaanIdentifikasi().catch(e => null),
-                    ikasService.getPertanyaanProteksi().catch(e => null),
-                    ikasService.getPertanyaanDeteksi().catch(e => null),
-                    ikasService.getPertanyaanGulih().catch(e => null)
+                    ikasService.getPertanyaanByKategori('identifikasi').catch(() => null),
+                    ikasService.getPertanyaanByKategori('proteksi').catch(() => null),
+                    ikasService.getPertanyaanByKategori('deteksi').catch(() => null),
+                    ikasService.getPertanyaanByKategori('gulih').catch(() => null)
                 ];
                 
                 const results = await Promise.all(apiPromises);
@@ -445,15 +465,13 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 questionId,
                 index,
                 updatedAt: Date.now(),
+                backendSyncedAt: undefined, // Clear this so it is marked as pending
                 backendSyncError: null,
                 evidence: meta?.evidence ?? existing.evidence,
                 validasi: meta?.validasi ?? existing.validasi,
             };
 
-            const synced = await this.syncAnswerToBackend(this.currentStakeholderSlug, questionId, index);
-            if (synced) {
-                this.syncToIkas(this.currentStakeholderSlug);
-            }
+            this.syncToIkas(this.currentStakeholderSlug);
         },
 
         async syncAnswerToBackend(stakeholderSlug: string, questionId: string, index: number): Promise<boolean> {
@@ -472,26 +490,9 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     return false;
                 }
 
-                let finalIkasId = ikasStore.getBackendIkasId(stakeholderSlug);
+                const finalIkasId = ikasStore.getBackendIkasId(stakeholderSlug);
                 if (!finalIkasId) {
-                    const profile = this.respondentProfilesMap[stakeholderSlug];
-                    const ensureResult = await ikasStore.ensureBackendIkasRecord(stakeholderSlug, {
-                        id_perusahaan: stakeholder.id,
-                        responden: profile?.namaResponden || '',
-                        jabatan: profile?.jabatanResponden || '',
-                        telepon: profile?.nomorTelepon || '',
-                        tanggal: profile?.tanggalPengisian || new Date().toISOString().split('T')[0],
-                        target_nilai: Number(profile?.targetNilai || 0),
-                    });
-
-                    if (!ensureResult.success) {
-                        console.warn('[DynamicAssessment] Failed to ensure ikas_id:', ensureResult.error);
-                    }
-                }
-                
-                finalIkasId = ikasStore.getBackendIkasId(stakeholderSlug);
-                if (!finalIkasId) {
-                    console.error('[DynamicAssessment] ikas_id masih null. Cannot sync.');
+                    console.warn('[DynamicAssessment] syncAnswerToBackend dibatalkan: ikas_id null');
                     return false;
                 }
 
@@ -550,26 +551,24 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 if (storedAnswer?.evidence) payload.evidence = storedAnswer.evidence;
                 if (storedAnswer?.validasi) payload.validasi = storedAnswer.validasi;
 
-                const existingJawabanId = this.backendAnswerIdsMap[stakeholderSlug][questionId];
-                let response: any;
-
-                // Always use POST create for jawaban endpoints to avoid PUT being rejected by some servers
-                if (domainKey === 'identifikasi') {
-                    response = await ikasService.createJawabanIdentifikasi(payload);
-                } else if (domainKey === 'proteksi') {
-                    response = await ikasService.createJawabanProteksi(payload);
-                } else if (domainKey === 'deteksi') {
-                    response = await ikasService.createJawabanDeteksi(payload);
-                } else {
-                    response = await ikasService.createJawabanGulih(payload);
-                }
-                // Debug logs: show request payload and server response for easier tracing
+                const existingJawabanList = this.normalizeApiCollection(
+                    await ikasService.getJawabanByKategori(domainKey, finalIkasId)
+                );
+                const existingJawaban = this.findExistingBackendAnswer(existingJawabanList, question, finalIkasId);
+                const existingJawabanId = String(
+                    existingJawaban?.id ||
+                    existingJawaban?.ID ||
+                    this.backendAnswerIdsMap[stakeholderSlug][questionId] ||
+                    ''
+                );
+                const response = existingJawabanId
+                    ? await ikasService.updateJawabanByKategori(domainKey, existingJawabanId, payload)
+                    : await ikasService.createJawabanByKategori(domainKey, payload);
+                
                 try {
                     console.log('[DynamicAssessment] syncAnswerToBackend payload:', payload);
                     console.log('[DynamicAssessment] syncAnswerToBackend response:', response);
-                } catch (e) {
-                    // ignore console errors in restricted environments
-                }
+                } catch (e) {}
 
                 this.syncedBackendAnswersMap[stakeholderSlug][questionId] = index;
                 const persistedId = String(response?.id || response?.data?.id || existingJawabanId || '');
@@ -593,19 +592,18 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             }
         },
 
-        async hydrateAnswersFromBackend(stakeholderSlug: string, perusahaanId: string) {
+        async hydrateAnswersFromBackend(stakeholderSlug: string, _perusahaanId: string) {
             try {
                 const activeIkasId = useIkasStore().getBackendIkasId(stakeholderSlug);
                 if (!activeIkasId) {
-                    console.warn('[DynamicAssessment] hydrateAnswersFromBackend skipped: ikas_id not found');
+                    console.warn('[DynamicAssessment] hydrateAnswersFromBackend dibatalkan: ikas_id null');
                     return;
                 }
                 const results = await Promise.all([
-                    // Request identifikasi without ikas_id filter as requested
-                    ikasService.getJawabanIdentifikasi().catch(() => []),
-                    ikasService.getJawabanProteksi(activeIkasId).catch(() => []),
-                    ikasService.getJawabanDeteksi(activeIkasId).catch(() => []),
-                    ikasService.getJawabanGulih(activeIkasId).catch(() => []),
+                    ikasService.getJawabanByKategori('identifikasi', activeIkasId).catch(() => []),
+                    ikasService.getJawabanByKategori('proteksi', activeIkasId).catch(() => []),
+                    ikasService.getJawabanByKategori('deteksi', activeIkasId).catch(() => []),
+                    ikasService.getJawabanByKategori('gulih', activeIkasId).catch(() => []),
                 ]);
 
                 // Debug: log raw results for each domain fetch
@@ -621,61 +619,53 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 if (!this.syncedBackendAnswersMap[stakeholderSlug]) {
                     this.syncedBackendAnswersMap[stakeholderSlug] = {};
                 }
+                if (!this.backendAnswerIdsMap[stakeholderSlug]) {
+                    this.backendAnswerIdsMap[stakeholderSlug] = {};
+                }
 
-                // Tag each answer with its source domain type for composite ID matching
                 const domainTypes = ['identifikasi', 'proteksi', 'deteksi', 'gulih'];
                 results.forEach((rawResult: any, domainIdx: number) => {
-                    const items = Array.isArray(rawResult)
-                        ? rawResult
-                        : Array.isArray(rawResult?.data)
-                            ? rawResult.data
-                            : [];
+                    const items = this.normalizeApiCollection(rawResult);
                     const domainType = domainTypes[domainIdx];
 
-                    items
-                        .filter((item: any) => {
-                            const itemPerusahaanId = String(item.perusahaan_id || item.id_perusahaan || item.perusahaan?.id || '');
-                            const itemIkasId = String(item.ikas_id || item.id_ikas || '');
-                            const perusahaanMatch = itemPerusahaanId === String(perusahaanId);
-                            const ikasMatch = !activeIkasId || !itemIkasId || itemIkasId === String(activeIkasId);
-                            return perusahaanMatch && ikasMatch;
-                        })
-                        .forEach((item: any) => {
-                            const numericId = String(
-                                item.pertanyaan_identifikasi_id || item.pertanyaan_proteksi_id ||
-                                item.pertanyaan_deteksi_id || item.pertanyaan_gulih_id ||
-                                item.pertanyaan_identifikasi?.id || item.pertanyaan_proteksi?.id ||
-                                item.pertanyaan_deteksi?.id || item.pertanyaan_gulih?.id ||
-                                item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || ''
-                            );
-                            if (!numericId) return;
+                    items.forEach((item: any) => {
+                        const itemIkasId = String(item.ikas_id || item.id_ikas || '');
+                        if (itemIkasId && itemIkasId !== String(activeIkasId)) return;
 
-                            // Build composite ID that matches the question store
-                            const compositeId = `${domainType}_${numericId}`;
-                            const indexValue = Number(
-                                item.jawaban ??
-                                item.jawaban_identifikasi ??
-                                item.jawaban_proteksi ??
-                                item.jawaban_deteksi ??
-                                item.jawaban_gulih ??
-                                item.nilai ??
-                                item.index ??
-                                0
-                            );
+                        const numericId = String(
+                            item.pertanyaan_identifikasi_id || item.pertanyaan_proteksi_id ||
+                            item.pertanyaan_deteksi_id || item.pertanyaan_gulih_id ||
+                            item.pertanyaan_identifikasi?.id || item.pertanyaan_proteksi?.id ||
+                            item.pertanyaan_deteksi?.id || item.pertanyaan_gulih?.id ||
+                            item.id_pertanyaan || item.pertanyaan_id || item.pertanyaan?.id || ''
+                        );
+                        if (!numericId) return;
 
-                            this.answersMap[stakeholderSlug][compositeId] = {
-                                questionId: compositeId,
-                                index: indexValue,
-                                updatedAt: Date.now(),
-                                backendSyncedAt: Date.now(),
-                                backendSyncError: null,
-                            };
-                            this.syncedBackendAnswersMap[stakeholderSlug][compositeId] = indexValue;
-                            const backendAnswerId = String(item.id || item.ID || '');
-                            if (backendAnswerId) {
-                                this.backendAnswerIdsMap[stakeholderSlug][compositeId] = backendAnswerId;
-                            }
-                        });
+                        const compositeId = `${domainType}_${numericId}`;
+                        const indexValue = Number(
+                            item.jawaban ??
+                            item.jawaban_identifikasi ??
+                            item.jawaban_proteksi ??
+                            item.jawaban_deteksi ??
+                            item.jawaban_gulih ??
+                            item.nilai ??
+                            item.index ??
+                            0
+                        );
+
+                        this.answersMap[stakeholderSlug][compositeId] = {
+                            questionId: compositeId,
+                            index: indexValue,
+                            updatedAt: Date.now(),
+                            backendSyncedAt: Date.now(),
+                            backendSyncError: null,
+                        };
+                        this.syncedBackendAnswersMap[stakeholderSlug][compositeId] = indexValue;
+                        const backendAnswerId = String(item.id || item.ID || '');
+                        if (backendAnswerId) {
+                            this.backendAnswerIdsMap[stakeholderSlug][compositeId] = backendAnswerId;
+                        }
+                    });
                 });
 
                 this.syncToIkas(stakeholderSlug);
@@ -687,7 +677,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         async syncPendingAnswersToBackend(stakeholderSlug: string): Promise<{ success: boolean; errors: string[] }> {
             const answers = this.answersMap[stakeholderSlug] || {};
             const pendingAnswers = Object.values(answers).filter((answer) =>
-                !answer.backendSyncedAt || !!answer.backendSyncError
+                !answer.backendSyncedAt || !!answer.backendSyncError || (answer.updatedAt && answer.updatedAt > answer.backendSyncedAt)
             );
 
             const errors: string[] = [];
@@ -824,9 +814,6 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             this.syncedBackendAnswersMap = {};
             this.backendAnswerIdsMap = {};
             this.progressMap = {};
-            localStorage.removeItem(STORAGE_KEYS.RESPONDENT_PROFILES);
-            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_ANSWERS);
-            localStorage.removeItem(STORAGE_KEYS.ASSESSMENT_PROGRESS);
         },
 
         goToNextPage() {

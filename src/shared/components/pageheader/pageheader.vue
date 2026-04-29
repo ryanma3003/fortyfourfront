@@ -55,4 +55,14 @@ const goToTitle = () => {
 .breadcrumb-item a:hover {
   text-decoration: underline;
 }
+
+/* Dark mode overrides for breadcrumb */
+[data-theme-mode='dark'] .breadcrumb-item a.text-primary {
+  color: #60a5fa !important; /* Lighter, readable blue */
+}
+[data-theme-mode='dark'] .page-title,
+[data-theme-mode='dark'] .breadcrumb-item.active,
+[data-theme-mode='dark'] .breadcrumb-item::before {
+  color: #f1f5f9 !important;
+}
 </style>

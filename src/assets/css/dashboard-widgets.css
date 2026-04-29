@@ -1317,31 +1317,100 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   SEKTOR CARD HIGHLIGHTING
+   SEKTOR CARD HIGHLIGHTING & PREMIUM EFFECTS
    ═══════════════════════════════════════════════════════════ */
-.dashboard-main-card {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+.card.custom-card.dashboard-main-card {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
   border: 1px solid var(--dw-card-border) !important;
+  position: relative;
+  overflow: hidden;
+  --card-accent: var(--dw-primary); /* Default */
 }
 
+/* Premium Indicator Bar (Left side) */
+.card.custom-card.dashboard-main-card::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 4px !important;
+  height: 100% !important;
+  background: var(--card-accent) !important;
+  transition: width 0.3s ease, background 0.3s ease !important;
+  z-index: 10 !important; /* Ensure it is above other elements */
+  border-radius: 4px 0 0 4px !important;
+}
+
+/* Interesting Hover Effect */
+.card.custom-card.dashboard-main-card:hover {
+  transform: translateY(-6px) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.1) !important;
+  border-color: rgba(var(--dw-primary-rgb), 0.2) !important;
+}
+
+.card.custom-card.dashboard-main-card:hover::before {
+  width: 8px !important; /* Wider bar on hover */
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Glow effect inside on hover */
+.card.custom-card.dashboard-main-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 0% 0%, var(--card-accent), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.card.custom-card.dashboard-main-card:hover::after {
+  opacity: 0.05;
+}
+
+/* Color Mapping System - High Specificity */
+.card.custom-card.dashboard-main-card.primary    { --card-accent: #0d47a1; }
+.card.custom-card.dashboard-main-card.secondary  { --card-accent: #ff9800; }
+.card.custom-card.dashboard-main-card.success    { --card-accent: #32d484; }
+.card.custom-card.dashboard-main-card.info       { --card-accent: #00c9ff; }
+.card.custom-card.dashboard-main-card.warning    { --card-accent: #fdaf22; }
+.card.custom-card.dashboard-main-card.danger     { --card-accent: #ff6757; }
+.card.custom-card.dashboard-main-card.blue       { --card-accent: #3b82f6; }
+.card.custom-card.dashboard-main-card.teal       { --card-accent: #2dd4bf; }
+.card.custom-card.dashboard-main-card.cyan       { --card-accent: #06b6d4; }
+.card.custom-card.dashboard-main-card.emerald    { --card-accent: #10b981; }
+.card.custom-card.dashboard-main-card.orange     { --card-accent: #f97316; }
+.card.custom-card.dashboard-main-card.slate      { --card-accent: #64748b; }
+.card.custom-card.dashboard-main-card.indigo     { --card-accent: #6366f1; }
+.card.custom-card.dashboard-main-card.purple     { --card-accent: #a855f7; }
+.card.custom-card.dashboard-main-card.pink       { --card-accent: #ec4899; }
+.card.custom-card.dashboard-main-card.rose       { --card-accent: #f43f5e; }
+.card.custom-card.dashboard-main-card.amber      { --card-accent: #f59e0b; }
+
 /* Active State: Elevated emphasis when a specific sector is filtered */
-.sektor-card-active {
-  transform: translateY(-5px) scale(1.02);
-  z-index: 10;
-  box-shadow: 0 12px 32px rgba(var(--dw-primary-rgb), 0.15) !important;
+.card.custom-card.dashboard-main-card.sektor-card-active {
+  transform: translateY(-8px) scale(1.03) !important;
+  z-index: 20 !important;
+  box-shadow: 0 16px 48px rgba(var(--dw-primary-rgb), 0.18) !important;
+  border-color: var(--card-accent) !important;
+}
+
+.card.custom-card.dashboard-main-card.sektor-card-active::before {
+  width: 10px !important;
 }
 
 /* Muted State: Dimmed when a different sector is selection */
-.sektor-card-muted {
-  opacity: 0.35;
-  filter: grayscale(0.85);
-  transform: scale(0.98);
-  pointer-events: none;
+.card.custom-card.dashboard-main-card.sektor-card-muted {
+  opacity: 0.25 !important;
+  filter: grayscale(0.95) !important;
+  transform: scale(0.96) !important;
+  pointer-events: none !important;
   box-shadow: none !important;
-  border-color: rgba(0,0,0,0.05) !important;
+  border-color: rgba(0,0,0,0.03) !important;
 }
 
 /* Ensure the chart/sparkline inside muted cards is also subtle */
-.sektor-card-muted .apexcharts-canvas {
-  opacity: 0.5;
+.card.custom-card.dashboard-main-card.sektor-card-muted .apexcharts-canvas {
+  opacity: 0.3 !important;
 }

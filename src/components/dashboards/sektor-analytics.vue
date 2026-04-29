@@ -25,6 +25,7 @@ const sortOrder = ref("asc"); // 'asc' | 'desc'
 const viewMode = ref("overview"); // 'overview' | 'table' | 'cards'
 const chartLevel = ref("sektor"); // 'sektor' | 'subsektor'
 const expandedSektors = ref(new Set());
+const isReady = ref(false);
 
 // ─── Color Palette ──────────────────────────────────────
 const sektorColors = [
@@ -60,7 +61,12 @@ const fetchData = async () => {
   }
 };
 
-onMounted(fetchData);
+onMounted(async () => {
+  await fetchData();
+  setTimeout(() => {
+    isReady.value = true;
+  }, 4000);
+});
 
 // ─── Computed: Enriched Sektor Data ─────────────────────
 
@@ -419,7 +425,7 @@ watch(selectedSektorId, () => {
 <template>
   <div class="sektor-analytics">
     <!-- ═══════════ SECTION HEADER ═══════════ -->
-    <div class="sa-section-header animate-show-up" style="animation-delay: 2.6s">
+    <div class="sa-section-header animate-show-up" :style="{ animationDelay: isReady ? '0s' : '2.6s' }">
       <div class="sa-section-header-inner">
         <div class="sa-section-icon">
           <i class="ri-building-4-fill"></i>
@@ -481,56 +487,10 @@ watch(selectedSektorId, () => {
 
     <!-- ═══════════ MAIN CONTENT ═══════════ -->
     <template v-else>
-      <!-- ──── STATS CARDS ──── -->
-      <div class="sa-stats-row">
-        <div class="sa-stat-card sa-stat-blue animate-show-up" style="animation-delay: 2.7s">
-          <div class="sa-stat-top">
-            <div class="sa-stat-icon-wrap">
-              <i class="ri-building-4-line"></i>
-            </div>
-            <div class="sa-stat-badge">Total</div>
-          </div>
-          <div class="sa-stat-value">{{ totalStakeholders }}</div>
-          <div class="sa-stat-label">Stakeholder</div>
-          <div class="sa-stat-detail">
-            <i class="ri-pie-chart-2-line"></i>
-            Tersebar di {{ totalSektors }} sektor
-          </div>
-        </div>
-
-        <div class="sa-stat-card sa-stat-teal animate-show-up" style="animation-delay: 2.8s">
-          <div class="sa-stat-top">
-            <div class="sa-stat-icon-wrap">
-              <i class="ri-bar-chart-horizontal-line"></i>
-            </div>
-            <div class="sa-stat-badge">Rata-rata</div>
-          </div>
-          <div class="sa-stat-value">{{ avgStakeholderPerSektor }}</div>
-          <div class="sa-stat-label">Stakeholder / Sektor</div>
-          <div class="sa-stat-detail">
-            <i class="ri-scales-3-line"></i>
-            Distribusi per sektor
-          </div>
-        </div>
-
-        <div class="sa-stat-card sa-stat-amber animate-show-up" style="animation-delay: 2.9s">
-          <div class="sa-stat-top">
-            <div class="sa-stat-icon-wrap">
-              <i class="ri-trophy-line"></i>
-            </div>
-            <div class="sa-stat-badge">Terbanyak</div>
-          </div>
-          <div class="sa-stat-value">{{ maxStakeholderSektor.count }}</div>
-          <div class="sa-stat-label">Stakeholder Terbanyak</div>
-          <div class="sa-stat-detail" :title="maxStakeholderSektor.name">
-            <i class="ri-building-2-line"></i>
-            Sektor {{ maxStakeholderSektor.name }}
-          </div>
-        </div>
-      </div>
+      
 
       <!-- ──── FILTER BAR ──── -->
-      <div class="sa-filter-bar animate-show-up" style="animation-delay: 3.0s">
+      <div class="sa-filter-bar animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.0s' }">
         <!-- Filter Header Row -->
         <div class="sa-filter-header">
           <div class="sa-filter-title-wrap">
@@ -670,7 +630,7 @@ watch(selectedSektorId, () => {
       <!-- ═══════ VIEW: OVERVIEW (Charts) ═══════ -->
       <div v-if="viewMode === 'overview'" class="sa-charts-section">
         <!-- Chart Level Toggle -->
-        <div class="sa-level-toggle-bar animate-show-up" style="animation-delay: 3.1s">
+        <div class="sa-level-toggle-bar animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.1s' }">
           <div class="sa-level-toggle-label">
             <i class="ri-bar-chart-grouped-line"></i>
             <span>Tampilkan data:</span>
@@ -704,7 +664,7 @@ watch(selectedSektorId, () => {
 
         <div class="row g-4">
           <!-- Bar Chart -->
-          <div class="col-xl-7 animate-show-up" style="animation-delay: 3.2s">
+          <div class="col-xl-7 animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.2s' }">
             <div class="sa-chart-card">
               <div class="sa-chart-header">
                 <div class="sa-chart-header-inner">
@@ -739,7 +699,7 @@ watch(selectedSektorId, () => {
           </div>
 
           <!-- Donut Chart -->
-          <div class="col-xl-5 animate-show-up" style="animation-delay: 3.3s">
+          <div class="col-xl-5 animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.3s' }">
             <div class="sa-chart-card">
               <div class="sa-chart-header">
                 <div class="sa-chart-header-inner">
@@ -776,7 +736,7 @@ watch(selectedSektorId, () => {
       </div>
 
       <!-- ═══════ VIEW: TABLE ═══════ -->
-      <div v-if="viewMode === 'table'" class="sa-table-section">
+      <div v-if="viewMode === 'table'" class="sa-table-section animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.4s' }">
         <div class="sa-table-card">
           <div class="sa-chart-header">
             <div class="sa-chart-header-inner">
@@ -918,10 +878,10 @@ watch(selectedSektorId, () => {
       </div>
 
       <!-- ═══════ VIEW: CARDS ═══════ -->
-      <div v-if="viewMode === 'cards'" class="sa-cards-section">
+      <div v-if="viewMode === 'cards'" class="sa-cards-section animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.4s' }">
         <div class="row g-3">
           <div
-            class="col-xl-4 col-lg-6 col-md-6"
+            class="col-xl-3 col-lg-6 col-md-6"
             v-for="(sektor, idx) in filteredSektors"
             :key="sektor.id"
           >

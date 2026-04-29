@@ -224,8 +224,8 @@ class ApiClient {
         return this.request<T>(endpoint, 'PUT', body, headers);
     }
 
-    public delete<T>(endpoint: string, headers?: HeadersInit): Promise<T> {
-        return this.request<T>(endpoint, 'DELETE', undefined, headers);
+    public delete<T>(endpoint: string, body?: any, headers?: HeadersInit): Promise<T> {
+        return this.request<T>(endpoint, 'DELETE', body, headers);
     }
 
     public patch<T>(endpoint: string, body: any, headers?: HeadersInit): Promise<T> {

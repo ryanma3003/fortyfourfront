@@ -70,6 +70,9 @@ const ikasDataDynamic = computed(() => {
         proteksi: { nilai_proteksi: 0, kategori_proteksi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0, nilai_subdomain5: 0, nilai_subdomain6: 0 },
         deteksi: { nilai_deteksi: 0, kategori_deteksi: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0 },
         tanggulih: { nilai_tanggulih: 0, kategori_tanggulih: "INPUT BELUM LENGKAP", nilai_subdomain1: 0, nilai_subdomain2: 0, nilai_subdomain3: 0, nilai_subdomain4: 0 },
+        is_validated: false,
+        edit_request_status: 'none',
+        edit_request_reason: '',
     };
 });
 
@@ -129,6 +132,119 @@ const goToIkasCrud = () => {
     router.push({ path: '/ikas-crud', query });
 };
 
+const isDeleting = ref(false);
+const deleteAssessment = async () => {
+    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    if (!ikasId) {
+        alert('Tidak ada data penilaian untuk dihapus.');
+        return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin menghapus data penilaian IKAS ini? Tindakan ini tidak dapat dibatalkan.')) {
+        return;
+    }
+
+    isDeleting.value = true;
+    try {
+        await ikasStore.deleteFromBackend(ikasId);
+        alert('Data penilaian berhasil dihapus.');
+        // Refresh page or redirect
+        router.push({ path: '/stakeholders' });
+    } catch (error) {
+        console.error('Delete error:', error);
+        alert('Gagal menghapus data penilaian: ' + (error.message || 'Unknown error'));
+    } finally {
+        isDeleting.value = false;
+    }
+};
+
+const isValidating = ref(false);
+const validateAssessment = async () => {
+    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    if (!ikasId) {
+        alert('Tidak ada data penilaian untuk divalidasi.');
+        return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin memvalidasi data penilaian IKAS ini?')) {
+        return;
+    }
+
+    isValidating.value = true;
+    try {
+        console.warn('[IKAS] Triggering validation for ID:', ikasId);
+        const result = await ikasStore.validateIkas(currentSlug.value);
+        if (result.success) {
+            console.log('[IKAS] Validation successful');
+            alert('Data penilaian berhasil divalidasi.');
+            // Optimistic UI update since backend might not reflect it immediately
+            ikasStore.ikasDataMap[currentSlug.value].is_validated = true;
+        } else {
+            console.error('[IKAS] Validation failed:', result.error);
+            alert('Gagal memvalidasi data: ' + result.error);
+        }
+    } catch (err) {
+        console.error('[IKAS] Error during validation process:', err);
+        alert('Terjadi kesalahan saat memvalidasi data.');
+    } finally {
+        isValidating.value = false;
+    }
+};
+
+const isApproving = ref(false);
+const isRejecting = ref(false);
+
+const approveEdit = async () => {
+    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    if (!ikasId) return;
+
+    if (!confirm('Apakah Anda yakin ingin menyetujui permintaan edit IKAS ini?')) return;
+
+    isApproving.value = true;
+    try {
+        const result = await ikasStore.approveEditIkas(currentSlug.value);
+        if (result.success) {
+            alert('Permintaan edit berhasil disetujui.');
+            // Optimistic UI update
+            ikasStore.ikasDataMap[currentSlug.value].edit_request_status = 'approved';
+            ikasStore.ikasDataMap[currentSlug.value].is_validated = false; // Buka kunci validasi agar bisa diedit
+        } else {
+            alert('Gagal menyetujui edit: ' + result.error);
+        }
+    } catch (err) {
+        console.error('[IKAS] Approve edit error:', err);
+        alert('Terjadi kesalahan saat menyetujui edit.');
+    } finally {
+        isApproving.value = false;
+    }
+};
+
+const rejectEdit = async () => {
+    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    if (!ikasId) return;
+
+    const reason = prompt('Masukkan alasan penolakan (opsional):');
+    if (reason === null) return; // User cancelled
+
+    isRejecting.value = true;
+    try {
+        const result = await ikasStore.rejectEditIkas(currentSlug.value, reason);
+        if (result.success) {
+            alert('Permintaan edit berhasil ditolak.');
+            // Optimistic UI update
+            ikasStore.ikasDataMap[currentSlug.value].edit_request_status = 'rejected';
+            ikasStore.ikasDataMap[currentSlug.value].edit_request_reason = reason;
+        } else {
+            alert('Gagal menolak edit: ' + result.error);
+        }
+    } catch (err) {
+        console.error('[IKAS] Reject edit error:', err);
+        alert('Terjadi kesalahan saat menolak edit.');
+    } finally {
+        isRejecting.value = false;
+    }
+};
+
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);
 const selectedFile = ref(null);
@@ -180,7 +296,7 @@ const uploadExcel = async () => {
 
     try {
         // Mengirim file ke endpoint backend
-        const response = await fetch('/api/ikas/import', {
+        const response = await fetch('/api/maturity/ikas/import', {
             method: 'POST',
             body: formData,
             // Headers untuk Content-Type otomatis diatur oleh browser saat menggunakan FormData
@@ -405,6 +521,50 @@ const exportToPdf = async () => {
 .btn-ikas-pdf:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-pdf:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
+.btn-ikas-delete {
+  background: linear-gradient(135deg, #991b1b, #dc2626);
+  border: none; border-radius: 50px; padding: 8px 22px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(220,38,38,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-ikas-delete:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-delete:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.btn-ikas-validate {
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+  border: none; border-radius: 50px; padding: 8px 22px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-ikas-validate:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-validate:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.btn-ikas-approve {
+  background: linear-gradient(135deg, #065f46, #10b981);
+  border: none; border-radius: 50px; padding: 8px 22px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(16,185,129,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-ikas-approve:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-approve:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.btn-ikas-reject {
+  background: linear-gradient(135deg, #7f1d1d, #ef4444);
+  border: none; border-radius: 50px; padding: 8px 22px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(239,68,68,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-ikas-reject:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-reject:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
 /* ── Domain score summary strip ─────────────────────────── */
 .domain-strip {
   display: flex;
@@ -471,8 +631,23 @@ const exportToPdf = async () => {
               </div>
             </div>
           </div>
-          <!-- Right: badge -->
-          <div class="ikas-header-score-box">
+          <!-- Right: badges -->
+          <div class="ikas-header-score-box d-flex align-items-center gap-2">
+            <span v-if="ikasDataDynamic.is_validated" class="badge bg-success-transparent rounded-pill px-3 py-2">
+              <i class="ri-checkbox-circle-fill me-1"></i> Tervalidasi
+            </span>
+            <span v-else class="badge bg-warning-transparent rounded-pill px-3 py-2">
+              <i class="ri-error-warning-line me-1"></i> Belum Validasi
+            </span>
+            <span v-if="ikasDataDynamic.edit_request_status === 'pending'" class="badge bg-info-transparent rounded-pill px-3 py-2">
+              <i class="ri-edit-2-line me-1"></i> Edit Pending
+            </span>
+            <span v-else-if="ikasDataDynamic.edit_request_status === 'approved'" class="badge bg-success-transparent rounded-pill px-3 py-2">
+              <i class="ri-check-double-line me-1"></i> Edit Disetujui
+            </span>
+            <span v-else-if="ikasDataDynamic.edit_request_status === 'rejected'" class="badge bg-danger-transparent rounded-pill px-3 py-2">
+              <i class="ri-close-circle-line me-1"></i> Edit Ditolak
+            </span>
             <span class="ikas-header-kat-badge">{{ ikasDataDynamic.total_kategori }}</span>
           </div>
         </div>
@@ -688,6 +863,27 @@ const exportToPdf = async () => {
               <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
               <i v-else class="ri-file-pdf-line"></i>
               {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
+            </button>
+            <button v-if="ikasStore.getBackendIkasId(currentSlug) && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
+              <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <i v-else class="ri-checkbox-circle-line"></i>
+              {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
+            </button>
+            <!-- Edit Request Approve/Reject buttons -->
+            <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
+              <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <i v-else class="ri-check-line"></i>
+              {{ isApproving ? 'Menyetujui...' : 'Setujui Edit' }}
+            </button>
+            <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
+              <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <i v-else class="ri-close-line"></i>
+              {{ isRejecting ? 'Menolak...' : 'Tolak Edit' }}
+            </button>
+            <button v-if="ikasStore.getBackendIkasId(currentSlug)" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
+              <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <i v-else class="ri-delete-bin-line"></i>
+              {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
             </button>
           </div>
 

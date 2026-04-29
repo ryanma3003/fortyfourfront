@@ -25,7 +25,7 @@
     </div>
 
     <!-- ── Scrollable Menu ── -->
-    <PerfectScrollbar class="main-sidebar sb2-scroll" id="sidebar-scroll">
+    <div class="main-sidebar sb2-scroll" id="sidebar-scroll">
       <nav class="main-menu-container nav nav-pills flex-column sub-open">
 
         <div class="slide-left" id="slide-left" @click="leftArrowFn">
@@ -114,7 +114,7 @@
           </li>
         </ul>
       </nav>
-    </PerfectScrollbar>
+    </div>
 
     <!-- ── AI Assistant Footer ── -->
     <div class="sidebar-chatbot-footer sb2-footer">
@@ -149,27 +149,40 @@ import {
   watchEffect,
   computed,
   onUnmounted,
+  watch,
 } from "vue";
 import { MENUITEMS as staticMenuData } from "../../../data/sidebar/nav.ts";
 import { useRoute, useRouter } from "vue-router";
-import { PerfectScrollbar } from "vue3-perfect-scrollbar";
-import "vue3-perfect-scrollbar/style.css";
+// import { PerfectScrollbar } from "vue3-perfect-scrollbar";
+// import "vue3-perfect-scrollbar/style.css";
 import media80 from "/images/media/media-80.png";
 import { switcherStore } from "../../../stores/switcher";
 import { useAuthStore } from "../../../stores/auth";
 import RecursiveMenu from "../../UI/recursiveMenu.vue";
 import ChatModal from "../chatbot/ChatModal.vue";
+import { seEditService } from "../../../services/se-edit.service";
 
 const authStore = useAuthStore();
 
 // Filter menu based on user role
 const filterMenuByRole = (items) => {
+  const role = authStore.currentUser?.role;
   return items
     .filter((item) => {
-      // If item has requiredRole, check if user has that role
+      // If item has requiredRole, check access
       if (item.requiredRole) {
-        if (authStore.currentUser?.role !== item.requiredRole) {
-          return false;
+        if (item.requiredRole === 'fullAdmin') {
+          // Only pure admin (not staff) can see these
+          if (role !== 'admin') return false;
+        } else if (item.requiredRole === 'admin') {
+          // Both admin and staff can see these
+          if (role !== 'admin' && role !== 'staff') return false;
+        } else if (item.requiredRole === 'user') {
+          // Only regular users can see these
+          if (role !== item.requiredRole) return false;
+        } else {
+          // Generic role check
+          if (role !== item.requiredRole) return false;
         }
       }
       // Check if item is hidden
@@ -196,6 +209,7 @@ watchEffect(() => {
   filteredItems.forEach((item) => menuData.push(item));
 });
 
+
 let level = 0;
 let isChild = false;
 let setMenu = false;
@@ -207,6 +221,40 @@ const previousUrl = ref("/");
 const router = useRouter();
 const route = useRoute();
 
+// Fetch and update pending SE requests badge
+const updatePendingBadge = async () => {
+  if (authStore.isAdmin || authStore.currentUser?.role === 'staff') {
+    try {
+      const requests = await seEditService.getRequests();
+      const pendingCount = requests.filter(r => r.status === 'pending').length;
+      
+      const kseItem = menuData.find(item => item.title === 'KSE List');
+      if (kseItem) {
+        if (pendingCount > 0) {
+          kseItem.badgetxt = `<span class="sb2-notif-badge">${pendingCount}</span>`;
+        } else {
+          kseItem.badgetxt = '';
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch pending requests for badge", e);
+    }
+  }
+};
+
+onMounted(() => {
+  updatePendingBadge();
+  window.addEventListener('se-requests-updated', updatePendingBadge);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('se-requests-updated', updatePendingBadge);
+});
+
+watch(() => route.path, () => {
+  updatePendingBadge();
+});
+
 const isChatOpen = ref(false);
 
 let observer = null;
@@ -214,7 +262,7 @@ let toggledObserver = null;
 
 // Computed property for dynamic dashboard route based on user role
 const dashboardRoute = computed(() => {
-  return authStore.userRole === 'admin' ? '/dashboard' : '/dashboards';
+  return authStore.isAdmin ? '/dashboard' : '/dashboards';
 });
 
 const toggleChat = () => {
@@ -321,14 +369,14 @@ function toggleSubmenu(
           }
         }
       }
-      setTimeout(() => {
-        let computedValue = siblingUL.getBoundingClientRect();
-        if (computedValue.bottom > window.innerHeight) {
-          siblingUL.style.height =
-            window.innerHeight - computedValue.top - 8 + "px";
-          siblingUL.style.overflow = "auto";
-        }
-      }, 100);
+      // setTimeout(() => {
+      //   let computedValue = siblingUL.getBoundingClientRect();
+      //   if (computedValue.bottom > window.innerHeight) {
+      //     siblingUL.style.height =
+      //       window.innerHeight - computedValue.top - 8 + "px";
+      //     siblingUL.style.overflow = "auto";
+      //   }
+      // }, 100);
     }
   }
 }

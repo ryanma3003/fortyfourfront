@@ -33,6 +33,20 @@ import type {
  * Handles all API calls for IKAS assessment endpoints.
  */
 export const ikasService = {
+    async deleteIkas(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/ikas/${id}`);
+    },
+    resolveKategoriKey(kategori: string): 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih' {
+        const normalized = String(kategori || '').toLowerCase();
+        if (normalized === 'identifikasi' || normalized === 'proteksi' || normalized === 'deteksi' || normalized === 'gulih') {
+            return normalized;
+        }
+        if (normalized === 'tanggulih' || normalized === 'pemulihan') {
+            return 'gulih';
+        }
+        throw new Error(`Kategori maturity tidak dikenali: ${kategori}`);
+    },
+
     // ─── IKAS (main record) ────────────────────────────────────────
 
     /** Create a new IKAS assessment record */
@@ -44,6 +58,33 @@ export const ikasService = {
     async getIkasById(id: string): Promise<IkasResponse> {
         return api.get<IkasResponse>(`/api/maturity/ikas/${id}`);
     },
+
+    /** Validate an IKAS assessment record */
+    async validateIkas(id: string): Promise<any> {
+        return api.put<any>(`/api/maturity/ikas/${id}/validate`, {
+            is_validated: true,
+            status: true
+        });
+    },
+
+    /** Approve an edit request for an IKAS record */
+    async approveEditIkas(id: string): Promise<any> {
+        return api.put<any>(`/api/maturity/ikas/${id}/approve-edit`, {
+            edit_request_status: 'approved',
+            is_validated: false,
+            status: false
+        });
+    },
+
+    /** Reject an edit request for an IKAS record */
+    async rejectEditIkas(id: string, reason?: string): Promise<any> {
+        return api.put<any>(`/api/maturity/ikas/${id}/reject-edit`, {
+            edit_request_status: 'rejected',
+            reason: reason || ''
+        });
+    },
+
+
 
     /** Get all IKAS records */
     async getIkasList(): Promise<any> {
@@ -299,20 +340,73 @@ export const ikasService = {
     async getPertanyaanIdentifikasi(): Promise<any> {
         return api.get<any>('/api/maturity/pertanyaan-identifikasi');
     },
+    async getPertanyaanIdentifikasiById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/pertanyaan-identifikasi/${id}`);
+    },
+    async createPertanyaanIdentifikasi(payload: any): Promise<any> {
+        return api.post<any>('/api/maturity/pertanyaan-identifikasi', payload);
+    },
+    async updatePertanyaanIdentifikasi(id: string, payload: any): Promise<any> {
+        return api.put<any>(`/api/maturity/pertanyaan-identifikasi/${id}`, payload);
+    },
+    async deletePertanyaanIdentifikasi(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/pertanyaan-identifikasi/${id}`);
+    },
 
     /** Get pertanyaan proteksi */
     async getPertanyaanProteksi(): Promise<any> {
         return api.get<any>('/api/maturity/pertanyaan-proteksi');
+    },
+    async getPertanyaanProteksiById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/pertanyaan-proteksi/${id}`);
+    },
+    async createPertanyaanProteksi(payload: any): Promise<any> {
+        return api.post<any>('/api/maturity/pertanyaan-proteksi', payload);
+    },
+    async updatePertanyaanProteksi(id: string, payload: any): Promise<any> {
+        return api.put<any>(`/api/maturity/pertanyaan-proteksi/${id}`, payload);
+    },
+    async deletePertanyaanProteksi(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/pertanyaan-proteksi/${id}`);
     },
 
     /** Get pertanyaan deteksi */
     async getPertanyaanDeteksi(): Promise<any> {
         return api.get<any>('/api/maturity/pertanyaan-deteksi');
     },
+    async getPertanyaanDeteksiById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/pertanyaan-deteksi/${id}`);
+    },
+    async createPertanyaanDeteksi(payload: any): Promise<any> {
+        return api.post<any>('/api/maturity/pertanyaan-deteksi', payload);
+    },
+    async updatePertanyaanDeteksi(id: string, payload: any): Promise<any> {
+        return api.put<any>(`/api/maturity/pertanyaan-deteksi/${id}`, payload);
+    },
+    async deletePertanyaanDeteksi(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/pertanyaan-deteksi/${id}`);
+    },
 
     /** Get pertanyaan gulih */
     async getPertanyaanGulih(): Promise<any> {
         return api.get<any>('/api/maturity/pertanyaan-gulih');
+    },
+    async getPertanyaanGulihById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/pertanyaan-gulih/${id}`);
+    },
+    async createPertanyaanGulih(payload: any): Promise<any> {
+        return api.post<any>('/api/maturity/pertanyaan-gulih', payload);
+    },
+    async updatePertanyaanGulih(id: string, payload: any): Promise<any> {
+        return api.put<any>(`/api/maturity/pertanyaan-gulih/${id}`, payload);
+    },
+    async deletePertanyaanGulih(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/pertanyaan-gulih/${id}`);
+    },
+
+    async getPertanyaanByKategori(kategori: string): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        return api.get<any>(`/api/maturity/pertanyaan-${resolved}`);
     },
 
     // Jawaban endpoints
@@ -323,6 +417,10 @@ export const ikasService = {
         return api.get<any>(url);
     },
 
+    async getJawabanIdentifikasiById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/jawaban-identifikasi/${id}`);
+    },
+
     async createJawabanIdentifikasi(payload: JawabanIdentifikasiPayload): Promise<JawabanResponse> {
         return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload);
     },
@@ -331,11 +429,19 @@ export const ikasService = {
         return api.put<JawabanResponse>(`/api/maturity/jawaban-identifikasi/${id}`, payload);
     },
 
+    async deleteJawabanIdentifikasi(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/jawaban-identifikasi/${id}`);
+    },
+
     async getJawabanProteksi(ikasId?: string): Promise<any> {
         const url = ikasId 
             ? `/api/maturity/jawaban-proteksi?ikas_id=${ikasId}` 
             : '/api/maturity/jawaban-proteksi';
         return api.get<any>(url);
+    },
+
+    async getJawabanProteksiById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/jawaban-proteksi/${id}`);
     },
 
     async createJawabanProteksi(payload: JawabanProteksiPayload): Promise<JawabanResponse> {
@@ -346,11 +452,19 @@ export const ikasService = {
         return api.put<JawabanResponse>(`/api/maturity/jawaban-proteksi/${id}`, payload);
     },
 
+    async deleteJawabanProteksi(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/jawaban-proteksi/${id}`);
+    },
+
     async getJawabanDeteksi(ikasId?: string): Promise<any> {
         const url = ikasId 
             ? `/api/maturity/jawaban-deteksi?ikas_id=${ikasId}` 
             : '/api/maturity/jawaban-deteksi';
         return api.get<any>(url);
+    },
+
+    async getJawabanDeteksiById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/jawaban-deteksi/${id}`);
     },
 
     async createJawabanDeteksi(payload: JawabanDeteksiPayload): Promise<JawabanResponse> {
@@ -361,11 +475,19 @@ export const ikasService = {
         return api.put<JawabanResponse>(`/api/maturity/jawaban-deteksi/${id}`, payload);
     },
 
+    async deleteJawabanDeteksi(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/jawaban-deteksi/${id}`);
+    },
+
     async getJawabanGulih(ikasId?: string): Promise<JawabanGulihResponse[]> {
         const url = ikasId 
             ? `/api/maturity/jawaban-gulih?ikas_id=${ikasId}` 
             : '/api/maturity/jawaban-gulih';
         return api.get<JawabanGulihResponse[]>(url);
+    },
+
+    async getJawabanGulihById(id: string): Promise<any> {
+        return api.get<any>(`/api/maturity/jawaban-gulih/${id}`);
     },
 
     async createJawabanGulih(payload: JawabanGulihPayload): Promise<JawabanGulihResponse> {
@@ -374,5 +496,27 @@ export const ikasService = {
 
     async updateJawabanGulih(id: string, payload: JawabanGulihPayload): Promise<JawabanGulihResponse> {
         return api.put<JawabanGulihResponse>(`/api/maturity/jawaban-gulih/${id}`, payload);
+    },
+
+    async deleteJawabanGulih(id: string): Promise<any> {
+        return api.delete<any>(`/api/maturity/jawaban-gulih/${id}`);
+    },
+
+    async getJawabanByKategori(kategori: string, ikasId: string): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        if (!ikasId) {
+            throw new Error('ikas_id wajib ada untuk mengambil jawaban maturity');
+        }
+        return api.get<any>(`/api/maturity/jawaban-${resolved}?ikas_id=${ikasId}`);
+    },
+
+    async createJawabanByKategori(kategori: string, payload: JawabanPayload): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        return api.post<any>(`/api/maturity/jawaban-${resolved}`, payload);
+    },
+
+    async updateJawabanByKategori(kategori: string, id: string, payload: JawabanPayload): Promise<any> {
+        const resolved = this.resolveKategoriKey(kategori);
+        return api.put<any>(`/api/maturity/jawaban-${resolved}/${id}`, payload);
     },
 };

@@ -4,15 +4,40 @@ import { useRouter } from "vue-router";
 import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
 import ParticlesJs from "../../shared/components/@spk/reuseble-plugin/particles-js.vue";
+import { config } from "../../config/env";
 import { useAuthStore } from "../../stores/auth";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback"?: () => void;
+          "error-callback"?: () => void;
+        }
+      ) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId?: string) => void;
+    };
+  }
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
+const turnstileSiteKey = config.turnstile.siteKey;
 
 // State
 const user = ref({ identifier: "", password: "" });
 const showPassword = ref(false);
 const isLoading = ref(false);
+const turnstileContainer = ref<HTMLElement | null>(null);
+const turnstileToken = ref<string>("");
+const turnstileWidgetId = ref<string | null>(null);
+const turnstileReady = ref(false);
+const turnstileError = ref("");
 
 // Toast helper
 const showToast = (type: "success" | "error", message: string) => {
@@ -31,10 +56,22 @@ const redirectPath = "/dashboard";
 // Login handler
 const login = async () => {
   if (isLoading.value) return;
+
+  if (!turnstileSiteKey) {
+    showToast("error", "Turnstile site key belum dikonfigurasi.");
+    return;
+  }
+
+  if (!turnstileToken.value) {
+    showToast("error", "Please complete the security check.");
+    return;
+  }
+
   isLoading.value = true;
 
   try {
-    const result = await authStore.authenticateUser(user.value);
+    const payload = { ...user.value, turnstileToken: turnstileToken.value };
+    const result = await authStore.authenticateUser(payload);
 
     // Case 1: MFA first-time setup required
     if (result.mfaSetup) {
@@ -54,7 +91,8 @@ const login = async () => {
     if (result.authenticated) {
       if (!authStore.isAdmin) {
         await authStore.logUserOut();
-        showToast("error", "Akses ditolak. Hanya untuk admin.");
+        showToast("error", "Akses ditolak. Hanya untuk admin dan staff.");
+        resetTurnstile();
         return;
       }
       
@@ -67,8 +105,10 @@ const login = async () => {
 
     // Login failed
     showToast("error", "Invalid credentials" + (result.error ? `: ${result.error}` : ""));
+    resetTurnstile();
   } catch (error: any) {
     showToast("error", "An error occurred");
+    resetTurnstile();
   } finally {
     isLoading.value = false;
   }
@@ -81,13 +121,72 @@ const setBodyClass = (add: boolean) => {
 
 const cleanup = () => {
   setBodyClass(false);
+  if (turnstileWidgetId.value && window.turnstile) {
+    window.turnstile.remove(turnstileWidgetId.value);
+  }
 };
 
 onMounted(() => {
   setBodyClass(true);
   router.beforeEach(() => setBodyClass(false));
   window.addEventListener("beforeunload", cleanup, { passive: true });
+
+  if (!turnstileSiteKey) {
+    turnstileError.value = "Turnstile site key belum diatur.";
+    return;
+  }
+
+  // Load Turnstile script dynamically
+  if (!document.getElementById("turnstile-script")) {
+    const script = document.createElement("script");
+    script.id = "turnstile-script";
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+
+    script.onload = () => renderTurnstile();
+    script.onerror = () => {
+      turnstileError.value = "Gagal memuat Turnstile. Coba refresh halaman.";
+    };
+  } else {
+    // If already loaded, render immediately if available, otherwise wait
+    if (window.turnstile) {
+      renderTurnstile();
+    } else {
+      setTimeout(renderTurnstile, 500);
+    }
+  }
 });
+
+const renderTurnstile = () => {
+  if (turnstileContainer.value && window.turnstile) {
+    turnstileContainer.value.innerHTML = "";
+    turnstileError.value = "";
+    turnstileReady.value = true;
+    turnstileWidgetId.value = window.turnstile.render(turnstileContainer.value, {
+      sitekey: turnstileSiteKey,
+      callback: (token: string) => {
+        turnstileToken.value = token;
+      },
+      "expired-callback": () => {
+        turnstileToken.value = "";
+        showToast("error", "Security check expired. Please verify again.");
+      },
+      "error-callback": () => {
+        turnstileToken.value = "";
+        turnstileError.value = "Security check gagal dimuat. Coba refresh halaman.";
+      },
+    });
+  }
+};
+
+const resetTurnstile = () => {
+  turnstileToken.value = "";
+  if (turnstileWidgetId.value && window.turnstile) {
+    window.turnstile.reset(turnstileWidgetId.value);
+  }
+};
 
 onUnmounted(() => {
   window.removeEventListener("beforeunload", cleanup);
@@ -150,11 +249,17 @@ onUnmounted(() => {
                       <router-link to="/pages/authentication/reset-password/basic" class="auth-link fs-12">Forgot password?</router-link>
                     </div>
                   </div>
+                  
+                  <!-- Turnstile Widget -->
+                  <div class="col-12 mt-3 d-flex flex-column align-items-center gap-2">
+                    <div ref="turnstileContainer"></div>
+                    <small v-if="turnstileError" class="text-danger text-center">{{ turnstileError }}</small>
+                  </div>
                 </div>
 
                 <!-- Submit Button -->
                 <div class="d-grid mt-4">
-                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading">
+                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !turnstileReady || !!turnstileError">
                     <span v-if="!isLoading"><i class="ri-login-box-line me-2"></i>Sign In</span>
                     <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Signing in...</span>
                   </button>

@@ -131,8 +131,8 @@ export const useProfileStore = defineStore('profile', {
       const userId = authStore.currentUser?.id;
       if (!userId) { this.initFromAuth(); return; }
 
-      // Non-admin users: fetch from /api/me
-      if (authStore.currentUser?.role !== 'admin') {
+      // Non-admin users (including staff): fetch from /api/me
+      if (!authStore.isFullAdmin) {
         this.isLoading = true;
         try {
           const response = await usersService.getCurrentUser();
@@ -279,7 +279,7 @@ export const useProfileStore = defineStore('profile', {
         return { success: false, error: 'User not authenticated' };
       }
       const id = authStore.currentUser.id;
-      const isAdmin = authStore.currentUser?.role === 'admin';
+      const isAdmin = authStore.isFullAdmin;
 
       this.isLoading = true;
       try {
