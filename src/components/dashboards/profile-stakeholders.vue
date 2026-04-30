@@ -23,7 +23,7 @@ const csirtStore = useCsirtStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Use storeToRefs to get reactive refs — ensures computed() tracks store state changes
-const { ikasDataMap, ikasVersion } = storeToRefs(ikasStore);
+const { ikasVersion } = storeToRefs(ikasStore);
 const { resikoVersion } = storeToRefs(resikoStore);
 
 // Import FilePond styles
@@ -98,7 +98,7 @@ onMounted(async () => {
     if (!stakeholdersStore.initialized) {
         await stakeholdersStore.initialize();
     }
-    ikasStore.initialize();
+    await ikasStore.initialize();
     kseStore.initialize();
     resikoStore.initialize();
     if (!csirtStore.initialized) {
@@ -128,14 +128,18 @@ const penilaian = computed(() => {
   // This forces re-evaluation whenever store data is loaded/saved.
   void ikasVersion.value;
   void resikoVersion.value;
-  const ikasData = ikasDataMap.value[slug] ?? ikasStore.getIkasData(slug);
+  const ikasSummary = ikasStore.getIkasSummary(slug);
+  const ikasData = ikasSummary ? null : ikasStore.getIkasData(slug);
+  const ikasStatus = ikasSummary
+    ? ikasSummary.category
+    : (ikasData.total_kategori && ikasData.total_kategori !== "INPUT BELUM LENGKAP" ? ikasData.total_kategori : "Belum Diisi");
 
   return [
     {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" enableBackground="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><g><rect fill="none" height="24" width="24"></rect></g><g><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"></path></g></svg>`,
       svgColor: "primary",
       title: "IKAS",
-      value: ikasData.total_kategori && ikasData.total_kategori !== "INPUT BELUM LENGKAP" ? ikasData.total_kategori : "Belum Diisi"
+      value: ikasStatus
     },
     {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,

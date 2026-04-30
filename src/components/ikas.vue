@@ -5,11 +5,10 @@ import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
 import { useIkasStore } from '../stores/ikas';
 import { useDynamicAssessmentStore } from '../stores/dynamic-assessment';
+import { config } from '@/config/env';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 import IkasComparison from './ikas/ikas-comparison.vue';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 const router = useRouter();
 const route = useRoute();
@@ -56,6 +55,7 @@ watch(
 // Get current stakeholder slug and source
 const currentSlug = computed(() => String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
+const currentIkasId = computed(() => ikasStore.getBackendIkasId(currentSlug.value));
 
 // Get IKAS data for current stakeholder
 const ikasDataDynamic = computed(() => {
@@ -339,49 +339,54 @@ const formatValue = (value) => {
 const exporting = ref(false);
 
 const exportToPdf = async () => {
+    const ikasId = currentIkasId.value;
+    if (!ikasId) {
+        alert('Tidak ada data IKAS untuk diekspor.');
+        return;
+    }
+
     exporting.value = true;
     try {
-        const element = document.getElementById('ikas-report-content');
-        if (!element) return;
-
-        // Use html2canvas to capture the element
-        const canvas = await html2canvas(element, {
-            scale: 2, // High-quality capture
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            windowWidth: 1400 // Fixed width for consistent layout
+        const cleanBaseUrl = config.api.baseUrl.replace(/\/$/, '');
+        const response = await fetch(`${cleanBaseUrl}/api/maturity/ikas/${ikasId}/export`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                Accept: 'application/pdf',
+            },
         });
 
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-        // Basic multi-page handling
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        let heightLeft = pdfHeight;
-        let position = 0;
-
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft >= 0) {
-            position = heightLeft - pdfHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
-            heightLeft -= pageHeight;
+        if (!response.ok) {
+            let message = `HTTP Error ${response.status}`;
+            try {
+                const result = await response.json();
+                message = result.message || message;
+            } catch {
+                message = response.statusText || message;
+            }
+            throw new Error(message);
         }
 
         const perusahaanName = currentStakeholder.value?.nama_perusahaan || 'Stakeholder';
-        const fileName = `IKAS_Report_${perusahaanName.replace(/\s+/g, '_')}.pdf`;
-        pdf.save(fileName);
-        
+        const fallbackName = `IKAS_Report_${perusahaanName.replace(/\s+/g, '_')}.pdf`;
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
+        const fileName = fileNameMatch ? decodeURIComponent(fileNameMatch[1] || fileNameMatch[2]) : fallbackName;
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+
         alert('PDF Berhasil Diunduh!');
     } catch (error) {
         console.error('PDF Export Error:', error);
-        alert('Gagal mengekspor PDF. Pastikan semua elemen telah dimuat.');
+        alert('Gagal mengekspor PDF: ' + (error.message || 'Unknown error'));
     } finally {
         exporting.value = false;
     }
@@ -485,82 +490,109 @@ const exportToPdf = async () => {
 /* ── Action buttons area ────────────────────────────────── */
 .ikas-action-bar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 1.25rem;
+  padding: 12px;
+  border: 1px solid #e8eef6;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.ikas-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ikas-action-group-admin {
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e8eef6;
 }
 .btn-ikas-input {
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(31,41,55,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-input:hover { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-upload {
   background: linear-gradient(135deg, #065f46, #059669);
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(5,150,105,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-upload:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-upload:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-ikas-pdf {
   background: linear-gradient(135deg, #b45309, #d97706);
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(217,119,6,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-pdf:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-pdf:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-ikas-delete {
   background: linear-gradient(135deg, #991b1b, #dc2626);
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(220,38,38,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-delete:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-delete:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-ikas-validate {
   background: linear-gradient(135deg, #1e40af, #3b82f6);
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(37,99,235,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-validate:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-validate:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-ikas-approve {
   background: linear-gradient(135deg, #065f46, #10b981);
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(16,185,129,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-approve:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-approve:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-ikas-reject {
   background: linear-gradient(135deg, #7f1d1d, #ef4444);
-  border: none; border-radius: 50px; padding: 8px 22px;
+  border: none; border-radius: 50px; padding: 8px 16px;
   color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   box-shadow: 0 4px 14px rgba(239,68,68,0.35);
   transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
 }
 .btn-ikas-reject:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-reject:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
@@ -707,6 +739,48 @@ const exportToPdf = async () => {
             </div>
           </div>
 
+          <!-- Action toolbar -->
+          <div class="ikas-action-bar" data-html2canvas-ignore="true">
+            <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
+            <div class="ikas-action-group">
+              <button @click="goToIkasCrud" class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input">
+                <i class="ri-edit-box-line"></i> Input Data
+              </button>
+              <button @click="triggerFileInput" class="btn-ikas-upload" :disabled="loading">
+                <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-file-excel-2-line"></i>
+                {{ loading ? 'Mengupload...' : 'Upload Excel' }}
+              </button>
+              <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !currentIkasId">
+                <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-file-pdf-line"></i>
+                {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
+              </button>
+            </div>
+            <div class="ikas-action-group ikas-action-group-admin">
+              <button v-if="currentIkasId && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
+                <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-checkbox-circle-line"></i>
+                {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
+              </button>
+              <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
+                <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-check-line"></i>
+                {{ isApproving ? 'Menyetujui...' : 'Request Acc' }}
+              </button>
+              <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
+                <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-close-line"></i>
+                {{ isRejecting ? 'Menolak...' : 'Tolak' }}
+              </button>
+              <button v-if="currentIkasId" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
+                <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-delete-bin-line"></i>
+                {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
+              </button>
+            </div>
+          </div>
+
           <!-- Maturity table (unchanged logic) -->
           <div class="table-wrapper">
             <table class="maturity-table">
@@ -846,45 +920,6 @@ const exportToPdf = async () => {
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <!-- Action bar -->
-          <div class="ikas-action-bar" data-html2canvas-ignore="true">
-            <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
-            <button @click="goToIkasCrud" class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input">
-              <i class="ri-edit-box-line"></i> Input Data
-            </button>
-            <button @click="triggerFileInput" class="btn-ikas-upload" :disabled="loading">
-              <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <i v-else class="ri-file-excel-2-line"></i>
-              {{ loading ? 'Mengupload...' : 'Upload Excel' }}
-            </button>
-            <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting">
-              <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <i v-else class="ri-file-pdf-line"></i>
-              {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
-            </button>
-            <button v-if="ikasStore.getBackendIkasId(currentSlug) && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
-              <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <i v-else class="ri-checkbox-circle-line"></i>
-              {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
-            </button>
-            <!-- Edit Request Approve/Reject buttons -->
-            <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
-              <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <i v-else class="ri-check-line"></i>
-              {{ isApproving ? 'Menyetujui...' : 'Setujui Edit' }}
-            </button>
-            <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
-              <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <i v-else class="ri-close-line"></i>
-              {{ isRejecting ? 'Menolak...' : 'Tolak Edit' }}
-            </button>
-            <button v-if="ikasStore.getBackendIkasId(currentSlug)" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
-              <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <i v-else class="ri-delete-bin-line"></i>
-              {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
-            </button>
           </div>
 
         </div>

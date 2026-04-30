@@ -32,6 +32,12 @@ export class ApiRequestError extends Error {
 class ApiClient {
     private baseUrl: string;
     private defaultHeaders: Record<string, string>;
+    private requestQueue: Promise<void> = Promise.resolve();
+    private readonly minRequestGapMs = 500;
+    private readonly maxRetries = 3;
+    private readonly maxRetryDelayMs = 30_000;
+    private readonly retryableStatuses = new Set([429, 502, 503, 504]);
+    private rateLimitedUntil = 0;
 
     // Refresh-token state — prevents multiple simultaneous refresh calls
     private isRefreshing = false;
@@ -83,6 +89,52 @@ class ApiClient {
         this.refreshQueue = [];
     }
 
+    private sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private getRetryDelay(response: Response, retryAttempt: number): number {
+        const retryAfter = response.headers.get('Retry-After');
+        if (retryAfter) {
+            const seconds = Number(retryAfter);
+            if (!Number.isNaN(seconds)) {
+                return Math.min(seconds * 1000, this.maxRetryDelayMs);
+            }
+
+            const retryAt = new Date(retryAfter).getTime();
+            if (!Number.isNaN(retryAt)) {
+                return Math.min(Math.max(0, retryAt - Date.now()), this.maxRetryDelayMs);
+            }
+        }
+
+        const baseDelay = 1000 * Math.pow(2, retryAttempt);
+        const jitter = Math.floor(Math.random() * 500);
+        return Math.min(baseDelay + jitter, this.maxRetryDelayMs);
+    }
+
+    private shouldRetry(method: HttpMethod, status: number): boolean {
+        if (!this.retryableStatuses.has(status)) return false;
+        if (status === 429) return true;
+        return method === 'GET';
+    }
+
+    private async waitTurn(): Promise<void> {
+        const previous = this.requestQueue;
+        let release!: () => void;
+
+        this.requestQueue = new Promise((resolve) => {
+            release = resolve;
+        });
+
+        await previous;
+        const cooldownMs = Math.max(0, this.rateLimitedUntil - Date.now());
+        if (cooldownMs > 0) {
+            await this.sleep(cooldownMs);
+        }
+        await this.sleep(this.minRequestGapMs);
+        release();
+    }
+
     /**
      * Generic request method
      */
@@ -92,6 +144,7 @@ class ApiClient {
         body?: any,
         customHeaders?: HeadersInit,
         isRetry = false,
+        retryAttempt = 0,
     ): Promise<T> {
         const cleanBaseUrl = this.baseUrl.replace(/\/$/, '');
         const cleanEndpoint = endpoint.replace(/^\//, '');
@@ -125,6 +178,7 @@ class ApiClient {
 
 
         try {
+            await this.waitTurn();
             const response = await fetch(url, options);
 
             // -------------------------------------------------------
@@ -150,7 +204,7 @@ class ApiClient {
 
                     if (refreshed) {
                         // Retry the original request with the new cookie
-                        return this.request<T>(endpoint, method, body, customHeaders, true);
+                        return this.request<T>(endpoint, method, body, customHeaders, true, retryAttempt);
                     } else {
                         // Refresh failed — session is truly expired
                         this.onUnauthorized?.();
@@ -159,6 +213,16 @@ class ApiClient {
                 }
             }
             // -------------------------------------------------------
+
+            if (this.shouldRetry(method, response.status) && retryAttempt < this.maxRetries) {
+                const delay = this.getRetryDelay(response, retryAttempt);
+                if (response.status === 429) {
+                    this.rateLimitedUntil = Math.max(this.rateLimitedUntil, Date.now() + delay);
+                }
+                console.warn(`[ApiClient] ${response.status} for ${cleanEndpoint}. Retrying in ${delay}ms...`);
+                await this.sleep(delay);
+                return this.request<T>(endpoint, method, body, customHeaders, isRetry, retryAttempt + 1);
+            }
 
             // Handle non-2xx responses
             if (!response.ok) {
@@ -208,6 +272,14 @@ class ApiClient {
             if (error instanceof ApiRequestError) {
                 throw error;
             }
+
+            if (method === 'GET' && retryAttempt < this.maxRetries) {
+                const delay = this.getRetryDelay(new Response(null, { status: 503 }), retryAttempt);
+                console.warn(`[ApiClient] Network error for ${cleanEndpoint}. Retrying in ${delay}ms...`, error);
+                await this.sleep(delay);
+                return this.request<T>(endpoint, method, body, customHeaders, isRetry, retryAttempt + 1);
+            }
+
             // Network errors or JSON parsing errors
             throw new ApiRequestError(
                 error instanceof Error ? error.message : 'Unknown network error',

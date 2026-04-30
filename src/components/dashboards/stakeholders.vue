@@ -473,10 +473,10 @@ export default {
     });
 
     onMounted(async () => {
-      loadStakeholders();
+      await loadStakeholders();
       await loadUsers();
       await loadAllSubSektors();
-      ikasStore.initialize();
+      await ikasStore.initialize();
       kseStore.initialize();
       await csirtStore.initialize();
       // If CSIRTs exist but SDM/SE lists are empty (e.g., global endpoint failed on prior load),
@@ -561,10 +561,7 @@ export default {
 
     // Status helpers
     const hasIkas = (slug: string): boolean => {
-      const data = ikasStore.ikasDataMap[slug];
-      if (!data) return false;
-      const val = data.total_rata_rata;
-      return val !== null && val !== 0 && val !== 'NA';
+      return ikasStore.hasIkas(slug);
     };
     const hasCompleteCsirt = (id_perusahaan: string | number): boolean => {
       return csirtStore.hasCompleteCsirt(id_perusahaan);

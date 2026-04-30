@@ -47,20 +47,30 @@ export const useLmsStore = defineStore('lms', () => {
   const soalCache = ref<Record<string, { soal: LmsSoal[], ts: number }>>({})
   // Cache TTL: 5 minutes
   const CACHE_TTL = 5 * 60 * 1000
+  let kelasFetchPromise: Promise<void> | null = null
+  const kelasDetailInFlight = new Map<string, Promise<{ materi: LmsMateri[], kuis: LmsKuis[] }>>()
 
   const isCacheValid = (ts: number) => Date.now() - ts < CACHE_TTL
 
   // ─── Kelas ─────────────────────────────────────────────────
   const fetchKelas = async () => {
+    if (kelasFetchPromise) return kelasFetchPromise
+
     loading.value = true
     error.value = null
-    try {
+
+    kelasFetchPromise = (async () => {
       kelasList.value = await lmsService.getKelas()
+    })()
+
+    try {
+      await kelasFetchPromise
     } catch (e: any) {
       error.value = e.message || 'Gagal memuat data kelas'
       throw e
     } finally {
       loading.value = false
+      kelasFetchPromise = null
     }
   }
 
@@ -136,9 +146,13 @@ export const useLmsStore = defineStore('lms', () => {
       return { materi: cached.materi, kuis: cached.kuis }
     }
 
+    if (!forceRefresh && kelasDetailInFlight.has(key)) {
+      return kelasDetailInFlight.get(key)!
+    }
+
     loading.value = true
     error.value = null
-    try {
+    const request = (async () => {
       const { materi, kuis } = await lmsService.getKelasDetail(kelasId)
       // Update cache
       kelasCache.value[key] = { materi, kuis, ts: Date.now() }
@@ -147,11 +161,18 @@ export const useLmsStore = defineStore('lms', () => {
       kuisList.value = kuis
       activeKelasId.value = kelasId
       return { materi, kuis }
+    })()
+
+    kelasDetailInFlight.set(key, request)
+
+    try {
+      return await request
     } catch (e: any) {
       error.value = e.message || 'Gagal memuat detail kelas'
       throw e
     } finally {
       loading.value = false
+      kelasDetailInFlight.delete(key)
     }
   }
 

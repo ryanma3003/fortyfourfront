@@ -4,6 +4,8 @@ import { usersService } from '@/services/users.service';
 import { stakeholdersService } from '@/services/stakeholders.service';
 import type { User, CreateUserPayload, UpdateUserPayload } from '@/types/user.types';
 
+let initializePromise: Promise<void> | null = null;
+
 export const useUsersStore = defineStore('users', {
   state: () => ({
     users: [] as User[],
@@ -35,11 +37,12 @@ export const useUsersStore = defineStore('users', {
      */
     async initialize() {
       if (this.initialized) return;
+      if (initializePromise) return initializePromise;
 
       this.loading = true;
       this.error = null;
 
-      try {
+      initializePromise = (async () => {
         const rawUsers = await usersService.getAll();
         this.users = (rawUsers as any[]).map(u => ({
           ...u,
@@ -52,12 +55,18 @@ export const useUsersStore = defineStore('users', {
           joined: u.joined || u.created_at || ''
         })) as User[];
         this.initialized = true;
+      })();
+
+      try {
+        await initializePromise;
         this.loading = false;
       } catch (error: any) {
         console.error('Failed to load users:', error);
         this.error = error.message || 'Failed to load users';
         this.loading = false;
         this.users = [];
+      } finally {
+        initializePromise = null;
       }
     },
 

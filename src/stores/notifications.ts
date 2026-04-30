@@ -510,7 +510,11 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         async loadFromDatabase() {
             try {
-                const { notifications, unread_count } = await notificationService.fetchAll();
+                const { notifications, unread_count, ok, error } = await notificationService.fetchAll();
+                if (!ok) {
+                    console.warn('[NotifStore] DB load skipped:', error);
+                    return;
+                }
                 console.log('[NotifStore] DB load:', notifications.length, 'items, unread:', unread_count);
 
                 const normalized = notifications
@@ -544,7 +548,11 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         async mergeFromDatabase() {
             try {
-                const { notifications, unread_count } = await notificationService.fetchAll();
+                const { notifications, unread_count, ok, error } = await notificationService.fetchAll();
+                if (!ok) {
+                    console.warn('[NotifStore] DB merge skipped:', error);
+                    return;
+                }
                 if (!notifications || notifications.length === 0) {
                     // DB empty — keep only SSE-pending events
                     this.events = this.events.filter(e => this.pendingSSEIds.has(e.id));

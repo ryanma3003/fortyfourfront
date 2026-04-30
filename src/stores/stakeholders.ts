@@ -3,6 +3,8 @@ import { defineStore } from 'pinia';
 import { stakeholdersService } from '@/services/stakeholders.service';
 import type { Stakeholder, CreateStakeholderPayload } from '@/types/stakeholders.types';
 
+let initializePromise: Promise<void> | null = null;
+
 export const useStakeholdersStore = defineStore('stakeholders', {
     state: () => ({
         stakeholders: [] as Stakeholder[],
@@ -66,11 +68,12 @@ export const useStakeholdersStore = defineStore('stakeholders', {
          */
         async initialize() {
             if (this.initialized) return;
+            if (initializePromise) return initializePromise;
 
             this.loading = true;
             this.error = null;
 
-            try {
+            initializePromise = (async () => {
                 const data = await stakeholdersService.getAll();
                 console.log('Stakeholders from backend:', data);
                 this.stakeholders = data.map(s => ({
@@ -79,12 +82,18 @@ export const useStakeholdersStore = defineStore('stakeholders', {
                     photo: this.formatImageUrl(s.photo),
                 }));
                 this.initialized = true;
+            })();
+
+            try {
+                await initializePromise;
                 this.loading = false;
             } catch (error: any) {
                 console.error('Failed to load stakeholders:', error);
                 this.error = error.message || 'Failed to load stakeholders';
                 this.loading = false;
                 this.stakeholders = [];
+            } finally {
+                initializePromise = null;
             }
         },
 

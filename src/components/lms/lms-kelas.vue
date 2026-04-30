@@ -75,14 +75,30 @@ export default {
     /**
      * Load stats in parallel batches — uses store's cache-aware fetch.
      */
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const isLoadingStats = ref(false);
+
     const loadGlobalStats = async () => {
-      const promises = lmsStore.kelasList.map(k =>
-        lmsStore.fetchKelasDetail(k.id).then(({ materi, kuis }) => {
-          materiCounts.value[k.id] = materi.length;
-          kuisCounts.value[k.id] = kuis.length;
-        }).catch(() => {})
-      );
-      await Promise.all(promises);
+      if (isLoadingStats.value) return;
+      isLoadingStats.value = true;
+
+      try {
+        const pending = lmsStore.kelasList.filter(k => !lmsStore.kelasCache[k.id]);
+
+        for (let i = 0; i < pending.length; i += 2) {
+          const batch = pending.slice(i, i + 2);
+          await Promise.all(batch.map(k =>
+            lmsStore.fetchKelasDetail(k.id).then(({ materi, kuis }) => {
+              materiCounts.value[k.id] = materi.length;
+              kuisCounts.value[k.id] = kuis.length;
+            }).catch(() => {})
+          ));
+
+          if (i + 2 < pending.length) await delay(300);
+        }
+      } finally {
+        isLoadingStats.value = false;
+      }
     };
 
     onMounted(() => {

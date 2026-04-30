@@ -3,6 +3,8 @@ import { defineStore } from 'pinia';
 import { csirtService } from '@/services/csirt.service';
 import type { CsirtMember, CreateCsirtPayload, SdmCsirt, SeCsirt } from '@/types/csirt.types';
 
+let globalInitializePromise: Promise<void> | null = null;
+
 export const useCsirtStore = defineStore('csirt', {
     state: () => ({
         csirts: [] as CsirtMember[],
@@ -120,6 +122,8 @@ export const useCsirtStore = defineStore('csirt', {
          */
         async initialize(options?: { fetchGlobal?: boolean; targetCsirtId?: string | number; targetCompanyId?: string | number }) {
             if (this.initialized && (!options || options.fetchGlobal !== false)) return;
+            const isGlobalFetch = !options || options.fetchGlobal !== false;
+            if (isGlobalFetch && globalInitializePromise) return globalInitializePromise;
 
             this.loading = true;
             this.error = null;
@@ -132,29 +136,35 @@ export const useCsirtStore = defineStore('csirt', {
                     return;
                 }
 
-                const [data, sdm, se] = await Promise.all([
-                    csirtService.getMembers(),
-                    csirtService.getAllSdm().catch((e) => { console.warn('[csirtStore] getAllSdm failed, sdmList will be empty:', e); return []; }),
-                    csirtService.getAllSe().catch((e) => { console.warn('[csirtStore] getAllSe failed, seList will be empty:', e); return []; })
-                ]);
-                console.log('CSIRTs from backend:', data);
-                this.csirts = (Array.isArray(data) ? data : []).map(c => ({
-                    ...c,
-                    slug: c.slug || this.generateSlug(c.nama_csirt),
-                    photo_csirt:         this.formatImageUrl(c.photo_csirt),
-                    file_rfc2350:        this.formatImageUrl(c.file_rfc2350),
-                    file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
-                    file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
-                }));
-                this.sdmList = Array.isArray(sdm) ? sdm : [];
-                this.seList = Array.isArray(se) ? se : [];
-                this.initialized = true;
+                globalInitializePromise = (async () => {
+                    const [data, sdm, se] = await Promise.all([
+                        csirtService.getMembers(),
+                        csirtService.getAllSdm().catch((e) => { console.warn('[csirtStore] getAllSdm failed, sdmList will be empty:', e); return []; }),
+                        csirtService.getAllSe().catch((e) => { console.warn('[csirtStore] getAllSe failed, seList will be empty:', e); return []; })
+                    ]);
+                    console.log('CSIRTs from backend:', data);
+                    this.csirts = (Array.isArray(data) ? data : []).map(c => ({
+                        ...c,
+                        slug: c.slug || this.generateSlug(c.nama_csirt),
+                        photo_csirt:         this.formatImageUrl(c.photo_csirt),
+                        file_rfc2350:        this.formatImageUrl(c.file_rfc2350),
+                        file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
+                        file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
+                    }));
+                    this.sdmList = Array.isArray(sdm) ? sdm : [];
+                    this.seList = Array.isArray(se) ? se : [];
+                    this.initialized = true;
+                })();
+
+                await globalInitializePromise;
                 this.loading = false;
             } catch (error: any) {
                 console.error('Failed to load CSIRTs:', error);
                 this.error = error.message || 'Failed to load CSIRTs';
                 this.loading = false;
                 this.csirts = [];
+            } finally {
+                if (isGlobalFetch) globalInitializePromise = null;
             }
         },
 

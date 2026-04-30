@@ -16,7 +16,7 @@ declare global {
           sitekey: string;
           callback: (token: string) => void;
           "expired-callback"?: () => void;
-          "error-callback"?: () => void;
+          "error-callback"?: (errorCode?: string) => boolean | void;
         }
       ) => string;
       reset: (widgetId?: string) => void;
@@ -173,9 +173,13 @@ const renderTurnstile = () => {
         turnstileToken.value = "";
         showToast("error", "Security check expired. Please verify again.");
       },
-      "error-callback": () => {
+      "error-callback": (errorCode?: string) => {
         turnstileToken.value = "";
-        turnstileError.value = "Security check gagal dimuat. Coba refresh halaman.";
+        turnstileError.value =
+          errorCode === "110200"
+            ? "Domain belum diizinkan untuk Turnstile site key ini."
+            : "Security check gagal dimuat. Coba refresh halaman.";
+        return true;
       },
     });
   }
