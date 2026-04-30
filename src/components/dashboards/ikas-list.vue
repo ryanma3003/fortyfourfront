@@ -2,9 +2,8 @@
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
-import { ikasService } from '@/services/ikas.service';
 import { useStakeholdersStore } from '@/stores/stakeholders';
-import { getMaturityLabel } from '@/stores/ikas';
+import { getMaturityLabel, useIkasStore } from '@/stores/ikas';
 import type { Stakeholder } from '@/types/stakeholders.types';
 
 type StatusFilter = 'all' | 'validated' | 'draft' | 'edit-request';
@@ -43,6 +42,7 @@ interface KpiItem {
 
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
+const ikasStore = useIkasStore();
 
 const pageData = {
   title: { label: 'Dashboards', path: '/dashboard' },
@@ -240,11 +240,11 @@ const clearFilters = () => {
 const loadData = async () => {
   loading.value = true;
   try {
-    const [ikasResponse] = await Promise.all([
-      ikasService.getIkasList(),
+    await Promise.all([
+      ikasStore.initialize(),
       stakeholdersStore.initialize(),
     ]);
-    rawIkasRecords.value = normalizeResponse(ikasResponse);
+    rawIkasRecords.value = normalizeResponse(ikasStore.ikasRawRecords);
     lastRefreshAt.value = new Date();
     if (!selectedRecord.value && rawIkasRecords.value.length) {
       selectedRecord.value = records.value[0] || null;

@@ -10,6 +10,21 @@ import { ikasService } from '@/services/ikas.service';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import type { IkasPayload } from '@/types/ikas.types';
 
+let initializePromise: Promise<void> | null = null;
+
+export interface IkasSummaryRecord {
+  id: string;
+  slug: string;
+  id_perusahaan: string;
+  score: number;
+  category: string;
+  is_validated: boolean;
+  edit_request_status: string;
+  edit_request_reason: string;
+  updated_at: string;
+  raw: any;
+}
+
 // Interface untuk data IKAS per domain
 
 export const domainDetails: any = {
@@ -161,6 +176,8 @@ export const useIkasStore = defineStore('ikas', {
   state: () => ({
     // Map: stakeholder slug -> IkasData
     ikasDataMap: {} as Record<string, IkasData>,
+    ikasSummaryMap: {} as Record<string, IkasSummaryRecord>,
+    ikasRawRecords: [] as any[],
     initialized: false,
     ikasVersion: 0, // incremented on every save — lets other components react to changes
 
@@ -182,6 +199,27 @@ export const useIkasStore = defineStore('ikas', {
         }
         return this.ikasDataMap[slug];
       };
+    },
+
+    // Get progress info (completed / total) per domain
+    hasIkas(): (slug: string) => boolean {
+      return (slug: string) => {
+        const summary = this.ikasSummaryMap[slug];
+        if (summary?.id) return true;
+
+        const id = this.backendIkasIds[slug];
+        if (id) return true;
+
+        const data = this.ikasDataMap[slug];
+        if (!data) return false;
+
+        const val = data.total_rata_rata;
+        return val !== null && val !== 0 && val !== 'NA';
+      };
+    },
+
+    getIkasSummary(): (slug: string) => IkasSummaryRecord | null {
+      return (slug: string) => this.ikasSummaryMap[slug] || null;
     },
 
     // Get progress info (completed / total) per domain
@@ -305,19 +343,82 @@ export const useIkasStore = defineStore('ikas', {
       return matching[0] || null;
     },
 
+    numberValue(value: unknown): number {
+      const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : 0;
+    },
+
+    resolveIkasSlug(record: any): string {
+      const stakeholdersStore = useStakeholdersStore();
+      const companyId = record?.id_perusahaan || record?.perusahaan?.id;
+      const directSlug = record?.perusahaan?.slug || record?.slug;
+      if (directSlug) return String(directSlug);
+
+      if (companyId) {
+        const stakeholder = stakeholdersStore.getStakeholderById(String(companyId));
+        if (stakeholder?.slug) return stakeholder.slug;
+      }
+
+      return '';
+    },
+
+    upsertSummaryRecord(record: any): IkasSummaryRecord | null {
+      const slug = this.resolveIkasSlug(record);
+      if (!slug) return null;
+
+      const id = String(record?.id || '');
+      const idPerusahaan = String(record?.id_perusahaan || record?.perusahaan?.id || '');
+      const score = this.numberValue(record?.nilai_kematangan ?? record?.total_rata_rata ?? record?.score ?? 0);
+      const category = getMaturityLabel(score);
+      const summary: IkasSummaryRecord = {
+        id,
+        slug,
+        id_perusahaan: idPerusahaan,
+        score,
+        category,
+        is_validated: !!record?.is_validated,
+        edit_request_status: record?.edit_request_status || 'none',
+        edit_request_reason: record?.edit_request_reason || '',
+        updated_at: record?.updated_at || record?.tanggal || record?.created_at || '',
+        raw: record,
+      };
+
+      this.ikasSummaryMap[slug] = summary;
+      this.backendIkasIds[slug] = id || null;
+      this.backendSyncedMap[slug] = !!id;
+
+      if (!this.ikasDataMap[slug]) {
+        this.ikasDataMap[slug] = createDefaultIkasData();
+      }
+
+      this.ikasDataMap[slug].total_rata_rata = score;
+      this.ikasDataMap[slug].total_kategori = category;
+      this.ikasDataMap[slug].is_validated = summary.is_validated;
+      this.ikasDataMap[slug].edit_request_status = summary.edit_request_status;
+      this.ikasDataMap[slug].edit_request_reason = summary.edit_request_reason;
+
+      return summary;
+    },
+
     // Initialize store and fetch data
     async initialize() {
       if (this.initialized) return;
+      if (initializePromise) return initializePromise;
       
       this.apiLoading = true;
-      try {
+      initializePromise = (async () => {
         await this.fetchAllFromBackend();
         this.initialized = true;
+      })();
+
+      try {
+        await initializePromise;
       } catch (e) {
         console.error('[IKAS Store] Failed to initialize:', e);
       } finally {
         this.apiLoading = false;
         this.ikasVersion++;
+        initializePromise = null;
       }
     },
 
@@ -354,25 +455,18 @@ export const useIkasStore = defineStore('ikas', {
 
     async fetchAllFromBackend() {
       try {
+        const stakeholdersStore = useStakeholdersStore();
+        if (!stakeholdersStore.initialized) {
+          await stakeholdersStore.initialize();
+        }
+
         const response = await ikasService.getIkasList();
         const records = this.normalizeIkasRecords(response);
+        this.ikasRawRecords = records;
+        this.ikasSummaryMap = {};
         
         records.forEach((rec: any) => {
-          if (!rec.perusahaan?.slug) return;
-          const slug = rec.perusahaan.slug;
-          
-          this.backendIkasIds[slug] = rec.id;
-          this.backendSyncedMap[slug] = true;
-          
-          // Populate summary score in map
-          if (!this.ikasDataMap[slug]) {
-             this.ikasDataMap[slug] = createDefaultIkasData();
-          }
-          this.ikasDataMap[slug].total_rata_rata = rec.nilai_kematangan || rec.total_rata_rata || 0;
-          this.ikasDataMap[slug].total_kategori = getMaturityLabel(this.ikasDataMap[slug].total_rata_rata as number);
-          this.ikasDataMap[slug].is_validated = rec.is_validated || false;
-          this.ikasDataMap[slug].edit_request_status = rec.edit_request_status || 'none';
-          this.ikasDataMap[slug].edit_request_reason = rec.edit_request_reason || '';
+          this.upsertSummaryRecord(rec);
         });
         
         this.ikasVersion++;
@@ -383,7 +477,7 @@ export const useIkasStore = defineStore('ikas', {
 
     /** Refresh IKAS data */
     async refresh() {
-      this.ikasVersion++;
+      await this.fetchAllFromBackend();
     },
 
     // Signal watchers that IKAS data changed (no localStorage)

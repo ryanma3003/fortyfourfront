@@ -79,6 +79,32 @@ function unwrapArray<T>(res: any, label: string): T[] {
   return []
 }
 
+const CACHE_TTL_MS = 5 * 60 * 1000
+const listCache = new Map<string, { ts: number; data: any[] }>()
+const inFlight = new Map<string, Promise<any[]>>()
+
+async function getCachedList<T>(key: string, fetcher: () => Promise<T[]>): Promise<T[]> {
+  const cached = listCache.get(key)
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.data as T[]
+  }
+
+  const pending = inFlight.get(key)
+  if (pending) return pending as Promise<T[]>
+
+  const request = fetcher()
+    .then((data) => {
+      listCache.set(key, { ts: Date.now(), data })
+      return data
+    })
+    .finally(() => {
+      inFlight.delete(key)
+    })
+
+  inFlight.set(key, request)
+  return request
+}
+
 /**
  * =========================
  * SEKTOR SERVICE
@@ -87,8 +113,10 @@ function unwrapArray<T>(res: any, label: string): T[] {
 
 export const sektorService = {
   async getAll(): Promise<Sektor[]> {
-    const res = await api.get<any>('/api/sektor')
-    return unwrapArray<Sektor>(res, 'sektor')
+    return getCachedList<Sektor>('sektor:all', async () => {
+      const res = await api.get<any>('/api/sektor')
+      return unwrapArray<Sektor>(res, 'sektor')
+    })
   },
 
   async getById(id: string | number): Promise<Sektor> {
@@ -116,8 +144,10 @@ export const sektorService = {
 
 export const subSektorService = {
   async getAll(): Promise<SubSektor[]> {
-    const res = await api.get<any>('/api/sub_sektor')
-    return unwrapArray<SubSektor>(res, 'sub_sektor')
+    return getCachedList<SubSektor>('sub_sektor:all', async () => {
+      const res = await api.get<any>('/api/sub_sektor')
+      return unwrapArray<SubSektor>(res, 'sub_sektor')
+    })
   },
 
   /**
@@ -125,8 +155,10 @@ export const subSektorService = {
    * Pastikan backend memang support query param sektor_id
    */
   async getBySektorId(sektorId: string | number): Promise<SubSektor[]> {
-    const res = await api.get<any>(`/api/sub_sektor?sektor_id=${sektorId}`)
-    return unwrapArray<SubSektor>(res, `sub_sektor(sektor_id=${sektorId})`)
+    return getCachedList<SubSektor>(`sub_sektor:sektor:${sektorId}`, async () => {
+      const res = await api.get<any>(`/api/sub_sektor?sektor_id=${sektorId}`)
+      return unwrapArray<SubSektor>(res, `sub_sektor(sektor_id=${sektorId})`)
+    })
   },
 
   async getById(id: string | number): Promise<SubSektor> {

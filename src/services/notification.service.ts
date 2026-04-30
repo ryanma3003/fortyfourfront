@@ -25,14 +25,21 @@ import type { NotificationStats } from '@/types/notification.types';
 
 type EventCallback = (event: any) => void;
 
+export type NotificationFetchResult = {
+    notifications: any[];
+    unread_count: number;
+    ok: boolean;
+    error?: string;
+};
+
 /** Event types that are heartbeats, not real notifications */
 const IGNORED_TYPES = new Set([
     'ping', 'heartbeat', 'keepalive', 'keep-alive',
     'connection', 'connected', 'welcome',
 ]);
 
-/** Reconnect backoff steps in ms */
-const BACKOFF_MS = [2000, 5000, 10000, 30000];
+/** Delay between SSE reconnect attempts in ms */
+const RECONNECT_INTERVAL_MS = 10_000;
 
 class NotificationService {
     private eventSource: EventSource | null = null;
@@ -76,9 +83,9 @@ class NotificationService {
      * @param onConnectionChange Called when connected/disconnected.
      */
     connect(onEvent: EventCallback, onConnectionChange?: (connected: boolean) => void): void {
-        if (this.eventSource) return;
         this.onEventCallback = onEvent;
         this.onConnectionChange = onConnectionChange ?? null;
+        if (this.eventSource || this.reconnectTimer) return;
         this.openConnection();
     }
 
@@ -117,7 +124,8 @@ class NotificationService {
     }
 
     private scheduleReconnect(): void {
-        const delay = BACKOFF_MS[Math.min(this.reconnectAttempt, BACKOFF_MS.length - 1)];
+        if (this.reconnectTimer) return;
+        const delay = RECONNECT_INTERVAL_MS;
         this.reconnectAttempt++;
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
@@ -164,9 +172,18 @@ class NotificationService {
      * Expected response:
      * { data: [{id, message, type, read, created_at, user_id?, ...}], unread_count?: number }
      */
-    async fetchAll(): Promise<{ notifications: any[]; unread_count: number }> {
+    async fetchAll(): Promise<NotificationFetchResult> {
         try {
             const res = await api.get<any>('/api/notifications');
+
+            if (res && typeof res === 'object' && res.status === 'error') {
+                return {
+                    notifications: [],
+                    unread_count: 0,
+                    ok: false,
+                    error: res.message || 'Notification API returned an error',
+                };
+            }
             
             let notifsArray: any[] = [];
             
@@ -194,10 +211,16 @@ class NotificationService {
             return {
                 notifications: notifsArray,
                 unread_count: unreadCount,
+                ok: true,
             };
         } catch (err) {
             console.warn('[NotifService] fetchAll failed:', err);
-            return { notifications: [], unread_count: 0 };
+            return {
+                notifications: [],
+                unread_count: 0,
+                ok: false,
+                error: err instanceof Error ? err.message : 'Failed to fetch notifications',
+            };
         }
     }
 
