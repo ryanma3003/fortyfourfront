@@ -37,6 +37,9 @@ export interface ProfileData {
   fotoProfilePositionY: number;
   // Loading state
   isLoading: boolean;
+  loadedUserId: string;
+  lastFetchedAt: number;
+  fetchPromise: Promise<void> | null;
   stats: {
     projects: string;
     followers: string;
@@ -70,6 +73,9 @@ export const useProfileStore = defineStore('profile', {
     fotoProfilePositionX: 50,
     fotoProfilePositionY: 50,
     isLoading: false,
+    loadedUserId: '',
+    lastFetchedAt: 0,
+    fetchPromise: null,
     stats: { projects: '47', followers: '2.4K', following: '892' },
   }),
 
@@ -131,6 +137,23 @@ export const useProfileStore = defineStore('profile', {
       const userId = authStore.currentUser?.id;
       if (!userId) { this.initFromAuth(); return; }
 
+      const cacheFresh = this.loadedUserId === String(userId) && Date.now() - this.lastFetchedAt < 5 * 60 * 1000;
+      if (cacheFresh) return;
+      if (this.fetchPromise) return this.fetchPromise;
+
+      this.fetchPromise = this._fetchFromApi();
+      try {
+        await this.fetchPromise;
+      } finally {
+        this.fetchPromise = null;
+      }
+    },
+
+    async _fetchFromApi() {
+      const authStore = useAuthStore();
+      const userId = authStore.currentUser?.id;
+      if (!userId) { this.initFromAuth(); return; }
+
       // Non-admin users (including staff): fetch from /api/me
       if (!authStore.isFullAdmin) {
         this.isLoading = true;
@@ -182,11 +205,13 @@ export const useProfileStore = defineStore('profile', {
             authStore.currentUser.email = mapped.email || authStore.currentUser.email;
             authStore.currentUser.id_perusahaan = mapped.idPerusahaan || authStore.currentUser.id_perusahaan;
           }
+          this.loadedUserId = String(userId);
+          this.lastFetchedAt = Date.now();
         } catch (err: any) {
           console.warn('GET /api/me failed, falling back to auth store:', err);
 
-          // If session is truly expired or rate limited (429/401), force logout
-          if (err?.status === 401 || err?.status === 429) {
+          // If session is truly expired, force logout. Rate limits should fall back to cached/auth data.
+          if (err?.status === 401) {
             import('@/config/api').then(({ api }) => {
               if (api.onUnauthorized) api.onUnauthorized();
             });
@@ -194,6 +219,8 @@ export const useProfileStore = defineStore('profile', {
           }
 
           this.initFromAuth();
+          this.loadedUserId = String(userId);
+          this.lastFetchedAt = Date.now();
         } finally {
           this.isLoading = false;
         }
@@ -250,16 +277,20 @@ export const useProfileStore = defineStore('profile', {
           authStore.currentUser.role  = mapped.role  || authStore.currentUser.role;
           authStore.currentUser.id_perusahaan = mapped.idPerusahaan || authStore.currentUser.id_perusahaan;
         }
+        this.loadedUserId = String(userId);
+        this.lastFetchedAt = Date.now();
       } catch (error: any) {
         console.error('Failed to fetch profile:', error);
         
-        // If session is truly expired or rate limited (429/401), force logout
-        if (error?.status === 401 || error?.status === 429) {
+        // If session is truly expired, force logout. Rate limits should fall back to cached/auth data.
+        if (error?.status === 401) {
           import('@/config/api').then(({ api }) => {
             if (api.onUnauthorized) api.onUnauthorized();
           });
         } else {
           this.initFromAuth();
+          this.loadedUserId = String(userId);
+          this.lastFetchedAt = Date.now();
         }
       } finally {
         this.isLoading = false;
@@ -470,11 +501,19 @@ export const useProfileStore = defineStore('profile', {
       this.bannerPositionX = 50; this.bannerPositionY = 50;
       this.fotoProfilePositionX = 50; this.fotoProfilePositionY = 50;
       this.isLoading = false;
+      this.loadedUserId = '';
+      this.lastFetchedAt = 0;
+      this.fetchPromise = null;
       this.stats = { projects: '47', followers: '2.4K', following: '892' };
     },
 
     async switchUser() {
+      const authStore = useAuthStore();
+      const userId = String(authStore.currentUser?.id || '');
+      if (userId && this.loadedUserId === userId && Date.now() - this.lastFetchedAt < 5 * 60 * 1000) return;
+      if (this.fetchPromise) return this.fetchPromise;
       this.resetToDefaults();
+      this.initFromAuth();
       await this.fetchFromApi();
     },
 

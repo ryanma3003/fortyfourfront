@@ -463,13 +463,6 @@ export const useNotificationStore = defineStore('notifications', {
                 Notification.requestPermission();
             }
 
-            try {
-                const usersStore = useUsersStore();
-                if (!usersStore.initialized) await usersStore.initialize();
-            } catch (err) {
-                console.warn('[NotifStore] Users load failed:', err);
-            }
-
             await this.loadFromDatabase();
             this.loading = false;
 

@@ -23,7 +23,7 @@ const csirtStore = useCsirtStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Use storeToRefs to get reactive refs — ensures computed() tracks store state changes
-const { ikasVersion } = storeToRefs(ikasStore);
+const { ikasDataMap, ikasVersion } = storeToRefs(ikasStore);
 const { resikoVersion } = storeToRefs(resikoStore);
 
 // Import FilePond styles

@@ -148,6 +148,7 @@
             data-bs-auto-close="outside"
             id="messageDropdown"
             aria-expanded="false"
+            @click="ensureNotificationsLoaded"
           >
             <div class="d-flex align-items-center mt-2">
               <svg
@@ -615,22 +616,22 @@ const notifStore = useNotificationStore();
 const { logUserOut } = authStore;
 const router = useRouter();
 
+const ensureNotificationsLoaded = () => {
+  if (authStore.authenticated && authStore.isAdmin) {
+    notifStore.init();
+  }
+};
+
 // Load profile data on mount - use switchUser to handle proper initialization
 onMounted(() => {
   profileStore.switchUser();
-  // Try init immediately if already authenticated
-  if (authStore.authenticated) {
-    notifStore.init();
-  }
 });
 
-// Watch for authentication state changes and initialize store
+// Disconnect notifications on logout. Loading is lazy, triggered when the dropdown opens.
 watch(
   () => authStore.authenticated,
   (isAuth) => {
-    if (isAuth) {
-      notifStore.init();
-    } else {
+    if (!isAuth) {
       notifStore.disconnect();
     }
   },
