@@ -34,12 +34,13 @@ export const picService = {
         }
 
         // Optional safety filter (boleh dipertahankan)
-        return pics.filter(pic => 
-            String(pic.perusahaan?.id) === String(id_perusahaan)
-        );
+        return pics.filter(pic => {
+            const picCompanyId = pic.perusahaan?.id || (pic as any).id_perusahaan || (pic as any).perusahaan_id;
+            return String(picCompanyId) === String(id_perusahaan);
+        });
 
     } catch (err) {
-        if (err instanceof ApiRequestError && err.status === 404) {
+        if (err instanceof ApiRequestError && (err.status === 404 || err.status === 429)) {
             return [];
         }
         throw err;

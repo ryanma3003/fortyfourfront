@@ -5,6 +5,28 @@ import { stakeholdersService } from '@/services/stakeholders.service';
 import type { User, CreateUserPayload, UpdateUserPayload } from '@/types/user.types';
 
 let initializePromise: Promise<void> | null = null;
+const USERS_CACHE_KEY = 'vyzor:users:list:v1';
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readUsersCache(): User[] | null {
+  try {
+    const raw = sessionStorage.getItem(USERS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt > CACHE_TTL_MS) return null;
+    return Array.isArray(parsed.data) ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeUsersCache(data: User[]) {
+  try {
+    sessionStorage.setItem(USERS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // Ignore storage quota/private-mode failures.
+  }
+}
 
 export const useUsersStore = defineStore('users', {
   state: () => ({
@@ -39,6 +61,14 @@ export const useUsersStore = defineStore('users', {
       if (this.initialized) return;
       if (initializePromise) return initializePromise;
 
+      const cached = readUsersCache();
+      if (cached) {
+        this.users = cached;
+        this.initialized = true;
+        this.error = null;
+        return;
+      }
+
       this.loading = true;
       this.error = null;
 
@@ -54,6 +84,7 @@ export const useUsersStore = defineStore('users', {
           jabatan: u.jabatan || u.id_jabatan || '',
           joined: u.joined || u.created_at || ''
         })) as User[];
+        writeUsersCache(this.users);
         this.initialized = true;
       })();
 
@@ -89,6 +120,7 @@ export const useUsersStore = defineStore('users', {
           jabatan: u.jabatan || u.id_jabatan || '',
           joined: u.joined || u.created_at || ''
         })) as User[];
+        writeUsersCache(this.users);
         this.loading = false;
       } catch (error: any) {
         console.error('Failed to refresh users:', error);

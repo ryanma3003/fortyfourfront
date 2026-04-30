@@ -4,6 +4,28 @@ import { stakeholdersService } from '@/services/stakeholders.service';
 import type { Stakeholder, CreateStakeholderPayload } from '@/types/stakeholders.types';
 
 let initializePromise: Promise<void> | null = null;
+const STAKEHOLDERS_CACHE_KEY = 'vyzor:stakeholders:list:v1';
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readStakeholdersCache(): Stakeholder[] | null {
+    try {
+        const raw = sessionStorage.getItem(STAKEHOLDERS_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed?.savedAt || Date.now() - parsed.savedAt > CACHE_TTL_MS) return null;
+        return Array.isArray(parsed.data) ? parsed.data : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeStakeholdersCache(data: Stakeholder[]) {
+    try {
+        sessionStorage.setItem(STAKEHOLDERS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+    } catch {
+        // Ignore storage quota/private-mode failures.
+    }
+}
 
 export const useStakeholdersStore = defineStore('stakeholders', {
     state: () => ({
@@ -70,6 +92,14 @@ export const useStakeholdersStore = defineStore('stakeholders', {
             if (this.initialized) return;
             if (initializePromise) return initializePromise;
 
+            const cached = readStakeholdersCache();
+            if (cached) {
+                this.stakeholders = cached;
+                this.initialized = true;
+                this.error = null;
+                return;
+            }
+
             this.loading = true;
             this.error = null;
 
@@ -81,6 +111,7 @@ export const useStakeholdersStore = defineStore('stakeholders', {
                     slug: s.slug || this.generateSlug(s.nama_perusahaan),
                     photo: this.formatImageUrl(s.photo),
                 }));
+                writeStakeholdersCache(this.stakeholders);
                 this.initialized = true;
             })();
 
@@ -111,6 +142,7 @@ export const useStakeholdersStore = defineStore('stakeholders', {
                     slug: s.slug || this.generateSlug(s.nama_perusahaan),
                     photo: this.formatImageUrl(s.photo),
                 }));
+                writeStakeholdersCache(this.stakeholders);
                 this.loading = false;
             } catch (error: any) {
                 console.error('Failed to refresh stakeholders:', error);

@@ -9,11 +9,11 @@ import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useCsirtStore } from "../../stores/csirt";
+import { useUsersStore } from "../../stores/users";
 import { useListPage } from "../../composables/useListPage";
 import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
 import type { SubSektor, Sektor } from "../../services/sektor.service";
 import { csirtService } from "../../services/csirt.service";
-import { usersService } from "../../services/users.service";
 import type { User } from "../../types/user.types";
 
 
@@ -35,6 +35,7 @@ export default {
     const ikasStore = useIkasStore();
     const kseStore = useKseStore();
     const csirtStore = useCsirtStore();
+    const usersStore = useUsersStore();
     const isAdmin = computed(() => authStore.isAdmin);
     const isFullAdmin = computed(() => authStore.isFullAdmin);
 
@@ -174,7 +175,8 @@ export default {
 
     const loadUsers = async () => {
       try {
-        usersData.value = await usersService.getAll();
+        await usersStore.initialize();
+        usersData.value = usersStore.allUsers;
       } catch (error) {
         console.error('Failed to load users:', error);
         usersData.value = [];
