@@ -10,6 +10,12 @@ export interface LmsKelas {
     nama_kelas: string;
     judul?: string;
     deskripsi: string;
+    durasi_jp?: number;
+    informasi_umum?: string;
+    kategori?: string;
+    penyelenggara?: string;
+    syarat_pendaftaran?: string;
+    target_peserta?: string;
     thumbnail?: string;
     status?: string;          // e.g. "aktif", "draft"
     created_at?: string;
@@ -19,10 +25,16 @@ export interface LmsKelas {
 }
 
 export interface CreateKelasPayload {
-    nama_kelas: string;
+    nama_kelas?: string;
     judul?: string;
     deskripsi: string;
-    thumbnail?: File | string | null;
+    durasi_jp?: number;
+    informasi_umum?: string;
+    kategori?: string;
+    penyelenggara?: string;
+    syarat_pendaftaran?: string;
+    target_peserta?: string;
+    thumbnail?: string | null;
     status?: string;
 }
 
@@ -30,7 +42,13 @@ export interface UpdateKelasPayload {
     nama_kelas?: string;
     judul?: string;
     deskripsi?: string;
-    thumbnail?: File | string | null;
+    durasi_jp?: number;
+    informasi_umum?: string;
+    kategori?: string;
+    penyelenggara?: string;
+    syarat_pendaftaran?: string;
+    target_peserta?: string;
+    thumbnail?: string | null;
     status?: string;
 }
 
@@ -155,13 +173,15 @@ export interface UpdateSoalPayload {
     urutan?: number;
 }
 
-// ── Diskusi ──────────────────────────────────────────────────
-export interface LmsDiskusi {
+// ── Feedback ─────────────────────────────────────────────────
+export interface LmsFeedback {
     id: string | number;
     id_materi: string | number;
-    id_user: string | number;
+    id_user?: string | number;
     user_name?: string;
-    komentar: string;
+    komentar?: string;
+    feedback: string;
+    rating?: number;
     created_at: string;
     updated_at?: string;
 }

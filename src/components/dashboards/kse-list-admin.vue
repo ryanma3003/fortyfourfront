@@ -133,9 +133,11 @@ const enrichedRequests = computed(() => {
 const pendingRequests = computed(() => enrichedRequests.value.filter(r => r.status === 'pending'));
 const pendingEditIds = computed(() => new Set(pendingRequests.value.map(r => String(r.id_se))));
 
-const countStrategis = computed(() => seList.value.filter(s => s.kategori_se === 'Strategis').length);
-const countTinggi    = computed(() => seList.value.filter(s => s.kategori_se === 'Tinggi').length);
-const countRendah    = computed(() => seList.value.filter(s => s.kategori_se === 'Rendah').length);
+const normalizeCategory = (value?: string | null) => String(value || '').trim().toLowerCase();
+
+const countStrategis = computed(() => seList.value.filter(s => normalizeCategory(s.kategori_se) === 'strategis').length);
+const countTinggi    = computed(() => seList.value.filter(s => normalizeCategory(s.kategori_se) === 'tinggi').length);
+const countRendah    = computed(() => seList.value.filter(s => normalizeCategory(s.kategori_se) === 'rendah').length);
 
 const filteredSeList = computed(() => {
     const q = searchQuery.value.toLowerCase();

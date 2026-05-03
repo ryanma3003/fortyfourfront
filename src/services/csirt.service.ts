@@ -170,25 +170,12 @@ export const csirtService = {
      * Get SE (Systems) for a CSIRT.
      */
     async getSeByCsirtId(id: number | string): Promise<SeCsirt[]> {
-        try {
-            // The backend uses /api/se/{csirt_id} to get the array of SEs for a CSIRT
-            const result = await api.get<any>(`/api/se/${id}`);
-            console.log('RAW SE RESULT:', result);
-            const list = unwrapArray<any>(result, `se(id_csirt=${id})`);
-            console.log('UNWRAPPED SE LIST:', list);
-            const mapped = list.map((item: any) => ({
-                ...item,
-                // Forcefully assign id_csirt to match the parameter, ensuring local filters don't drop it!
-                id_csirt: String(item.csirt?.id || item.id_csirt || item.csirt_id || id)
-            }));
-            console.log('MAPPED SE LIST:', mapped);
-            const filtered = mapped.filter(item => String(item.id_csirt) === String(id));
-            console.log('FILTERED SE LIST (Target ID: ' + id + '):', filtered);
-            return filtered;
-        } catch (err) {
-            if (err instanceof ApiRequestError && err.status === 404) return [];
-            throw err;
-        }
+        const list = await this.getAllSe();
+        return list.filter((item: any) =>
+            String(item.id_csirt) === String(id) ||
+            String(item.csirt_id) === String(id) ||
+            String(item.csirt?.id) === String(id)
+        );
     },
 
     /**

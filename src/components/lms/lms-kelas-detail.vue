@@ -22,9 +22,9 @@ export default {
     const relatedSoal = ref<LmsSoal[]>([]);
     const loadingSoal = ref(false);
     
-    // Diskusi State
-    const diskusiList = computed(() => lmsStore.diskusiList);
-    const isLoadingDiskusi = ref(false);
+    // Feedback State
+    const feedbackList = computed(() => lmsStore.feedbackList);
+    const isLoadingFeedback = ref(false);
 
     // Data lists (populated from API)
     const materiList = ref<LmsMateri[]>([]);
@@ -79,26 +79,17 @@ export default {
       selectedKuis.value = null;
       relatedSoal.value = [];
 
-      // Fetch Diskusi
-      isLoadingDiskusi.value = true;
+      // Fetch Feedback
+      isLoadingFeedback.value = true;
       try {
-        await lmsStore.fetchDiskusi(materi.id);
+        await lmsStore.fetchFeedback(materi.id);
       } catch (e) {
-        console.error('Failed to load diskusi:', e);
+        console.error('Failed to load feedback:', e);
       } finally {
-        isLoadingDiskusi.value = false;
+        isLoadingFeedback.value = false;
       }
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    const deleteDiskusi = async (diskusiId: string | number) => {
-      if (!confirm("Yakin ingin menghapus komentar ini?")) return;
-      try {
-        await lmsStore.deleteDiskusi(diskusiId);
-      } catch (e) {
-        console.error('Failed to delete diskusi:', e);
-      }
     };
 
     const viewKuis = async (kuis: LmsKuis) => {
@@ -197,10 +188,8 @@ export default {
       getYoutubeId,
       activeYoutubeId,
       formatImageUrl,
-      diskusiList,
-      isLoadingDiskusi,
-      deleteDiskusi,
-      viewKuis
+      feedbackList,
+      isLoadingFeedback
     };
   },
 };</script>
@@ -247,7 +236,28 @@ export default {
                 </div>
               </div>
               
-              <div class="hero-stats-stack mt-3 d-flex flex-wrap gap-4">
+                <div class="hero-stats-stack mt-3 d-flex flex-wrap gap-4">
+                <div v-if="currentKelas.kategori" class="hero-stat-item d-flex align-items-center gap-2 text-white">
+                  <div class="stat-icon-wrap"><i class="ri-price-tag-3-line"></i></div>
+                  <div>
+                    <div class="fs-11 text-white-50 text-uppercase fw-semibold tracking-wide">Kategori</div>
+                    <div class="fw-bold fs-14">{{ currentKelas.kategori }}</div>
+                  </div>
+                </div>
+                <div v-if="currentKelas.durasi_jp" class="hero-stat-item d-flex align-items-center gap-2 text-white">
+                  <div class="stat-icon-wrap"><i class="ri-time-line"></i></div>
+                  <div>
+                    <div class="fs-11 text-white-50 text-uppercase fw-semibold tracking-wide">Durasi</div>
+                    <div class="fw-bold fs-14">{{ currentKelas.durasi_jp }} JP</div>
+                  </div>
+                </div>
+                <div v-if="currentKelas.penyelenggara" class="hero-stat-item d-flex align-items-center gap-2 text-white">
+                  <div class="stat-icon-wrap"><i class="ri-building-line"></i></div>
+                  <div>
+                    <div class="fs-11 text-white-50 text-uppercase fw-semibold tracking-wide">Penyelenggara</div>
+                    <div class="fw-bold fs-14">{{ currentKelas.penyelenggara }}</div>
+                  </div>
+                </div>
                 <div class="hero-stat-item d-flex align-items-center gap-2 text-white">
                   <div class="stat-icon-wrap"><i class="ri-calendar-line"></i></div>
                   <div>
@@ -456,6 +466,20 @@ export default {
                     <i class="ri-information-fill text-primary fs-20"></i> Informasi & Deskripsi Kelas
                   </h5>
                   <div class="course-description-content fs-15 text-dark leading-loose" v-html="currentKelas.deskripsi || '<p class=\'text-muted fst-italic\'>Tidak ada deskripsi tersedia untuk kelas ini.</p>'"></div>
+                  <div v-if="currentKelas.informasi_umum || currentKelas.target_peserta || currentKelas.syarat_pendaftaran" class="row g-3 mt-3">
+                    <div v-if="currentKelas.informasi_umum" class="col-12">
+                      <div class="fw-bold text-dark mb-1">Informasi Umum</div>
+                      <div class="text-muted fs-14">{{ currentKelas.informasi_umum }}</div>
+                    </div>
+                    <div v-if="currentKelas.target_peserta" class="col-md-6">
+                      <div class="fw-bold text-dark mb-1">Target Peserta</div>
+                      <div class="text-muted fs-14">{{ currentKelas.target_peserta }}</div>
+                    </div>
+                    <div v-if="currentKelas.syarat_pendaftaran" class="col-md-6">
+                      <div class="fw-bold text-dark mb-1">Syarat Pendaftaran</div>
+                      <div class="text-muted fs-14">{{ currentKelas.syarat_pendaftaran }}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -551,32 +575,32 @@ export default {
               </div>
             </div>
 
-            <!-- Discussion / Diskusi Sidebar Card -->
+            <!-- Feedback Sidebar Card -->
             <div v-if="selectedMateri" class="card border-0 shadow-sm rounded-4 mt-4 mb-4">
               <div class="card-header bg-white border-bottom border-light p-3 d-flex align-items-center justify-content-between">
                 <h5 class="fw-bold mb-0 d-flex align-items-center gap-2">
-                  <i class="ri-chat-voice-line text-primary"></i> Diskusi Materi
+                  <i class="ri-feedback-line text-primary"></i> Feedback Materi
                 </h5>
-                <span v-if="diskusiList.length > 0" class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-2 py-1 fs-11">
-                  {{ diskusiList.length }}
+                <span v-if="feedbackList.length > 0" class="badge bg-primary bg-opacity-10 text-primary rounded-pill px-2 py-1 fs-11">
+                  {{ feedbackList.length }}
                 </span>
               </div>
               <div class="card-body p-0">
-                <div v-if="isLoadingDiskusi" class="text-center py-4">
+                <div v-if="isLoadingFeedback" class="text-center py-4">
                   <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
-                  <p class="mt-2 text-muted fs-13 mb-0">Memuat diskusi...</p>
+                  <p class="mt-2 text-muted fs-13 mb-0">Memuat feedback...</p>
                 </div>
 
-                <div v-else-if="diskusiList.length === 0" class="bg-light bg-opacity-50 p-4 text-center">
+                <div v-else-if="feedbackList.length === 0" class="bg-light bg-opacity-50 p-4 text-center">
                   <div class="avatar avatar-md bg-white rounded-circle mb-2 mx-auto d-flex align-items-center justify-content-center shadow-sm border border-light">
-                    <i class="ri-chat-off-line text-muted"></i>
+                    <i class="ri-feedback-line text-muted"></i>
                   </div>
-                  <h6 class="fw-bold text-dark fs-14 mb-1">Belum Ada Diskusi</h6>
-                  <p class="text-muted fs-12 mb-0">Belum ada komentar pada materi ini.</p>
+                  <h6 class="fw-bold text-dark fs-14 mb-1">Belum Ada Feedback</h6>
+                  <p class="text-muted fs-12 mb-0">Belum ada feedback pada materi ini.</p>
                 </div>
 
                 <div v-else class="discussion-list p-3" style="max-height: 400px; overflow-y: auto;">
-                  <div v-for="d in diskusiList" :key="d.id" class="discussion-item mb-3 pb-3 border-bottom border-light last-child-no-border">
+                  <div v-for="d in feedbackList" :key="d.id" class="discussion-item mb-3 pb-3 border-bottom border-light last-child-no-border">
                     <div class="d-flex align-items-start gap-2">
                       <div class="user-avatar-sm rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold flex-shrink-0" style="width: 32px; height: 32px; font-size: 13px;">
                         {{ (d.user_name || 'U').charAt(0).toUpperCase() }}
@@ -587,11 +611,11 @@ export default {
                             <div class="fw-bold fs-13 text-dark text-truncate" style="max-width: 150px;">{{ d.user_name }}</div>
                             <div class="text-muted" style="font-size: 10px;">{{ d.created_at }}</div>
                           </div>
-                          <button @click="deleteDiskusi(d.id)" class="btn btn-sm btn-icon btn-ghost-danger rounded-circle p-1" style="width: 24px; height: 24px;" title="Hapus Komentar">
-                            <i class="ri-delete-bin-line fs-14"></i>
-                          </button>
+                          <span v-if="d.rating !== undefined" class="badge bg-warning bg-opacity-10 text-warning rounded-pill fs-11">
+                            <i class="ri-star-fill me-1"></i>{{ d.rating }}
+                          </span>
                         </div>
-                        <div class="discussion-text fs-13 text-dark bg-light bg-opacity-50 p-2 rounded-3 border border-light mt-1" style="white-space: pre-wrap; line-height: 1.4;">{{ d.komentar }}</div>
+                        <div class="discussion-text fs-13 text-dark bg-light bg-opacity-50 p-2 rounded-3 border border-light mt-1" style="white-space: pre-wrap; line-height: 1.4;">{{ d.feedback || d.komentar }}</div>
                       </div>
                     </div>
                   </div>

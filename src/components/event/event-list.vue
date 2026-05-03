@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useEventStore } from "../../stores/event";
 import { useRouter } from "vue-router";
+import type { Kegiatan } from "../../types/kegiatan.types";
 
 export default {
   components: { Pageheader },
@@ -10,8 +11,8 @@ export default {
     return {
       dataToPass: {
         title: { label: "Dashboard", path: "/dashboard" },
-        currentpage: "Event & Berita",
-        activepage: "Event & Berita",
+        currentpage: "Event & Kegiatan",
+        activepage: "Event & Kegiatan",
       },
     };
   },
@@ -49,7 +50,10 @@ export default {
       const q = searchQuery.value.toLowerCase().trim();
       if (!q) return eventStore.events;
       return eventStore.events.filter(
-        (k) => (k.judul || "").toLowerCase().includes(q)
+        (k) =>
+          (k.judul || "").toLowerCase().includes(q) ||
+          (k.lokasi || "").toLowerCase().includes(q) ||
+          stripHtml(k.deskripsi || "").toLowerCase().includes(q)
       );
     });
 
@@ -61,24 +65,30 @@ export default {
 
     // Modals state
     const activeModal = ref<'delete' | null>(null);
-    const deleteTarget = ref<any>(null);
+    const deleteTarget = ref<Kegiatan | null>(null);
     const isSaving = ref(false);
 
     const openCreate = () => router.push('/event/create');
-    const openEdit = (item: any) => router.push(`/event/edit/${item.id}`);
+    const openEdit = (item: Kegiatan) => router.push(`/event/edit/${item.id}`);
+    const openView = (item: Kegiatan) => router.push(`/event/view/${item.id}`);
 
     // DELETE
-    const openDeleteModal = (item: any) => {
+    const openDeleteModal = (item: Kegiatan) => {
       deleteTarget.value = item;
       activeModal.value = 'delete';
     };
     const confirmDelete = async () => {
+      if (!deleteTarget.value) return;
       isSaving.value = true;
       try {
-        await eventStore.deleteEvent(deleteTarget.value.id);
-        showNotification("Event berhasil dihapus", "success");
-        activeModal.value = null;
-      } catch(e) { 
+        const result = await eventStore.deleteEvent(deleteTarget.value.id);
+        if (result.success) {
+          showNotification("Event berhasil dihapus", "success");
+          activeModal.value = null;
+        } else {
+          showNotification("Gagal menghapus event: " + (result.error || ''), "error");
+        }
+      } catch(e: any) { 
         showNotification("Gagal menghapus event", "error"); 
       } finally { 
         isSaving.value = false; 
@@ -92,16 +102,44 @@ export default {
     };
 
     const getStatusClass = (status: string) => {
-      if (status === 'upcoming') return 'badge-sektor-amber';
-      if (status === 'ongoing') return 'badge-sektor-teal';
-      return 'bg-secondary-transparent text-secondary';
+      const s = (status || '').toLowerCase();
+      if (s === 'upcoming' || s === 'akan datang') return 'badge-sektor-amber';
+      if (s === 'ongoing' || s === 'berlangsung' || s === 'sedang berjalan') return 'badge-sektor-teal';
+      if (s === 'selesai' || s === 'past' || s === 'completed') return 'bg-secondary-transparent text-secondary';
+      if (s === 'aktif' || s === 'active') return 'badge-sektor-teal';
+      return 'bg-light text-muted';
     };
 
     const getStatusText = (status: string) => {
-      if (status === 'upcoming') return 'Upcoming';
-      if (status === 'ongoing') return 'Sedang Berjalan';
-      if (status === 'past') return 'Selesai / Past';
-      return status;
+      const s = (status || '').toLowerCase();
+      if (s === 'upcoming' || s === 'akan datang') return 'Upcoming';
+      if (s === 'ongoing' || s === 'berlangsung' || s === 'sedang berjalan') return 'Sedang Berjalan';
+      if (s === 'selesai' || s === 'past' || s === 'completed') return 'Selesai';
+      if (s === 'aktif' || s === 'active') return 'Aktif';
+      return status || '-';
+    };
+
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return '-';
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch {
+        return dateStr;
+      }
+    };
+
+    const stripHtml = (value: string) => {
+      return value
+        .replace(/<[^>]*>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .trim();
     };
     
     return {
@@ -109,8 +147,8 @@ export default {
       router, eventStore, searchQuery, currentPage, itemsPerPage, filteredData, totalPages, displayData,
       showToast, toastMessage, toastType,
       activeModal, isSaving, deleteTarget,
-      openCreate, openEdit, openDeleteModal, confirmDelete,
-      getAvatarClass, getStatusClass, getStatusText
+      openCreate, openEdit, openView, openDeleteModal, confirmDelete,
+      getAvatarClass, getStatusClass, getStatusText, formatDate, stripHtml
     };
   }
 };
@@ -141,13 +179,13 @@ export default {
           <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
               <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> Event & Berita</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Event & Berita</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Kelola berita, event, workshop dan acara Anda</div>
+                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> Event & Kegiatan</div>
+                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Event & Kegiatan</div>
+                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Kelola event, workshop dan kegiatan</div>
               </div>
               <div class="stakeholders-meta-stack">
                 <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Acara</span>
+                  <span class="stakeholders-meta-label">Total Kegiatan</span>
                   <strong><i class="ri-calendar-event-line"></i> {{ eventStore.totalEvents }}</strong>
                 </div>
               </div>
@@ -155,7 +193,7 @@ export default {
             <div class="stakeholders-hero-tools">
               <div class="stakeholders-search position-relative">
                 <i class="ri-search-line lms-search-icon"></i>
-                <input v-model="searchQuery" type="text" class="form-control form-control-sm lms-search-input" placeholder="Cari judul..." />
+                <input v-model="searchQuery" type="text" class="form-control form-control-sm lms-search-input" placeholder="Cari judul, lokasi..." />
                 <button v-if="searchQuery" @click="searchQuery = ''" class="lms-clear-btn" title="Clear search">
                   <i class="ri-close-circle-fill"></i>
                 </button>
@@ -175,7 +213,7 @@ export default {
               </div>
               <button @click="openCreate()" class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2">
                 <i class="ri-add-circle-line fs-13"></i>
-                <span class="btn-text">Tambah Event / Berita</span>
+                <span class="btn-text">Tambah Event</span>
               </button>
             </div>
           </div>
@@ -186,8 +224,8 @@ export default {
                 <tr>
                   <th class="th-no" style="width: 50px;">No</th>
                   <th>Judul</th>
-                  <th>Kategori</th>
-                  <th>Jadwal</th>
+                  <th>Lokasi</th>
+                  <th>Tanggal</th>
                   <th class="text-center">Status</th>
                   <th class="text-center">Aksi</th>
                 </tr>
@@ -212,8 +250,8 @@ export default {
                   <td colspan="6" class="text-center py-5">
                     <div class="empty-state">
                       <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-calendar-event-line"></i></div></div>
-                      <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Dataa</h6>
-                      <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Event / Berita" untuk membuat berita acara baru.</p>
+                      <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Data</h6>
+                      <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Event" untuk membuat event baru.</p>
                     </div>
                   </td>
                 </tr>
@@ -224,24 +262,25 @@ export default {
                     </td>
                     <td class="align-middle">
                       <div class="stakeholder-company-cell">
-                        <div class="company-avatar overflow-hidden" :class="item.thumbnail ? '' : getAvatarClass((item.judul || 'E').charAt(0))">
-                          <img v-if="item.thumbnail" :src="item.thumbnail" class="w-100 h-100 object-fit-cover" alt="" />
-                          <span v-else class="company-avatar-letter">{{ (item.judul || 'E').charAt(0).toUpperCase() }}</span>
+                        <div class="company-avatar overflow-hidden" :class="getAvatarClass((item.judul || 'E').charAt(0))">
+                          <span class="company-avatar-letter">{{ (item.judul || 'E').charAt(0).toUpperCase() }}</span>
                         </div>
                         <div class="company-name-wrap">
                           <span class="company-name d-block fw-bold">{{ item.judul }}</span>
-                          <span class="text-muted fs-12 text-truncate" style="max-width: 250px; display: inline-block;">{{ item.deskripsi || '-' }}</span>
+                          <span class="text-muted fs-12 text-truncate" style="max-width: 250px; display: inline-block;">{{ stripHtml(item.deskripsi || '') || '-' }}</span>
                         </div>
                       </div>
                     </td>
                     <td class="align-middle">
-                      <span class="badge bg-light text-dark border"><i class="ri-price-tag-3-line me-1"></i> {{ item.kategori }}</span>
+                      <span class="d-flex align-items-center gap-1 fs-13">
+                        <i class="ri-map-pin-line text-primary"></i>
+                        {{ item.lokasi || '-' }}
+                      </span>
                     </td>
                     <td class="align-middle">
                       <div class="d-flex flex-column gap-1 fs-12 text-muted">
-                        <span v-if="item.tanggal_mulai"><i class="ri-calendar-line text-primary me-1"></i> Mulai: <span class="fw-medium text-dark">{{ item.tanggal_mulai }}</span></span>
-                        <span v-if="item.tanggal_selesai"><i class="ri-calendar-check-line text-success me-1"></i> Selesai: <span class="fw-medium text-dark">{{ item.tanggal_selesai }}</span></span>
-                        <span v-if="!item.tanggal_mulai && !item.tanggal_selesai">-</span>
+                        <span v-if="item.tanggal"><i class="ri-calendar-line text-primary me-1"></i> <span class="fw-medium text-dark">{{ formatDate(item.tanggal) }}</span></span>
+                        <span v-else>-</span>
                       </div>
                     </td>
                     <td class="align-middle text-center">
@@ -251,6 +290,9 @@ export default {
                     </td>
                     <td class="align-middle text-center">
                       <div class="d-flex gap-1 justify-content-center">
+                        <button @click="openView(item)" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
+                          <i class="ri-eye-line"></i>
+                        </button>
                         <button @click="openEdit(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
                           <i class="ri-edit-2-line"></i>
                         </button>

@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useIkasStore } from '../../stores/ikas';
 import { ikasService } from '../../services/ikas.service';
 
 const props = defineProps({
@@ -14,12 +13,10 @@ const props = defineProps({
   }
 });
 
-const ikasStore = useIkasStore();
-
 // --- STATE ---
 const currentYear = new Date().getFullYear();
 const availableYears = ref([]);
-const selectedYears = ref([]);
+const selectedYears = ref([currentYear]);
 const allIkasRecords = ref([]);
 const loading = ref(false);
 const error = ref('');
@@ -60,12 +57,18 @@ const getTotalScore = (record) => {
 };
 
 // Group records by year
+const toYearNumber = (value) => {
+  const year = Number(value);
+  return Number.isFinite(year) ? year : null;
+};
+
 const recordsByYear = computed(() => {
   const map = {};
   allIkasRecords.value.forEach(record => {
     const date = record.tanggal || record.created_at;
     if (!date) return;
     const year = new Date(date).getFullYear();
+    if (!Number.isFinite(year)) return;
     if (!map[year]) map[year] = [];
     map[year].push(record);
   });
@@ -126,14 +129,36 @@ const hasData = computed(() => comparisonData.value.some(d => d.total > 0 || Obj
 const maxScore = 5;
 
 // Toggle year selection
+const normalizeSelectedYears = (years) => {
+  const uniqueYears = Array.from(new Set(
+    years
+      .map(toYearNumber)
+      .filter((year) => year !== null)
+  ));
+
+  const normalized = uniqueYears.length ? uniqueYears : [currentYear];
+
+  return normalized
+    .sort((a, b) => a - b)
+    .slice(-4);
+};
+
 const toggleYear = (year) => {
-  const idx = selectedYears.value.indexOf(year);
+  const normalizedYear = toYearNumber(year);
+  if (normalizedYear === null) return;
+
+  const idx = selectedYears.value.indexOf(normalizedYear);
   if (idx > -1) {
     if (selectedYears.value.length > 1) {
-      selectedYears.value.splice(idx, 1);
+      selectedYears.value = normalizeSelectedYears(
+        selectedYears.value.filter((item) => item !== normalizedYear)
+      );
     }
   } else {
-    selectedYears.value.push(year);
+    selectedYears.value = normalizeSelectedYears([
+      ...selectedYears.value,
+      normalizedYear,
+    ]);
   }
 };
 
@@ -255,6 +280,14 @@ const trendChartSeries = computed(() => {
   return series;
 });
 
+const normalizeIkasRecords = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.records)) return response.records;
+  if (response?.id) return [response];
+  return [];
+};
+
 // Fetch all IKAS records for the stakeholder
 const fetchAllRecords = async () => {
   if (!props.perusahaanId) return;
@@ -263,10 +296,11 @@ const fetchAllRecords = async () => {
   
   try {
     const response = await ikasService.getIkasByPerusahaan(props.perusahaanId);
+    const records = normalizeIkasRecords(response);
     
-    if (response && response.data && Array.isArray(response.data)) {
+    if (records.length) {
       // Filter records for this perusahaan
-      allIkasRecords.value = response.data.filter(r => 
+      allIkasRecords.value = records.filter(r => 
         String(r.perusahaan?.id || '') === String(props.perusahaanId) ||
         String(r.id_perusahaan || '') === String(props.perusahaanId)
       );
@@ -276,18 +310,19 @@ const fetchAllRecords = async () => {
       allIkasRecords.value.forEach(record => {
         const date = record.tanggal || record.created_at;
         if (date) {
-          years.add(new Date(date).getFullYear());
+          const year = new Date(date).getFullYear();
+          if (Number.isFinite(year)) years.add(year);
         }
       });
       
       // Always include the current year
       years.add(currentYear);
       
-      // Sort descending
-      availableYears.value = Array.from(years).sort((a, b) => b - a);
+      // Show the timeline from older years on the left to newer years on the right.
+      availableYears.value = Array.from(years).sort((a, b) => a - b);
       
-      // Select the current year by default, plus the previous year if available
-      selectedYears.value = availableYears.value.slice(0, Math.min(4, availableYears.value.length));
+      // Default to the system year only.
+      selectedYears.value = [currentYear];
     } else {
       // No data — show current year and some past years
       availableYears.value = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
@@ -310,6 +345,16 @@ onMounted(() => {
 watch(() => props.perusahaanId, () => {
   fetchAllRecords();
 });
+
+watch(availableYears, (years) => {
+  if (!years.length) return;
+  if (!selectedYears.value.length) {
+    selectedYears.value = [currentYear];
+    return;
+  }
+
+  selectedYears.value = normalizeSelectedYears(selectedYears.value);
+}, { immediate: true });
 </script>
 
 <template>

@@ -21,10 +21,10 @@
           <div class="notif-toast-title">
             <span class="notif-toast-user">{{ toast.user?.name || 'Sistem' }}</span>
             <span class="notif-toast-verb">{{ getVerb(toast.type) }}</span>
-            <span class="notif-toast-entity">{{ getEntityLabel(toast.entity) }}</span>
+            <span class="notif-toast-entity">{{ getTargetLabel(toast) }}</span>
           </div>
-          <div v-if="toast.entity_name" class="notif-toast-subtitle">
-            {{ toast.entity_name }}
+          <div v-if="toast.message" class="notif-toast-subtitle">
+            {{ toast.message }}
           </div>
         </div>
 
@@ -103,7 +103,18 @@ function getVerb(type: string): string {
 }
 
 function getEntityLabel(entity: string): string {
-  return ENTITY_LABELS[entity] || entity;
+  if (!entity || entity === 'unknown') return 'Data';
+  return ENTITY_LABELS[entity] || entity.replace(/_/g, ' ');
+}
+
+function getTargetLabel(toast: ServerEvent): string {
+  const label = getEntityLabel(toast.entity);
+  const name = String(toast.entity_name || '').trim();
+  if (!name) return toast.entity === 'unknown' ? 'data' : label;
+
+  return name.toLowerCase().startsWith(label.toLowerCase())
+    ? name
+    : `${label} ${name}`;
 }
 
 onUnmounted(() => {

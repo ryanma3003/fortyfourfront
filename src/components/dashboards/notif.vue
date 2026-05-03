@@ -179,11 +179,10 @@ export default {
                                     <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
                                         <div>
                                             <span class="notif-action-text">
-                                                <span class="notif-user-name">{{ notif.user?.name || 'Sistem' }}</span>
-                                                <span class="notif-dept-badge">{{ notif.user?.role || 'system' }}</span>
+                                                <span class="notif-user-name">{{ notif.actorName }}</span>
+                                                <span v-if="notif.actorRole" class="notif-dept-badge">{{ notif.actorRole }}</span>
                                                 <span>{{ notif.actionVerb }}</span>
-                                                <span class="notif-target">{{ notif.entity_name || 'data' }}</span>
-                                                <span class="text-muted"> di {{ notif.entityLabel }}</span>
+                                                <span class="notif-target">{{ notif.targetLabel }}</span>
                                             </span>
                                         </div>
                                         <!-- Time (desktop) -->

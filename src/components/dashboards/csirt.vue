@@ -550,10 +550,53 @@ export default {
             showAddCsirtModal.value = true;
         };
 
+        const getUploadRule = (field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp' | 'file_surat_tanda_registrasi') => {
+            const rules = {
+                photo_csirt: {
+                    extensions: ['jpg', 'jpeg', 'png', 'gif'],
+                    mimes: ['image/jpeg', 'image/png', 'image/gif'],
+                    label: 'JPEG, PNG, atau GIF',
+                },
+                file_rfc2350: {
+                    extensions: ['pdf'],
+                    mimes: ['application/pdf'],
+                    label: 'PDF',
+                },
+                file_public_key_pgp: {
+                    extensions: ['asc'],
+                    mimes: ['application/pgp-keys', 'application/octet-stream', 'text/plain'],
+                    label: 'ASC',
+                },
+                file_surat_tanda_registrasi: {
+                    extensions: ['pdf'],
+                    mimes: ['application/pdf'],
+                    label: 'PDF',
+                },
+            };
+            return rules[field];
+        };
+
+        const validateUploadFile = (file: File, field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp' | 'file_surat_tanda_registrasi'): boolean => {
+            const rule = getUploadRule(field);
+            const extension = file.name.split('.').pop()?.toLowerCase() || '';
+            const isValidExtension = rule.extensions.includes(extension);
+            const isValidMime = !file.type || rule.mimes.includes(file.type);
+
+            if (!isValidExtension || !isValidMime) {
+                showNotification(`File harus berformat ${rule.label}`, "error");
+                return false;
+            }
+            return true;
+        };
+
         const onCsirtFileChange = (event: Event, field: 'photo_csirt' | 'file_rfc2350' | 'file_public_key_pgp' | 'file_surat_tanda_registrasi') => {
             const input = event.target as HTMLInputElement;
             if (input.files && input.files[0]) {
                 const file = input.files[0];
+                if (!validateUploadFile(file, field)) {
+                    input.value = '';
+                    return;
+                }
                 csirtFormData.value[field] = file;
                 if (field === 'photo_csirt') {
                     const reader = new FileReader();
@@ -707,6 +750,15 @@ export default {
             const target = event.target as HTMLInputElement;
             if (target.files && target.files.length > 0) {
                 const file = target.files[0];
+                const field = type === 'rfc'
+                    ? 'file_rfc2350'
+                    : type === 'pgp'
+                        ? 'file_public_key_pgp'
+                        : 'file_surat_tanda_registrasi';
+                if (!validateUploadFile(file, field)) {
+                    target.value = '';
+                    return;
+                }
                 if (type === 'rfc') {
                     profileFormData.value.file_rfc2350_file = file;
                 } else if (type === 'pgp') {
@@ -877,27 +929,28 @@ export default {
             },
             exportAllSePdf: async () => {
                 const idPerusahaan = currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id;
-                if (idPerusahaan) {
-                    const safeName = (currentCsirt.value?.nama_csirt || 'csirt').replace(/[^a-z0-9]/gi, '_');
-                    const filename = `Rekap_SE_${safeName}.pdf`;
+                const safeName = (currentCsirt.value?.nama_csirt || 'semua').replace(/[^a-z0-9]/gi, '_');
+                const filename = `Rekap_SE_${safeName}.pdf`;
 
-                    try {
-                        const response = await fetch(`${config.api.baseUrl}/api/se/export-pdf?id_perusahaan=${idPerusahaan}`, {
-                            credentials: 'include'
-                        });
-                        if (!response.ok) throw new Error('Gagal mengunduh file');
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = filename;
-                        document.body.appendChild(link);
-                        link.click();
-                        link.remove();
-                        window.URL.revokeObjectURL(url);
-                    } catch (error) {
-                        console.error("Error exporting all SE PDF:", error);
-                    }
+                try {
+                    const query = isAdmin.value && idPerusahaan
+                        ? `?id_perusahaan=${encodeURIComponent(String(idPerusahaan))}`
+                        : '';
+                    const response = await fetch(`${config.api.baseUrl}/api/se/export-pdf${query}`, {
+                        credentials: 'include'
+                    });
+                    if (!response.ok) throw new Error('Gagal mengunduh file');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error("Error exporting all SE PDF:", error);
                 }
             },
         };
@@ -926,6 +979,83 @@ export default {
 .profile-photo-wrapper:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 4px 8px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
+}
+
+.edit-profile-body {
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.csirt-edit-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  padding: 24px 16px !important;
+  background: rgba(15, 23, 42, 0.58) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: auto !important;
+  z-index: 10050 !important;
+}
+
+.csirt-edit-modal .modal-dialog {
+  width: min(920px, calc(100vw - 32px)) !important;
+  max-width: 920px !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.csirt-edit-modal .modal-content {
+  width: 100% !important;
+  max-width: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.csirt-edit-dialog {
+  min-height: 0 !important;
+}
+
+.csirt-edit-dialog .custom-card {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22) !important;
+}
+
+.edit-logo-panel,
+.document-upload-box {
+  border: 1px solid #e9edf4;
+  background: #fbfcfe;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.edit-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 700;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.document-upload-box {
+  height: 100%;
+}
+
+.document-upload-box .form-control {
+  min-width: 0;
 }
 
 .profile-csirt-img {
@@ -1235,7 +1365,7 @@ export default {
                         <i class="ri-add-circle-line fs-15"></i>
                         <span>Tambah SE</span>
                     </button>
-                    <button @click="exportPdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
+                    <button @click="exportAllSePdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
                         <i class="ri-file-list-3-line fs-15"></i>
                         <span>Rekap SE</span>
                     </button>
@@ -1662,8 +1792,8 @@ export default {
 <!-- ------------------------------------------------------------------ -->
 <!-- MODAL: Edit CSIRT -->
 <!-- ------------------------------------------------------------------ -->
-<div v-if="showEditProfileModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditProfileModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal modal-lg">
+<div v-if="showEditProfileModal" class="modal fade show d-block modal-overlay csirt-edit-modal" tabindex="-1" @click.self="showEditProfileModal = false">
+    <div class="modal-dialog modal-dialog-centered csirt-edit-dialog">
         <div class="modal-content border-0 bg-transparent">
             <div class="card custom-card gradient-header-card w-100 mb-0">
                 <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
@@ -1673,12 +1803,12 @@ export default {
                     </div>
                     <button type="button" class="btn-close btn-close-white" @click="showEditProfileModal = false"></button>
                 </div>
-                <div class="card-body p-4 bg-white">
+                <div class="card-body p-4 bg-white edit-profile-body">
                     <form @submit.prevent="updateProfile">
                         <div class="row gy-3">
                             <!-- Logo / Photo CSIRT -->
                             <div class="col-xl-12">
-                                <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
+                                <div class="edit-logo-panel d-flex flex-column flex-sm-row gap-3 align-items-start">
                                     <!-- Photo Preview -->
                                     <div 
                                       class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
@@ -1718,6 +1848,12 @@ export default {
                                     </div>
                                   </div>
                             </div>
+                            <div class="col-12">
+                                <div class="edit-section-title">
+                                    <i class="ri-profile-line text-primary"></i>
+                                    <span>Informasi CSIRT</span>
+                                </div>
+                            </div>
                             <!-- Nama CSIRT -->
                             <div class="col-xl-12">
                                 <label class="form-label fw-medium">
@@ -1750,12 +1886,19 @@ export default {
                                 <input type="text" class="form-control" v-model="profileFormData.web_csirt"
                                     placeholder="Contoh: https://csirt.id" />
                             </div>
+                            <div class="col-12">
+                                <div class="edit-section-title mt-2">
+                                    <i class="ri-folder-upload-line text-primary"></i>
+                                    <span>Dokumen Pendukung</span>
+                                </div>
+                            </div>
                             <!-- Dokumen RFC 2350 -->
-                            <div class="col-xl-12">
+                            <div class="col-xl-4 col-md-6">
+                                <div class="document-upload-box">
                                 <label class="form-label fw-medium">
                                     <i class="ri-file-pdf-line me-1 text-primary"></i>RFC 2350
                                 </label>
-                                <div class="input-group w-100 gap-4">
+                                <div class="input-group w-100">
                                     <input type="text" class="form-control" v-model="profileFormData.file_rfc2350"
                                         placeholder="Link atau pilih file" />
                                     <input type="file" ref="rfcFile" class="d-none" @change="handleFileUpload($event, 'rfc')" accept=".pdf" />
@@ -1763,33 +1906,39 @@ export default {
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>
+                                <div class="fs-11 text-muted mt-1">Hanya file PDF</div>
                                 <div v-if="profileFormData.file_rfc2350_file" class="text-success small mt-1">
                                     <i class="ri-check-line"></i> {{ profileFormData.file_rfc2350_file.name }} siap diupload
                                 </div>
+                                </div>
                             </div>
                             <!-- Public Key PGP -->
-                            <div class="col-xl-12">
+                            <div class="col-xl-4 col-md-6">
+                                <div class="document-upload-box">
                                 <label class="form-label fw-medium">
                                     <i class="ri-key-2-line me-1 text-primary"></i>Public Key PGP
                                 </label>
-                                <div class="input-group w-100 gap-4">
+                                <div class="input-group w-100">
                                     <input type="text" class="form-control" v-model="profileFormData.file_public_key_pgp"
                                         placeholder="Link atau pilih file" />
-                                    <input type="file" ref="pgpFile" class="d-none" @change="handleFileUpload($event, 'pgp')" accept=".asc,.txt,.key" />
+                                    <input type="file" ref="pgpFile" class="d-none" @change="handleFileUpload($event, 'pgp')" accept=".asc" />
                                     <button class="btn btn-secondary-light" type="button" @click="$refs.pgpFile.click()">
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>
+                                <div class="fs-11 text-muted mt-1">Hanya file ASC</div>
                                 <div v-if="profileFormData.file_public_key_pgp_file" class="text-success small mt-1">
                                     <i class="ri-check-line"></i> {{ profileFormData.file_public_key_pgp_file.name }} siap diupload
                                 </div>
+                                </div>
                             </div>
                             <!-- Surat Tanda Registrasi -->
-                            <div class="col-xl-12">
+                            <div class="col-xl-4 col-md-6">
+                                <div class="document-upload-box">
                                 <label class="form-label fw-medium">
                                     <i class="ri-file-pdf-line me-1 text-primary"></i>Surat Tanda Registrasi
                                 </label>
-                                <div class="input-group w-100 gap-4">
+                                <div class="input-group w-100">
                                     <input type="text" class="form-control" v-model="profileFormData.file_surat_tanda_registrasi"
                                         placeholder="Link atau pilih file" />
                                     <input type="file" ref="strFile" class="d-none" @change="handleFileUpload($event, 'str')" accept=".pdf" />
@@ -1797,8 +1946,10 @@ export default {
                                         <i class="ri-upload-2-line me-1"></i>Upload
                                     </button>
                                 </div>
+                                <div class="fs-11 text-muted mt-1">Hanya file PDF</div>
                                 <div v-if="profileFormData.file_surat_tanda_registrasi_file" class="text-success small mt-1">
                                     <i class="ri-check-line"></i> {{ profileFormData.file_surat_tanda_registrasi_file.name }} siap diupload
+                                </div>
                                 </div>
                             </div>
                         </div>
@@ -1918,19 +2069,19 @@ export default {
                             <!-- RFC 2350 -->
                             <div class="col-md-6">
                                 <label class="form-label fw-medium">File RFC 2350</label>
-                                <input type="file" class="form-control"
+                                <input type="file" class="form-control" accept=".pdf"
                                     @change="onCsirtFileChange($event, 'file_rfc2350')" />
                             </div>
                             <!-- Public Key PGP -->
                             <div class="col-md-6">
                                 <label class="form-label fw-medium">File Public Key PGP</label>
-                                <input type="file" class="form-control"
+                                <input type="file" class="form-control" accept=".asc"
                                     @change="onCsirtFileChange($event, 'file_public_key_pgp')" />
                             </div>
                             <!-- Surat Tanda Registrasi -->
                             <div class="col-md-6">
                                 <label class="form-label fw-medium">Surat Tanda Registrasi</label>
-                                <input type="file" class="form-control"
+                                <input type="file" class="form-control" accept=".pdf"
                                     @change="onCsirtFileChange($event, 'file_surat_tanda_registrasi')" />
                             </div>
                         </div>
@@ -1964,6 +2115,14 @@ export default {
   .modal.fade.show.d-block .modal-dialog {
     margin-left: calc(250px + ((100% - 250px - 1000px) / 2)) !important;
     margin-right: auto !important;
+  }
+
+  .modal.fade.show.d-block.csirt-edit-modal .modal-dialog {
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
 }
 </style>

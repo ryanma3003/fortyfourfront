@@ -126,7 +126,10 @@ export default {
       const q = searchQuery.value.toLowerCase().trim();
       if (!q) return lmsStore.kelasList;
       return lmsStore.kelasList.filter(
-        (k) => (k.nama_kelas || "").toLowerCase().includes(q)
+        (k) =>
+          (k.nama_kelas || "").toLowerCase().includes(q) ||
+          (k.kategori || "").toLowerCase().includes(q) ||
+          (k.penyelenggara || "").toLowerCase().includes(q)
       );
     });
 
@@ -173,7 +176,20 @@ export default {
     const deleteTarget = ref<any>(null);
 
     // KELAS FORM
-    const formKelas = ref({ id: '', nama_kelas: '', deskripsi: '', thumbnail: '', status: 'published' });
+    const emptyKelasForm = () => ({
+      id: '',
+      nama_kelas: '',
+      deskripsi: '',
+      durasi_jp: 0,
+      informasi_umum: '',
+      kategori: '',
+      penyelenggara: '',
+      syarat_pendaftaran: '',
+      target_peserta: '',
+      thumbnail: '',
+      status: 'published'
+    });
+    const formKelas = ref(emptyKelasForm());
     const thumbnailPreview = computed(() => formKelas.value.thumbnail || null);
 
     const openKelasModal = (item?: any) => {
@@ -184,13 +200,19 @@ export default {
         formKelas.value = { 
           id: item.id, 
           nama_kelas: item.nama_kelas, 
-          deskripsi: item.deskripsi, 
+          deskripsi: item.deskripsi,
+          durasi_jp: item.durasi_jp || 0,
+          informasi_umum: item.informasi_umum || '',
+          kategori: item.kategori || '',
+          penyelenggara: item.penyelenggara || '',
+          syarat_pendaftaran: item.syarat_pendaftaran || '',
+          target_peserta: item.target_peserta || '',
           thumbnail: item.thumbnail || '',
           status: item.status || 'published' 
         };
       } else {
         isEdit.value = false;
-        formKelas.value = { id: '', nama_kelas: '', deskripsi: '', thumbnail: '', status: 'published' };
+        formKelas.value = emptyKelasForm();
       }
       activeModal.value = 'kelas';
     };
@@ -199,6 +221,7 @@ export default {
       formErrors.value = {};
       if (!formKelas.value.nama_kelas) formErrors.value.nama_kelas = "Wajib diisi";
       if (!formKelas.value.deskripsi) formErrors.value.deskripsi = "Wajib diisi";
+      if (Number(formKelas.value.durasi_jp) < 0) formErrors.value.durasi_jp = "Durasi tidak boleh negatif";
       if (Object.keys(formErrors.value).length > 0) return;
       
       isSaving.value = true;
@@ -425,7 +448,12 @@ export default {
                       </div>
                     </td>
                     <td class="align-middle text-muted fs-13">
-                      {{ item.deskripsi || '-' }}
+                      <div class="fw-semibold text-dark mb-1">{{ item.deskripsi || '-' }}</div>
+                      <div class="d-flex flex-wrap gap-2">
+                        <span v-if="item.kategori" class="badge bg-primary-transparent text-primary fs-11">{{ item.kategori }}</span>
+                        <span v-if="item.penyelenggara" class="badge bg-info-transparent text-info fs-11">{{ item.penyelenggara }}</span>
+                        <span v-if="item.durasi_jp" class="badge bg-secondary-transparent text-secondary fs-11">{{ item.durasi_jp }} JP</span>
+                      </div>
                     </td>
                     <td class="align-middle text-center">
                       <span class="badge-sektor" :class="item.status === 'published' ? 'badge-sektor-teal' : 'badge-sektor-amber'">
@@ -584,6 +612,31 @@ export default {
                 <label class="form-label fw-semibold">Deskripsi <span class="text-danger">*</span></label>
                 <textarea v-model="formKelas.deskripsi" class="form-control kse-modal-input" :class="{'is-invalid': formErrors.deskripsi}" rows="3" placeholder="Deskripsi..."></textarea>
                 <div class="invalid-feedback">{{ formErrors.deskripsi }}</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Kategori</label>
+                <input v-model="formKelas.kategori" type="text" class="form-control kse-modal-input" placeholder="Contoh: Teknis, Manajerial">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Penyelenggara</label>
+                <input v-model="formKelas.penyelenggara" type="text" class="form-control kse-modal-input" placeholder="Nama penyelenggara">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Durasi JP</label>
+                <input v-model.number="formKelas.durasi_jp" type="number" min="0" class="form-control kse-modal-input" :class="{'is-invalid': formErrors.durasi_jp}" placeholder="0">
+                <div class="invalid-feedback">{{ formErrors.durasi_jp }}</div>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label fw-semibold">Target Peserta</label>
+                <input v-model="formKelas.target_peserta" type="text" class="form-control kse-modal-input" placeholder="Contoh: ASN, admin sistem, pengelola layanan">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Informasi Umum</label>
+                <textarea v-model="formKelas.informasi_umum" class="form-control kse-modal-input" rows="3" placeholder="Informasi umum kelas..."></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Syarat Pendaftaran</label>
+                <textarea v-model="formKelas.syarat_pendaftaran" class="form-control kse-modal-input" rows="3" placeholder="Syarat pendaftaran peserta..."></textarea>
               </div>
               <div class="col-12">
                 <label class="form-label fw-semibold">Thumbnail URL</label>

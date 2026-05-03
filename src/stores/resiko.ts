@@ -6,6 +6,7 @@ import type {
     AssessmentProgress
 } from '@/types/assessment.types';
 import { resikoData, getTotalRiskQuestionCount } from '@/data/assessment/resiko-data';
+import { resikoService, type SurveyRiskResponse } from '@/services/resiko.service';
 
 const STORAGE_KEYS = {
     RESIKO_RESPONDENT_PROFILES: 'resiko_respondent_profiles_map',
@@ -28,6 +29,9 @@ export const useResikoStore = defineStore('resiko', {
         respondentProfilesMap: {} as Record<string, RespondentProfile>,
         answersMap: {} as Record<string, AnswerMap>,
         progressMap: {} as Record<string, AssessmentProgress>,
+        surveyResultsMap: {} as Record<string, SurveyRiskResponse>,
+        surveyResultLoading: false,
+        surveyResultError: null as string | null,
         resikoVersion: 0, // Signal for reactivity
         initialized: false
     }),
@@ -99,6 +103,11 @@ export const useResikoStore = defineStore('resiko', {
 
         isCompleted(): boolean {
             return this.progress.status === 'COMPLETED';
+        },
+
+        currentSurveyResult(): SurveyRiskResponse | null {
+            if (!this.currentStakeholderSlug) return null;
+            return this.surveyResultsMap[this.currentStakeholderSlug] || null;
         }
     },
 
@@ -126,6 +135,47 @@ export const useResikoStore = defineStore('resiko', {
             if (!this.currentStakeholderSlug) return;
             this.respondentProfilesMap[this.currentStakeholderSlug] = profile;
             this.saveToDisk();
+        },
+
+        async loadSurveyResult(stakeholderId: string | number, slug = this.currentStakeholderSlug) {
+            if (!stakeholderId || !slug) return null;
+
+            this.surveyResultLoading = true;
+            this.surveyResultError = null;
+
+            try {
+                const result = await resikoService.getSurveyByRespondentOrCompanyId(stakeholderId);
+                this.surveyResultsMap[slug] = result;
+
+                if (result.respondent) {
+                    const respondent = result.respondent;
+                    const existing = this.respondentProfilesMap[slug];
+                    this.respondentProfilesMap[slug] = {
+                        instansi: respondent.instansi || respondent.nama_perusahaan || existing?.instansi || '',
+                        sektor: respondent.sektor || existing?.sektor || '',
+                        alamat: respondent.alamat || existing?.alamat || '',
+                        email: respondent.email || existing?.email || '',
+                        namaResponden: respondent.responden || respondent.nama_responden || respondent.namaResponden || existing?.namaResponden || '',
+                        jabatanResponden: respondent.jabatan || respondent.jabatan_responden || respondent.jabatanResponden || existing?.jabatanResponden || '',
+                        nomorTelepon: respondent.telepon || respondent.nomor_telepon || respondent.nomorTelepon || existing?.nomorTelepon || '',
+                        tahunPengukuran: respondent.tanggal ? new Date(respondent.tanggal).getFullYear().toString() : existing?.tahunPengukuran || new Date().getFullYear().toString(),
+                        targetLevel: Number(respondent.target_level || existing?.targetLevel || 0),
+                        targetNilai: String(respondent.target_nilai || existing?.targetNilai || ''),
+                        acuan: respondent.acuan || existing?.acuan || '',
+                        tanggalPengisian: respondent.tanggal ? String(respondent.tanggal).split('T')[0] : existing?.tanggalPengisian || '',
+                        createdAt: existing?.createdAt || Date.now(),
+                        updatedAt: Date.now(),
+                    };
+                    this.saveToDisk();
+                }
+
+                return result;
+            } catch (error: any) {
+                this.surveyResultError = error?.message || 'Gagal memuat hasil survey risiko';
+                return null;
+            } finally {
+                this.surveyResultLoading = false;
+            }
         },
 
         completeAssessment() {

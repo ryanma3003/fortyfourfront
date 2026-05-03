@@ -88,6 +88,97 @@ const FIELD_LABELS: Record<string, string> = {
     nilai: 'nilai', status: 'status', keterangan: 'keterangan',
 };
 
+const ENTITY_ALIASES: Record<string, string> = {
+    stakeholders: 'stakeholder',
+    users: 'user',
+    roles: 'role',
+    pics: 'pic',
+    pic_perusahaan: 'pic',
+    picperusahaan: 'pic',
+    person_in_charge: 'pic',
+    'person-in-charge': 'pic',
+    csirts: 'csirt',
+    csirtmember: 'csirt',
+    csirt_member: 'csirt',
+    sdms: 'sdm_csirt',
+    sdmcsirt: 'sdm_csirt',
+    sdm: 'sdm_csirt',
+    ses: 'se_csirt',
+    secsirt: 'se_csirt',
+    se: 'se_csirt',
+    'sistem elektronik': 'se_csirt',
+    sistem_elektronik: 'se_csirt',
+    se_edit_requests: 'se_edit_request',
+    se_edit_request: 'se_edit_request',
+    edit_request_se: 'se_edit_request',
+    sektors: 'sektor',
+    sub_sektors: 'sub_sektor',
+    subsektor: 'sub_sektor',
+    sub_sektor: 'sub_sektor',
+    kelas: 'kelas',
+    materi: 'materi',
+    file_pendukung: 'file_pendukung',
+    'file-pendukung': 'file_pendukung',
+    kuis: 'kuis',
+    quiz: 'kuis',
+    quizzes: 'kuis',
+    soal: 'soal',
+    aktivitas: 'aktivitas',
+    kegiatans: 'kegiatan',
+    kegiatan: 'kegiatan',
+    ruang_lingkup: 'ruang_lingkup',
+    'ruang-lingkup': 'ruang_lingkup',
+    kategori: 'category',
+    kategoris: 'category',
+    sub_kategori: 'sub_category',
+    'sub-kategori': 'sub_category',
+    pertanyaan_identifikasi: 'pertanyaan_ikas',
+    pertanyaan_proteksi: 'pertanyaan_ikas',
+    pertanyaan_deteksi: 'pertanyaan_ikas',
+    pertanyaan_gulih: 'pertanyaan_ikas',
+    jawaban_identifikasi: 'jawaban_ikas',
+    jawaban_proteksi: 'jawaban_ikas',
+    jawaban_deteksi: 'jawaban_ikas',
+    jawaban_gulih: 'jawaban_ikas',
+    identifikasi: 'ikas',
+    proteksi: 'ikas',
+    deteksi: 'ikas',
+    gulih: 'ikas',
+    casbin: 'casbin_policy',
+    policy: 'casbin_policy',
+    policies: 'casbin_policy',
+};
+
+function normalizeEntityKey(value: any): string {
+    const key = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_');
+
+    if (!key) return 'unknown';
+    return ENTITY_ALIASES[key] || key;
+}
+
+function getEntityDisplayLabel(entity: string): string {
+    if (!entity || entity === 'unknown') return 'Data';
+    return ENTITY_LABELS[entity] || entity.replace(/_/g, ' ');
+}
+
+function isPlaceholderRole(role?: string): boolean {
+    const normalized = String(role || '').trim().toLowerCase();
+    return !normalized || normalized === 'system' || normalized === 'sistem' || normalized === 'unknown';
+}
+
+function buildNotificationTarget(entity: string, entityName?: string): string {
+    const label = getEntityDisplayLabel(entity);
+    const name = String(entityName || '').trim();
+    if (!name) return entity === 'unknown' ? 'data' : label;
+
+    return name.toLowerCase().startsWith(label.toLowerCase())
+        ? name
+        : `${label} ${name}`;
+}
+
 function formatValue(val: any): string {
     if (val === null || val === undefined) return 'kosong';
     if (typeof val === 'boolean') return val ? 'ya' : 'tidak';
@@ -277,20 +368,38 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
     }
 
     // ── Entity ──
-    let entity = String(raw.entity || raw.resource || raw.model || raw.table || raw.target || '').toLowerCase() || 'unknown';
-    if (entity === 'csirts' || entity === 'csirtmember' || entity === 'csirt_member') entity = 'csirt';
-    if (entity === 'sdms' || entity === 'sdmcsirt' || entity === 'sdm') entity = 'sdm_csirt';
-    if (entity === 'ses' || entity === 'secsirt' || entity === 'se') entity = 'se_csirt';
+    let entity = normalizeEntityKey(
+        raw.entity
+        || raw.resource
+        || raw.model
+        || raw.table
+        || raw.target
+        || parsedData?.entity
+        || parsedData?.resource
+        || parsedData?.model
+        || parsedData?.table
+        || parsedData?.target
+    );
 
     if (entity === 'unknown' && rawMsg) {
-        const entityMatch = rawMsg.match(/(stakeholder|user|csirt|ikas|kse|sdm_csirt|se_csirt|perusahaan)/i);
-        if (entityMatch) entity = entityMatch[1].toLowerCase();
+        const entityMatch = rawMsg.match(/(pic|stakeholders?|users?|roles?|jabatan|csirts?|csirt|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)/i);
+        if (entityMatch) entity = normalizeEntityKey(entityMatch[1]);
     }
 
-    let entityName = String(raw.entity_name || raw.resource_name || raw.title || raw.nama || '');
+    let entityName = String(
+        raw.entity_name
+        || raw.resource_name
+        || raw.title
+        || raw.nama
+        || parsedData?.entity_name
+        || parsedData?.resource_name
+        || parsedData?.title
+        || parsedData?.nama
+        || ''
+    );
 
     if (!entityName && rawMsg) {
-        const nameExtracted = rawMsg.match(/(?:stakeholder|users?|csirts?|ikas|kse|sdm_csirt|se_csirt|perusahaan)\s+(?:baru\s+)?([a-zA-Z0-9_.\-\s]+?)\s+berhasil/i);
+        const nameExtracted = rawMsg.match(/(?:pic|stakeholders?|users?|roles?|jabatan|csirts?|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)\s+(?:baru\s+)?([a-zA-Z0-9_.\-\s]+?)\s+berhasil/i);
         if (nameExtracted) {
             entityName = nameExtracted[1].trim();
         }
@@ -302,6 +411,11 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
         || raw.model_id
         || raw.record_id
         || raw.data?.id
+        || parsedData?.entity_id
+        || parsedData?.resource_id
+        || parsedData?.model_id
+        || parsedData?.record_id
+        || parsedData?.id
         || (raw.notification_id || raw.notificationId ? rawRecordId : '')
         || ''
     );
@@ -313,7 +427,7 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
     if (!message && fieldChanges) message = buildFieldChangeDetail(fieldChanges);
     if (!message) {
         const verb = ACTION_VERBS[type] || type;
-        const label = ENTITY_LABELS[entity] || entity;
+        const label = getEntityDisplayLabel(entity);
         message = `${verb} data ${entityName || label}`;
     }
 
@@ -354,7 +468,7 @@ function showBrowserNotification(event: ServerEvent): void {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
         const verb = ACTION_VERBS[event.type] || event.type;
-        const label = ENTITY_LABELS[event.entity] || event.entity;
+        const label = getEntityDisplayLabel(event.entity);
         new Notification(`${event.user?.name || 'Sistem'} ${verb} ${label}`, {
             body: event.entity_name ? `${event.entity_name} — ${event.message}` : event.message,
             icon: '/images/brand-logos/logoD4.svg',
@@ -401,11 +515,33 @@ export const useNotificationStore = defineStore('notifications', {
             return state.events.filter(e => !e.is_read).length;
         },
 
-        recentForDropdown(state): Array<ServerEvent & { timeAgoStr: string; isRead: boolean }> {
+        recentForDropdown(state): Array<ServerEvent & {
+            timeAgoStr: string;
+            isRead: boolean;
+            entityLabel: string;
+            actionVerb: string;
+            details: string;
+            avatarInitials: string;
+            actorName: string;
+            actorRole: string;
+            targetLabel: string;
+        }> {
             return state.events.slice(0, 5).map(e => ({
                 ...e,
                 timeAgoStr: timeAgo(e.timestamp, state.currentTime),
                 isRead: !!e.is_read,
+                entityLabel: getEntityDisplayLabel(e.entity),
+                actionVerb: ACTION_VERBS[e.type] || e.type,
+                details: e.field_changes ? buildFieldChangeDetail(e.field_changes) : e.message,
+                avatarInitials: (e.user?.name || 'S')
+                    .split(' ')
+                    .map((w: string) => w.charAt(0))
+                    .join('')
+                    .substring(0, 2)
+                    .toUpperCase(),
+                actorName: e.user?.name || 'Sistem',
+                actorRole: isPlaceholderRole(e.user?.role) ? '' : (e.user?.role || ''),
+                targetLabel: buildNotificationTarget(e.entity, e.entity_name),
             }));
         },
 
@@ -416,13 +552,16 @@ export const useNotificationStore = defineStore('notifications', {
             actionVerb: string;
             details: string;
             avatarInitials: string;
+            actorName: string;
+            actorRole: string;
+            targetLabel: string;
         }> {
             const now = state.currentTime;
             return state.events.map(e => ({
                 ...e,
                 timeAgoStr: timeAgo(e.timestamp, now),
                 isRead: !!e.is_read,
-                entityLabel: ENTITY_LABELS[e.entity] || e.entity,
+                entityLabel: getEntityDisplayLabel(e.entity),
                 actionVerb: ACTION_VERBS[e.type] || e.type,
                 details: e.field_changes ? buildFieldChangeDetail(e.field_changes) : e.message,
                 avatarInitials: (e.user?.name || 'S')
@@ -431,6 +570,9 @@ export const useNotificationStore = defineStore('notifications', {
                     .join('')
                     .substring(0, 2)
                     .toUpperCase(),
+                actorName: e.user?.name || 'Sistem',
+                actorRole: isPlaceholderRole(e.user?.role) ? '' : (e.user?.role || ''),
+                targetLabel: buildNotificationTarget(e.entity, e.entity_name),
             }));
         },
 
@@ -455,6 +597,9 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         async init() {
             if (this.initialized) return;
+            const authStore = useAuthStore();
+            if (!authStore.authenticated || !authStore.isAdmin) return;
+
             this.initialized = true;
             this.loading = true;
             console.log('[NotifStore] Initializing...');
@@ -463,7 +608,18 @@ export const useNotificationStore = defineStore('notifications', {
                 Notification.requestPermission();
             }
 
-            await this.loadFromDatabase();
+            const canContinue = await this.loadFromDatabase();
+            if (!canContinue || !authStore.authenticated) {
+                this.loading = false;
+                this.initialized = false;
+                return;
+            }
+            await this.refreshStats();
+            if (!authStore.authenticated) {
+                this.loading = false;
+                this.initialized = false;
+                return;
+            }
             this.loading = false;
 
             // Start reactive clock for time-ago updates
@@ -475,10 +631,15 @@ export const useNotificationStore = defineStore('notifications', {
                     this.connected = connected;
                     if (!connected && !this.pollTimer) this.startPolling();
                     else if (connected && this.pollTimer) this.stopPolling();
+                    if (connected) this.refreshStats();
                 },
             );
 
             this.startPolling();
+        },
+
+        async refreshStats() {
+            this.stats = await notificationService.getStats();
         },
 
         startClock() {
@@ -501,12 +662,13 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         // LOAD FROM DATABASE — Full load on init
         // ═══════════════════════════════════════════════════════════
-        async loadFromDatabase() {
+        async loadFromDatabase(): Promise<boolean> {
             try {
-                const { notifications, unread_count, ok, error } = await notificationService.fetchAll();
+                const { notifications, unread_count, ok, error, status } = await notificationService.fetchAll();
                 if (!ok) {
                     console.warn('[NotifStore] DB load skipped:', error);
-                    return;
+                    if (status === 401) return false;
+                    return true;
                 }
                 console.log('[NotifStore] DB load:', notifications.length, 'items, unread:', unread_count);
 
@@ -531,8 +693,10 @@ export const useNotificationStore = defineStore('notifications', {
                 this.events = normalized.slice(0, MAX_EVENTS);
                 this.backendUnreadCount = unread_count;
                 this.pendingSSEIds.clear();
+                return true;
             } catch (err) {
                 console.warn('[NotifStore] DB load failed:', err);
+                return true;
             }
         },
 
@@ -541,9 +705,10 @@ export const useNotificationStore = defineStore('notifications', {
         // ═══════════════════════════════════════════════════════════
         async mergeFromDatabase() {
             try {
-                const { notifications, unread_count, ok, error } = await notificationService.fetchAll();
+                const { notifications, unread_count, ok, error, status } = await notificationService.fetchAll();
                 if (!ok) {
                     console.warn('[NotifStore] DB merge skipped:', error);
+                    if (status === 401) this.disconnect();
                     return;
                 }
                 if (!notifications || notifications.length === 0) {
@@ -678,11 +843,16 @@ export const useNotificationStore = defineStore('notifications', {
                 const now = Date.now();
 
                 // 1. Check tracked actions — did the current user just do this?
-                const matchIdx = this.trackedActions.findIndex(a =>
-                    a.entity === event.entity &&
-                    String(a.entity_id) === String(event.entity_id) &&
-                    (now - a.timestamp) < 20_000 // 20s window
-                );
+                const matchIdx = this.trackedActions.findIndex(a => {
+                    const actionEntity = normalizeEntityKey(a.entity);
+                    const eventEntity = normalizeEntityKey(event.entity);
+                    const actionId = String(a.entity_id || '');
+                    const eventId = String(event.entity_id || '');
+
+                    return actionEntity === eventEntity
+                        && (!actionId || !eventId || actionId === eventId)
+                        && (now - a.timestamp) < 20_000; // 20s window
+                });
 
                 if (matchIdx !== -1) {
                     const currentUser = getCurrentUser();
@@ -890,13 +1060,22 @@ export const useNotificationStore = defineStore('notifications', {
         // allows us to attribute it to the current user.
         // ═══════════════════════════════════════════════════════════
         trackSelfAction(entity: string, entity_id: string) {
+            const normalizedEntity = normalizeEntityKey(entity);
+            const normalizedId = String(entity_id || '');
+            const now = Date.now();
+            const duplicate = this.trackedActions.some(a =>
+                normalizeEntityKey(a.entity) === normalizedEntity
+                && String(a.entity_id || '') === normalizedId
+                && (now - a.timestamp) < 2_000
+            );
+            if (duplicate) return;
+
             this.trackedActions.push({
-                entity,
-                entity_id: String(entity_id),
-                timestamp: Date.now(),
+                entity: normalizedEntity,
+                entity_id: normalizedId,
+                timestamp: now,
             });
             // Cleanup old entries (> 30s)
-            const now = Date.now();
             if (this.trackedActions.length > 30) {
                 this.trackedActions = this.trackedActions.filter(a => (now - a.timestamp) < 30_000);
             }

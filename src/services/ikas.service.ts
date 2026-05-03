@@ -1,4 +1,5 @@
 import { api, ApiRequestError } from '@/config/api';
+import { config } from '@/config/env';
 import type {
     IkasPayload,
     IkasResponse,
@@ -24,6 +25,7 @@ import type {
     JawabanProteksiPayload,
     JawabanDeteksiPayload,
     JawabanGulihPayload,
+    IkasAuditLogListResponse,
     JawabanResponse,
     JawabanGulihResponse,
 } from '@/types/ikas.types';
@@ -35,6 +37,29 @@ import type {
 export const ikasService = {
     async deleteIkas(id: string): Promise<any> {
         return api.delete<any>(`/api/maturity/ikas/${id}`);
+    },
+    async exportIkasPdf(id: string): Promise<Response> {
+        const cleanBaseUrl = config.api.baseUrl.replace(/\/$/, '');
+        const response = await fetch(`${cleanBaseUrl}/api/maturity/ikas/${id}/export`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                Accept: 'application/pdf',
+            },
+        });
+
+        if (!response.ok) {
+            let message = `HTTP Error ${response.status}`;
+            try {
+                const result = await response.json();
+                message = result.message || message;
+            } catch {
+                message = response.statusText || message;
+            }
+            throw new Error(message);
+        }
+
+        return response;
     },
     resolveKategoriKey(kategori: string): 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih' {
         const normalized = String(kategori || '').toLowerCase();
@@ -76,6 +101,13 @@ export const ikasService = {
         });
     },
 
+    /** Request edit for a validated IKAS record */
+    async requestEditIkas(id: string, reason?: string): Promise<any> {
+        return api.post<any>(`/api/maturity/ikas/${id}/request-edit`, {
+            reason: reason || ''
+        });
+    },
+
     /** Reject an edit request for an IKAS record */
     async rejectEditIkas(id: string, reason?: string): Promise<any> {
         return api.put<any>(`/api/maturity/ikas/${id}/reject-edit`, {
@@ -105,6 +137,14 @@ export const ikasService = {
             }
             return null;
         }
+    },
+
+    /** Get IKAS audit logs, optionally filtered by IKAS ID. */
+    async getIkasAuditLogs(ikasId?: string | number): Promise<IkasAuditLogListResponse> {
+        const query = ikasId
+            ? `?ikas_id=${encodeURIComponent(String(ikasId))}`
+            : '';
+        return api.get<IkasAuditLogListResponse>(`/api/maturity/ikas-audit-logs${query}`);
     },
 
     /** Update an existing IKAS record */

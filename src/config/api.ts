@@ -118,6 +118,96 @@ class ApiClient {
         return method === 'GET';
     }
 
+    private getMutationTrackTarget(endpoint: string, method: HttpMethod, body?: any): { entity: string; id: string } | null {
+        if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return null;
+
+        const cleanPath = endpoint.split('?')[0].replace(/^\/+/, '');
+        if (
+            /^api\/(login|logout|refresh|register|mfa)(\/|$)/.test(cleanPath) ||
+            /^api\/notifications(\/|$)/.test(cleanPath)
+        ) {
+            return null;
+        }
+
+        const segments = cleanPath.split('/').filter(Boolean);
+        if (segments[0] === 'api') segments.shift();
+        if (!segments.length) return null;
+
+        const bodyId = body && !(body instanceof FormData) && typeof body === 'object'
+            ? String(body.id || body.entity_id || body.resource_id || body.record_id || '')
+            : '';
+        const idFrom = (index: number) => segments[index] && !['review', 'validate', 'approve-edit', 'reject-edit', 'request-edit'].includes(segments[index])
+            ? segments[index]
+            : '';
+
+        if (segments[0] === 'maturity') {
+            const resource = segments[1] || '';
+            const maturityEntityMap: Record<string, string> = {
+                ikas: 'ikas',
+                domain: 'domain',
+                kategori: 'category',
+                'sub-kategori': 'sub_category',
+                'ruang-lingkup': 'ruang_lingkup',
+                identifikasi: 'ikas',
+                proteksi: 'ikas',
+                deteksi: 'ikas',
+                gulih: 'ikas',
+                'pertanyaan-identifikasi': 'pertanyaan_ikas',
+                'pertanyaan-proteksi': 'pertanyaan_ikas',
+                'pertanyaan-deteksi': 'pertanyaan_ikas',
+                'pertanyaan-gulih': 'pertanyaan_ikas',
+                'jawaban-identifikasi': 'jawaban_ikas',
+                'jawaban-proteksi': 'jawaban_ikas',
+                'jawaban-deteksi': 'jawaban_ikas',
+                'jawaban-gulih': 'jawaban_ikas',
+            };
+            const entity = maturityEntityMap[resource];
+            return entity ? { entity, id: idFrom(2) || bodyId } : null;
+        }
+
+        if (segments[0] === 'kelas' && segments[2] === 'materi') return { entity: 'materi', id: bodyId };
+        if (segments[0] === 'kelas' && segments[2] === 'kuis') return { entity: 'kuis', id: bodyId };
+        if (segments[0] === 'kuis' && segments[2] === 'soal') return { entity: 'soal', id: bodyId };
+        if (segments[0] === 'materi' && segments[2] === 'file-pendukung') return { entity: 'file_pendukung', id: bodyId };
+        if (segments[0] === 'se' && segments[1] === 'edit-requests') return { entity: 'se_edit_request', id: idFrom(2) || bodyId };
+
+        const entityMap: Record<string, string> = {
+            perusahaan: 'stakeholder',
+            users: 'user',
+            role: 'role',
+            jabatan: 'jabatan',
+            pic: 'pic',
+            csirt: 'csirt',
+            sdm_csirt: 'sdm_csirt',
+            se: 'se_csirt',
+            sektor: 'sektor',
+            sub_sektor: 'sub_sektor',
+            kelas: 'kelas',
+            materi: 'materi',
+            'file-pendukung': 'file_pendukung',
+            kuis: 'kuis',
+            soal: 'soal',
+            aktivitas: 'aktivitas',
+            kegiatan: 'kegiatan',
+            casbin: 'casbin_policy',
+        };
+
+        const entity = entityMap[segments[0]];
+        return entity ? { entity, id: idFrom(1) || bodyId } : null;
+    }
+
+    private async trackMutationForNotification(endpoint: string, method: HttpMethod, body?: any): Promise<void> {
+        const target = this.getMutationTrackTarget(endpoint, method, body);
+        if (!target) return;
+
+        try {
+            const { useNotificationStore } = await import('@/stores/notifications');
+            useNotificationStore().trackSelfAction(target.entity, target.id);
+        } catch {
+            // Notification tracking is best-effort and must never block API calls.
+        }
+    }
+
     private async waitTurn(): Promise<void> {
         const previous = this.requestQueue;
         let release!: () => void;
@@ -149,6 +239,10 @@ class ApiClient {
         const cleanBaseUrl = this.baseUrl.replace(/\/$/, '');
         const cleanEndpoint = endpoint.replace(/^\//, '');
         const url = `${cleanBaseUrl}/${cleanEndpoint}`;
+
+        if (!isRetry) {
+            await this.trackMutationForNotification(cleanEndpoint, method, body);
+        }
 
         const isFormData = body instanceof FormData;
         const isUrlEncoded = body instanceof URLSearchParams;

@@ -1,5 +1,5 @@
 import { config } from '@/config/env';
-import { api } from '@/config/api';
+import { api, ApiRequestError } from '@/config/api';
 import type { NotificationStats } from '@/types/notification.types';
 
 /**
@@ -29,6 +29,7 @@ export type NotificationFetchResult = {
     notifications: any[];
     unread_count: number;
     ok: boolean;
+    status?: number;
     error?: string;
 };
 
@@ -40,6 +41,22 @@ const IGNORED_TYPES = new Set([
 
 /** Delay between SSE reconnect attempts in ms */
 const RECONNECT_INTERVAL_MS = 10_000;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_COOLDOWN_MS = 5 * 60_000;
+const SSE_EVENT_NAMES = [
+    'notification',
+    'notifications',
+    'created',
+    'updated',
+    'deleted',
+    'create',
+    'update',
+    'delete',
+    'activity',
+    'data-change',
+    'database-change',
+    'db-change',
+];
 
 class NotificationService {
     private eventSource: EventSource | null = null;
@@ -77,6 +94,48 @@ class NotificationService {
         return false;
     }
 
+    private parseEventPayload(event: MessageEvent): any | null {
+        const rawData = event.data;
+        if (rawData == null || rawData === '') return null;
+
+        let parsed: any = rawData;
+        if (typeof rawData === 'string') {
+            try {
+                parsed = JSON.parse(rawData);
+            } catch {
+                if (IGNORED_TYPES.has(rawData.toLowerCase())) return null;
+                parsed = { message: rawData };
+            }
+        }
+
+        const sseEventType = event.type && event.type !== 'message' ? event.type : '';
+        if (parsed && typeof parsed === 'object' && sseEventType) {
+            const hasActionType = !!(parsed.type || parsed.event_type || parsed.action);
+            parsed = {
+                ...parsed,
+                ...(hasActionType ? {} : { type: sseEventType }),
+            };
+        }
+
+        if (parsed && typeof parsed === 'object' && parsed.data && typeof parsed.data === 'object') {
+            const envelopeType = parsed.type || parsed.event_type || parsed.action || sseEventType;
+            const payloadType = parsed.data.type || parsed.data.event_type || parsed.data.action;
+            parsed = {
+                ...parsed.data,
+                ...(payloadType ? {} : { type: envelopeType }),
+                notification_id: parsed.notification_id || parsed.id_notification || parsed.data.notification_id || parsed.data.id_notification,
+            };
+        }
+
+        return this.normalizeToServerEvent(parsed);
+    }
+
+    private handleIncomingEvent = (event: MessageEvent): void => {
+        const data = this.parseEventPayload(event);
+        if (!data || this.isPingEvent(data)) return;
+        this.onEventCallback?.(data);
+    };
+
     /**
      * Open the SSE connection to /api/events.
      * @param onEvent Called for each real (non-ping) incoming event.
@@ -110,6 +169,12 @@ class NotificationService {
                 }
             };
 
+            this.eventSource.onmessage = this.handleIncomingEvent;
+
+            SSE_EVENT_NAMES.forEach((eventName) => {
+                this.eventSource?.addEventListener(eventName, this.handleIncomingEvent as EventListener);
+            });
+
             this.eventSource.onerror = () => {
                 console.warn('[NotifService] SSE error, reconnecting...');
                 this.closeConnection();
@@ -125,11 +190,22 @@ class NotificationService {
 
     private scheduleReconnect(): void {
         if (this.reconnectTimer) return;
-        const delay = RECONNECT_INTERVAL_MS;
         this.reconnectAttempt++;
+
+        if (this.reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+            console.warn('[NotifService] SSE unavailable; falling back to polling for now.');
+            this.reconnectTimer = setTimeout(() => {
+                this.reconnectTimer = null;
+                this.reconnectAttempt = 0;
+                if (this.onEventCallback) this.openConnection();
+            }, RECONNECT_COOLDOWN_MS);
+            return;
+        }
+
+        const delay = Math.min(RECONNECT_INTERVAL_MS * this.reconnectAttempt, 60_000);
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
-            this.openConnection();
+            if (this.onEventCallback) this.openConnection();
         }, delay);
     }
 
@@ -219,6 +295,7 @@ class NotificationService {
                 notifications: [],
                 unread_count: 0,
                 ok: false,
+                status: err instanceof ApiRequestError ? err.status : undefined,
                 error: err instanceof Error ? err.message : 'Failed to fetch notifications',
             };
         }

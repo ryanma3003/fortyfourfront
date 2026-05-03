@@ -62,6 +62,36 @@ export interface IkasResponse {
     updated_at: string;
 }
 
+export interface IkasAuditLog {
+    id: string | number;
+    ikas_id?: string | number;
+    id_ikas?: string | number;
+    id_perusahaan?: string | number;
+    perusahaan_id?: string | number;
+    action?: string;
+    aksi?: string;
+    event?: string;
+    status?: string;
+    title?: string;
+    judul?: string;
+    description?: string;
+    deskripsi?: string;
+    note?: string;
+    catatan?: string;
+    actor?: string;
+    user?: string | { name?: string; nama?: string; email?: string };
+    created_by?: string;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface IkasAuditLogListResponse {
+    data: IkasAuditLog[];
+    message?: string;
+    status?: string;
+    total?: string | number;
+}
+
 // ─── POST /api/maturity/domain ─────────────────────────────────────
 
 export interface DomainPayload {

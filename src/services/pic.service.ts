@@ -1,4 +1,5 @@
 import { api, ApiRequestError } from '@/config/api';
+import { useNotificationStore } from '@/stores/notifications';
 import type { Pic, CreatePicPayload, UpdatePicPayload } from '@/types/pic.types';
 
 /**
@@ -68,6 +69,7 @@ export const picService = {
      * Update a PIC by ID (company assignment cannot be changed)
      */
     async update(id: string | number, payload: UpdatePicPayload): Promise<Pic> {
+        useNotificationStore().trackSelfAction('pic', String(id));
         return api.put<Pic>(`/api/pic/${id}`, payload);
     },
 
@@ -75,6 +77,7 @@ export const picService = {
      * Delete a PIC by ID
      */
     async delete(id: string | number): Promise<void> {
+        useNotificationStore().trackSelfAction('pic', String(id));
         return api.delete<void>(`/api/pic/${id}`);
     },
 };
