@@ -83,61 +83,62 @@ jobs:
           tags: tag:ci
           ping: ${{ secrets.VPS_TAILSCALE_HOST }}
 
+      - name: Set up SSH key
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Trust VPS host key over Tailscale
+        run: |
+          ssh-keyscan -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_TAILSCALE_HOST }}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
       - name: Deploy to VPS over SSH over Tailscale
-        uses: appleboy/ssh-action@v1
-        with:
-          # Set VPS_HOST to the server's Tailscale IP or MagicDNS name.
-          host: ${{ secrets.VPS_TAILSCALE_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "${{ secrets.VPS_PORT }}" \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_TAILSCALE_HOST }}" /bin/sh <<'EOF'
+          set -e
 
-            # ── Variables ───────────────────────────────────
-            APP_DIR="${{ secrets.VPS_APP_DIR }}"
-            IMAGE="ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:latest"
+          APP_DIR="${{ secrets.VPS_APP_DIR }}"
+          IMAGE="ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:latest"
 
-            # ── Login to GHCR ───────────────────────────────
-            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USER }}" --password-stdin
+          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USER }}" --password-stdin
+          docker pull "$IMAGE"
 
-            # ── Pull latest image ───────────────────────────
-            docker pull "$IMAGE"
+          mkdir -p "$APP_DIR" || { echo "Cannot create $APP_DIR"; exit 1; }
+          cd "$APP_DIR"
 
-            # ── Ensure app directory exists ──────────────────
-            mkdir -p "$APP_DIR" || { echo "❌ Cannot create $APP_DIR — pre-create it on the server with correct ownership"; exit 1; }
-            cd "$APP_DIR"
+          cat > docker-compose.yml <<'COMPOSE_EOF'
+          services:
+            fortyfour-front:
+              image: IMAGE_PLACEHOLDER
+              container_name: fortyfour-front
+              restart: unless-stopped
+              ports:
+                - "127.0.0.1:3080:3080"
+              healthcheck:
+                test: ["CMD", "wget", "-qO-", "http://localhost:3080/"]
+                interval: 30s
+                timeout: 3s
+                start_period: 5s
+                retries: 3
+              logging:
+                driver: json-file
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+          COMPOSE_EOF
 
-            # ── Write docker-compose.yml on the VPS ─────────
-            cat > docker-compose.yml <<'COMPOSE_EOF'
-            services:
-              fortyfour-front:
-                image: IMAGE_PLACEHOLDER
-                container_name: fortyfour-front
-                restart: unless-stopped
-                ports:
-                  - "127.0.0.1:3080:3080"
-                healthcheck:
-                  test: ["CMD", "wget", "-qO-", "http://localhost:3080/"]
-                  interval: 30s
-                  timeout: 3s
-                  start_period: 5s
-                  retries: 3
-                logging:
-                  driver: json-file
-                  options:
-                    max-size: "10m"
-                    max-file: "3"
-            COMPOSE_EOF
-
-            # Replace placeholder with actual image
-            sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|g" docker-compose.yml
-
-            # ── Deploy ──────────────────────────────────────
-            docker compose pull
-            docker compose up -d --force-recreate --remove-orphans
-
-            # ── Cleanup old images ──────────────────────────
-            docker image prune -af --filter "until=168h"
-
-            echo "✅ Deployment complete"
+          sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|g" docker-compose.yml
+          docker compose pull
+          docker compose up -d --force-recreate --remove-orphans
+          docker image prune -af --filter "until=168h"
+          echo "Deployment complete"
+          EOF
