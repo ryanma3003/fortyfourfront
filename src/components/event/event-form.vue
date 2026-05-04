@@ -1,9 +1,10 @@
 <script lang="ts">
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { useEventStore } from "../../stores/event";
 import LmsEditor from "../lms/LmsEditor.vue";
+import { useEventStore } from "../../stores/event";
 import { useRouter, useRoute } from "vue-router";
+import type { CreateKegiatanPayload } from "../../types/kegiatan.types";
 
 export default {
   components: { Pageheader, LmsEditor },
@@ -16,27 +17,30 @@ export default {
     const pageTitle = computed(() => (isEdit.value ? "Edit Event" : "Tambah Event"));
 
     const dataToPass = computed(() => ({
-      title: { label: "Event & Berita", path: "/event" },
+      title: { label: "Event & Kegiatan", path: "/event" },
       currentpage: pageTitle.value,
       activepage: pageTitle.value,
     }));
 
-    // Form state
+    // Form state matching API payload
     const formEvent = ref({
       judul: "",
-      kategori: "Berita",
-      status: "upcoming" as "upcoming" | "ongoing" | "past",
-      tanggal_mulai: "",
-      tanggal_selesai: "",
-      lokasi: "",
       deskripsi: "",
-      konten: "",
-      thumbnail: "",
+      lokasi: "",
+      tanggal: "", // datetime-local input value
     });
 
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
     const isLoading = ref(isEdit.value);
+
+    const isRichTextEmpty = (value: string): boolean => {
+      const plainText = value
+        .replace(/<[^>]*>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .trim();
+      return !plainText || value.trim() === "<p><br></p>";
+    };
 
     // Toast
     const showToast = ref(false);
@@ -49,22 +53,53 @@ export default {
       setTimeout(() => (showToast.value = false), 3000);
     };
 
+    /**
+     * Convert an ISO 8601 date string to datetime-local input format
+     * e.g. "2024-12-31T15:00:00Z" → "2024-12-31T22:00" (local)
+     */
+    const toDatetimeLocal = (isoStr: string): string => {
+      if (!isoStr) return "";
+      try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        // Format: YYYY-MM-DDTHH:MM
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      } catch {
+        return isoStr;
+      }
+    };
+
+    /**
+     * Convert datetime-local value to ISO 8601 string for API
+     * e.g. "2024-12-31T22:00" → "2024-12-31T15:00:00Z"
+     */
+    const toISOString = (localStr: string): string => {
+      if (!localStr) return "";
+      try {
+        const d = new Date(localStr);
+        if (isNaN(d.getTime())) return localStr;
+        return d.toISOString();
+      } catch {
+        return localStr;
+      }
+    };
+
     onMounted(async () => {
       if (isEdit.value) {
         try {
-          await eventStore.fetchEvents();
-          const ev = eventStore.getEventById(route.params.id as string);
+          // Fetch event detail from API
+          const ev = await eventStore.fetchEventById(Number(route.params.id));
           if (ev) {
             formEvent.value = {
               judul: ev.judul || "",
-              kategori: ev.kategori || "Berita",
-              status: ev.status || "upcoming",
-              tanggal_mulai: ev.tanggal_mulai || "",
-              tanggal_selesai: ev.tanggal_selesai || "",
-              lokasi: ev.lokasi || "",
               deskripsi: ev.deskripsi || "",
-              konten: ev.konten || "",
-              thumbnail: ev.thumbnail || "",
+              lokasi: ev.lokasi || "",
+              tanggal: toDatetimeLocal(ev.tanggal),
             };
           } else {
             showNotification("Event tidak ditemukan", "error");
@@ -72,6 +107,7 @@ export default {
           }
         } catch (e) {
            showNotification("Gagal memuat event", "error");
+           router.push("/event");
         } finally {
           isLoading.value = false;
         }
@@ -81,11 +117,9 @@ export default {
     const validate = (): boolean => {
       formErrors.value = {};
       if (!formEvent.value.judul.trim()) formErrors.value.judul = "Judul wajib diisi";
-      if (!formEvent.value.kategori) formErrors.value.kategori = "Kategori wajib diisi";
-      if (!formEvent.value.deskripsi.trim()) formErrors.value.deskripsi = "Deskripsi wajib diisi";
-      if (!formEvent.value.konten.trim() || formEvent.value.konten === "<p><br></p>") {
-        formErrors.value.konten = "Konten detail wajib diisi";
-      }
+      if (isRichTextEmpty(formEvent.value.deskripsi)) formErrors.value.deskripsi = "Deskripsi wajib diisi";
+      if (!formEvent.value.lokasi.trim()) formErrors.value.lokasi = "Lokasi wajib diisi";
+      if (!formEvent.value.tanggal) formErrors.value.tanggal = "Tanggal wajib diisi";
       return Object.keys(formErrors.value).length === 0;
     };
 
@@ -93,15 +127,32 @@ export default {
       if (!validate()) return;
 
       isSaving.value = true;
+
+      const payload: CreateKegiatanPayload = {
+        judul: formEvent.value.judul.trim(),
+        deskripsi: formEvent.value.deskripsi.trim(),
+        lokasi: formEvent.value.lokasi.trim(),
+        tanggal: toISOString(formEvent.value.tanggal),
+      };
+
       try {
         if (isEdit.value) {
-          await eventStore.updateEvent(route.params.id as string, formEvent.value);
-          showNotification("Event berhasil diperbarui!", "success");
+          const result = await eventStore.updateEvent(route.params.id as string, payload);
+          if (result.success) {
+            showNotification("Event berhasil diperbarui!", "success");
+            setTimeout(() => router.push("/event"), 600);
+          } else {
+            showNotification(result.error || "Gagal menyimpan", "error");
+          }
         } else {
-          await eventStore.createEvent(formEvent.value);
-          showNotification("Event berhasil ditambahkan!", "success");
+          const result = await eventStore.createEvent(payload);
+          if (result.success) {
+            showNotification("Event berhasil ditambahkan!", "success");
+            setTimeout(() => router.push("/event"), 600);
+          } else {
+            showNotification(result.error || "Gagal menyimpan", "error");
+          }
         }
-        setTimeout(() => router.push("/event"), 600);
       } catch (e: any) {
         showNotification(e.message || "Gagal menyimpan", "error");
       } finally {
@@ -152,7 +203,7 @@ export default {
             </div>
             <div>
               <div class="card-title mb-0 text-white fw-bold header-card-title">{{ pageTitle }}</div>
-              <div class="header-subtitle mt-1">{{ isEdit ? 'Perbarui informasi acara/berita' : 'Buat acara/berita baru' }}</div>
+              <div class="header-subtitle mt-1">{{ isEdit ? 'Perbarui informasi event' : 'Buat event / kegiatan baru' }}</div>
             </div>
           </div>
         </div>
@@ -166,116 +217,54 @@ export default {
             <div class="row g-4">
               
               <!-- Judul -->
-              <div class="col-md-8">
-                <label class="form-label fw-semibold">Judul / Nama Acara <span class="text-danger">*</span></label>
+              <div class="col-md-12">
+                <label class="form-label fw-semibold">Judul Event <span class="text-danger">*</span></label>
                 <input
                   v-model="formEvent.judul"
                   type="text"
                   class="form-control kse-modal-input"
                   :class="{ 'is-invalid': formErrors.judul }"
-                  placeholder="Masukkan judul..."
+                  placeholder="Masukkan judul event..."
                 />
                 <div v-if="formErrors.judul" class="invalid-feedback">{{ formErrors.judul }}</div>
               </div>
 
-              <!-- Kategori -->
-              <div class="col-md-4">
-                <label class="form-label fw-semibold">Kategori <span class="text-danger">*</span></label>
-                <select v-model="formEvent.kategori" class="form-select kse-modal-input" :class="{ 'is-invalid': formErrors.kategori }">
-                  <option value="Berita">Berita</option>
-                  <option value="Event">Event</option>
-                  <option value="Workshop">Workshop</option>
-                  <option value="Acara">Acara Lainnya</option>
-                </select>
-                <div v-if="formErrors.kategori" class="invalid-feedback">{{ formErrors.kategori }}</div>
-              </div>
-
-              <!-- Status -->
-              <div class="col-md-4">
-                <label class="form-label fw-semibold">Status Acara <span class="text-danger">*</span></label>
-                <select v-model="formEvent.status" class="form-select kse-modal-input">
-                  <option value="upcoming">Upcoming (Akan Datang)</option>
-                  <option value="ongoing">Sedang Berjalan</option>
-                  <option value="past">Past (Selesai)</option>
-                </select>
-              </div>
-
-              <!-- Tanggal Mulai -->
-              <div class="col-md-4">
-                <label class="form-label fw-semibold">Tanggal Mulai</label>
-                <input
-                  v-model="formEvent.tanggal_mulai"
-                  type="date"
-                  class="form-control kse-modal-input"
-                />
-              </div>
-
-              <!-- Tanggal Selesai -->
-              <div class="col-md-4">
-                <label class="form-label fw-semibold">Tanggal Selesai</label>
-                <input
-                  v-model="formEvent.tanggal_selesai"
-                  type="date"
-                  class="form-control kse-modal-input"
-                />
-              </div>
-
               <!-- Lokasi -->
-              <div class="col-md-12">
-                <label class="form-label fw-semibold">Lokasi Acara</label>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Lokasi <span class="text-danger">*</span></label>
                 <input
                   v-model="formEvent.lokasi"
                   type="text"
                   class="form-control kse-modal-input"
-                  placeholder="Contoh: Zoom, Jakarta, dsb..."
+                  :class="{ 'is-invalid': formErrors.lokasi }"
+                  placeholder="Contoh: Zoom, Jakarta Convention Center, dsb..."
                 />
+                <div v-if="formErrors.lokasi" class="invalid-feedback">{{ formErrors.lokasi }}</div>
               </div>
 
-              <!-- URL Thumbnail -->
-              <div class="col-md-12">
-                <label class="form-label fw-semibold">URL Cover / Thumbnail (Opsional)</label>
-                <div class="d-flex flex-column gap-3">
-                  <input
-                    v-model="formEvent.thumbnail"
-                    type="text"
-                    class="form-control kse-modal-input"
-                    placeholder="Masukkan URL Gambar (Misal: https://example.com/foto.jpg)"
-                  />
-                  <div v-if="formEvent.thumbnail" class="thumbnail-preview-box rounded-4 border p-2 bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative" style="height: 160px; width: 250px;">
-                    <img :src="formEvent.thumbnail" class="w-100 h-100 object-fit-cover rounded-3" alt="Preview" @error="formEvent.thumbnail = ''" />
-                    <button @click="formEvent.thumbnail = ''" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width: 28px; height: 28px; padding: 0;">
-                      <i class="ri-close-line"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Deskripsi Singkat -->
-              <div class="col-12">
-                <label class="form-label fw-semibold">Deskripsi Singkat <span class="text-danger">*</span></label>
-                <textarea
-                  v-model="formEvent.deskripsi"
+              <!-- Tanggal -->
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Tanggal & Waktu <span class="text-danger">*</span></label>
+                <input
+                  v-model="formEvent.tanggal"
+                  type="datetime-local"
                   class="form-control kse-modal-input"
-                  :class="{ 'is-invalid': formErrors.deskripsi }"
-                  rows="3"
-                  placeholder="Deskripsi singkat yang akan muncul di halaman list..."
-                ></textarea>
-                <div v-if="formErrors.deskripsi" class="invalid-feedback">{{ formErrors.deskripsi }}</div>
+                  :class="{ 'is-invalid': formErrors.tanggal }"
+                />
+                <div v-if="formErrors.tanggal" class="invalid-feedback">{{ formErrors.tanggal }}</div>
               </div>
 
-              <!-- Konten / Editor -->
+              <!-- Deskripsi -->
               <div class="col-12">
-                <label class="form-label fw-semibold">Isi Berita / Detail Event <span class="text-danger">*</span></label>
-                <div :class="{'border border-danger rounded': formErrors.konten}">
-                  <LmsEditor
-                    v-model="formEvent.konten"
-                    variant="full"
-                    :min-height="400"
-                    :has-error="!!formErrors.konten"
-                    placeholder="Tulis lengkap deskripsi, jadwal acara, berita, dll..."
-                  />
-                </div>
-                <div v-if="formErrors.konten" class="text-danger fs-12 mt-1">{{ formErrors.konten }}</div>
+                <label class="form-label fw-semibold">Deskripsi <span class="text-danger">*</span></label>
+                <LmsEditor
+                  v-model="formEvent.deskripsi"
+                  variant="full"
+                  :min-height="320"
+                  :has-error="!!formErrors.deskripsi"
+                  placeholder="Tulis deskripsi detail event di sini... Gunakan heading, list, link, gambar, tabel, dan format teks lainnya."
+                />
+                <div v-if="formErrors.deskripsi" class="text-danger fs-12 mt-1">{{ formErrors.deskripsi }}</div>
               </div>
 
               <!-- Actions -->

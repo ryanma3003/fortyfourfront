@@ -38,14 +38,18 @@ export interface ServerEvent {
 
 /** Statistics from GET /api/events/stats */
 export interface NotificationStats {
-    total: number;
-    unread: number;
-    by_type: {
-        created: number;
-        updated: number;
-        deleted: number;
+    total?: number;
+    unread?: number;
+    active_connections?: number;
+    connections?: number;
+    users?: number;
+    by_type?: {
+        created?: number;
+        updated?: number;
+        deleted?: number;
     };
-    by_entity: Record<string, number>;
+    by_entity?: Record<string, number>;
+    [key: string]: any;
 }
 
 /**
@@ -69,6 +73,20 @@ export const ENTITY_LABELS: Record<string, string> = {
     domain: 'Domain IKAS',
     category: 'Kategori IKAS',
     sub_category: 'Sub-Kategori IKAS',
+    ruang_lingkup: 'Ruang Lingkup IKAS',
+    pertanyaan_ikas: 'Pertanyaan IKAS',
+    jawaban_ikas: 'Jawaban IKAS',
+    sektor: 'Sektor',
+    sub_sektor: 'Sub Sektor',
+    kelas: 'Kelas LMS',
+    materi: 'Materi LMS',
+    file_pendukung: 'File Pendukung',
+    kuis: 'Kuis LMS',
+    soal: 'Soal Kuis',
+    aktivitas: 'Aktivitas',
+    kegiatan: 'Kegiatan',
+    se_edit_request: 'Permintaan Edit SE',
+    casbin_policy: 'Hak Akses',
 };
 
 /**

@@ -112,8 +112,7 @@ export const useKseStore = defineStore('kse', {
       if (stored) {
         try {
           this.kseDataMap = JSON.parse(stored);
-        } catch (e) {
-          console.error('Failed to parse stored KSE data:', e);
+        } catch {
           this.kseDataMap = {};
         }
       }

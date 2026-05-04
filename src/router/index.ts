@@ -166,6 +166,31 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/event/event-form.vue"),
             },
             {
+              path: 'event/view/:id',
+              name: 'Event View',
+              component: () => import("../components/event/event-detail.vue"),
+            },
+            {
+              path: 'event/berita',
+              name: 'Berita',
+              component: () => import("../components/event/berita-list.vue"),
+            },
+            {
+              path: 'event/berita/create',
+              name: 'Berita Create',
+              component: () => import("../components/event/berita-form.vue"),
+            },
+            {
+              path: 'event/berita/edit/:id',
+              name: 'Berita Edit',
+              component: () => import("../components/event/berita-form.vue"),
+            },
+            {
+              path: 'event/berita/view/:id',
+              name: 'Berita View',
+              component: () => import("../components/event/berita-detail.vue"),
+            },
+            {
               path: 'kse-list-admin',
               name: 'Admin KSE List',
               component: () => import("../components/dashboards/kse-list-admin.vue"),

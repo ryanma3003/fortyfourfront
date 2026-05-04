@@ -13,6 +13,9 @@ const notifStore = useNotificationStore();
 const filterStore = useDashboardFilterStore();
 
 const emit = defineEmits(['drill-down']);
+const props = defineProps({
+    loading: { type: Boolean, default: false },
+});
 
 // Helper to filter dates globally
 function isInDateRange(createdAt, rangeStrArray) {
@@ -75,6 +78,8 @@ function timeAgo(dateVal) {
 }
 
 const kpis = computed(() => {
+    if (props.loading) return [];
+
     // Filter base array by global date filter and sector filter
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInDateRange(s.created_at, filterStore.dateRange);
@@ -349,7 +354,25 @@ const kpis = computed(() => {
 
 <template>
     <div class="row g-3">
-        <div v-for="(kpi, idx) in kpis" :key="kpi.label"
+        <template v-if="loading">
+            <div v-for="n in 5"
+                 :key="'kpi-skeleton-' + n"
+                 class="col-xl col-lg-4 col-md-4 col-sm-6 dw-fade-up">
+                <div class="dw-card dw-kpi-card-wrap">
+                    <div class="dw-card-body placeholder-glow" style="padding: 16px;">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="placeholder" style="width:38px;height:38px;border-radius:10px;"></span>
+                            <span class="placeholder" style="width:40px;height:40px;border-radius:50%;"></span>
+                        </div>
+                        <span class="placeholder col-5 mb-2" style="height:24px;border-radius:6px;"></span>
+                        <span class="placeholder col-8 d-block mb-2" style="height:12px;border-radius:6px;"></span>
+                        <span class="placeholder col-6 d-block" style="height:10px;border-radius:6px;"></span>
+                    </div>
+                </div>
+            </div>
+        </template>
+        <div v-else
+             v-for="(kpi, idx) in kpis" :key="kpi.label"
              class="col-xl col-lg-4 col-md-4 col-sm-6 dw-fade-up"
              :style="{ animationDelay: `${idx * 60}ms` }">
             <div class="dw-card dw-kpi-card-wrap" @click="$emit('drill-down', { type: kpi.label })">

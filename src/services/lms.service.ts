@@ -5,7 +5,7 @@ import type {
     LmsFilePendukung,
     LmsKuis, CreateKuisPayload, UpdateKuisPayload,
     LmsSoal, CreateSoalPayload, UpdateSoalPayload,
-    LmsDiskusi
+    LmsFeedback
 } from '@/types/lms.types';
 
 /**
@@ -50,13 +50,7 @@ export const lmsService = {
      * Create a new kelas (POST /api/kelas)
      */
     async createKelas(payload: CreateKelasPayload): Promise<LmsKelas> {
-        const body = {
-            judul: payload.nama_kelas,
-            nama_kelas: payload.nama_kelas,
-            deskripsi: payload.deskripsi,
-            thumbnail: payload.thumbnail,
-            status: payload.status,
-        };
+        const body = buildKelasPayload(payload);
         const response = await api.post<any>('/api/kelas', body);
         return normalizeKelas(response?.data ?? response);
     },
@@ -65,13 +59,7 @@ export const lmsService = {
      * Update an existing kelas (PUT /api/kelas/{id})
      */
     async updateKelas(id: string | number, payload: UpdateKelasPayload): Promise<LmsKelas> {
-        const body = {
-            judul: payload.nama_kelas,
-            nama_kelas: payload.nama_kelas,
-            deskripsi: payload.deskripsi,
-            thumbnail: payload.thumbnail,
-            status: payload.status,
-        };
+        const body = buildKelasPayload(payload);
         const response = await api.put<any>(`/api/kelas/${id}`, body);
         return normalizeKelas(response?.data ?? response);
     },
@@ -330,16 +318,27 @@ export const lmsService = {
         return api.delete(`/api/soal/${id}`);
     },
 
-    // ─── Diskusi ─────────────────────────────────────────────────
-    async getDiskusiByMateri(materiId: string | number): Promise<LmsDiskusi[]> {
-        const response = await api.get<any>(`/api/materi/${materiId}/diskusi`);
-        return unwrapDataArray(response).map(normalizeDiskusi);
-    },
-
-    async deleteDiskusi(id: string | number): Promise<void> {
-        return api.delete(`/api/diskusi/${id}`);
+    // ─── Feedback ────────────────────────────────────────────────
+    async getFeedbackByMateri(materiId: string | number): Promise<LmsFeedback[]> {
+        const response = await api.get<any>(`/api/materi/${materiId}/feedback/all`);
+        return unwrapDataArray(response).map(normalizeFeedback);
     },
 };
+
+function buildKelasPayload(payload: CreateKelasPayload | UpdateKelasPayload) {
+    const judul = payload.judul ?? payload.nama_kelas ?? '';
+    return {
+        judul,
+        deskripsi: payload.deskripsi ?? '',
+        durasi_jp: Number(payload.durasi_jp ?? 0),
+        informasi_umum: payload.informasi_umum ?? '',
+        kategori: payload.kategori ?? '',
+        penyelenggara: payload.penyelenggara ?? '',
+        syarat_pendaftaran: payload.syarat_pendaftaran ?? '',
+        target_peserta: payload.target_peserta ?? '',
+        thumbnail: payload.thumbnail ?? '',
+    };
+}
 
 function unwrapDataArray(response: any): any[] {
     if (!response) return [];
@@ -364,13 +363,21 @@ function unwrapDataArray(response: any): any[] {
 }
 
 function normalizeKelas(item: any): LmsKelas {
+    const judul = String(item?.judul ?? item?.nama_kelas ?? item?.nama ?? '').trim();
     return {
         ...item,
         id: item?.id ?? item?.kelas_id ?? '',
-        nama_kelas: String(item?.nama_kelas ?? item?.judul ?? item?.nama ?? '').trim(),
+        nama_kelas: judul,
+        judul,
         deskripsi: String(item?.deskripsi ?? item?.description ?? ''),
+        durasi_jp: Number(item?.durasi_jp ?? 0),
+        informasi_umum: String(item?.informasi_umum ?? ''),
+        kategori: String(item?.kategori ?? ''),
+        penyelenggara: String(item?.penyelenggara ?? ''),
+        syarat_pendaftaran: String(item?.syarat_pendaftaran ?? ''),
+        target_peserta: String(item?.target_peserta ?? ''),
         thumbnail: item?.thumbnail ?? item?.thumnail ?? '',
-        status: String(item?.status ?? 'draft'),
+        status: String(item?.status ?? 'published'),
     };
 }
 
@@ -469,14 +476,17 @@ function normalizeSoal(item: any): LmsSoal {
     };
 }
 
-function normalizeDiskusi(item: any): LmsDiskusi {
+function normalizeFeedback(item: any): LmsFeedback {
+    const feedback = String(item?.feedback ?? item?.komentar ?? item?.comment ?? item?.teks ?? item?.isi ?? '');
     return {
         ...item,
         id: item?.id ?? '',
         id_materi: item?.id_materi ?? item?.materi_id ?? '',
         id_user: item?.id_user ?? item?.user_id ?? '',
-        user_name: item?.user?.name ?? item?.user_name ?? 'User',
-        komentar: String(item?.komentar ?? item?.comment ?? item?.teks ?? ''),
+        user_name: item?.user?.name ?? item?.user?.nama ?? item?.user_name ?? item?.nama_user ?? item?.nama ?? 'User',
+        komentar: feedback,
+        feedback,
+        rating: item?.rating !== undefined ? Number(item.rating) : undefined,
         created_at: item?.created_at ?? '',
     };
 }

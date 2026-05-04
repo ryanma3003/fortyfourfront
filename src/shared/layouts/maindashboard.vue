@@ -4,7 +4,8 @@ import {
   reactive,
   onMounted,
   onBeforeUnmount,
-  computed
+  computed,
+  watch
 } from 'vue'
 
 import { switcherStore } from '../../stores/switcher'
@@ -14,9 +15,13 @@ import Footer from '../components/footer/footer.vue'
 import Switcher from '../components/switcher/switcher.vue'
 import BackToTop from '../components/backtotop/backtotop.vue'
 import NotificationToast from '../../components/notifications/NotificationToast.vue'
+import { useAuthStore } from '../../stores/auth'
+import { useNotificationStore } from '../../stores/notifications'
 
 // Reactive store
 const switcher = reactive(switcherStore())
+const authStore = useAuthStore()
+const notifStore = useNotificationStore()
 
 // Computed class
 const customClass = computed(() =>
@@ -40,10 +45,29 @@ const handleScroll = () => {
   }
 }
 
+const startNotifications = () => {
+  if (authStore.authenticated && authStore.isAdmin) {
+    notifStore.init()
+  }
+}
+
 onMounted(() => {
   window.addEventListener('scroll', handleScroll)
   switcher.retrieveFromLocalStorage()
+  startNotifications()
 })
+
+watch(
+  () => [authStore.authenticated, authStore.isAdmin],
+  ([isAuthenticated, isAdmin]) => {
+    if (isAuthenticated && isAdmin) {
+      notifStore.init()
+    } else if (!isAuthenticated) {
+      notifStore.disconnect()
+    }
+  },
+  { immediate: true }
+)
 
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', handleScroll)

@@ -14,6 +14,11 @@ import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useResikoStore } from "../../stores/resiko";
+import { aktivitasService } from "../../services/aktivitas.service";
+import type { Aktivitas, AktivitasPayload } from "../../types/aktivitas.types";
+import { ikasService } from "../../services/ikas.service";
+import type { IkasAuditLog } from "../../types/ikas.types";
+import LmsEditor from "../lms/LmsEditor.vue";
 
 const authStore = useAuthStore();
 const ikasStore = useIkasStore();
@@ -49,17 +54,427 @@ const FilePond = vueFilePond(
 
 const friends = ref<Pic[]>([]);
 const isLoadingPics = ref(false);
+const aktivitasList = ref<Aktivitas[]>([]);
+const ikasAuditLogs = ref<IkasAuditLog[]>([]);
+const selectedActivityYear = ref(String(new Date().getFullYear()));
+const jenisAktivitasOptions = ref<string[]>([]);
+const isLoadingAktivitas = ref(false);
+const isLoadingIkasAuditLogs = ref(false);
+const isSavingAktivitas = ref(false);
+const isActivityFormVisible = ref(false);
+const editingAktivitasId = ref<number | null>(null);
+const aktivitasForm = ref<AktivitasPayload>({
+  judul: "",
+  deskripsi: "",
+  jenis_aktivitas: [],
+  perusahaan_id: "",
+  tanggal_mulai: "",
+  tanggal_selesai: "",
+});
+const PROFILE_LOAD_STAGGER_MS = 80;
+const PROFILE_RELOAD_DEBOUNCE_MS = 450;
+const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+let profileLoadSeq = 0;
+let lastProfileLoadSlug = "";
+let lastProfileLoadAt = 0;
+let jenisAktivitasLoaded = false;
+let profileDependenciesPromise: Promise<void> | null = null;
+let profileLoadInFlightSlug = "";
 
-const loadPics = async () => {
+const isLatestProfileLoad = (token: number, slug: string) => (
+  token === profileLoadSeq && slug === stakeholderSlug.value
+);
+
+const initializeProfileDependencies = async () => {
+  if (profileDependenciesPromise) return profileDependenciesPromise;
+
+  profileDependenciesPromise = (async () => {
+    if (!stakeholdersStore.initialized) {
+      await stakeholdersStore.initialize();
+    }
+
+    await Promise.all([
+      ikasStore.initialize(),
+      Promise.resolve(kseStore.initialize()),
+      Promise.resolve(resikoStore.initialize()),
+      csirtStore.initialized ? Promise.resolve() : csirtStore.initialize(),
+      loadJenisAktivitas(),
+    ]);
+  })();
+
+  try {
+    await profileDependenciesPromise;
+  } finally {
+    profileDependenciesPromise = null;
+  }
+};
+
+const parseActivityDate = (value: string | null | undefined): Date | null => {
+  if (!value) return null;
+  const normalized = String(value).replace(" ", "T").replace(/Z$/i, "");
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatActivityDate = (value: string | null | undefined): string => {
+  const date = parseActivityDate(value);
+  if (!date) return "-";
+  return date.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const formatAuditLogDate = (value: string | null | undefined): string => {
+  const date = parseActivityDate(value);
+  if (!date) return "-";
+  return date.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getHtmlDescription = (value: string | null | undefined, fallback = "Tidak ada deskripsi."): string => {
+  return value && value.trim() ? value : fallback;
+};
+
+const toDateInputValue = (value: string | null | undefined): string => {
+  const date = parseActivityDate(value);
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const sortedAktivitas = computed(() => {
+  return [...aktivitasList.value].sort((a, b) => {
+    const dateA = parseActivityDate(a.tanggal_mulai || a.created_at)?.getTime() || 0;
+    const dateB = parseActivityDate(b.tanggal_mulai || b.created_at)?.getTime() || 0;
+    return dateB - dateA;
+  });
+});
+
+const currentActivityYear = computed(() => String(new Date().getFullYear()));
+
+const aktivitasByYear = computed(() => {
+  const grouped = new Map<string, Aktivitas[]>();
+
+  sortedAktivitas.value.forEach((item) => {
+    const date = parseActivityDate(item.tanggal_mulai || item.created_at);
+    const year = date ? String(date.getFullYear()) : "Tanpa Tahun";
+    grouped.set(year, [...(grouped.get(year) || []), item]);
+  });
+
+  return Array.from(grouped.entries()).map(([year, items]) => ({
+    year,
+    items,
+  }));
+});
+
+const activityYearOptions = computed(() => {
+  return aktivitasByYear.value.map((group) => group.year);
+});
+
+const filteredAktivitasByYear = computed(() => {
+  return aktivitasByYear.value.filter((group) => group.year === selectedActivityYear.value);
+});
+
+const selectedActivityCount = computed(() => {
+  return filteredAktivitasByYear.value.reduce((total, group) => total + group.items.length, 0);
+});
+
+const resetActivityYearToPresent = () => {
+  selectedActivityYear.value = currentActivityYear.value;
+};
+
+const displayedIkasAuditLogs = computed(() => {
+  return [...ikasAuditLogs.value].sort((a, b) => {
+    const dateA = parseActivityDate(a.created_at || a.updated_at)?.getTime() || 0;
+    const dateB = parseActivityDate(b.created_at || b.updated_at)?.getTime() || 0;
+    return dateB - dateA;
+  });
+});
+
+const getAuditLogTitle = (item: IkasAuditLog): string => {
+  return item.title || item.judul || item.action || item.aksi || item.event || "Aktivitas IKAS";
+};
+
+const getAuditLogDescription = (item: IkasAuditLog): string => {
+  return item.description || item.deskripsi || item.note || item.catatan || "Tidak ada keterangan tambahan.";
+};
+
+const getAuditLogActor = (item: IkasAuditLog): string => {
+  if (typeof item.user === "string") return item.user;
+  if (item.user?.name || item.user?.nama || item.user?.email) {
+    return item.user.name || item.user.nama || item.user.email || "-";
+  }
+  return item.actor || item.created_by || "Sistem";
+};
+
+const normalizeIkasAuditLogs = (response: any): IkasAuditLog[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.logs)) return response.logs;
+  if (Array.isArray(response?.data?.logs)) return response.data.logs;
+  return [];
+};
+
+const resolveCurrentIkasId = async (
+  stakeholder = currentStakeholder.value,
+  slug = stakeholderSlug.value
+): Promise<string | null> => {
+  if (!stakeholder?.id || !slug) return null;
+
+  const cachedId =
+    ikasStore.getIkasSummary(slug)?.id ||
+    ikasStore.backendIkasIds[slug] ||
+    ikasStore.findLatestIkasRecord(ikasStore.ikasRawRecords, String(stakeholder.id))?.id;
+
+  if (cachedId) return String(cachedId);
+
+  const response = await ikasService.getIkasByPerusahaan(String(stakeholder.id));
+  const matchedRecord = ikasStore.findLatestIkasRecord(
+    ikasStore.normalizeIkasRecords(response),
+    String(stakeholder.id)
+  );
+
+  if (!matchedRecord?.id) return null;
+  ikasStore.upsertSummaryRecord(matchedRecord);
+  return String(matchedRecord.id);
+};
+
+const resetAktivitasForm = () => {
+  aktivitasForm.value = {
+    judul: "",
+    deskripsi: "",
+    jenis_aktivitas: [],
+    perusahaan_id: String(currentStakeholder.value?.id || ""),
+    tanggal_mulai: "",
+    tanggal_selesai: "",
+  };
+  editingAktivitasId.value = null;
+};
+
+const loadJenisAktivitas = async () => {
+  if (jenisAktivitasLoaded) return;
+  try {
+    const response = await aktivitasService.getJenis();
+    jenisAktivitasOptions.value = Array.isArray(response?.data) ? response.data : [];
+    jenisAktivitasLoaded = true;
+  } catch {
+    jenisAktivitasOptions.value = [];
+  }
+};
+
+const loadAktivitas = async (
+  stakeholder = currentStakeholder.value,
+  token = profileLoadSeq,
+  manageLoading = true
+) => {
+  if (!stakeholder) return;
+  const requestSlug = stakeholderSlug.value;
+  if (manageLoading) isLoadingAktivitas.value = true;
+  try {
+    const response = await aktivitasService.getByPerusahaan(stakeholder.id);
+    if (isLatestProfileLoad(token, requestSlug)) {
+      aktivitasList.value = Array.isArray(response?.data) ? response.data : [];
+    }
+  } catch {
+    if (isLatestProfileLoad(token, requestSlug)) aktivitasList.value = [];
+  } finally {
+    if (manageLoading && isLatestProfileLoad(token, requestSlug)) {
+      isLoadingAktivitas.value = false;
+    }
+  }
+};
+
+const loadIkasAuditLogs = async (
+  stakeholder = currentStakeholder.value,
+  token = profileLoadSeq,
+  manageLoading = true
+) => {
+  const requestSlug = stakeholderSlug.value;
+  if (!stakeholder) {
+    ikasAuditLogs.value = [];
+    return;
+  }
+  if (manageLoading) isLoadingIkasAuditLogs.value = true;
+  try {
+    const ikasId = await resolveCurrentIkasId(stakeholder, requestSlug);
+    if (!ikasId) {
+      if (isLatestProfileLoad(token, requestSlug)) ikasAuditLogs.value = [];
+      return;
+    }
+    const response = await ikasService.getIkasAuditLogs(ikasId);
+    if (isLatestProfileLoad(token, requestSlug)) {
+      ikasAuditLogs.value = normalizeIkasAuditLogs(response);
+    }
+  } catch {
+    if (isLatestProfileLoad(token, requestSlug)) ikasAuditLogs.value = [];
+  } finally {
+    if (manageLoading && isLatestProfileLoad(token, requestSlug)) {
+      isLoadingIkasAuditLogs.value = false;
+    }
+  }
+};
+
+const openCreateAktivitas = () => {
+  resetAktivitasForm();
+  isActivityFormVisible.value = true;
+};
+
+const openEditAktivitas = (item: Aktivitas) => {
+  aktivitasForm.value = {
+    judul: item.judul || "",
+    deskripsi: item.deskripsi || "",
+    jenis_aktivitas: Array.isArray(item.jenis_aktivitas) ? [...item.jenis_aktivitas] : [],
+    perusahaan_id: String(item.perusahaan_id || currentStakeholder.value?.id || ""),
+    tanggal_mulai: toDateInputValue(item.tanggal_mulai),
+    tanggal_selesai: toDateInputValue(item.tanggal_selesai),
+  };
+  editingAktivitasId.value = item.id;
+  isActivityFormVisible.value = true;
+};
+
+const closeAktivitasForm = () => {
+  isActivityFormVisible.value = false;
+  resetAktivitasForm();
+};
+
+const saveAktivitas = async () => {
   const stakeholder = currentStakeholder.value;
   if (!stakeholder) return;
-  isLoadingPics.value = true;
+
+  const payload: AktivitasPayload = {
+    ...aktivitasForm.value,
+    perusahaan_id: String(stakeholder.id),
+  };
+
+  if (!payload.judul.trim()) {
+    alert("Judul aktivitas wajib diisi.");
+    return;
+  }
+
+  if (!payload.tanggal_mulai || !payload.tanggal_selesai) {
+    alert("Tanggal mulai dan selesai wajib diisi.");
+    return;
+  }
+
+  isSavingAktivitas.value = true;
   try {
-    friends.value = await picService.getByPerusahaan(stakeholder.id);
+    if (editingAktivitasId.value) {
+      await aktivitasService.update(editingAktivitasId.value, payload);
+    } else {
+      await aktivitasService.create(payload);
+    }
+    closeAktivitasForm();
+    await loadAktivitas(currentStakeholder.value);
   } catch {
-    friends.value = [];
+    alert("Gagal menyimpan aktivitas.");
   } finally {
-    isLoadingPics.value = false;
+    isSavingAktivitas.value = false;
+  }
+};
+
+const deleteAktivitas = async (item: Aktivitas) => {
+  if (!confirm(`Yakin ingin menghapus aktivitas "${item.judul}"?`)) return;
+  try {
+    await aktivitasService.delete(item.id);
+    await loadAktivitas(currentStakeholder.value);
+  } catch {
+    alert("Gagal menghapus aktivitas.");
+  }
+};
+
+const loadPics = async (
+  stakeholder = currentStakeholder.value,
+  token = profileLoadSeq,
+  manageLoading = true
+) => {
+  if (!stakeholder) return;
+  const requestSlug = stakeholderSlug.value;
+  if (manageLoading) isLoadingPics.value = true;
+  try {
+    const pics = await picService.getByPerusahaan(stakeholder.id);
+    if (isLatestProfileLoad(token, requestSlug)) friends.value = pics;
+  } catch {
+    if (isLatestProfileLoad(token, requestSlug)) friends.value = [];
+  } finally {
+    if (manageLoading && isLatestProfileLoad(token, requestSlug)) {
+      isLoadingPics.value = false;
+    }
+  }
+};
+
+const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } = {}) => {
+  const slug = stakeholderSlug.value;
+  if (!slug) return;
+
+  const now = Date.now();
+  if (
+    !options.force &&
+    (
+      slug === profileLoadInFlightSlug ||
+      (slug === lastProfileLoadSlug && now - lastProfileLoadAt < PROFILE_RELOAD_DEBOUNCE_MS)
+    )
+  ) {
+    return;
+  }
+
+  lastProfileLoadSlug = slug;
+  lastProfileLoadAt = now;
+  profileLoadInFlightSlug = slug;
+  const token = ++profileLoadSeq;
+
+  isLoadingPics.value = true;
+  isLoadingAktivitas.value = true;
+  isLoadingIkasAuditLogs.value = true;
+
+  if (options.resetUi) {
+    resetActivityYearToPresent();
+    closeAktivitasForm();
+  }
+
+  try {
+    await initializeProfileDependencies();
+    if (!isLatestProfileLoad(token, slug)) return;
+
+    const stakeholder = currentStakeholder.value;
+    if (!stakeholder) {
+      friends.value = [];
+      aktivitasList.value = [];
+      ikasAuditLogs.value = [];
+      isLoadingPics.value = false;
+      isLoadingAktivitas.value = false;
+      isLoadingIkasAuditLogs.value = false;
+      return;
+    }
+
+    const picsPromise = loadPics(stakeholder, token);
+    await delay(PROFILE_LOAD_STAGGER_MS);
+    const aktivitasPromise = loadAktivitas(stakeholder, token);
+    await delay(PROFILE_LOAD_STAGGER_MS);
+    const auditPromise = loadIkasAuditLogs(stakeholder, token);
+
+    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise]);
+  } catch {
+    if (isLatestProfileLoad(token, slug)) {
+      friends.value = [];
+      aktivitasList.value = [];
+      ikasAuditLogs.value = [];
+      isLoadingPics.value = false;
+      isLoadingAktivitas.value = false;
+      isLoadingIkasAuditLogs.value = false;
+    }
+  } finally {
+    if (isLatestProfileLoad(token, slug)) {
+      profileLoadInFlightSlug = "";
+    }
   }
 };
 
@@ -95,27 +510,18 @@ const currentStakeholder = computed<Stakeholder | undefined>(() => {
 });
 
 onMounted(async () => {
-    if (!stakeholdersStore.initialized) {
-        await stakeholdersStore.initialize();
-    }
-    await ikasStore.initialize();
-    kseStore.initialize();
-    resikoStore.initialize();
-    if (!csirtStore.initialized) {
-        await csirtStore.initialize();
-    }
-    await loadPics();
+    await loadProfileData({ force: true });
 });
 
-// Reload pics when navigating back to this page (keep-alive)
+// Refresh profile data when navigating back to this page (keep-alive)
 onActivated(async () => {
-    await loadPics();
+    await loadProfileData();
 });
 
-// Reload pics when switching between stakeholder profiles
+// Refresh profile data when switching between stakeholder profiles
 watch(stakeholderSlug, async (newSlug, oldSlug) => {
     if (newSlug && newSlug !== oldSlug) {
-        await loadPics();
+        await loadProfileData({ force: true, resetUi: true });
     }
 });
 
@@ -130,9 +536,10 @@ const penilaian = computed(() => {
   void resikoVersion.value;
   const ikasSummary = ikasStore.getIkasSummary(slug);
   const ikasData = ikasSummary ? null : ikasStore.getIkasData(slug);
-  const ikasStatus = ikasSummary
-    ? ikasSummary.category
-    : (ikasData.total_kategori && ikasData.total_kategori !== "INPUT BELUM LENGKAP" ? ikasData.total_kategori : "Belum Diisi");
+  const ikasScore = ikasSummary
+    ? Number(ikasSummary.score || 0)
+    : Number(ikasData.total_rata_rata || 0);
+  const ikasStatus = ikasScore > 0 ? ikasScore.toFixed(2) : "Belum Diisi";
 
   return [
     {
@@ -143,9 +550,9 @@ const penilaian = computed(() => {
     },
     {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,
-      svgColor: "secondary",
+      svgColor: "warning",
       title: "KSE",
-      value: seCount.value > 0 ? `${seCount.value} SE Terdaftar` : "Belum Terdaftar"
+      value: seCount.value > 0 ? "Terdaftar" : "Belum Terdaftar"
     },
     {
       svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
@@ -291,6 +698,39 @@ const companyDetails = computed(() => {
     { icon: 'ri-shield-check-line', label: 'Status CSIRT', value: getCsirtStatus(), colorClass: getCsirtStatus() === 'Aktif' ? 'stat-icon-teal' : 'stat-icon-violet' },
   ];
 });
+
+const riskStatus = computed(() => {
+  const slug = stakeholderSlug.value;
+  if (resikoStore.progressMap[slug]?.status === 'COMPLETED') return 'Sudah Diisi';
+  return resikoStore.answersMap[slug] && Object.keys(resikoStore.answersMap[slug]).length > 0
+    ? 'Dalam Proses'
+    : 'Belum Diisi';
+});
+
+const ikasProfileStatus = computed(() => {
+  const slug = stakeholderSlug.value;
+  const status = ikasDataMap.value?.[slug]?.total_kategori;
+  return status && status !== 'INPUT BELUM LENGKAP' ? status : 'Belum Diisi';
+});
+
+const profileCompletion = computed(() => {
+  const checks = [
+    ikasProfileStatus.value !== 'Belum Diisi',
+    seCount.value > 0,
+    getCsirtStatus() === 'Terdaftar',
+    riskStatus.value === 'Sudah Diisi',
+  ];
+  const completed = checks.filter(Boolean).length;
+  const total = checks.length;
+
+  return {
+    completed,
+    total,
+    percent: Math.round((completed / total) * 100),
+    isComplete: completed === total,
+  };
+});
+
 </script>
 
 <style scoped>
@@ -599,6 +1039,504 @@ const companyDetails = computed(() => {
 /* ─────────────────────────────────────────────
    PIC TABLE CARD
    ───────────────────────────────────────────── */
+/* Activity timeline */
+.activity-timeline-card {
+  border: 1px solid #e7edf5;
+}
+.profile-side-card {
+  height: 100%;
+}
+.activity-form-panel {
+  padding: 1.25rem;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-bottom: 1px solid #e7edf5;
+}
+.activity-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(15,23,42,0.58);
+  backdrop-filter: blur(6px);
+}
+.activity-modal {
+  width: min(860px, 100%);
+  max-height: calc(100vh - 2.5rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(226,232,240,0.9);
+  box-shadow: 0 28px 80px rgba(15,23,42,0.28);
+}
+.activity-modal-header,
+.activity-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fff;
+}
+.activity-modal-header {
+  border-bottom: 1px solid #e7edf5;
+}
+.activity-modal-footer {
+  border-top: 1px solid #e7edf5;
+  justify-content: flex-end;
+}
+.activity-modal-body {
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+.activity-kind-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.activity-kind-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #dbe7f5;
+  border-radius: 999px;
+  background: #fff;
+  color: #1e3a5f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.activity-kind-check:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.activity-kind-check input {
+  accent-color: #2563eb;
+}
+.activity-year-filter {
+  position: sticky;
+  top: -1.35rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin: -0.1rem 0 1rem;
+  padding: 0.75rem 0 0.85rem;
+  background: linear-gradient(180deg, #ffffff 0%, rgba(255,255,255,0.96) 72%, rgba(255,255,255,0));
+}
+.activity-year-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.activity-year-filter-label i {
+  color: #2563eb;
+}
+.activity-year-filter-chips {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.activity-year-filter-chip,
+.activity-year-filter-reset {
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid #dbe7f5;
+  background: #fff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.activity-year-filter-chip {
+  padding: 0.45rem 0.85rem;
+}
+.activity-year-filter-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.8rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.activity-year-filter-chip:hover,
+.activity-year-filter-reset:hover:not(:disabled) {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(37,99,235,0.08);
+}
+.activity-year-filter-chip.active {
+  color: #fff;
+  border-color: #2563eb;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  box-shadow: 0 10px 22px rgba(37,99,235,0.18);
+}
+.activity-year-filter-reset:disabled {
+  cursor: default;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.activity-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-left: 2.65rem;
+}
+.activity-timeline::before {
+  content: '';
+  position: absolute;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  left: 1.1rem;
+  width: 2px;
+  background: linear-gradient(180deg, #2563eb 0%, #14b8a6 52%, #f59e0b 100%);
+  border-radius: 999px;
+  opacity: 0.35;
+}
+.activity-timeline-item {
+  position: relative;
+}
+.activity-year-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.activity-year-group + .activity-year-group {
+  margin-top: 0.35rem;
+}
+.activity-year-chip {
+  position: relative;
+  left: -0.4rem;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 30px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 18px rgba(37,99,235,0.08);
+  z-index: 2;
+}
+.activity-year-chip i {
+  font-size: 13px;
+}
+.activity-timeline-marker {
+  position: absolute;
+  left: -2.65rem;
+  top: 1rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #bfdbfe;
+  box-shadow: 0 8px 24px rgba(37,99,235,0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.activity-timeline-marker span {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+.activity-timeline-content {
+  padding: 1rem 1.15rem;
+  border: 1px solid #e5edf7;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 6px 18px rgba(15,23,42,0.04);
+}
+.activity-timeline-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.activity-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #2563eb;
+  font-size: 11.5px;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+}
+.activity-title {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 0;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.activity-description {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0.65rem 0 0;
+  word-break: break-word;
+}
+.activity-description :deep(p) {
+  margin-bottom: 0.55rem;
+}
+.activity-description :deep(ul),
+.activity-description :deep(ol) {
+  padding-left: 1.15rem;
+  margin-bottom: 0.55rem;
+}
+.activity-description :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+.activity-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+.activity-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: #ecfeff;
+  border: 1px solid #a5f3fc;
+  color: #0e7490;
+  font-size: 11px;
+  font-weight: 800;
+}
+.activity-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.profile-audit-log-card {
+  border: 1px solid #e7edf5;
+}
+.profile-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.skeleton-block {
+  display: block;
+  overflow: hidden;
+  position: relative;
+  border-radius: 999px;
+  background: #e8eef7;
+}
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.72), transparent);
+  animation: profile-skeleton-shimmer 1.15s infinite;
+}
+.skeleton-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.skeleton-line {
+  width: 72%;
+  height: 12px;
+}
+.skeleton-line-lg {
+  width: 92%;
+}
+.skeleton-line-md {
+  width: 58%;
+}
+.skeleton-line-sm {
+  width: 36%;
+}
+.skeleton-dot,
+.skeleton-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 11px;
+}
+.skeleton-avatar {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+.skeleton-pill {
+  width: 28px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.skeleton-actions {
+  width: 72px;
+  height: 32px;
+}
+.activity-skeleton-item,
+.audit-skeleton-item {
+  display: flex;
+  gap: 0.8rem;
+  min-height: 96px;
+  padding: 0.9rem;
+  border: 1px solid #e5edf7;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+}
+.pic-skeleton-card {
+  pointer-events: none;
+}
+@keyframes profile-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.ikas-audit-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-height: calc((96px * 5) + (0.85rem * 4));
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+.ikas-audit-log-list::-webkit-scrollbar {
+  width: 6px;
+}
+.ikas-audit-log-list::-webkit-scrollbar-track {
+  background: #eef4fb;
+  border-radius: 999px;
+}
+.ikas-audit-log-list::-webkit-scrollbar-thumb {
+  background: #b8c7da;
+  border-radius: 999px;
+}
+.ikas-audit-log-list::-webkit-scrollbar-thumb:hover {
+  background: #94a8c1;
+}
+.ikas-audit-log-item {
+  display: flex;
+  gap: 0.8rem;
+  min-height: 96px;
+  padding: 0.9rem;
+  border: 1px solid #e5edf7;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 6px 18px rgba(15,23,42,0.035);
+}
+.ikas-audit-log-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #1d4ed8, #f59e0b);
+  box-shadow: 0 8px 18px rgba(37,99,235,0.14);
+}
+.ikas-audit-log-content {
+  min-width: 0;
+  flex: 1;
+}
+.ikas-audit-log-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+.ikas-audit-log-top h6 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 13.5px;
+  font-weight: 850;
+  line-height: 1.35;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.ikas-audit-log-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  font-size: 10.5px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.ikas-audit-log-content p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12.5px;
+  line-height: 1.6;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.ikas-audit-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+  color: #8b9ab0;
+  font-size: 11px;
+  font-weight: 750;
+}
+.ikas-audit-log-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
 .pic-count-badge {
   display: inline-flex;
   align-items: center;
@@ -677,6 +1615,47 @@ html.dark .hero-card-shell {
   box-shadow: 0 16px 56px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.2);
 }
 
+html[data-theme-mode="dark"] .activity-form-panel,
+html.dark .activity-form-panel,
+html[data-theme-mode="dark"] .activity-timeline-content,
+html.dark .activity-timeline-content {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%);
+  border-color: rgba(255,255,255,0.08);
+}
+html[data-theme-mode="dark"] .activity-modal,
+html.dark .activity-modal,
+html[data-theme-mode="dark"] .activity-modal-header,
+html.dark .activity-modal-header,
+html[data-theme-mode="dark"] .activity-modal-footer,
+html.dark .activity-modal-footer {
+  background: #162131;
+  border-color: rgba(255,255,255,0.08);
+}
+html[data-theme-mode="dark"] .activity-modal h6,
+html.dark .activity-modal h6 {
+  color: #dde8f5 !important;
+}
+html[data-theme-mode="dark"] .profile-side-card,
+html.dark .profile-side-card {
+  background: #162131;
+}
+html[data-theme-mode="dark"] .activity-title,
+html.dark .activity-title {
+  color: #dde8f5;
+}
+html[data-theme-mode="dark"] .activity-kind-check,
+html.dark .activity-kind-check {
+  background: #1a2535;
+  border-color: rgba(255,255,255,0.08);
+  color: #dde8f5;
+}
+html[data-theme-mode="dark"] .activity-year-chip,
+html.dark .activity-year-chip {
+  background: rgba(37,99,235,0.14);
+  border-color: rgba(147,197,253,0.2);
+  color: #93c5fd;
+}
+
 /* ─────────────────────────────────────────────
    PIC TABLE UTILITIES
    ───────────────────────────────────────────── */
@@ -723,6 +1702,20 @@ html.dark .hero-card-shell {
   .profile-hero-name { font-size: 1.2rem; word-break: break-word; }
   .profile-hero-sektor { white-space: normal; line-height: 1.4; padding: 6px 14px; }
   .info-grid { grid-template-columns: 1fr !important; }
+  .activity-year-filter { position: static; flex-direction: column; align-items: stretch; }
+  .activity-year-filter-chips { justify-content: flex-start; }
+  .activity-year-filter-reset { width: 100%; justify-content: center; }
+  .activity-timeline { padding-left: 2.35rem; }
+  .activity-timeline-marker { left: -2.45rem; }
+  .activity-timeline-top { flex-direction: column; }
+  .activity-actions { align-self: flex-start; }
+  .activity-kind-check { width: 100%; justify-content: flex-start; }
+  .activity-modal-backdrop { padding: 0.75rem; align-items: flex-end; }
+  .activity-modal { max-height: calc(100vh - 1.5rem); }
+  .activity-modal-header,
+  .activity-modal-body,
+  .activity-modal-footer { padding: 1rem; }
+  .activity-modal-footer { flex-direction: column-reverse; align-items: stretch; }
   .profile-hero-overlay { padding: 1rem 1.25rem; flex-direction: column; align-items: stretch; gap: 0.75rem; justify-content: flex-end; }
   .contact-bar { flex-direction: column; gap: 0.75rem; padding: 14px 16px; }
   .contact-bar-sep { display: none; }
@@ -732,6 +1725,1066 @@ html.dark .hero-card-shell {
   .header-subtitle { word-break: break-word; white-space: normal; }
   .btn-edit-profile { justify-content: center; padding: 0.6rem 1rem; width: 100%; }
 }
+
+/* Modern stakeholder profile refresh */
+:global(body) {
+  background: #f4f7fb;
+}
+
+.gradient-header-card {
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.96)),
+    radial-gradient(circle at 16% 0%, rgba(37, 99, 235, 0.08), transparent 34%),
+    radial-gradient(circle at 82% 8%, rgba(20, 184, 166, 0.08), transparent 32%) !important;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08) !important;
+  overflow: hidden;
+}
+
+.stakeholder-header {
+  position: relative;
+  min-height: 86px;
+  padding: 1.1rem 1.35rem !important;
+  background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 56%, #0f766e 100%) !important;
+  border: 0 !important;
+}
+
+.stakeholder-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12), transparent 38%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 18px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.stakeholder-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.header-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.header-icon-box i {
+  font-size: 1.3rem;
+}
+
+.header-card-title {
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.header-subtitle {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.header-edit-profile {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 850;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(12px);
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.header-edit-profile:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.36);
+  transform: translateY(-1px);
+}
+
+.gradient-header-card > .card-body {
+  padding: 1.35rem !important;
+}
+
+.hero-card-shell {
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.08) !important;
+}
+
+.profile-hero {
+  height: 320px;
+  border-radius: 18px 18px 0 0;
+}
+
+.profile-hero::after {
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.82) 0%, rgba(15, 23, 42, 0.42) 42%, rgba(15, 23, 42, 0.16) 100%),
+    linear-gradient(to top, rgba(15, 23, 42, 0.82), transparent 58%);
+}
+
+.profile-hero::before {
+  height: 4px;
+  background: linear-gradient(90deg, #14b8a6, #3b82f6, #f59e0b);
+  animation: none;
+}
+
+.profile-hero-nophoto {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.9)),
+    linear-gradient(45deg, rgba(20, 184, 166, 0.2), transparent 50%) !important;
+}
+
+.profile-hero-overlay {
+  padding: 2rem;
+  align-items: flex-end;
+}
+
+.profile-hero-name {
+  max-width: 760px;
+  margin-bottom: 0.75rem;
+  font-size: clamp(1.7rem, 2.2vw, 2.45rem);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.profile-hero-sektor {
+  max-width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.btn-edit-profile {
+  min-height: 42px;
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+  background: rgba(255, 255, 255, 0.17);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.22);
+}
+
+.contact-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  padding: 1rem;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.contact-bar-sep {
+  display: none;
+}
+
+.contact-bar-item {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 14px;
+  padding: 0.65rem 0.8rem;
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.contact-bar-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.contact-bar-text {
+  overflow: hidden;
+  color: #0f172a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-warning {
+  border: 1px solid rgba(245, 158, 11, 0.24) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.96), rgba(255, 247, 237, 0.94)) !important;
+  color: #92400e !important;
+  box-shadow: 0 10px 28px rgba(245, 158, 11, 0.08);
+}
+
+.profile-side-card,
+.custom-card:not(.gradient-header-card):not(.hero-card-shell) {
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06) !important;
+}
+
+.profile-activity-column,
+.profile-side-stack {
+  align-self: flex-start;
+}
+
+.profile-activity-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.profile-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.profile-side-stack > .custom-card,
+.profile-activity-column > .custom-card {
+  margin-bottom: 0 !important;
+}
+
+.profile-side-stack .profile-side-card {
+  height: auto;
+}
+
+.profile-activity-column .activity-timeline-card {
+  min-height: 0;
+  height: auto;
+}
+
+.activity-timeline-card > .card-body {
+  padding: 1.35rem 1.45rem 1.45rem !important;
+}
+
+.profile-activity-column .activity-timeline-card > .card-body {
+  max-height: 760px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.profile-activity-column .activity-timeline-card > .card-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.profile-activity-column .activity-timeline-card > .card-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+
+.profile-activity-column .activity-timeline-card > .card-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.profile-side-card > .card-header,
+.custom-card:not(.gradient-header-card):not(.hero-card-shell) > .card-header {
+  padding: 1rem 1.1rem !important;
+  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+}
+
+.header-icon-ring {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.pic-count-badge {
+  min-width: 26px;
+  height: 26px;
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+  border: 1px solid #bfdbfe;
+}
+
+.profile-side-card .btn-primary,
+.alert-warning .btn-primary {
+  border: 0;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22) !important;
+}
+
+.activity-timeline-card {
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.activity-timeline-content {
+  border-radius: 14px;
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  padding: 1.05rem 1.1rem !important;
+}
+
+.activity-timeline-content:hover {
+  border-color: rgba(59, 130, 246, 0.32);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+
+.activity-timeline::before {
+  background: linear-gradient(180deg, #3b82f6 0%, #14b8a6 55%, #f59e0b 100%);
+  opacity: 0.5;
+}
+
+.activity-year-chip {
+  border-radius: 10px;
+  background: #eff6ff;
+  box-shadow: none;
+}
+
+.activity-timeline-marker {
+  border-color: #dbeafe;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.activity-title,
+.company-name {
+  letter-spacing: 0;
+}
+
+.activity-timeline {
+  gap: 0.9rem;
+}
+
+.activity-year-group {
+  gap: 0.85rem;
+}
+
+.activity-timeline-item + .activity-timeline-item {
+  margin-top: 0.15rem;
+}
+
+.activity-description {
+  margin-top: 0.55rem;
+}
+
+.pic-loading-state {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.pic-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.95rem;
+}
+
+.pic-contact-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 76px;
+  padding: 0.8rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ffffff, #f8fafc);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.pic-contact-card:hover {
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.pic-contact-main {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.pic-index {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pic-contact-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.pic-contact-copy .company-name,
+.pic-contact-copy .text-muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pic-contact-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.pic-meta-pill {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 28px;
+  padding: 0.32rem 0.55rem;
+  border: 1px solid #e7eef8;
+  border-radius: 10px;
+  color: #0f172a;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pic-meta-pill i {
+  color: #1d4ed8;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.pic-meta-pill span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pic-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.card-body1 {
+  margin: 0;
+}
+
+.stakeholder-table-wrap {
+  margin: 0.85rem;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  border-radius: 14px !important;
+  overflow: hidden;
+}
+
+.stakeholder-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.stakeholder-table thead,
+.stakeholder-thead {
+  background: #f8fafc !important;
+}
+
+.stakeholder-table th {
+  padding: 0.85rem 1rem !important;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.stakeholder-table td {
+  padding: 0.82rem 0.9rem !important;
+  border-bottom: 1px solid #edf2f7 !important;
+  color: #334155;
+}
+
+.profile-side-stack .stakeholder-table th {
+  padding: 0.76rem 0.85rem !important;
+}
+
+.profile-side-stack .stakeholder-table td {
+  padding: 0.78rem 0.85rem !important;
+}
+
+.stakeholder-row {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.stakeholder-row:hover {
+  background: #f8fbff;
+}
+
+.row-number {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+}
+
+.company-avatar {
+  width: 38px;
+  height: 38px;
+  border: 2px solid #fff;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.company-name {
+  color: #0f172a !important;
+  font-size: 13px;
+}
+
+.profile-about-rail {
+  overflow: hidden;
+}
+
+.profile-about-rail .card-header {
+  padding: 0.95rem 1rem !important;
+}
+
+.profile-about-rail .card-body {
+  padding: 1rem !important;
+}
+
+.profile-about-rail .card-title {
+  font-size: 0.95rem;
+}
+
+.profile-about-rail .card-body > p {
+  margin-bottom: 0.9rem !important;
+  color: #64748b !important;
+  font-size: 12.5px !important;
+}
+
+.profile-about-rail .info-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.profile-about-rail .info-grid-item {
+  min-height: 74px;
+  padding: 0.85rem;
+}
+
+.profile-about-rail .info-grid-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.profile-about-rail .info-grid-label {
+  font-size: 10px;
+}
+
+.profile-about-rail .info-grid-value {
+  font-size: 12.4px;
+  line-height: 1.35;
+}
+
+.info-grid {
+  gap: 0.85rem;
+}
+
+.info-grid-item {
+  border-radius: 14px;
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.info-grid-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.info-grid-icon {
+  border-radius: 13px;
+}
+
+.info-grid-label {
+  color: #64748b;
+  letter-spacing: 0;
+}
+
+.info-grid-value {
+  color: #0f172a;
+}
+
+.activity-modal {
+  border-radius: 18px;
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.32);
+}
+
+.activity-kind-check {
+  border-radius: 12px;
+}
+
+/* 2026 profile refresh */
+.profile-hero-shell {
+  position: relative;
+  min-height: 245px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: #0f172a;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+}
+
+.profile-hero-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.66) 42%, rgba(15, 23, 42, 0.18) 100%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.04) 0%, rgba(2, 6, 23, 0.58) 100%);
+  pointer-events: none;
+}
+
+.profile-hero-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.1), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 36%);
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.profile-hero-media {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(1.01);
+}
+
+.profile-hero-media.profile-hero-nophoto {
+  background:
+    linear-gradient(135deg, #111827 0%, #1d4ed8 48%, #0f766e 100%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0 1px, transparent 1px 20px) !important;
+}
+
+.profile-hero-media.profile-hero-nophoto::before {
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 36%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 18px);
+}
+
+.profile-hero-media.profile-hero-nophoto::after {
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.28));
+}
+
+.profile-hero-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 245px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.15rem 1.45rem 1.25rem;
+}
+
+.profile-hero-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 720px;
+  padding-bottom: 0.1rem;
+}
+
+.profile-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 28px;
+  padding: 0.35rem 0.7rem;
+  margin-bottom: 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.11);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11.5px;
+  font-weight: 800;
+  backdrop-filter: blur(12px);
+}
+
+.profile-hero-shell .profile-hero-name {
+  max-width: 820px;
+  margin: 0 0 0.65rem;
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 850;
+  line-height: 1.12;
+  letter-spacing: 0;
+  text-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+
+.profile-hero-shell .profile-hero-sektor {
+  position: relative;
+  max-width: min(100%, 680px);
+  width: fit-content;
+  overflow: hidden;
+  border-radius: 14px;
+  padding: 0.58rem 0.82rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08)),
+    linear-gradient(90deg, rgba(20, 184, 166, 0.18), rgba(59, 130, 246, 0.12));
+  border: 1px solid rgba(255, 255, 255, 0.23);
+  color: rgba(255, 255, 255, 0.94);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  line-height: 1.35;
+  box-shadow:
+    0 14px 30px rgba(2, 6, 23, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  font-size: 12px;
+  font-weight: 850;
+  backdrop-filter: blur(14px);
+}
+
+.profile-hero-shell .profile-hero-sektor::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: #5eead4;
+  box-shadow: 0 0 0 4px rgba(94, 234, 212, 0.16);
+}
+
+.profile-hero-completion {
+  width: min(178px, 36%);
+  flex: 0 0 auto;
+  padding: 0.9rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08)),
+    rgba(15, 23, 42, 0.2);
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.22);
+  color: #fff;
+  backdrop-filter: blur(16px);
+}
+
+.profile-hero-completion-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10.5px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.profile-hero-completion-top span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.profile-hero-completion strong {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-size: 1.65rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.profile-hero-completion p {
+  margin: 0 0 0.65rem;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.profile-hero-completion-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.profile-hero-completion-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #5eead4);
+  transition: width 0.5s ease;
+}
+
+.profile-hero-completion.is-complete {
+  border-color: rgba(94, 234, 212, 0.36);
+  background:
+    linear-gradient(180deg, rgba(20, 184, 166, 0.24), rgba(255, 255, 255, 0.09)),
+    rgba(15, 23, 42, 0.18);
+}
+
+.profile-dashboard-grid {
+  --bs-gutter-x: 1.35rem;
+  --bs-gutter-y: 0.45rem;
+  row-gap: 0;
+}
+
+.profile-analytics-section {
+  margin-top: 0.25rem;
+}
+
+.profile-dashboard-grid :deep(.spk-card-col) {
+  margin-bottom: 0.45rem !important;
+  padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+  padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+}
+
+.profile-dashboard-grid :deep(.as-card) {
+  min-height: 148px;
+  border-radius: 16px;
+}
+
+.profile-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 0.3rem;
+}
+
+.profile-action-card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 82px;
+  min-width: 0;
+  width: 100%;
+  padding: 0.9rem;
+  text-align: left;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ffffff, #f8fafc);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.profile-action-card:hover {
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
+}
+
+.profile-action-card > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-action-card strong,
+.profile-action-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-action-card strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.profile-action-card small {
+  margin-top: 0.15rem;
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.profile-action-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 1.12rem;
+}
+
+.action-blue { background: linear-gradient(135deg, #1d4ed8, #60a5fa); }
+.action-teal { background: linear-gradient(135deg, #0f766e, #2dd4bf); }
+.action-amber { background: linear-gradient(135deg, #d97706, #fbbf24); }
+
+.action-arrow {
+  color: #94a3b8;
+  font-size: 1rem;
+}
+
+.profile-side-card,
+.profile-about-rail,
+.activity-timeline-card {
+  border-radius: 20px !important;
+}
+
+.profile-side-card > .card-header,
+.profile-about-rail > .card-header,
+.activity-timeline-card > .card-header {
+  border-radius: 20px 20px 0 0 !important;
+}
+
+.activity-timeline-card > .card-body {
+  background:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.035), transparent 38%),
+    #fff;
+}
+
+.activity-timeline-content,
+.pic-contact-card,
+.info-grid-item {
+  border-radius: 16px !important;
+}
+
+.pic-contact-card {
+  background: #fff;
+}
+
+.profile-about-rail {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+}
+
+.profile-about-rail .card-header {
+  background: #fff !important;
+}
+
+@media (max-width: 767px) {
+  .gradient-header-card > .card-body {
+    padding: 1rem !important;
+  }
+
+  .stakeholder-header {
+    min-height: auto;
+  }
+
+  .profile-hero-shell,
+  .profile-hero-content {
+    min-height: auto;
+  }
+
+  .profile-hero-shell {
+    min-height: 220px;
+    border-radius: 16px;
+  }
+
+  .profile-hero-content {
+    min-height: 220px;
+    align-items: flex-end;
+    justify-content: flex-end;
+    flex-direction: column;
+    padding: 1rem;
+  }
+
+  .profile-hero-copy,
+  .profile-hero-completion {
+    width: 100%;
+    max-width: none;
+  }
+
+  .profile-hero-completion {
+    padding: 0.8rem 0.85rem;
+  }
+
+  .profile-hero-shell .profile-hero-name {
+    font-size: 1.45rem;
+    line-height: 1.15;
+  }
+
+  .profile-hero-shell .profile-hero-sektor {
+    border-radius: 12px;
+    font-size: 11.5px;
+  }
+
+  .profile-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-hero {
+    height: 290px;
+  }
+
+  .profile-hero-overlay {
+    padding: 1.1rem;
+  }
+
+  .contact-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholder-table-wrap {
+    margin: 0.75rem;
+  }
+
+  .profile-activity-column .activity-timeline-card {
+    min-height: auto;
+  }
+
+  .profile-side-stack {
+    gap: 1rem;
+  }
+
+  .profile-about-rail .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pic-contact-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .pic-card-actions {
+    justify-content: flex-start;
+  }
+}
+
 </style>
 
 <template>
@@ -754,6 +2807,14 @@ html.dark .hero-card-shell {
               <div class="header-subtitle mt-1">Detail informasi &amp; penilaian stakeholder</div>
             </div>
           </div>
+          <router-link
+            v-if="isAdmin && currentStakeholder"
+            :to="`/stakeholders-profile-settings?slug=${currentStakeholder.slug}`"
+            class="header-edit-profile"
+          >
+            <i class="ri-edit-line"></i>
+            <span>Edit Profil</span>
+          </router-link>
         </div>
 
         <div class="card-body p-4">
@@ -773,105 +2834,287 @@ html.dark .hero-card-shell {
             <div class="row">
 
               <!-- ═══════════  HERO CARD  ═══════════ -->
-              <div class="col-12 mb-6">
-                <div class="card custom-card hero-card-shell">
-                  <!-- Banner -->
-                    <div
-                      class="profile-hero"
-                      :class="{ 'profile-hero-nophoto': !currentStakeholder?.photo }"
-                      :style="bannerStyle"
-                    >
-                    <div class="profile-hero-overlay">
-                      <div>
-                        <p class="profile-hero-name">{{ currentStakeholder.nama_perusahaan }}</p>
-                        <span class="profile-hero-sektor">
-                          <i class="ri-pie-chart-2-line"></i>
-                          {{ currentStakeholder.sub_sektor?.nama_sub_sektor || currentStakeholder.sektor }}
-                        </span>
-                      </div>
-                      <router-link
-                        v-if="isAdmin"
-                        :to="`/stakeholders-profile-settings?slug=${currentStakeholder.slug}`"
-                        class="btn-edit-profile"
-                      >
-                        <i class="ri-edit-line"></i>
-                        <span class="d-inline">Edit Profil</span>
-                      </router-link>
-                    </div>
-                  </div>
+              <div class="col-12 mb-4">
+                <section class="profile-hero-shell">
+                  <div
+                    class="profile-hero-media"
+                    :class="{ 'profile-hero-nophoto': !currentStakeholder?.photo }"
+                    :style="bannerStyle"
+                  ></div>
 
-                  <!-- Contact bar -->
-                  <div style="border-top:1px solid #eef3fb">
-                    <div class="contact-bar">
-                      <a :href="'tel:' + currentStakeholder.telepon" class="contact-bar-item">
-                        <span class="contact-bar-icon cbi-teal"><i class="ri-phone-line"></i></span>
-                        <span class="contact-bar-text">{{ currentStakeholder.telepon }}</span>
-                      </a>
-                      <div class="contact-bar-sep"></div>
-                      <a :href="'mailto:' + currentStakeholder.email" class="contact-bar-item">
-                        <span class="contact-bar-icon cbi-violet"><i class="ri-mail-line"></i></span>
-                        <span class="contact-bar-text">{{ currentStakeholder.email }}</span>
-                      </a>
+                  <div class="profile-hero-content">
+                    <div class="profile-hero-copy">
+                      <span class="profile-hero-kicker">
+                        <i class="ri-building-4-line"></i>
+                        Profil Stakeholder
+                      </span>
+                      <h2 class="profile-hero-name">{{ currentStakeholder.nama_perusahaan }}</h2>
+                      <div class="profile-hero-sektor">
+                        <i class="ri-pie-chart-2-line"></i>
+                        <span>{{ currentStakeholder.sub_sektor?.nama_sub_sektor || currentStakeholder.sektor || '-' }}</span>
+                      </div>
+                    </div>
+
+                    <div
+                      class="profile-hero-completion"
+                      :class="{ 'is-complete': profileCompletion.isComplete }"
+                    >
+                      <div class="profile-hero-completion-top">
+                        <span><i class="ri-database-2-line"></i> Data</span>
+                        <i :class="profileCompletion.isComplete ? 'ri-checkbox-circle-fill' : 'ri-loader-4-line'"></i>
+                      </div>
+                      <strong>{{ profileCompletion.percent }}%</strong>
+                      <p>{{ profileCompletion.isComplete ? 'Data lengkap' : `${profileCompletion.completed}/${profileCompletion.total} data lengkap` }}</p>
+                      <div class="profile-hero-completion-track">
+                        <span :style="`width:${profileCompletion.percent}%`"></span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </section>
               </div>
 
               <!-- ═══════════  ANALYTICS CARDS  ═══════════ -->
-              <div class="col-12">
+              <div class="col-12 profile-analytics-section">
                 <div class="tab-content">
                   <div class="tab-pane show active p-0 border-0">
-                    <div class="row">
+                    <div class="row profile-dashboard-grid">
                       <SpkReusableAnlyticsCard
                         :analyticData="penilaian"
                         :csirtId="relatedCsirtId ?? undefined"
                         :stakeholderSlug="currentStakeholder.slug"
                       />
 
-                      <!-- Isi IKAS button (admin only, when not filled) -->
-                      <div v-if="isAdmin && (!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP')" class="col-12 mb-3">
-                        <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 px-3">
-                          <div class="d-flex align-items-start align-items-sm-center gap-2">
-                            <i class="ri-information-line fs-16 mt-1 mt-sm-0 flex-shrink-0"></i>
-                            <span class="fs-13">IKAS belum diisi untuk perusahaan ini.</span>
-                          </div>
-                          <button @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 flex-shrink-0 w-100 w-sm-auto">
-                            <i class="ri-add-circle-line fs-14"></i>
-                            <span>Isi IKAS</span>
+                      <div
+                        v-if="isAdmin && ((!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP') || !relatedCsirtId || resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED')"
+                        class="col-12 mb-2"
+                      >
+                        <div class="profile-action-grid">
+                          <button
+                            v-if="!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP'"
+                            type="button"
+                            class="profile-action-card"
+                            @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })"
+                          >
+                            <span class="profile-action-icon action-blue"><i class="ri-bar-chart-box-line"></i></span>
+                            <span>
+                              <strong>Lengkapi IKAS</strong>
+                              <small>Status: {{ ikasProfileStatus }}</small>
+                            </span>
+                            <i class="ri-arrow-right-up-line action-arrow"></i>
                           </button>
+
+                          <button
+                            v-if="!relatedCsirtId"
+                            type="button"
+                            class="profile-action-card"
+                            @click="router.push({ path: '/csirt', query: { stakeholder: currentStakeholder.slug } })"
+                          >
+                            <span class="profile-action-icon action-teal"><i class="ri-shield-keyhole-line"></i></span>
+                            <span>
+                              <strong>Daftarkan CSIRT</strong>
+                              <small>Belum ada tim respons insiden.</small>
+                            </span>
+                            <i class="ri-arrow-right-up-line action-arrow"></i>
+                          </button>
+
+                          <button
+                            v-if="resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED'"
+                            type="button"
+                            class="profile-action-card"
+                            @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })"
+                          >
+                            <span class="profile-action-icon action-amber"><i class="ri-error-warning-line"></i></span>
+                            <span>
+                              <strong>Survey Risiko</strong>
+                              <small>Status: {{ riskStatus }}</small>
+                            </span>
+                            <i class="ri-arrow-right-up-line action-arrow"></i>
+                          </button>
+
                         </div>
                       </div>
 
-                      <!-- Daftarkan CSIRT button (admin only, when not yet registered) -->
-                      <div v-if="isAdmin && !relatedCsirtId" class="col-12 mb-3">
-                        <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 px-3">
-                          <div class="d-flex align-items-start align-items-sm-center gap-2">
-                            <i class="ri-shield-check-line fs-16 mt-1 mt-sm-0 flex-shrink-0"></i>
-                            <span class="fs-13">CSIRT belum terdaftar untuk perusahaan ini.</span>
+                      <div class="col-xl-7 col-12 mb-3 profile-activity-column">
+                        <div class="card custom-card activity-timeline-card profile-side-card overflow-hidden">
+                          <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 bg-white border-bottom">
+                            <div class="d-flex align-items-center gap-2">
+                              <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
+                                <i class="ri-timeline-view text-primary fs-16"></i>
+                              </div>
+                              <div>
+                                <h6 class="card-title mb-0 fw-bold header-card-title text-dark">Aktivitas Perusahaan</h6>
+                                <p class="text-muted fs-11 mb-0">Timeline kegiatan dan catatan aktivitas stakeholder</p>
+                              </div>
+                              <span class="pic-count-badge bg-primary-transparent text-primary ms-2 flex-shrink-0">{{ selectedActivityCount }}</span>
+                            </div>
+                            <button
+                              v-if="isAdmin"
+                              type="button"
+                              class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-2 px-3 py-2 rounded-pill shadow-sm hover-up w-100 w-sm-auto flex-shrink-0"
+                              @click="openCreateAktivitas"
+                            >
+                              <i class="ri-add-line fs-14"></i><span class="fw-bold">Tambah Aktivitas</span>
+                            </button>
                           </div>
-                          <button @click="router.push({ path: '/csirt', query: { stakeholder: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 flex-shrink-0 w-100 w-sm-auto">
-                            <i class="ri-add-circle-line fs-14"></i>
-                            <span>Daftarkan CSIRT</span>
-                          </button>
-                        </div>
-                      </div>
 
-                      <!-- Survey Resiko button (admin only, when not yet completed) -->
-                      <div v-if="isAdmin && resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED'" class="col-12 mb-3">
-                        <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 px-3">
-                          <div class="d-flex align-items-start align-items-sm-center gap-2">
-                            <i class="ri-error-warning-line fs-16 mt-1 mt-sm-0 flex-shrink-0"></i>
-                            <span class="fs-13">Survey Resiko belum lengkap untuk perusahaan ini.</span>
+                          <div class="card-body">
+                            <div v-if="activityYearOptions.length" class="activity-year-filter">
+                              <div class="activity-year-filter-label">
+                                <i class="ri-calendar-2-line"></i>
+                                <span>Tahun Aktivitas</span>
+                              </div>
+                              <div class="activity-year-filter-chips">
+                                <button
+                                  v-for="year in activityYearOptions"
+                                  :key="year"
+                                  type="button"
+                                  class="activity-year-filter-chip"
+                                  :class="{ active: selectedActivityYear === year }"
+                                  @click="selectedActivityYear = year"
+                                >
+                                  {{ year }}
+                                </button>
+                                <button
+                                  type="button"
+                                  class="activity-year-filter-reset"
+                                  :disabled="selectedActivityYear === currentActivityYear"
+                                  @click="resetActivityYearToPresent"
+                                >
+                                  <i class="ri-refresh-line"></i>
+                                  <span>Reset ke {{ currentActivityYear }}</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div v-if="isLoadingAktivitas" class="profile-skeleton-list">
+                              <div v-for="item in 3" :key="`activity-skeleton-${item}`" class="activity-skeleton-item">
+                                <span class="skeleton-block skeleton-dot"></span>
+                                <div class="skeleton-copy">
+                                  <span class="skeleton-block skeleton-line skeleton-line-sm"></span>
+                                  <span class="skeleton-block skeleton-line"></span>
+                                  <span class="skeleton-block skeleton-line skeleton-line-md"></span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div v-else-if="!sortedAktivitas.length" class="empty-state py-4 text-center">
+                              <div class="empty-icon-ring mb-3">
+                                <div class="empty-icon-inner"><i class="ri-timeline-view"></i></div>
+                              </div>
+                              <h6 class="fw-bold mb-1 text-dark">Aktivitas Kosong</h6>
+                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 340px;">Belum ada aktivitas yang tercatat untuk stakeholder ini.</p>
+                            </div>
+
+                            <div v-else-if="!filteredAktivitasByYear.length" class="empty-state py-4 text-center">
+                              <div class="empty-icon-ring mb-3">
+                                <div class="empty-icon-inner"><i class="ri-calendar-schedule-line"></i></div>
+                              </div>
+                              <h6 class="fw-bold mb-1 text-dark">Tidak ada aktivitas di {{ selectedActivityYear }}</h6>
+                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 340px;">Pilih tahun lain atau reset ke tahun berjalan.</p>
+                            </div>
+
+                            <div v-else class="activity-timeline">
+                              <div v-for="group in filteredAktivitasByYear" :key="group.year" class="activity-year-group">
+                                <div class="activity-year-chip">
+                                  <i class="ri-calendar-event-line"></i>
+                                  <span>{{ group.year }}</span>
+                                </div>
+
+                                <div v-for="(item, index) in group.items" :key="item.id" class="activity-timeline-item">
+                                  <div class="activity-timeline-marker">
+                                    <span>{{ String(index + 1).padStart(2, '0') }}</span>
+                                  </div>
+                                  <div class="activity-timeline-content">
+                                    <div class="activity-timeline-top">
+                                      <div>
+                                        <div class="activity-date">
+                                          <i class="ri-calendar-event-line"></i>
+                                          {{ formatActivityDate(item.tanggal_mulai) }} - {{ formatActivityDate(item.tanggal_selesai) }}
+                                        </div>
+                                        <h6 class="activity-title">{{ item.judul }}</h6>
+                                      </div>
+                                      <div v-if="isAdmin" class="activity-actions">
+                                        <button type="button" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Aktivitas" @click="openEditAktivitas(item)">
+                                          <i class="ri-pencil-fill"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Aktivitas" @click="deleteAktivitas(item)">
+                                          <i class="ri-delete-bin-5-line"></i>
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div class="activity-description" v-html="getHtmlDescription(item.deskripsi)"></div>
+                                    <div v-if="item.jenis_aktivitas?.length" class="activity-tags">
+                                      <span v-for="jenis in item.jenis_aktivitas" :key="`${item.id}-${jenis}`">{{ jenis }}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <button @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-1 flex-shrink-0 w-100 w-sm-auto">
-                            <i class="ri-add-circle-line fs-14"></i>
-                            <span>Isi Survey Resiko</span>
-                          </button>
+                        </div>
+
+                        <div class="card custom-card profile-audit-log-card overflow-hidden shadow-sm">
+                          <div class="card-header d-flex align-items-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
+                            <div class="d-flex align-items-center gap-2 min-w-0">
+                              <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
+                                <i class="ri-history-line text-primary fs-16"></i>
+                              </div>
+                              <div class="min-w-0">
+                                <h6 class="card-title mb-0 fw-bold header-card-title text-dark">Audit Log IKAS</h6>
+                                <p class="text-muted fs-11 mb-0">Riwayat perubahan assessment IKAS</p>
+                              </div>
+                            </div>
+                            <span class="pic-count-badge bg-primary-transparent text-primary flex-shrink-0">{{ displayedIkasAuditLogs.length }}</span>
+                          </div>
+
+                          <div class="card-body">
+                            <div v-if="isLoadingIkasAuditLogs" class="profile-skeleton-list">
+                              <div v-for="item in 5" :key="`audit-skeleton-${item}`" class="audit-skeleton-item">
+                                <span class="skeleton-block skeleton-icon"></span>
+                                <div class="skeleton-copy">
+                                  <span class="skeleton-block skeleton-line"></span>
+                                  <span class="skeleton-block skeleton-line skeleton-line-lg"></span>
+                                  <span class="skeleton-block skeleton-line skeleton-line-sm"></span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div v-else-if="!displayedIkasAuditLogs.length" class="empty-state py-4 text-center">
+                              <div class="empty-icon-ring mb-3">
+                                <div class="empty-icon-inner"><i class="ri-history-line"></i></div>
+                              </div>
+                              <h6 class="fw-bold mb-1 text-dark">Audit Log IKAS Kosong</h6>
+                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 340px;">Belum ada riwayat perubahan IKAS untuk stakeholder ini.</p>
+                            </div>
+
+                            <div v-else class="ikas-audit-log-list">
+                              <div
+                                v-for="log in displayedIkasAuditLogs"
+                                :key="log.id"
+                                class="ikas-audit-log-item"
+                              >
+                                <div class="ikas-audit-log-icon">
+                                  <i class="ri-file-history-line"></i>
+                                </div>
+                                <div class="ikas-audit-log-content">
+                                  <div class="ikas-audit-log-top">
+                                    <h6>{{ getAuditLogTitle(log) }}</h6>
+                                    <span class="ikas-audit-log-status">{{ log.status || log.action || log.aksi || 'Log' }}</span>
+                                  </div>
+                                  <p>{{ getAuditLogDescription(log) }}</p>
+                                  <div class="ikas-audit-log-meta">
+                                    <span><i class="ri-user-line"></i>{{ getAuditLogActor(log) }}</span>
+                                    <span><i class="ri-time-line"></i>{{ formatAuditLogDate(log.created_at || log.updated_at) }}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
      
-                      <div class="col-12 mb-4">
-                        <div class="card custom-card overflow-hidden shadow-sm">
+                      <div class="col-xl-5 col-12 mb-4 profile-side-stack">
+                        <div class="card custom-card profile-side-card overflow-hidden shadow-sm">
                           <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
                             <div class="d-flex align-items-center gap-2">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
@@ -884,108 +3127,76 @@ html.dark .hero-card-shell {
                               <span class="pic-count-badge bg-primary-transparent text-primary ms-2 flex-shrink-0">{{ friends.length }}</span>
                             </div>
                             <button v-if="isAdmin" @click="router.push({ path: '/pic-add', query: { slug: currentStakeholder.slug, id_perusahaan: currentStakeholder.id } })" class="btn btn-sm btn-primary d-flex align-items-center justify-content-center gap-2 px-3 py-2 rounded-pill shadow-sm hover-up w-100 w-sm-auto flex-shrink-0">
-                              <i class="ri-add-line fs-14"></i><span class="fw-bold">Add PIC</span>
+                              <i class="ri-add-line fs-14"></i><span class="fw-bold">Tambah PIC</span>
                             </button>
                           </div>
                           
                           <div class="card-body1 p-0">
-                            <div class="table-responsive stakeholder-table-wrap border-0 rounded-0 shadow-none">
-                              <table class="table stakeholder-table text-nowrap mb-0">
-                                <thead class="stakeholder-thead">
-                                  <tr>
-                                    <th class="th-no text-center">NO</th>
-                                    <th>
-                                      <div class="d-flex align-items-center gap-2">
-                                        <i class="ri-user-6-line text-muted"></i>NAMA PIC
-                                      </div>
-                                    </th>
-                                    <th>
-                                      <div class="d-flex align-items-center gap-2">
-                                        <i class="ri-mail-line text-muted"></i>EMAIL
-                                      </div>
-                                    </th>
-                                    <th>
-                                      <div class="d-flex align-items-center gap-2">
-                                        <i class="ri-phone-fill text-muted"></i>KONTAK TELEPON
-                                      </div>
-                                    </th>
-                                    <th v-if="isAdmin" class="text-center th-actions-sm">AKSI</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  <!-- Skeleton / Loading State -->
-                                  <tr v-if="isLoadingPics">
-                                    <td :colspan="isAdmin ? 4 : 3" class="text-center py-5">
-                                      <div class="d-flex flex-column align-items-center">
-                                        <div class="spinner-border spinner-border-sm text-primary mb-2"></div>
-                                        <span class="text-muted fs-12 fw-medium">Memuat data PIC...</span>
-                                      </div>
-                                    </td>
-                                  </tr>
+                            <div v-if="isLoadingPics" class="pic-card-list">
+                              <div v-for="item in 3" :key="`pic-skeleton-${item}`" class="pic-contact-card pic-skeleton-card">
+                                <div class="pic-contact-main">
+                                  <span class="skeleton-block skeleton-pill"></span>
+                                  <span class="skeleton-block skeleton-avatar"></span>
+                                  <div class="skeleton-copy">
+                                    <span class="skeleton-block skeleton-line"></span>
+                                    <span class="skeleton-block skeleton-line skeleton-line-sm"></span>
+                                  </div>
+                                </div>
+                                <div class="skeleton-copy">
+                                  <span class="skeleton-block skeleton-line"></span>
+                                  <span class="skeleton-block skeleton-line skeleton-line-md"></span>
+                                </div>
+                                <span class="skeleton-block skeleton-actions"></span>
+                              </div>
+                            </div>
 
-                                  <!-- Empty State -->
-                                  <tr v-else-if="!friends.length">
-                                    <td :colspan="isAdmin ? 4 : 3" class="text-center py-5">
-                                      <div class="empty-state py-4">
-                                        <div class="empty-icon-ring mb-3">
-                                          <div class="empty-icon-inner"><i class="ri-contacts-book-2-line"></i></div>
-                                        </div>
-                                        <h6 class="fw-bold mb-1 text-dark">Daftar PIC Kosong</h6>
-                                        <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 320px;">Belum ada data PIC yang terdaftar untuk stakeholder ini.</p>
-                                      </div>
-                                    </td>
-                                  </tr>
+                            <div v-else-if="!friends.length" class="empty-state py-4 text-center">
+                              <div class="empty-icon-ring mb-3">
+                                <div class="empty-icon-inner"><i class="ri-contacts-book-2-line"></i></div>
+                              </div>
+                              <h6 class="fw-bold mb-1 text-dark">Daftar PIC Kosong</h6>
+                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 320px;">Belum ada data PIC yang terdaftar untuk stakeholder ini.</p>
+                            </div>
 
-                                  <!-- Data Rows -->
-                                  <tr v-else v-for="(pic, index) in friends" :key="pic.id" class="stakeholder-row">
-                                    <td class="align-middle text-center">
-                                      <span class="row-number fw-semibold">{{ index + 1 }}</span>
-                                    </td>
-                                    <td class="align-middle">
-                                      <div class="d-flex align-items-center gap-3">
-                                        <div class="company-avatar shadow-sm border border-white" :class="getPicAvatarClass(pic.nama || '')">
-                                          <span class="company-avatar-letter text-uppercase">{{ pic.nama?.charAt(0) }}</span>
-                                        </div>
-                                        <div class="d-flex flex-column">
-                                          <span class="company-name text-dark fw-bold mb-0 lh-1">{{ pic.nama }}</span>
-                                          <span class="text-muted fs-11 mt-1">Person in Charge</span>
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td class="align-middle">
-                                      <div class="d-inline-flex align-items-center px-2 py-1 rounded-2 border border-light">
-                                        <i class="ri-mail-line me-2 text-primary fs-12"></i>
-                                        <span class="fw-bold fs-13 text-black">{{ pic.email }}</span>
-                                      </div>
-                                    </td>
-                                    <td class="align-middle">
-                                      <div class="d-inline-flex align-items-center px-2 py-1 rounded-2 border border-light">
-                                        <i class="ri-phone-line me-2 text-primary fs-12"></i>
-                                        <span class="fw-bold fs-13 text-black">{{ pic.telepon }}</span>
-                                      </div>
-                                    </td>
-                                    <td v-if="isAdmin" class="text-center align-middle">
-                                      <div class="d-flex gap-2 justify-content-center">
-                                        <button @click="editPIC(pic)" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Data">
-                                          <i class="ri-pencil-fill"></i>
-                                        </button>
-                                        <button @click="deletePIC(pic)" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Data">
-                                          <i class="ri-delete-bin-5-line"></i>
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
+                            <div v-else class="pic-card-list">
+                              <div v-for="(pic, index) in friends" :key="pic.id" class="pic-contact-card">
+                                <div class="pic-contact-main">
+                                  <span class="pic-index">{{ index + 1 }}</span>
+                                  <div class="company-avatar" :class="getPicAvatarClass(pic.nama || '')">
+                                    <span class="company-avatar-letter text-uppercase">{{ pic.nama?.charAt(0) }}</span>
+                                  </div>
+                                  <div class="pic-contact-copy">
+                                    <span class="company-name text-dark fw-bold">{{ pic.nama }}</span>
+                                    <span class="text-muted fs-11">Person in Charge</span>
+                                  </div>
+                                </div>
+
+                                <div class="pic-contact-meta">
+                                  <a :href="'mailto:' + pic.email" class="pic-meta-pill" :title="pic.email">
+                                    <i class="ri-mail-line"></i>
+                                    <span>{{ pic.email }}</span>
+                                  </a>
+                                  <a :href="'tel:' + pic.telepon" class="pic-meta-pill" :title="pic.telepon">
+                                    <i class="ri-phone-line"></i>
+                                    <span>{{ pic.telepon }}</span>
+                                  </a>
+                                </div>
+
+                                <div v-if="isAdmin" class="pic-card-actions">
+                                  <button @click="editPIC(pic)" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Data">
+                                    <i class="ri-pencil-fill"></i>
+                                  </button>
+                                  <button @click="deletePIC(pic)" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Data">
+                                    <i class="ri-delete-bin-5-line"></i>
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-
 
                       <!-- ═══════════  TENTANG PERUSAHAAN  ═══════════ -->
-                      <div class="col-12 mb-4">
-                        <div class="card custom-card">
+                        <div class="card custom-card profile-about-rail">
                           <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom">
                             <div>
                               <div class="card-title mb-0 fw-semibold text-dark">Tentang Perusahaan</div>
@@ -1037,5 +3248,75 @@ html.dark .hero-card-shell {
     </div>
   </div>
 
+  <div
+    v-if="isActivityFormVisible"
+    class="activity-modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeAktivitasForm"
+  >
+    <div class="activity-modal">
+      <div class="activity-modal-header">
+        <div class="d-flex align-items-center gap-2">
+          <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
+            <i class="ri-timeline-view text-primary fs-16"></i>
+          </div>
+          <div>
+            <h6 class="mb-0 fw-bold text-dark">
+              {{ editingAktivitasId ? 'Edit Aktivitas' : 'Tambah Aktivitas' }}
+            </h6>
+            <p class="text-muted fs-11 mb-0">{{ currentStakeholder?.nama_perusahaan }}</p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-icon btn-light rounded-3" :disabled="isSavingAktivitas" @click="closeAktivitasForm">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="activity-modal-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fs-12 fw-bold text-muted text-uppercase">Judul</label>
+            <input v-model="aktivitasForm.judul" type="text" class="form-control" placeholder="Masukkan judul aktivitas" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fs-12 fw-bold text-muted text-uppercase">Tanggal Mulai</label>
+            <input v-model="aktivitasForm.tanggal_mulai" type="date" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fs-12 fw-bold text-muted text-uppercase">Tanggal Selesai</label>
+            <input v-model="aktivitasForm.tanggal_selesai" type="date" class="form-control" />
+          </div>
+          <div class="col-12">
+            <label class="form-label fs-12 fw-bold text-muted text-uppercase">Jenis Aktivitas</label>
+            <div v-if="jenisAktivitasOptions.length" class="activity-kind-options">
+              <label v-for="jenis in jenisAktivitasOptions" :key="jenis" class="activity-kind-check">
+                <input v-model="aktivitasForm.jenis_aktivitas" type="checkbox" :value="jenis" />
+                <span>{{ jenis }}</span>
+              </label>
+            </div>
+            <div v-else class="text-muted fs-12">Jenis aktivitas belum tersedia dari server.</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fs-12 fw-bold text-muted text-uppercase">Deskripsi</label>
+            <LmsEditor
+              v-model="aktivitasForm.deskripsi"
+              variant="compact"
+              :min-height="240"
+              placeholder="Tulis ringkasan aktivitas di sini... Gunakan heading, list, link, gambar, tabel, dan format teks lainnya."
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-modal-footer">
+        <button type="button" class="btn btn-light" :disabled="isSavingAktivitas" @click="closeAktivitasForm">Batal</button>
+        <button type="button" class="btn btn-primary" :disabled="isSavingAktivitas" @click="saveAktivitas">
+          <span v-if="isSavingAktivitas" class="spinner-border spinner-border-sm me-2"></span>
+          {{ editingAktivitasId ? 'Update Aktivitas' : 'Simpan Aktivitas' }}
+        </button>
+      </div>
+    </div>
+  </div>
 
 </template>

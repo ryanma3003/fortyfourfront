@@ -5,7 +5,9 @@ import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
 import { useIkasStore } from '../stores/ikas';
 import { useDynamicAssessmentStore } from '../stores/dynamic-assessment';
-import { config } from '@/config/env';
+import { useAuthStore } from '../stores/auth';
+import { useNotificationStore } from '../stores/notifications';
+import { ikasService } from '@/services/ikas.service';
 import Pageheader from '../shared/components/pageheader/pageheader.vue';
 import RadarChartIkas from '../shared/components/@spk/charts/ikas-charts.vue';
 import IkasComparison from './ikas/ikas-comparison.vue';
@@ -15,6 +17,9 @@ const route = useRoute();
 const ikasStore = useIkasStore();
 const assessmentStore = useDynamicAssessmentStore();
 const stakeholdersStore = useStakeholdersStore();
+const authStore = useAuthStore();
+const notifStore = useNotificationStore();
+const currentYear = new Date().getFullYear();
 
 const hydrateCurrentStakeholderIkas = async () => {
     await ikasStore.initialize();
@@ -56,6 +61,7 @@ watch(
 const currentSlug = computed(() => String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
 const currentIkasId = computed(() => ikasStore.getBackendIkasId(currentSlug.value));
+const canRequestEdit = computed(() => authStore.isFullAdmin);
 
 // Get IKAS data for current stakeholder
 const ikasDataDynamic = computed(() => {
@@ -76,11 +82,20 @@ const ikasDataDynamic = computed(() => {
     };
 });
 
+const editRequestReasonLabel = computed(() => {
+    if (ikasDataDynamic.value.edit_request_status === 'rejected') {
+        return 'Alasan penolakan';
+    }
+    if (ikasDataDynamic.value.edit_request_status === 'pending') {
+        return 'Alasan pengajuan edit';
+    }
+    return 'Alasan request edit';
+});
+
 const dataToPass = computed(() => {
     try {
         const slug = route.query.slug;
         const source = route.query.source;
-        console.log("IKAS Debug: Slug:", slug, "Source:", source);
         
         // If source is 'list', user came from the list page, so back button should go to list.
         if (source === 'list') {
@@ -93,7 +108,6 @@ const dataToPass = computed(() => {
 
         if (slug) {
             const stakeholder = stakeholdersStore.getStakeholderBySlug(String(slug));
-            console.log("IKAS Debug: Found stakeholder:", stakeholder);
 
             if (stakeholder) {
                 return {
@@ -125,11 +139,29 @@ const currentStakeholder = computed(() => {
 
 // Navigate to IKAS CRUD with slug and source
 const goToIkasCrud = () => {
+    if (ikasDataDynamic.value.is_validated) {
+        alert(canRequestEdit.value
+            ? 'Data IKAS sudah tervalidasi. Ajukan Request Edit terlebih dahulu sebelum mengedit data.'
+            : 'Data IKAS sudah tervalidasi dan tidak dapat diedit.'
+        );
+        return;
+    }
+
     const query = { slug: currentSlug.value };
     if (currentSource.value) {
         query.source = currentSource.value;
     }
     router.push({ path: '/ikas-crud', query });
+};
+
+const ensureEditableIkas = () => {
+    if (!ikasDataDynamic.value.is_validated) return true;
+
+    alert(canRequestEdit.value
+        ? 'Data IKAS sudah tervalidasi. Ajukan Request Edit dulu agar data bisa diubah.'
+        : 'Data IKAS sudah tervalidasi dan tidak dapat diubah.'
+    );
+    return false;
 };
 
 const isDeleting = ref(false);
@@ -159,6 +191,58 @@ const deleteAssessment = async () => {
 };
 
 const isValidating = ref(false);
+const isRequestingEdit = ref(false);
+
+const syncIkasRecordState = ({ editRequestStatus, editRequestReason, isValidated }) => {
+    const slug = currentSlug.value;
+    const ikasId = currentIkasId.value;
+    const stakeholderId = currentStakeholder.value?.id;
+
+    if (ikasStore.ikasDataMap[slug]) {
+        if (typeof isValidated === 'boolean') {
+            ikasStore.ikasDataMap[slug].is_validated = isValidated;
+        }
+        if (editRequestStatus !== undefined) {
+            ikasStore.ikasDataMap[slug].edit_request_status = editRequestStatus;
+        }
+        if (editRequestReason !== undefined) {
+            ikasStore.ikasDataMap[slug].edit_request_reason = editRequestReason || '';
+        }
+    }
+
+    if (ikasStore.ikasSummaryMap[slug]) {
+        if (typeof isValidated === 'boolean') {
+            ikasStore.ikasSummaryMap[slug].is_validated = isValidated;
+        }
+        if (editRequestStatus !== undefined) {
+            ikasStore.ikasSummaryMap[slug].edit_request_status = editRequestStatus;
+        }
+        if (editRequestReason !== undefined) {
+            ikasStore.ikasSummaryMap[slug].edit_request_reason = editRequestReason || '';
+        }
+    }
+
+    ikasStore.ikasRawRecords = ikasStore.ikasRawRecords.map((record) => {
+        const company = record?.perusahaan || {};
+        const matchesRecord =
+            String(record?.id || '') === String(ikasId || '') ||
+            String(record?.slug || '') === String(slug) ||
+            String(company?.slug || '') === String(slug) ||
+            String(record?.id_perusahaan || company?.id || '') === String(stakeholderId || '');
+
+        if (!matchesRecord) return record;
+
+        return {
+            ...record,
+            ...(typeof isValidated === 'boolean' ? { is_validated: isValidated, status: isValidated } : {}),
+            ...(editRequestStatus !== undefined ? { edit_request_status: editRequestStatus } : {}),
+            ...(editRequestReason !== undefined ? { edit_request_reason: editRequestReason || '' } : {}),
+        };
+    });
+
+    ikasStore.ikasVersion++;
+};
+
 const validateAssessment = async () => {
     const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
     if (!ikasId) {
@@ -175,10 +259,8 @@ const validateAssessment = async () => {
         console.warn('[IKAS] Triggering validation for ID:', ikasId);
         const result = await ikasStore.validateIkas(currentSlug.value);
         if (result.success) {
-            console.log('[IKAS] Validation successful');
             alert('Data penilaian berhasil divalidasi.');
-            // Optimistic UI update since backend might not reflect it immediately
-            ikasStore.ikasDataMap[currentSlug.value].is_validated = true;
+            syncIkasRecordState({ editRequestStatus: 'none', isValidated: true });
         } else {
             console.error('[IKAS] Validation failed:', result.error);
             alert('Gagal memvalidasi data: ' + result.error);
@@ -188,6 +270,42 @@ const validateAssessment = async () => {
         alert('Terjadi kesalahan saat memvalidasi data.');
     } finally {
         isValidating.value = false;
+    }
+};
+
+const requestEdit = async () => {
+    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    if (!ikasId) {
+        alert('Tidak ada data penilaian untuk diajukan request edit.');
+        return;
+    }
+
+    if (!canRequestEdit.value) {
+        alert('Hanya admin yang dapat mengajukan request edit IKAS.');
+        return;
+    }
+
+    const reason = prompt('Masukkan alasan pengajuan edit:');
+    if (reason === null) return; // User cancelled
+    if (!reason.trim()) {
+        alert('Alasan pengajuan edit wajib diisi.');
+        return;
+    }
+
+    isRequestingEdit.value = true;
+    try {
+        const result = await ikasStore.requestEditIkas(currentSlug.value, reason.trim());
+        if (result.success) {
+            syncIkasRecordState({ editRequestStatus: 'pending', editRequestReason: reason.trim(), isValidated: true });
+            alert('Request edit berhasil diajukan.');
+        } else {
+            alert('Gagal mengajukan request edit: ' + result.error);
+        }
+    } catch (err) {
+        console.error('[IKAS] Request edit error:', err);
+        alert('Terjadi kesalahan saat mengajukan request edit.');
+    } finally {
+        isRequestingEdit.value = false;
     }
 };
 
@@ -205,9 +323,7 @@ const approveEdit = async () => {
         const result = await ikasStore.approveEditIkas(currentSlug.value);
         if (result.success) {
             alert('Permintaan edit berhasil disetujui.');
-            // Optimistic UI update
-            ikasStore.ikasDataMap[currentSlug.value].edit_request_status = 'approved';
-            ikasStore.ikasDataMap[currentSlug.value].is_validated = false; // Buka kunci validasi agar bisa diedit
+            syncIkasRecordState({ editRequestStatus: 'approved', isValidated: false });
         } else {
             alert('Gagal menyetujui edit: ' + result.error);
         }
@@ -223,17 +339,19 @@ const rejectEdit = async () => {
     const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
     if (!ikasId) return;
 
-    const reason = prompt('Masukkan alasan penolakan (opsional):');
+    const reason = prompt('Masukkan alasan penolakan:');
     if (reason === null) return; // User cancelled
+    if (!reason.trim()) {
+        alert('Alasan penolakan wajib diisi agar user tahu apa yang perlu diperbaiki.');
+        return;
+    }
 
     isRejecting.value = true;
     try {
-        const result = await ikasStore.rejectEditIkas(currentSlug.value, reason);
+        const result = await ikasStore.rejectEditIkas(currentSlug.value, reason.trim());
         if (result.success) {
             alert('Permintaan edit berhasil ditolak.');
-            // Optimistic UI update
-            ikasStore.ikasDataMap[currentSlug.value].edit_request_status = 'rejected';
-            ikasStore.ikasDataMap[currentSlug.value].edit_request_reason = reason;
+            syncIkasRecordState({ editRequestStatus: 'rejected', editRequestReason: reason.trim(), isValidated: true });
         } else {
             alert('Gagal menolak edit: ' + result.error);
         }
@@ -254,6 +372,8 @@ const errorMessage = ref('');
 
 // --- FUNCTION: Trigger Input File ---
 const triggerFileInput = () => {
+    if (!ensureEditableIkas()) return;
+
     errorMessage.value = ''; // Reset error msg
     fileInput.value.click();
 };
@@ -296,6 +416,7 @@ const uploadExcel = async () => {
 
     try {
         // Mengirim file ke endpoint backend
+        notifStore.trackSelfAction('ikas', '');
         const response = await fetch('/api/maturity/ikas/import', {
             method: 'POST',
             body: formData,
@@ -338,6 +459,12 @@ const formatValue = (value) => {
 // --- STATE: Export PDF ---
 const exporting = ref(false);
 
+const getFileNameFromResponse = (response, fallbackName) => {
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
+    return fileNameMatch ? decodeURIComponent(fileNameMatch[1] || fileNameMatch[2]) : fallbackName;
+};
+
 const exportToPdf = async () => {
     const ikasId = currentIkasId.value;
     if (!ikasId) {
@@ -347,31 +474,11 @@ const exportToPdf = async () => {
 
     exporting.value = true;
     try {
-        const cleanBaseUrl = config.api.baseUrl.replace(/\/$/, '');
-        const response = await fetch(`${cleanBaseUrl}/api/maturity/ikas/${ikasId}/export`, {
-            method: 'GET',
-            credentials: 'include',
-            headers: {
-                Accept: 'application/pdf',
-            },
-        });
-
-        if (!response.ok) {
-            let message = `HTTP Error ${response.status}`;
-            try {
-                const result = await response.json();
-                message = result.message || message;
-            } catch {
-                message = response.statusText || message;
-            }
-            throw new Error(message);
-        }
+        const response = await ikasService.exportIkasPdf(ikasId);
 
         const perusahaanName = currentStakeholder.value?.nama_perusahaan || 'Stakeholder';
         const fallbackName = `IKAS_Report_${perusahaanName.replace(/\s+/g, '_')}.pdf`;
-        const disposition = response.headers.get('Content-Disposition') || '';
-        const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
-        const fileName = fileNameMatch ? decodeURIComponent(fileNameMatch[1] || fileNameMatch[2]) : fallbackName;
+        const fileName = getFileNameFromResponse(response, fallbackName);
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -519,6 +626,10 @@ const exportToPdf = async () => {
   min-height: 36px;
 }
 .btn-ikas-input:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-input-locked {
+  background: linear-gradient(135deg, #64748b, #94a3b8) !important;
+  box-shadow: 0 4px 14px rgba(100,116,139,0.28);
+}
 .btn-ikas-upload {
   background: linear-gradient(135deg, #065f46, #059669);
   border: none; border-radius: 50px; padding: 8px 16px;
@@ -571,6 +682,19 @@ const exportToPdf = async () => {
 .btn-ikas-validate:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-validate:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
+.btn-ikas-unlock {
+  background: linear-gradient(135deg, #92400e, #f59e0b);
+  border: none; border-radius: 50px; padding: 8px 16px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(245,158,11,0.35);
+  transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
+}
+.btn-ikas-unlock:hover  { opacity: 0.88; transform: translateY(-1px); }
+.btn-ikas-unlock:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
 .btn-ikas-approve {
   background: linear-gradient(135deg, #065f46, #10b981);
   border: none; border-radius: 50px; padding: 8px 16px;
@@ -596,6 +720,44 @@ const exportToPdf = async () => {
 }
 .btn-ikas-reject:hover  { opacity: 0.88; transform: translateY(-1px); }
 .btn-ikas-reject:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.ikas-request-note {
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #0f172a;
+  display: grid;
+  gap: 8px;
+  margin: -0.25rem 0 1.25rem;
+  padding: 12px 14px;
+}
+
+.ikas-request-note.rejected {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.ikas-request-note > div {
+  align-items: center;
+  color: #1d4ed8;
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+}
+
+.ikas-request-note.rejected > div {
+  color: #991b1b;
+}
+
+.ikas-request-note p {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 0;
+  white-space: pre-wrap;
+}
 
 /* ── Domain score summary strip ─────────────────────────── */
 .domain-strip {
@@ -743,7 +905,12 @@ const exportToPdf = async () => {
           <div class="ikas-action-bar" data-html2canvas-ignore="true">
             <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
             <div class="ikas-action-group">
-              <button @click="goToIkasCrud" class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input">
+              <button
+                @click="goToIkasCrud"
+                class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input"
+                :class="{ 'btn-ikas-input-locked': ikasDataDynamic.is_validated }"
+                :title="ikasDataDynamic.is_validated ? 'Buka validasi dulu sebelum edit' : 'Input data IKAS'"
+              >
                 <i class="ri-edit-box-line"></i> Input Data
               </button>
               <button @click="triggerFileInput" class="btn-ikas-upload" :disabled="loading">
@@ -758,6 +925,11 @@ const exportToPdf = async () => {
               </button>
             </div>
             <div class="ikas-action-group ikas-action-group-admin">
+              <button v-if="canRequestEdit && currentIkasId && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
+                <span v-if="isRequestingEdit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <i v-else class="ri-edit-2-line"></i>
+                {{ isRequestingEdit ? 'Mengajukan...' : 'Request Edit' }}
+              </button>
               <button v-if="currentIkasId && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
                 <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                 <i v-else class="ri-checkbox-circle-line"></i>
@@ -781,6 +953,18 @@ const exportToPdf = async () => {
             </div>
           </div>
 
+          <div
+            v-if="ikasDataDynamic.edit_request_reason && ['pending', 'rejected'].includes(ikasDataDynamic.edit_request_status)"
+            class="ikas-request-note"
+            :class="ikasDataDynamic.edit_request_status"
+          >
+            <div>
+              <i :class="ikasDataDynamic.edit_request_status === 'rejected' ? 'ri-close-circle-line' : 'ri-edit-2-line'"></i>
+              <span>{{ editRequestReasonLabel }}</span>
+            </div>
+            <p>{{ ikasDataDynamic.edit_request_reason }}</p>
+          </div>
+
           <!-- Maturity table (unchanged logic) -->
           <div class="table-wrapper">
             <table class="maturity-table">
@@ -789,7 +973,7 @@ const exportToPdf = async () => {
                   <th rowspan="2" colspan="2" class="left-title fs-14">
                     Tingkat Kematangan<br />Keamanan Siber
                   </th>
-                  <th colspan="5" class="year-title">2025</th>
+                  <th colspan="5" class="year-title">{{ currentYear }}</th>
                 </tr>
                 <tr class="center">
                   <th>Target Nilai Kematangan</th>

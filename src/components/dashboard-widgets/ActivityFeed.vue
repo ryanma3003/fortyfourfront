@@ -1,35 +1,36 @@
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useNotificationStore } from '@/stores/notifications';
-import { ENTITY_LABELS, ACTION_VERBS } from '@/types/notification.types';
 
 const router = useRouter();
 const notifStore = useNotificationStore();
+const props = defineProps({
+    loading: { type: Boolean, default: false },
+});
+
+const initFeed = () => {
+    notifStore.init();
+};
 
 onMounted(() => {
-    notifStore.init();
+    if (!props.loading) initFeed();
+});
+
+watch(() => props.loading, (loading) => {
+    if (!loading) initFeed();
 });
 
 const recentEvents = computed(() => {
+    if (props.loading) return [];
     return notifStore.enhancedEvents.slice(0, 20);
 });
-
-const isConnected = computed(() => notifStore.connected);
 
 function getAvatarColor(type) {
     switch (type) {
         case 'created': return 'linear-gradient(135deg, #26bf94, #6ee7b7)';
         case 'deleted': return 'linear-gradient(135deg, #e6533c, #f87171)';
         default: return 'linear-gradient(135deg, #1e40af, #3b82f6)';
-    }
-}
-
-function getTypeIcon(type) {
-    switch (type) {
-        case 'created': return 'ri-add-circle-line';
-        case 'deleted': return 'ri-delete-bin-line';
-        default: return 'ri-edit-2-line';
     }
 }
 
@@ -51,19 +52,24 @@ function goToNotifications() {
                 </div>
             </h6>
             <div class="d-flex align-items-center gap-2">
-                <div class="d-flex align-items-center gap-1" style="font-size:0.7rem; font-weight:600;"
-                     :style="{ color: isConnected ? '#26bf94' : '#e6533c' }">
-                    <div class="dw-live-dot" :style="{ background: isConnected ? '#26bf94' : '#e6533c' }"></div>
-                    {{ isConnected ? 'Live' : 'Offline' }}
-                </div>
                 <span v-if="notifStore.unreadCount > 0" class="dw-badge dw-badge-warning">
                     {{ notifStore.unreadCount }} baru
                 </span>
             </div>
         </div>
         <div class="dw-card-body" style="padding: 8px 16px;">
+            <div v-if="loading" class="dw-activity-scroll-container placeholder-glow">
+                <div v-for="n in 5" :key="'activity-skeleton-' + n" class="dw-activity-item">
+                    <span class="placeholder" style="width:36px;height:36px;border-radius:10px;"></span>
+                    <div class="flex-grow-1" style="min-width: 0;">
+                        <span class="placeholder col-6 d-block mb-2" style="height:12px;border-radius:6px;"></span>
+                        <span class="placeholder col-10 d-block" style="height:10px;border-radius:6px;"></span>
+                    </div>
+                    <span class="placeholder" style="width:58px;height:10px;border-radius:6px;"></span>
+                </div>
+            </div>
             <!-- Empty state -->
-            <div v-if="recentEvents.length === 0" class="text-center py-4">
+            <div v-else-if="recentEvents.length === 0" class="text-center py-4">
                 <i class="ri-inbox-line" style="font-size:2rem; color:var(--dw-text-muted); opacity:0.5;"></i>
                 <p style="font-size:0.8rem; color:var(--dw-text-muted); margin-top:8px;">Belum ada aktivitas</p>
             </div>

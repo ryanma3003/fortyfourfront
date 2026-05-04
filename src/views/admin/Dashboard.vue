@@ -1,23 +1,12 @@
     <script setup>
-    import { ref, computed, onMounted, watch, onUnmounted, nextTick } from "vue";
+    import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent } from "vue";
     import { useRouter, useRoute } from "vue-router";
-    import SpkReusebleJobs from "@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue";
-    import RadarChartIkas from '@/shared/components/@spk/charts/ikas-charts.vue';
-    import SektorAnalytics from '@/components/dashboards/sektor-analytics.vue';
 
-    // ─── Dashboard Widgets ──────────────────────────────────
+    // ” Dashboard Widgets 
     import AlertIndicators from '@/components/dashboard-widgets/AlertIndicators.vue';
-    import KpiCards from '@/components/dashboard-widgets/KpiCards.vue';
-    import InsightCard from '@/components/dashboard-widgets/InsightCard.vue';
-    import ActionCenter from '@/components/dashboard-widgets/ActionCenter.vue';
-    import ActivityFeed from '@/components/dashboard-widgets/ActivityFeed.vue';
-    import GeoMap from '@/components/dashboard-widgets/GeoMap.vue';
-    import QuickActions from '@/components/dashboard-widgets/QuickActions.vue';
     import GlobalFilter from '@/components/dashboard-widgets/GlobalFilter.vue';
-    import DrillDownModal from '@/components/dashboard-widgets/DrillDownModal.vue';
-    import DashboardExport from '@/components/dashboard-widgets/DashboardExport.vue';
 
-    // ─── CSS ────────────────────────────────────────────────
+    // ” CSS 
     import '@/assets/css/dashboard-widgets.css';
 
     // Stores
@@ -30,12 +19,32 @@
     // Services
     import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
 
+    const SpkReusebleJobs = defineAsyncComponent(() => import("@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue"));
+    const RadarChartIkas = defineAsyncComponent(() => import('@/shared/components/@spk/charts/ikas-charts.vue'));
+    const SektorAnalytics = defineAsyncComponent(() => import('@/components/dashboards/sektor-analytics.vue'));
+    const KpiCards = defineAsyncComponent(() => import('@/components/dashboard-widgets/KpiCards.vue'));
+    const InsightCard = defineAsyncComponent(() => import('@/components/dashboard-widgets/InsightCard.vue'));
+    const ActionCenter = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActionCenter.vue'));
+    const ActivityFeed = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActivityFeed.vue'));
+    const QuickActions = defineAsyncComponent(() => import('@/components/dashboard-widgets/QuickActions.vue'));
+    const DrillDownModal = defineAsyncComponent(() => import('@/components/dashboard-widgets/DrillDownModal.vue'));
+
     const router = useRouter();
     const route = useRoute();
     const showMetabase = ref(false);
     const isFirstLoad = ref(true);
     const loading = ref(true);
-    const summaryMode = ref('KSE'); // 'KSE' or 'IKAS'
+    const dashboardDetailsReady = ref(false);
+    const lowerSectionsReady = ref(false);
+    const summaryMode = ref('KSE'); // 'KSE', 'IKAS', or 'CSIRT'
+    const DASHBOARD_LOAD_STAGGER_MS = 90;
+    const DASHBOARD_RELOAD_DEBOUNCE_MS = 450;
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let dashboardLoadSeq = 0;
+    let dashboardLoadInFlight = false;
+    let dashboardFilterInitialized = false;
+    let dashboardOptionsPromise = null;
+    let lastDashboardLoadAt = 0;
 
     // Stores
     const stakeholdersStore = useStakeholdersStore();
@@ -46,7 +55,7 @@
     
     // Analytics Chart States
     const kseChartType = ref('donut'); // 'donut' or 'bar'
-    const ikasChartType = ref('donut'); // 'donut' or 'radar'
+    const ikasChartType = ref('donut'); // 'donut', 'bar', or 'pie'
     const analyticsView = ref('distribution'); // 'distribution' or 'completion'
     const kseIkasViewMode = ref('overview'); // 'overview' or 'table'
 
@@ -60,15 +69,17 @@
     const drillDownItems = ref([]);
     const drillDownColumns = ref([]);
 
-    // ─── Datepicker State ───────────────────────────────────
+    // ” Datepicker State ”
     const date = ref(null);
     const datepickerRef = ref(null);
     const customValue = ref('');
     const customUnit = ref('days');
     const singleDateValue = ref('');
+    let isSyncingDateFromStore = false;
 
     // Sync datepicker model from filterStore on load
     const initDateFromStore = () => {
+        isSyncingDateFromStore = true;
         const dr = filterStore.dateRange;
         if (dr && dr[0] && dr[1]) {
             date.value = [new Date(dr[0]), new Date(dr[1])];
@@ -76,10 +87,14 @@
             const now = new Date();
             date.value = [new Date(now.getFullYear(), 0, 1), new Date(now.getFullYear(), 11, 31)];
         }
+        nextTick(() => {
+            isSyncingDateFromStore = false;
+        });
     };
 
-    // Watch datepicker changes → push to filterStore
+    // Watch datepicker changes †’ push to filterStore
     watch(date, (newVal) => {
+        if (isSyncingDateFromStore) return;
         if (!newVal || !Array.isArray(newVal) || newVal.length < 2) return;
         filterStore.updateDateRange(newVal[0], newVal[1]);
     });
@@ -148,126 +163,180 @@
         return d.getFullYear() === parseInt(targetYear) && q === parseInt(targetQuarter);
     }
 
-    const kseStatus = computed(() => {
-        const stakeholders = datedStakeholders.value;
-        const allSe = datedSeList.value; // Use filtered SE list
-        let sudah = 0;
-
-        // Build a fast lookup set for SE IDs within the active date/sector filter
-        const allowedSeIds = new Set();
-        allSe.forEach(se => allowedSeIds.add(String(se.id)));
-
-        stakeholders.forEach(s => {
-            const sId = String(s.id);
-            const csirt = csirtStore.csirtByPerusahaanMap[sId];
-            
-            let hasSe = false;
-            
-            // Check direct SE associations first
-            const sePerusahaan = csirtStore.seByPerusahaanMap[sId];
-            if (sePerusahaan && sePerusahaan.some(se => allowedSeIds.has(String(se.id)))) {
-                hasSe = true;
-            } else if (csirt) {
-                // Fallback to CSIRT-associated SE
-                const seCsirt = csirtStore.seByCsirtMap[String(csirt.id)];
-                if (seCsirt && seCsirt.some(se => allowedSeIds.has(String(se.id)))) {
-                    hasSe = true;
-                }
-            }
-
-            if (hasSe) sudah++;
-        });
-
+    const apiKseData = computed(() => {
+        const data = filterStore.summaryData?.kse || {};
         return {
-            total_perusahaan: stakeholders.length,
-            sudah_mengisi_kse: sudah,
-            belum_mengisi_kse: Math.max(0, stakeholders.length - sudah)
+            rendah: Number(data.rendah ?? 0) || 0,
+            strategis: Number(data.strategis ?? 0) || 0,
+            this_month: Number(data.this_month ?? 0) || 0,
+            tinggi: Number(data.tinggi ?? 0) || 0,
+            total_se: Number(data.total_se ?? 0) || 0,
         };
     });
 
-    const kseData = computed(() => {
-        const list = baseSeList.value;
+    const getSeCsirt = (se) => {
+        const cId = String(se?.id_csirt || se?.csirt_id || se?.csirt?.id || '');
+        return cId ? csirtStore.csirtByIdMap[cId] : null;
+    };
+
+    const getSeCompany = (se) => {
+        const csirt = getSeCsirt(se);
+        const companyId = se?.id_perusahaan || se?.perusahaan?.id || csirt?.id_perusahaan || csirt?.perusahaan?.id;
+        return companyId ? (stakeholdersStore.stakeholdersByIdMap[String(companyId)] || se?.perusahaan || csirt?.perusahaan || null) : null;
+    };
+
+    const getSeCompanyId = (se) => {
+        const csirt = getSeCsirt(se);
+        return se?.id_perusahaan || se?.perusahaan?.id || csirt?.id_perusahaan || csirt?.perusahaan?.id || '';
+    };
+
+    const getSeFirstDate = (se) => {
+        const csirt = getSeCsirt(se);
+        const company = getSeCompany(se);
+        return se?.created_at || se?.createdAt || se?.tanggal_dibuat || se?.updated_at || se?.updatedAt || csirt?.created_at || company?.created_at || '';
+    };
+
+    const getSeFirstTimestamp = (se) => {
+        const date = getSeFirstDate(se);
+        const time = date ? new Date(date).getTime() : NaN;
+        return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+    };
+
+    const firstKseByCompany = computed(() => {
+        const firstByCompany = new Map();
+
+        baseSeList.value.forEach((se, index) => {
+            const companyId = getSeCompanyId(se);
+            const key = companyId ? String(companyId) : `se:${se?.id || index}`;
+            const current = firstByCompany.get(key);
+            const timestamp = getSeFirstTimestamp(se);
+
+            if (!current || timestamp < current.timestamp) {
+                firstByCompany.set(key, { se, timestamp });
+            }
+        });
+
+        return Array.from(firstByCompany.values()).map((item) => item.se);
+    });
+
+    const datedFirstKseByCompany = computed(() => {
+        const range = filterStore.dateRange;
+        if (!range || (!range[0] && !range[1])) return firstKseByCompany.value;
+
+        return firstKseByCompany.value.filter((se) => {
+            const date = getSeFirstDate(se);
+            return date ? isInDateRange(date, range) : false;
+        });
+    });
+
+    const localKseList = computed(() => {
+        const kategori = String(filterStore.kategoriSe || '').trim().toLowerCase();
+        const list = datedFirstKseByCompany.value;
+
+        if (['strategis', 'tinggi', 'rendah'].includes(kategori)) {
+            return list.filter((se) => String(se.kategori_se || '').trim().toLowerCase() === kategori);
+        }
+
+        return list;
+    });
+
+    const localKseData = computed(() => {
+        const source = localKseList.value;
+        const categorySource = datedFirstKseByCompany.value;
+        const activeCategory = String(filterStore.kategoriSe || '').trim().toLowerCase();
         let strategis = 0, tinggi = 0, rendah = 0;
-        list.forEach(se => {
+
+        categorySource.forEach(se => {
             const kat = (se.kategori_se || '').toLowerCase().trim();
             if (kat === 'strategis') strategis++;
             else if (kat === 'tinggi') tinggi++;
             else if (kat === 'rendah') rendah++;
         });
+
+        if (['strategis', 'tinggi', 'rendah'].includes(activeCategory)) {
+            return {
+                total_se: source.length,
+                strategis: activeCategory === 'strategis' ? source.length : 0,
+                tinggi: activeCategory === 'tinggi' ? source.length : 0,
+                rendah: activeCategory === 'rendah' ? source.length : 0,
+                this_month: source.length,
+            };
+        }
+
         return {
-            total_se: list.length,
+            total_se: categorySource.length,
             strategis,
             tinggi,
             rendah,
-            this_month: filteredSe.value
+            this_month: source.length,
         };
     });
-    const apiSektorCounts = computed(() => {
-        const all = baseStakeholders.value;
-        const activeSektorId = filterStore.sektorId;
-        const currentYear = filterStore.year ? parseInt(filterStore.year) : new Date().getFullYear();
-        const currentQuarter = filterStore.quarter ? parseInt(filterStore.quarter) : Math.floor(new Date().getMonth() / 3) + 1;
-        const now = new Date();
 
-        if (activeSektorId) {
-            const allSubSektors = subSektorList.value;
-            const children = allSubSektors.filter(ss => {
-                const pid = getSubSektorParentId(ss);
-                return pid !== undefined && String(pid) === String(activeSektorId);
-            });
+    const hasUsableApiKseData = computed(() => {
+        const data = apiKseData.value;
+        const hasApiNumbers = data.total_se > 0 || data.this_month > 0 || data.strategis > 0 || data.tinggi > 0 || data.rendah > 0;
+        return !!filterStore.summaryData?.endpointStatus?.se?.ok && (hasApiNumbers || datedFirstKseByCompany.value.length === 0);
+    });
 
-            return children.map(ss => {
-                const ssStakeholders = all.filter(st => String(st.sub_sektor?.id || st.id_sub_sektor) === String(ss.id));
-                
-                const countYear = ssStakeholders.filter(st => isInCategoryYear(st.created_at, currentYear)).length;
-                const countQuarter = ssStakeholders.filter(st => isInCategoryQuarter(st.created_at, currentYear, currentQuarter)).length;
-                const thisMonth = ssStakeholders.filter(st => {
-                    if(!st.created_at) return false;
-                    const d = new Date(st.created_at);
-                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                }).length;
+    const apiKseStatus = computed(() => {
+        const status = filterStore.summaryData?.kse_status || {};
+        return {
+            belum_mengisi_kse: Number(status.belum_mengisi_kse ?? 0) || 0,
+            sudah_mengisi_kse: Number(status.sudah_mengisi_kse ?? 0) || 0,
+            total_perusahaan: Number(status.total_perusahaan ?? 0) || 0,
+        };
+    });
 
-                return {
-                    id: ss.id,
-                    nama_sektor: getSubSektorName(ss),
-                    total: ssStakeholders.length,
-                    this_month: thisMonth,
-                    countYear,
-                    countQuarter
-                };
-            }).filter(s => s.total > 0).sort((a,b) => b.total - a.total);
+    const kseStatus = computed(() => {
+        const apiStatus = apiKseStatus.value;
+        const totalPerusahaan = apiStatus.total_perusahaan || datedStakeholders.value.length;
+        const sudahFromStatus = apiStatus.sudah_mengisi_kse || 0;
+        const hasApiStatusNumbers = apiStatus.total_perusahaan > 0 || apiStatus.sudah_mengisi_kse > 0 || apiStatus.belum_mengisi_kse > 0;
+
+        if (hasApiStatusNumbers) {
+            return {
+                total_perusahaan: totalPerusahaan,
+                sudah_mengisi_kse: sudahFromStatus,
+                belum_mengisi_kse: Math.max(0, totalPerusahaan - sudahFromStatus),
+            };
         }
 
-        const allSektors = sektorList.value;
-        return allSektors.map(s => {
-            const children = subSektorList.value.filter(ss => {
-                const pid = getSubSektorParentId(ss);
-                return pid !== undefined && String(pid) === String(s.id);
-            });
-            const childIds = new Set(children.map(c => String(c.id)));
+        const stakeholders = datedStakeholders.value;
+        const allSe = localKseList.value; // Use filtered SE list
+        const filledCompanyIds = new Set();
 
-            const sectorStakeholders = all.filter(st => {
-                const ssId = st.sub_sektor?.id || st.id_sub_sektor;
-                return ssId && childIds.has(String(ssId));
-            });
+        allSe.forEach((se) => {
+            const companyId = getSeCompanyId(se);
+            if (companyId) filledCompanyIds.add(String(companyId));
+        });
 
-            const countYear = sectorStakeholders.filter(st => isInCategoryYear(st.created_at, currentYear)).length;
-            const countQuarter = sectorStakeholders.filter(st => isInCategoryQuarter(st.created_at, currentYear, currentQuarter)).length;
-            const thisMonth = sectorStakeholders.filter(st => {
-                if(!st.created_at) return false;
-                const d = new Date(st.created_at);
-                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-            }).length;
+        return {
+            total_perusahaan: stakeholders.length,
+            sudah_mengisi_kse: filledCompanyIds.size,
+            belum_mengisi_kse: Math.max(0, stakeholders.length - filledCompanyIds.size)
+        };
+    });
 
-            return {
-                id: s.id,
-                nama_sektor: getSektorName(s),
-                total: sectorStakeholders.length,
-                this_month: thisMonth,
-                countYear,
-                countQuarter
-            };
-        }).filter(s => s.total > 0).sort((a,b) => b.total - a.total);
+    const kseData = computed(() => {
+        if (datedFirstKseByCompany.value.length > 0) return localKseData.value;
+        if (hasUsableApiKseData.value) return apiKseData.value;
+        return localKseData.value;
+    });
+    const apiSektorCounts = computed(() => {
+        const counts = filterStore.summaryData?.sektor_counts;
+        if (!Array.isArray(counts)) return [];
+
+        return counts
+            .map((item) => ({
+                id: String(item?.id ?? item?.sektor_id ?? item?.sub_sektor_id ?? item?.nama_sektor ?? ''),
+                nama_sektor: String(item?.nama_sektor ?? item?.nama_sub_sektor ?? item?.nama ?? 'Tidak diketahui'),
+                total: Number(item?.total ?? item?.count ?? item?.jumlah ?? 0) || 0,
+                this_month: Number(item?.this_month ?? item?.bulan_ini ?? 0) || 0,
+                countYear: Number(item?.countYear ?? item?.count_year ?? item?.tahun_ini ?? 0) || 0,
+                countQuarter: Number(item?.countQuarter ?? item?.count_quarter ?? item?.kuartal_ini ?? 0) || 0,
+            }))
+            .filter((item) => item.total > 0 || item.this_month > 0 || item.countYear > 0 || item.countQuarter > 0)
+            .sort((a, b) => b.total - a.total);
     });
 
     // KSE fill rate
@@ -275,6 +344,158 @@
         const s = kseStatus.value;
         if (!s || !s.total_perusahaan) return 0;
         return Math.round((s.sudah_mengisi_kse / s.total_perusahaan) * 100);
+    });
+
+    const apiIkasData = computed(() => {
+        const data = filterStore.summaryData?.ikas || {};
+        return {
+            avg_nilai_kematangan: Number(data.avg_nilai_kematangan ?? 0) || 0,
+            avg_target_nilai: Number(data.avg_target_nilai ?? 0) || 0,
+            total_ikas: Number(data.total_ikas ?? 0) || 0,
+        };
+    });
+
+    const apiIkasStatus = computed(() => {
+        const status = filterStore.summaryData?.ikas_status || {};
+        return {
+            belum_mengisi_ikas: Number(status.belum_mengisi_ikas ?? 0) || 0,
+            sudah_mengisi_ikas: Number(status.sudah_mengisi_ikas ?? 0) || 0,
+            total_perusahaan: Number(status.total_perusahaan ?? 0) || 0,
+        };
+    });
+
+    const ikasStatusTotal = computed(() => apiIkasStatus.value.total_perusahaan || totalStakeholders.value);
+    const ikasFilledCount = computed(() => apiIkasStatus.value.sudah_mengisi_ikas || stakeholdersWithIkas.value);
+    const ikasUnfilledCount = computed(() => (
+        apiIkasStatus.value.total_perusahaan
+            ? apiIkasStatus.value.belum_mengisi_ikas
+            : Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value)
+    ));
+
+    const apiCsirtData = computed(() => {
+        const data = filterStore.summaryData?.csirt_summary || {};
+        return {
+            belum_lengkap: Number(data.belum_lengkap ?? 0) || 0,
+            lengkap: Number(data.lengkap ?? 0) || 0,
+            punya_sdm: Number(data.punya_sdm ?? 0) || 0,
+            punya_se: Number(data.punya_se ?? 0) || 0,
+            this_month: Number(data.this_month ?? 0) || 0,
+            total_csirt: Number(data.total_csirt ?? 0) || 0,
+        };
+    });
+
+    const apiCsirtStatus = computed(() => {
+        const status = filterStore.summaryData?.csirt_status || {};
+        return {
+            belum_membentuk_csirt: Number(status.belum_membentuk_csirt ?? 0) || 0,
+            sudah_membentuk_csirt: Number(status.sudah_membentuk_csirt ?? 0) || 0,
+            total_perusahaan: Number(status.total_perusahaan ?? 0) || 0,
+        };
+    });
+
+    const getCsirtCompanyId = (csirt) => csirt?.id_perusahaan || csirt?.perusahaan?.id || '';
+    const getCsirtDate = (csirt) => csirt?.created_at || csirt?.createdAt || csirt?.perusahaan?.created_at || '';
+    const hasCsirtSdm = (csirt) => {
+        const cid = String(csirt?.id || '');
+        return !!(cid && csirtStore.sdmByCsirtMap[cid]?.length) || (Array.isArray(csirt?.sdm_csirt) && csirt.sdm_csirt.length > 0);
+    };
+    const hasCsirtSe = (csirt) => {
+        const cid = String(csirt?.id || '');
+        const pid = String(getCsirtCompanyId(csirt) || '');
+        return !!(cid && csirtStore.seByCsirtMap[cid]?.length)
+            || !!(pid && csirtStore.seByPerusahaanMap[pid]?.length)
+            || (Array.isArray(csirt?.se_csirt) && csirt.se_csirt.length > 0);
+    };
+
+    const firstCsirtByCompany = computed(() => {
+        const firstByCompany = new Map();
+
+        baseCsirts.value.forEach((csirt, index) => {
+            const companyId = getCsirtCompanyId(csirt);
+            const key = companyId ? String(companyId) : `csirt:${csirt?.id || index}`;
+            const date = getCsirtDate(csirt);
+            const time = date ? new Date(date).getTime() : Number.POSITIVE_INFINITY;
+            const timestamp = Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+            const current = firstByCompany.get(key);
+
+            if (!current || timestamp < current.timestamp) {
+                firstByCompany.set(key, { csirt, timestamp });
+            }
+        });
+
+        return Array.from(firstByCompany.values()).map((item) => item.csirt);
+    });
+
+    const datedFirstCsirtByCompany = computed(() => {
+        const range = filterStore.dateRange;
+        if (!range || (!range[0] && !range[1])) return firstCsirtByCompany.value;
+
+        return firstCsirtByCompany.value.filter((csirt) => {
+            const date = getCsirtDate(csirt);
+            return date ? isInDateRange(date, range) : false;
+        });
+    });
+
+    const localCsirtData = computed(() => {
+        const source = datedFirstCsirtByCompany.value;
+        let lengkap = 0;
+        let punyaSdm = 0;
+        let punyaSe = 0;
+
+        source.forEach((csirt) => {
+            const hasSdm = hasCsirtSdm(csirt);
+            const hasSe = hasCsirtSe(csirt);
+            if (hasSdm) punyaSdm++;
+            if (hasSe) punyaSe++;
+            if (hasSdm && hasSe) lengkap++;
+        });
+
+        return {
+            total_csirt: source.length,
+            lengkap,
+            belum_lengkap: Math.max(0, source.length - lengkap),
+            punya_sdm: punyaSdm,
+            punya_se: punyaSe,
+            this_month: source.length,
+        };
+    });
+
+    const csirtData = computed(() => {
+        if (datedFirstCsirtByCompany.value.length > 0) return localCsirtData.value;
+        return apiCsirtData.value;
+    });
+
+    const csirtStatus = computed(() => {
+        const apiStatus = apiCsirtStatus.value;
+        const hasApiStatusNumbers = apiStatus.total_perusahaan > 0 || apiStatus.sudah_membentuk_csirt > 0 || apiStatus.belum_membentuk_csirt > 0;
+
+        if (hasApiStatusNumbers) {
+            const total = apiStatus.total_perusahaan || totalStakeholders.value;
+            const sudah = apiStatus.sudah_membentuk_csirt || 0;
+            return {
+                total_perusahaan: total,
+                sudah_membentuk_csirt: sudah,
+                belum_membentuk_csirt: Math.max(0, total - sudah),
+            };
+        }
+
+        const companyIds = new Set();
+        datedFirstCsirtByCompany.value.forEach((csirt) => {
+            const companyId = getCsirtCompanyId(csirt);
+            if (companyId) companyIds.add(String(companyId));
+        });
+
+        return {
+            total_perusahaan: totalStakeholders.value,
+            sudah_membentuk_csirt: companyIds.size,
+            belum_membentuk_csirt: Math.max(0, totalStakeholders.value - companyIds.size),
+        };
+    });
+
+    const csirtCompletionRateAnalytics = computed(() => {
+        const status = csirtStatus.value;
+        if (!status.total_perusahaan) return 0;
+        return Math.round((status.sudah_membentuk_csirt / status.total_perusahaan) * 100);
     });
 
     const ikasSummaryData = computed(() => {
@@ -309,7 +530,9 @@
         });
 
         return {
-            total: filtered.length,
+            total: apiIkasData.value.total_ikas || filtered.length,
+            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan,
+            avgTargetNilai: apiIkasData.value.avg_target_nilai,
             levels: { 
                 level1: { count: level1, label: 'Level 1 - Awal', color: '#e6533c', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)' },
                 level2: { count: level2, label: 'Level 2 - Berulang', color: '#f5b849', gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)' },
@@ -326,10 +549,10 @@
         };
     });
 
-    // ─── Analytics Chart Options & Series ───────────────────
-    const analyticsChartData = computed(() => {
+    // Analytics Chart Options & Series
+    const buildAnalyticsChartData = (view = 'distribution') => {
         if (summaryMode.value === 'KSE') {
-            if (analyticsView.value === 'distribution') {
+            if (view === 'distribution') {
                 const data = kseData.value;
                 return {
                     labels: ['Strategis', 'Tinggi', 'Rendah'],
@@ -344,9 +567,25 @@
                     colors: ['#26bf94', '#e6533c']
                 };
             }
+        } else if (summaryMode.value === 'CSIRT') {
+            if (view === 'distribution') {
+                const data = csirtData.value;
+                return {
+                    labels: ['Lengkap', 'Belum Lengkap', 'Punya SDM', 'Punya SE'],
+                    series: [data.lengkap, data.belum_lengkap, data.punya_sdm, data.punya_se],
+                    colors: ['#26bf94', '#f5b849', '#0ea5e9', '#6366f1']
+                };
+            } else {
+                const status = csirtStatus.value;
+                return {
+                    labels: ['Sudah Membentuk', 'Belum Membentuk'],
+                    series: [status.sudah_membentuk_csirt, status.belum_membentuk_csirt],
+                    colors: ['#26bf94', '#e6533c']
+                };
+            }
         } else {
             // IKAS Mode
-            if (analyticsView.value === 'distribution') {
+            if (view === 'distribution') {
                 const levels = ikasSummaryData.value.levels;
                 return {
                     labels: ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'],
@@ -354,33 +593,125 @@
                     colors: ['#e6533c', '#f5b849', '#0ea5e9', '#23b7e5', '#26bf94']
                 };
             } else {
-                const avg = ikasSummaryData.value.averages;
+                const s = ikasSummaryData.value;
                 return {
-                    labels: ['Identifikasi', 'Proteksi', 'Deteksi', 'Tanggulih'],
-                    series: [Number(avg.identifikasi), Number(avg.proteksi), Number(avg.deteksi), Number(avg.tanggulih)],
-                    colors: ['#23b7e5', '#6366f1', '#f5b849', '#26bf94']
+                    labels: ['Nilai Kematangan', 'Target Nilai'],
+                    series: [Number(s.avgNilaiKematangan), Number(s.avgTargetNilai)],
+                    colors: ['#23b7e5', '#6366f1']
                 };
             }
         }
+    };
+
+    const analyticsChartData = computed(() => buildAnalyticsChartData(analyticsView.value));
+
+    const distributionAnalyticsData = computed(() => buildAnalyticsChartData('distribution'));
+    const completionAnalyticsData = computed(() => buildAnalyticsChartData('completion'));
+
+    const completionChartType = computed(() => {
+        return activeChartType.value;
     });
 
-    const mainAnalyticsOptions = computed(() => {
-        const data = analyticsChartData.value;
-        const type = summaryMode.value === 'KSE' ? kseChartType.value : ikasChartType.value;
-        
+    const activeChartType = computed(() => {
+        if (summaryMode.value === 'IKAS') return ikasChartType.value;
+        return kseChartType.value;
+    });
+
+    const formatChartNumber = (value) => Number(value || 0).toLocaleString('id-ID');
+
+    const getSlicePercent = (value, series = []) => {
+        const total = series.reduce((sum, item) => sum + Number(item || 0), 0);
+        if (!total) return 0;
+        return (Number(value || 0) / total) * 100;
+    };
+
+    const formatSlicePercent = (percent) => {
+        if (!Number.isFinite(percent)) return '0%';
+        if (percent > 0 && percent < 1) return '<1%';
+        return `${Math.round(percent)}%`;
+    };
+
+    const formatLegendItem = (seriesName, opts) => {
+        const series = opts?.w?.globals?.series || [];
+        const value = Number(series?.[opts.seriesIndex] || 0);
+        const percent = getSlicePercent(value, series);
+        return `${seriesName}  ${formatChartNumber(value)} (${formatSlicePercent(percent)})`;
+    };
+
+    const formatPieDataLabel = (_val, opts) => {
+        const series = opts?.w?.globals?.series || [];
+        const value = Number(series?.[opts.seriesIndex] || 0);
+        const percent = getSlicePercent(value, series);
+
+        if (!value || percent < 3) return '';
+        return `${formatChartNumber(value)} (${formatSlicePercent(percent)})`;
+    };
+
+    const buildAnalyticsTooltip = (data) => ({
+        theme: 'light',
+        fillSeriesColor: false,
+        custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+            const isAxisSeries = Array.isArray(series?.[seriesIndex]);
+            const itemIndex = Number.isInteger(dataPointIndex) && dataPointIndex >= 0 ? dataPointIndex : seriesIndex;
+            const value = Number(isAxisSeries ? series?.[seriesIndex]?.[itemIndex] : series?.[seriesIndex] || 0);
+            const allSeries = isAxisSeries ? (series?.[seriesIndex] || []) : (w?.globals?.series || []);
+            const label = data.labels?.[itemIndex] || w?.globals?.labels?.[itemIndex] || 'Data';
+            const color = data.colors?.[itemIndex] || '#2563eb';
+            const percent = formatSlicePercent(getSlicePercent(value, allSeries));
+
+            return `
+                <div class="ki-chart-tooltip">
+                    <span class="ki-chart-tooltip-dot" style="background:${color}"></span>
+                    <div>
+                        <strong>${label}</strong>
+                        <small>${formatChartNumber(value)} data - ${percent}</small>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    const buildVisualItems = (data) => {
+        const total = data.series.reduce((sum, item) => sum + Number(item || 0), 0);
+
+        return data.labels.map((label, index) => {
+            const value = Number(data.series[index] || 0);
+            const percent = getSlicePercent(value, data.series);
+
+            return {
+                label,
+                value,
+                color: data.colors[index] || '#2563eb',
+                percent,
+                percentLabel: total ? formatSlicePercent(percent) : '0%',
+                width: `${Math.max(total ? percent : 0, value ? 3 : 0)}%`,
+            };
+        });
+    };
+
+    const distributionVisualItems = computed(() => buildVisualItems(distributionAnalyticsData.value));
+    const completionVisualItems = computed(() => buildVisualItems(completionAnalyticsData.value));
+
+    const buildAnalyticsOptions = (data, type, view = 'distribution') => {
         // Base options
         const options = {
             chart: {
                 fontFamily: 'Inter, sans-serif',
                 toolbar: { show: false },
-                parentHeightOffset: 0
+                parentHeightOffset: 0,
+                animations: {
+                    enabled: true,
+                    speed: 520,
+                    animateGradually: { enabled: true, delay: 80 },
+                    dynamicAnimation: { enabled: true, speed: 320 }
+                }
             },
             grid: {
                 padding: {
-                    top: 15,
-                    right: 15,
-                    bottom: 15,
-                    left: 15
+                    top: 12,
+                    right: 18,
+                    bottom: 10,
+                    left: 18
                 }
             },
             colors: data.colors,
@@ -394,40 +725,82 @@
                 markers: { radius: 12 },
                 itemMargin: { horizontal: 5, vertical: 0 }
             },
-            tooltip: { theme: 'dark' }
+            tooltip: buildAnalyticsTooltip(data)
         };
 
-        if (type === 'pie' || type === 'donut') {
+        if (type === 'pie') {
             return {
                 ...options,
-                chart: { ...options.chart, type: 'donut' },
-                dataLabels: { enabled: false },
+                chart: { ...options.chart, type: 'pie' },
+                dataLabels: {
+                    enabled: true,
+                    formatter: formatPieDataLabel,
+                    style: {
+                        fontSize: '12px',
+                        fontWeight: 900,
+                        colors: ['#ffffff']
+                    },
+                    dropShadow: {
+                        enabled: true,
+                        top: 1,
+                        left: 1,
+                        blur: 2,
+                        opacity: 0.6,
+                        color: '#000000'
+                    }
+                },
                 stroke: { width: 3, colors: ["#fff"] },
                 legend: {
-                    position: 'bottom',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    markers: { width: 10, height: 10, radius: 3 },
-                    itemMargin: { horizontal: 8, vertical: 4 }
+                    show: false
                 },
                 plotOptions: {
                     pie: {
+                        customScale: 0.85,
+                        expandOnClick: false,
+                        dataLabels: {
+                            minAngleToShowLabel: 10,
+                            offset: -15
+                        }
+                    }
+                }
+            };
+        } else if (type === 'donut') {
+            return {
+                ...options,
+                chart: { ...options.chart, type },
+                dataLabels: { enabled: false },
+                stroke: { width: 4, colors: ["#fff"] },
+                legend: {
+                    show: false
+                },
+                plotOptions: {
+                    pie: {
+                        customScale: 0.98,
+                        expandOnClick: false,
                         donut: {
                             size: '68%',
                             labels: {
                                 show: true,
-                                name: { fontSize: "13px", fontWeight: 700 },
+                                name: {
+                                    fontSize: "12px",
+                                    fontWeight: 850,
+                                    color: "#64748b",
+                                    offsetY: -6
+                                },
                                 value: {
-                                    fontSize: "20px",
-                                    fontWeight: 800,
-                                    formatter: (val) => val,
+                                    fontSize: "28px",
+                                    fontWeight: 900,
+                                    color: "#172554",
+                                    offsetY: 8,
+                                    formatter: (val) => formatChartNumber(val),
                                 },
                                 total: {
                                     show: true,
-                                    label: summaryMode.value === 'KSE' ? 'Total KSE' : 'Total IKAS',
+                                    label: view === 'completion' ? 'Total Status' : (summaryMode.value === 'KSE' ? 'Total KSE' : (summaryMode.value === 'CSIRT' ? 'Total CSIRT' : 'Total IKAS')),
                                     fontSize: "12px",
-                                    color: "#94a3b8",
-                                    formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0)
+                                    fontWeight: 850,
+                                    color: "#64748b",
+                                    formatter: (w) => formatChartNumber(w.globals.seriesTotals.reduce((a, b) => a + b, 0))
                                 }
                             }
                         }
@@ -438,40 +811,167 @@
             return {
                 ...options,
                 chart: { ...options.chart, type: 'bar' },
+                dataLabels: {
+                    enabled: true,
+                    formatter: (val) => {
+                        if (!val) return '';
+                        const percent = getSlicePercent(Number(val || 0), data.series);
+                        return `${formatChartNumber(val)} (${formatSlicePercent(percent)})`;
+                    },
+                    offsetX: 10,
+                    style: {
+                        fontSize: '11px',
+                        fontWeight: 900,
+                        colors: ['#172554']
+                    },
+                    background: {
+                        enabled: false
+                    },
+                    dropShadow: {
+                        enabled: true,
+                        top: 0,
+                        left: 0,
+                        blur: 3,
+                        color: '#ffffff',
+                        opacity: 1
+                    }
+                },
+                grid: {
+                    borderColor: '#eef3f9',
+                    strokeDashArray: 4,
+                    padding: { top: 10, right: 44, bottom: 4, left: 8 }
+                },
                 plotOptions: {
                     bar: {
-                        borderRadius: 4,
-                        horizontal: false,
-                        columnWidth: '55%',
+                        borderRadius: 7,
+                        borderRadiusApplication: 'end',
+                        horizontal: true,
+                        barHeight: data.labels.length > 3 ? '54%' : '42%',
                         distributed: true
                     }
                 },
-                xaxis: { categories: data.labels },
+                xaxis: {
+                    categories: data.labels,
+                    labels: {
+                        show: false
+                    },
+                    axisBorder: { show: false },
+                    axisTicks: { show: false }
+                },
+                yaxis: {
+                    labels: {
+                        style: {
+                            colors: '#334155',
+                            fontSize: '11px',
+                            fontWeight: 850
+                        },
+                        maxWidth: 120
+                    }
+                },
                 legend: { show: false }
             };
-        } else if (type === 'radar') {
+        } else if (type === 'area') {
             return {
                 ...options,
-                chart: { ...options.chart, type: 'radar' },
+                chart: { ...options.chart, type: 'area' },
                 xaxis: { categories: data.labels },
-                fill: { opacity: 0.4 },
-                markers: { size: 4 }
+                stroke: { curve: 'smooth', width: 3 },
+                dataLabels: { enabled: false },
+                fill: {
+                    type: 'gradient',
+                    gradient: {
+                        shadeIntensity: 0.2,
+                        opacityFrom: 0.38,
+                        opacityTo: 0.08,
+                        stops: [0, 90, 100]
+                    }
+                },
+                markers: { size: 4, strokeWidth: 3, strokeColors: '#fff' },
+                legend: { show: false }
             };
         }
         return options;
+    };
+
+    const mainAnalyticsOptions = computed(() => {
+        const data = analyticsChartData.value;
+        const type = activeChartType.value;
+        return buildAnalyticsOptions(data, type, analyticsView.value);
     });
 
-    const mainAnalyticsSeries = computed(() => {
-        const data = analyticsChartData.value;
-        const type = summaryMode.value === 'KSE' ? kseChartType.value : ikasChartType.value;
-        
-        if (type === 'bar' || type === 'radar') {
+    const buildAnalyticsSeries = (data, type) => {
+        if (type === 'bar' || type === 'area') {
             return [{
                 name: 'Jumlah',
                 data: data.series
             }];
         }
         return data.series;
+    };
+
+    const mainAnalyticsSeries = computed(() => {
+        const data = analyticsChartData.value;
+        const type = activeChartType.value;
+        return buildAnalyticsSeries(data, type);
+    });
+
+    const distributionAnalyticsOptions = computed(() => buildAnalyticsOptions(distributionAnalyticsData.value, activeChartType.value, 'distribution'));
+    const distributionAnalyticsSeries = computed(() => buildAnalyticsSeries(distributionAnalyticsData.value, activeChartType.value));
+    const completionAnalyticsOptions = computed(() => buildAnalyticsOptions(completionAnalyticsData.value, completionChartType.value, 'completion'));
+    const completionAnalyticsSeries = computed(() => buildAnalyticsSeries(completionAnalyticsData.value, completionChartType.value));
+
+    const activeProgressRate = computed(() => {
+        if (summaryMode.value === 'KSE') return kseFillRate.value;
+        if (summaryMode.value === 'CSIRT') return csirtCompletionRateAnalytics.value;
+        return ikasCompletionRate.value;
+    });
+
+    const activeFilledCount = computed(() => {
+        if (summaryMode.value === 'KSE') return kseStatus.value?.sudah_mengisi_kse ?? 0;
+        if (summaryMode.value === 'CSIRT') return csirtStatus.value?.sudah_membentuk_csirt ?? 0;
+        return ikasFilledCount.value;
+    });
+
+    const activeUnfilledCount = computed(() => {
+        if (summaryMode.value === 'KSE') return kseStatus.value?.belum_mengisi_kse ?? 0;
+        if (summaryMode.value === 'CSIRT') return csirtStatus.value?.belum_membentuk_csirt ?? 0;
+        return ikasUnfilledCount.value;
+    });
+
+    const activeStatusTotal = computed(() => {
+        if (summaryMode.value === 'KSE') return kseStatus.value?.total_perusahaan ?? 0;
+        if (summaryMode.value === 'CSIRT') return csirtStatus.value?.total_perusahaan ?? 0;
+        return ikasStatusTotal.value;
+    });
+
+    const activeDetailRoute = computed(() => {
+        if (summaryMode.value === 'KSE') return '/kse-list-admin';
+        if (summaryMode.value === 'CSIRT') return '/csirt-list';
+        return '/ikas-list';
+    });
+
+    const analyticsPrimaryLabel = computed(() => {
+        if (summaryMode.value === 'KSE') return 'Distribusi';
+        if (summaryMode.value === 'CSIRT') return 'Kelengkapan';
+        return 'Level';
+    });
+
+    const analyticsSecondaryLabel = computed(() => {
+        if (summaryMode.value === 'KSE') return 'Status';
+        if (summaryMode.value === 'CSIRT') return 'Pembentukan';
+        return 'Domain';
+    });
+
+    const analyticsChartSubtitle = computed(() => {
+        if (analyticsView.value === 'distribution') {
+            if (summaryMode.value === 'KSE') return 'Distribusi Kategori SE';
+            if (summaryMode.value === 'CSIRT') return 'Kelengkapan Data CSIRT';
+            return 'Distribusi Level Kematangan';
+        }
+
+        if (summaryMode.value === 'KSE') return 'Status Pengisian';
+        if (summaryMode.value === 'CSIRT') return 'Status Pembentukan';
+        return 'Rata-rata Domain';
     });
 
     // Top-level summary cards from API data
@@ -479,12 +979,61 @@
         const katSe = filterStore.kategoriSe;
         const range = filterStore.dateRange;
 
+        if (summaryMode.value === 'CSIRT') {
+            const data = csirtData.value;
+            const status = csirtStatus.value;
+            const items = [
+                {
+                    label: 'Total CSIRT',
+                    value: data.total_csirt,
+                    icon: 'ri-shield-check-line',
+                    gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
+                    color: '#23b7e5',
+                    category: '',
+                },
+                {
+                    label: filterStore.quarter ? `CSIRT Q${filterStore.quarter}` : (filterStore.year ? `CSIRT ${filterStore.year}` : 'CSIRT Periode Ini'),
+                    value: data.this_month || data.total_csirt,
+                    icon: 'ri-calendar-check-line',
+                    gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
+                    color: '#6366f1',
+                    category: '',
+                },
+                {
+                    label: 'CSIRT Lengkap',
+                    value: data.lengkap,
+                    icon: 'ri-checkbox-circle-line',
+                    gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
+                    color: '#26bf94',
+                    category: '',
+                },
+                {
+                    label: 'CSIRT Belum Lengkap',
+                    value: data.belum_lengkap,
+                    icon: 'ri-error-warning-line',
+                    gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
+                    color: '#f5b849',
+                    category: '',
+                },
+                {
+                    label: 'Sudah Membentuk',
+                    value: status.sudah_membentuk_csirt,
+                    icon: 'ri-building-4-line',
+                    gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)',
+                    color: '#0ea5e9',
+                    category: '',
+                },
+            ];
+
+            return items.map(item => ({ ...item, isMuted: false }));
+        }
+
         if (summaryMode.value === 'IKAS') {
             const s = ikasSummaryData.value;
             const items = [
                 {
                     label: 'Total IKAS',
-                    value: baseIkasStakeholders.value.length,
+                    value: apiIkasData.value.total_ikas,
                     icon: 'ri-bar-chart-box-line',
                     gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
                     color: '#23b7e5',
@@ -492,10 +1041,26 @@
                 },
                 {
                     label: filterStore.quarter ? `IKAS Q${filterStore.quarter}` : (filterStore.year ? `IKAS ${filterStore.year}` : 'IKAS Periode Ini'),
-                    value: filteredIkasCount.value, // Filtered
+                    value: apiIkasStatus.value.sudah_mengisi_ikas,
                     icon: 'ri-calendar-check-line',
                     gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
                     color: '#6366f1',
+                    category: '',
+                },
+                {
+                    label: 'Rata-rata Kematangan',
+                    value: Number(s.avgNilaiKematangan.toFixed(2)),
+                    icon: 'ri-line-chart-line',
+                    gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)',
+                    color: '#0ea5e9',
+                    category: '',
+                },
+                {
+                    label: 'Rata-rata Target',
+                    value: Number(s.avgTargetNilai.toFixed(2)),
+                    icon: 'ri-focus-3-line',
+                    gradient: 'linear-gradient(135deg, #14b8a6 0%, #5eead4 100%)',
+                    color: '#14b8a6',
                     category: '',
                 },
                 ...Object.values(s.levels).map(lvl => ({
@@ -518,34 +1083,14 @@
             return items.map(item => ({ ...item, isMuted: false }));
         }
 
-        // --- KSE MODE (Existing) ---
-        // Use dated filter for category counts
-        const datedSe = (range && (range[0] || range[1]))
-            ? baseSeList.value.filter(se => {
-                const seDate = se['created_at'] || se['updated_at'];
-                if (seDate && isInDateRange(seDate, range)) return true;
-                // Fallback to company created_at if SE date is missing
-                const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-                if (csirt?.perusahaan?.created_at && isInDateRange(csirt.perusahaan.created_at, range)) return true;
-                return false;
-            })
-            : baseSeList.value;
-
-        let strategis = 0, tinggi = 0, rendah = 0;
-        datedSe.forEach(se => {
-            const kat = (se.kategori_se || '').toLowerCase().trim();
-            if (kat === 'strategis') strategis++;
-            else if (kat === 'tinggi') tinggi++;
-            else if (kat === 'rendah') rendah++;
-        });
-
-        // Filter total SE count (Respects global date filter)
-        const totalVal = datedSe.length;
+        // --- KSE MODE ---
+        // Keep KSE aligned with IKAS: prefer /api/dashboard/se, then fall back to local data.
+        const s = kseData.value;
 
         const items = [
             {
                 label: 'Total SE (KSE)',
-                value: totalVal,
+                value: s.total_se,
                 icon: 'ri-git-branch-line',
                 gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
                 color: '#23b7e5',
@@ -553,7 +1098,7 @@
             },
             {
                 label: filterStore.quarter ? `SE Q${filterStore.quarter}` : (filterStore.year ? `SE ${filterStore.year}` : 'SE Periode Ini'),
-                value: filteredSe.value, // Respects global date filters
+                value: s.this_month || s.total_se,
                 icon: 'ri-calendar-check-line',
                 gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
                 color: '#6366f1',
@@ -561,7 +1106,7 @@
             },
             {
                 label: 'SE Strategis',
-                value: strategis,
+                value: s.strategis,
                 icon: 'ri-shield-star-line',
                 gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
                 color: '#e6533c',
@@ -569,7 +1114,7 @@
             },
             {
                 label: 'SE Tinggi',
-                value: tinggi,
+                value: s.tinggi,
                 icon: 'ri-arrow-up-circle-line',
                 gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
                 color: '#f5b849',
@@ -577,7 +1122,7 @@
             },
             {
                 label: 'SE Rendah',
-                value: rendah,
+                value: s.rendah,
                 icon: 'ri-arrow-down-circle-line',
                 gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
                 color: '#26bf94',
@@ -607,7 +1152,7 @@
 
     // (Custom date state logic removed as it's now handled entirely by GlobalFilter.vue & Pinia)
 
-    // ─── Date range helpers ─────────────────────────────────
+    //Date range helpers
     function isInDateRange(createdAt, rangeStrArray) {
         if (!rangeStrArray || !rangeStrArray[0] || !rangeStrArray[1] || !createdAt) return false;
         const d = new Date(createdAt);
@@ -754,67 +1299,128 @@
         };
     }
 
-    // ─── Fetch all data ─────────────────────────────────────
-    onMounted(async () => {
-        loading.value = true;
-        
-        // Initialize Dashboard Filter Config
-        filterStore.loadFromStorage();
-        initDateFromStore(); // Sync datepicker with stored filter
-        
-        try {
-            // Start fetching all data in parallel
-            const corePromises = [
-                stakeholdersStore.initialize(),
-                ikasStore.initialize(),
-                csirtStore.initialize(),
-                (async () => {
-                    const sektors = sektorList.value.length > 0 ? sektorList.value : await sektorService.getAll();
-                    const subSektors = subSektorList.value.length > 0 ? subSektorList.value : await subSektorService.getAll();
-                    sektorList.value = sektors;
-                    subSektorList.value = subSektors;
-                })(),
-            ];
+    // ” Fetch all data ”
+    const isLatestDashboardLoad = (token) => token === dashboardLoadSeq;
 
-            // Start summary data fetch but don't let it block the main layout if it's slow
+    const initializeDashboardFilter = () => {
+        if (dashboardFilterInitialized) return;
+        filterStore.loadFromStorage();
+        initDateFromStore();
+        dashboardFilterInitialized = true;
+    };
+
+    const loadDashboardOptions = async () => {
+        if (sektorList.value.length && subSektorList.value.length) return;
+        if (dashboardOptionsPromise) return dashboardOptionsPromise;
+
+        dashboardOptionsPromise = (async () => {
+            const [sektors, subSektors] = await Promise.all([
+                sektorList.value.length ? Promise.resolve(sektorList.value) : sektorService.getAll(),
+                subSektorList.value.length ? Promise.resolve(subSektorList.value) : subSektorService.getAll(),
+            ]);
+            sektorList.value = Array.isArray(sektors) ? sektors : [];
+            subSektorList.value = Array.isArray(subSektors) ? subSektors : [];
+        })();
+
+        try {
+            await dashboardOptionsPromise;
+        } finally {
+            dashboardOptionsPromise = null;
+        }
+    };
+
+    const openReopenedDrillDown = () => {
+        if (!route.query.reopen) return;
+
+        const typeToOpen = String(route.query.reopen).replace('Detail: ', '');
+        nextTick(() => {
+            handleDrillDown({ type: typeToOpen });
+            setTimeout(() => {
+                const newQuery = { ...route.query };
+                delete newQuery.reopen;
+                delete newQuery.from;
+                router.replace({ query: newQuery });
+            }, 500);
+        });
+    };
+
+    const loadDashboardData = async (options = {}) => {
+        const now = Date.now();
+        if (!options.force && (dashboardLoadInFlight || now - lastDashboardLoadAt < DASHBOARD_RELOAD_DEBOUNCE_MS)) {
+            return;
+        }
+
+        lastDashboardLoadAt = now;
+        dashboardLoadInFlight = true;
+        const token = ++dashboardLoadSeq;
+
+        loading.value = true;
+        dashboardDetailsReady.value = false;
+        lowerSectionsReady.value = false;
+        isFirstLoad.value = true;
+
+        initializeDashboardFilter();
+
+        const loadStore = (store, refreshMethod = 'refresh') => {
+            if (options.refresh && store.initialized && typeof store[refreshMethod] === 'function') return store[refreshMethod]();
+            return store.initialized ? Promise.resolve() : store.initialize();
+        };
+
+        try {
             const summaryPromise = filterStore.fetchDashboardData();
 
-            // Wait for core data to show the main dashboard structure
-            await Promise.all(corePromises);
-            
-            // Set loading false immediately when core data is ready
+            await Promise.allSettled([
+                loadStore(stakeholdersStore),
+                loadDashboardOptions(),
+            ]);
+
+            if (!isLatestDashboardLoad(token)) return;
+
             loading.value = false;
             triggerAlertVisibility();
 
-            // Wait for summary data in the background (UI handles its own loading state)
-            await summaryPromise;
-            
-            // Mark initial load as complete after staggered animations would have finished
-            setTimeout(() => {
-                isFirstLoad.value = false;
-            }, 4000);
+            await delay(DASHBOARD_LOAD_STAGGER_MS);
 
+            await Promise.allSettled([
+                loadStore(csirtStore),
+                loadStore(ikasStore),
+                summaryPromise,
+            ]);
+
+            if (!isLatestDashboardLoad(token)) return;
+            dashboardDetailsReady.value = true;
+
+            await delay(DASHBOARD_LOAD_STAGGER_MS);
+
+            if (!isLatestDashboardLoad(token)) return;
+            lowerSectionsReady.value = true;
+            setTimeout(() => {
+                if (isLatestDashboardLoad(token)) isFirstLoad.value = false;
+            }, 650);
         } catch (e) {
             console.error("Dashboard data load error:", e);
-            loading.value = false; // Ensure we stop loading even on error
+            if (isLatestDashboardLoad(token)) {
+                loading.value = false;
+                dashboardDetailsReady.value = true;
+                lowerSectionsReady.value = true;
+            }
         } finally {
-            // Handle reopen modal from query param
-            if (route.query.reopen) {
-                const typeToOpen = String(route.query.reopen).replace('Detail: ', '');
-                nextTick(() => {
-                    handleDrillDown({ type: typeToOpen });
-                    setTimeout(() => {
-                        const newQuery = { ...route.query };
-                        delete newQuery.reopen;
-                        delete newQuery.from;
-                        router.replace({ query: newQuery });
-                    }, 500);
-                });
+            if (isLatestDashboardLoad(token)) {
+                dashboardLoadInFlight = false;
+                openReopenedDrillDown();
             }
         }
+    };
+
+    onMounted(async () => {
+        await loadDashboardData({ force: true });
     });
 
-    // ─── Color Palette ──────────────────────────────────────
+    onActivated(async () => {
+        await loadDashboardData();
+    });
+
+    // ” Color Palette 
     function getColor(colorName) {
         const colors = {
             primary: '#0d47a1', secondary: '#ff9800', warning: '#fdaf22',
@@ -825,7 +1431,7 @@
         return colors[colorName] || '#0d47a1';
     }
 
-    // ─── Enriched Sektor Data ───────────────────────────────
+    // ” Enriched Sektor Data ”
     const enrichedSektors = computed(() => {
         const range = filterStore.dateRange;
         
@@ -860,7 +1466,7 @@
         });
     });
 
-    // ─── Base Filtered Data arrays (Respects Sector) ───
+    // ” Base Filtered Data arrays (Respects Sector) ”
     const baseStakeholders = computed(() => {
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
@@ -944,13 +1550,13 @@
         return filtered;
     });
 
-    // --- CSIRT & SE Counts (All time) ───────────────────────
+    // --- CSIRT & SE Counts (All time) ”
     const totalCsirt = computed(() => {
         // Count ALL stakeholders that have a CSIRT record (both complete and incomplete)
         return baseStakeholders.value.filter(s => !!csirtStore.csirtByPerusahaanMap[String(s.id)]).length;
     });
     const totalSdm = computed(() => baseSdm.value.length);
-    const totalSe = computed(() => datedSeList.value.length);
+    const totalSe = computed(() => datedFirstKseByCompany.value.length);
     const totalStakeholders = computed(() => datedStakeholders.value.length);
 
     // Count stakeholders with complete CSIRT
@@ -958,7 +1564,7 @@
         return baseStakeholders.value.filter(s => csirtStore.hasCompleteCsirt(s.id)).length;
     });
 
-    // ─── Base IKAS Stakeholders ──────────────────────────────
+    // ” Base IKAS Stakeholders 
     const baseIkasStakeholders = computed(() => {
         return baseStakeholders.value.filter(s => {
             const data = ikasStore.ikasDataMap[s.slug];
@@ -971,22 +1577,23 @@
     // Count stakeholders with IKAS
     const stakeholdersWithIkas = computed(() => datedIkasStakeholders.value.length);
 
-    // ─── Full Summary Computed Data ─────────────────────────
+    // ” Full Summary Computed Data ”
     const csirtCompletionRate = computed(() => {
         if (!totalStakeholders.value) return 0;
         return Math.round((stakeholdersWithCsirt.value / totalStakeholders.value) * 100);
     });
 
     const ikasCompletionRate = computed(() => {
-        if (!totalStakeholders.value) return 0;
-        return Math.round((stakeholdersWithIkas.value / totalStakeholders.value) * 100);
+        const total = ikasStatusTotal.value;
+        if (!total) return 0;
+        return Math.round((ikasFilledCount.value / total) * 100);
     });
 
     const totalSektors = computed(() => sektorList.value.length);
     const totalSubSektors = computed(() => subSektorList.value.length);
     // (Re-fetch handling is managed via Pinia debounced actions internally)
 
-    // ─── Active Sub Sektor Summary computed ─────────────────
+    // ” Active Sub Sektor Summary computed ”
     const activeSubSektorSummary = computed(() => {
         const subId = filterStore.subSektorId;
         if (!subId || subId === 'ALL') return null;
@@ -1070,7 +1677,7 @@
         };
     });
 
-    // ─── Date-filtered counts ───────────────────────────────
+    // ” Date-filtered counts ”
     const datedStakeholders = computed(() => {
         const range = filterStore.dateRange;
         if (!range || (!range[0] && !range[1])) return baseStakeholders.value;
@@ -1111,9 +1718,9 @@
     const filteredCsirt = computed(() => datedCsirts.value.length);
     const filteredSdm = computed(() => datedSdm.value.length);
     const filteredIkasCount = computed(() => datedIkasStakeholders.value.length);
-    const filteredSe = computed(() => datedSeList.value.length);
+    const filteredSe = computed(() => localKseList.value.length);
 
-    // ─── ROW 1 Cards: Sektor-based data ────────────────────
+    // ” ROW 1 Cards: Sektor-based data 
     const sektorCards = computed(() => {
         const sektorColors = ['primary', 'success', 'warning', 'blue', 'info', 'primary', 'teal', 'slate', 'cyan', 'emerald', 'orange', 'secondary'];
         const sektorIcons = [
@@ -1129,7 +1736,7 @@
         const activeSubSektorId = filterStore.subSektorId;
         const range = filterStore.dateRange;
 
-        // ── MODE 1: Sub Sektor (ALL or specific) ──
+        //  MODE 1: Sub Sektor (ALL or specific) 
         if (activeSektorId && activeSubSektorId && activeSubSektorId !== '') {
             // Find all sub-sektors belonging to this sektor
             let targetSubSektors = subSektorList.value.filter(ss => {
@@ -1187,7 +1794,7 @@
             }).sort((a, b) => Number(b.count) - Number(a.count));
         }
 
-        // ── MODE 2 & 3: Tampilkan sektor (Default or no filter) ──
+        //  MODE 2 & 3: Tampilkan sektor (Default or no filter) 
         const sorted = [...enrichedSektors.value]
             .sort((a, b) => b.stakeholderCount - a.stakeholderCount);
 
@@ -1250,11 +1857,11 @@
         });
     });
 
-    // ─── ROW 2 Cards: CSIRT, SE, IKAS ──────────────────────
+    // ” ROW 2 Cards: CSIRT, SE, IKAS 
     const operationalCards = computed(() => {
         const csirtTrend = getTrendData(baseCsirts.value, 'perusahaan.created_at');
         const ikasTrend = getTrendData(baseIkasStakeholders.value, 'updated_at');
-        const seTrend = getTrendData(baseSeList.value);
+        const seTrend = getTrendData(firstKseByCompany.value);
         const stakeholderTrend = getTrendData(baseStakeholders.value);
 
         return [
@@ -1341,7 +1948,7 @@
         ];
     });
 
-    // ─── Helper: Get Stakeholder Sektor Name ──────────────────
+    // ” Helper: Get Stakeholder Sektor Name 
     function getStakeholderSektorName(s) {
         if (!s) return '-';
         // Try nested sub_sektor with multiple paths
@@ -1364,7 +1971,7 @@
         return '-';
     }
 
-    // ─── Helper: Get Stakeholder Sub-Sektor Name ───────────────
+    // ” Helper: Get Stakeholder Sub-Sektor Name ”
     function getStakeholderSubSektorName(s) {
         if (!s) return '-';
         // Try nested sub_sektor
@@ -1382,7 +1989,7 @@
         return '-';
     }
 
-    // ─── Helper: Get CSIRT Sektor Name ─────────────────────────
+    // ” Helper: Get CSIRT Sektor Name ”
     function getCsirtSektorName(c) {
         if (!c) return '-';
         // Try nested paths
@@ -1396,7 +2003,7 @@
         return '-';
     }
 
-    // ─── Helper: Get CSIRT Sub-Sektor Name ─────────────────────
+    // ” Helper: Get CSIRT Sub-Sektor Name ”
     function getCsirtSubSektorName(c) {
         if (!c) return '-';
         // Try nested paths
@@ -1409,7 +2016,7 @@
         return '-';
     }
 
-    // ─── Drill-Down Handler ─────────────────────────────────
+    // ” Drill-Down Handler ”
     function handleDrillDown(context) {
         const range = filterStore.dateRange;
         // Gunakan baseStakeholders yang sudah difilter Sektor & Sub Sektor
@@ -1439,19 +2046,31 @@
                     slug: s.slug,
                 };
             });
-        } else if (context.type === 'csirt' || context.type === 'Total CSIRT') {
+        } else if (context.type === 'csirt' || context.type.includes('CSIRT') || context.type.includes('Membentuk')) {
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'csirt_nama', 'csirt_status', 'created_at'];
-            drillDownItems.value = baseCsirts.value.map(c => {
-                const stakeholder = stakeholdersStore.allStakeholders.find(s => 
-                    String(s.id) === String(c.id_perusahaan || c.perusahaan?.id)
+            let csirtList = [...datedFirstCsirtByCompany.value];
+            const type = context.type.toLowerCase();
+
+            if (type.includes('lengkap') && !type.includes('belum')) {
+                csirtList = csirtList.filter((c) => hasCsirtSdm(c) && hasCsirtSe(c));
+            } else if (type.includes('belum lengkap')) {
+                csirtList = csirtList.filter((c) => !(hasCsirtSdm(c) && hasCsirtSe(c)));
+            } else if (type.includes('sudah membentuk')) {
+                csirtList = csirtList.filter((c) => !!getCsirtCompanyId(c));
+            }
+
+            drillDownItems.value = csirtList.map(c => {
+                const stakeholder = stakeholdersStore.allStakeholders.find(s =>
+                    String(s.id) === String(getCsirtCompanyId(c))
                 );
+                const complete = hasCsirtSdm(c) && hasCsirtSe(c);
                 return {
                     nama_perusahaan: stakeholder?.nama_perusahaan || c.perusahaan?.nama_perusahaan || c.nama_csirt || '-',
                     sektor: stakeholder ? getStakeholderSektorName(stakeholder) : getCsirtSektorName(c),
                     sub_sektor: stakeholder ? getStakeholderSubSektorName(stakeholder) : getCsirtSubSektorName(c),
                     csirt_nama: c.nama_csirt || '-',
-                    csirt_status: csirtStore.hasCompleteCsirt(c.id_perusahaan || c.perusahaan?.id) ? 'Lengkap' : 'Belum Lengkap',
-                    created_at: c.perusahaan?.created_at ? new Date(c.perusahaan.created_at).toLocaleDateString('id-ID') : '-',
+                    csirt_status: complete ? 'Lengkap' : 'Belum Lengkap',
+                    created_at: getCsirtDate(c) ? new Date(getCsirtDate(c)).toLocaleDateString('id-ID') : '-',
                     slug: stakeholder?.slug || c.perusahaan?.slug || c.id,
                 };
             });
@@ -1459,32 +2078,21 @@
             // Show filtered Sistem Elektronik records
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'nama_se', 'kategori_se'];
             
-            let seList = baseSeList.value;
+            let seList = [...datedFirstKseByCompany.value];
             const type = context.type.toLowerCase();
 
             // 1. Filter by category if card is specific
             if (type.includes('strategis')) seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === 'strategis');
             else if (type.includes('tinggi')) seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === 'tinggi');
             else if (type.includes('rendah')) seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === 'rendah');
-            
-            // 2. Filter by date if card is period-specific or if global date filter is active
-            // All cards in fullSummaryItems (including Total SE (KSE)) should respect the current global period.
-            if (range && (range[0] || range[1])) {
-                seList = seList.filter(se => {
-                    const seDate = se['created_at'] || se['updated_at'];
-                    if (seDate && isInDateRange(seDate, range)) return true;
-                    // Fallback to company created_at if SE date is missing
-                    const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-                    if (csirt?.perusahaan?.created_at && isInDateRange(csirt.perusahaan.created_at, range)) return true;
-                    return false;
-                });
+            else if (filterStore.kategoriSe) {
+                const activeCategory = String(filterStore.kategoriSe || '').toLowerCase().trim();
+                seList = seList.filter(se => (se.kategori_se || '').toLowerCase().trim() === activeCategory);
             }
 
             drillDownItems.value = seList.map(se => {
-                const csirt = csirtStore.csirts.find(c => String(c.id) === String(se.id_csirt));
-                const stakeholder = stakeholdersStore.allStakeholders.find(s => 
-                    String(s.id) === String(se.id_perusahaan || csirt?.id_perusahaan || csirt?.perusahaan?.id)
-                );
+                const csirt = getSeCsirt(se);
+                const stakeholder = getSeCompany(se);
                 
                 // If we have id_sub_sektor on the SE record, we can use it to resolve names
                 let seSektor = '-';
@@ -1815,38 +2423,18 @@
         }
     }
 
-    // ─── Global Filter Handler ──────────────────────────────
+    // ” Global Filter Handler 
     // This is now purely Pinia-based, no emits needed from GlobalFilter component
 
-    // ─── Quick Action Handlers ──────────────────────────────
+    // ” Quick Action Handlers 
     function handleAddStakeholder() {
         router.push('/stakeholders');
     }
 
     async function handleRefreshData() {
-        loading.value = true;
-        try {
-            await Promise.all([
-                stakeholdersStore.refresh(),
-                csirtStore.refresh(),
-                ikasStore.refresh(),
-                filterStore.fetchDashboardData(),
-            ]);
-        } catch (e) {
-            console.error('Refresh failed:', e);
-        } finally {
-            loading.value = false;
-        }
+        await loadDashboardData({ force: true, refresh: true });
     }
 
-    function handleExportPdf() {
-        // Handled by DashboardExport component
-    }
-
-    // ─── Sektor Click (from GeoMap) ─────────────────────────
-    function handleSektorClick(sektor) {
-        handleDrillDown({ type: sektor.name });
-    }
     </script>
 
     <template>
@@ -1912,7 +2500,6 @@
                 <QuickActions
                     @refresh-data="handleRefreshData"
                 />
-                <DashboardExport />
                 <div>
                     <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
                         <i class="ri-bar-chart-box-line"></i>
@@ -1927,10 +2514,6 @@
         </div>
 
         <div v-if="!showMetabase" id="dashboard-capture">
-            <!-- ═══ ALERT STATUS BAR ═══ -->
-            <AlertIndicators v-if="showAlertIndicators" :summary-error="filterStore.error" />
-
-            <!-- ═══ GLOBAL FILTER (always visible) ═══ -->
             <div class="mb-3">
                 <GlobalFilter
                     :sektor-list="sektorList"
@@ -1966,7 +2549,7 @@
             </div>
 
             <template v-else>
-                <!-- ═══ SEKTOR / SUB SEKTOR CARDS ═══ -->
+                <!-- ••• SEKTOR / SUB SEKTOR CARDS ••• -->
                 <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.1s' : '0s' }">
                     <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
                         <i class="ri-building-2-line"></i>
@@ -1994,8 +2577,8 @@
                     </div>
                 </div>
 
-                <!-- ═══ OPERATIONAL CARDS ═══ -->
-                <div class="row g-3 mt-1">
+                <!-- ••• OPERATIONAL CARDS ••• -->
+                <div v-if="dashboardDetailsReady" class="row g-3 mt-1">
                     <div class="col-xl-3 col-md-6 animate-show-up"
                         v-for="(card, index) in operationalCards"
                         :key="'ops-' + index"
@@ -2012,25 +2595,37 @@
                 </div>
 
 
-                <!-- ═══ KPI CARDS (Meaningful KPIs) ═══ -->
-                <div class="mb-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.8s' : '0s' }">
-                    <KpiCards @drill-down="handleDrillDown" />
+                <!-- ••• KPI CARDS (Meaningful KPIs) ••• -->
+                <div v-if="false" class="row g-3 mt-1">
+                    <div class="col-xl-3 col-md-6" v-for="n in 4" :key="'ops-loading-'+n">
+                        <div class="card custom-card dashboard-main-card border-0 shadow-sm" style="height: 132px;">
+                            <div class="card-body placeholder-glow">
+                                <span class="placeholder col-3 mb-3" style="height: 34px; border-radius: 10px;"></span>
+                                <span class="placeholder col-7 d-block mb-2"></span>
+                                <span class="placeholder col-4 d-block"></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- ═══ INSIGHT + ACTIVITY ROW ═══ -->
+                <div class="mb-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.8s' : '0s' }">
+                    <KpiCards :loading="!dashboardDetailsReady" @drill-down="handleDrillDown" />
+                </div>
+
+                <!-- ••• INSIGHT + ACTIVITY ROW ••• -->
                 <div class="row g-3 mb-4">
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.0s' : '0s' }">
-                        <InsightCard />
+                        <InsightCard :loading="!dashboardDetailsReady" />
                     </div>
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.2s' : '0s' }">
-                        <ActionCenter />
+                        <ActionCenter :loading="!dashboardDetailsReady" />
                     </div>
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.4s' : '0s' }">
-                        <ActivityFeed />
+                        <ActivityFeed :loading="!dashboardDetailsReady" />
                     </div>
                 </div>
 
-                <!-- ═══ RINGKASAN DATA (Full Width) ═══ -->
+                <!-- ••• RINGKASAN DATA (Full Width) ••• -->
                 <div v-if="filterStore.isLoading && !filterStore.summaryData" class="row g-3 mb-4">
                     <div class="col-xl-4 col-lg-6 col-md-6" v-for="n in 6" :key="'skel-fs-'+n">
                         <div class="card custom-card">
@@ -2055,10 +2650,201 @@
                 <template v-else-if="filterStore.summaryData">
                     <div class="row g-3 mb-4">
                         <div class="col-xl-12">
-                        <!-- ═══════════ ANALISIS KSE & IKAS SECTION ═══════════ -->
-                        <div class="kse-ikas-analytics mb-4">
-                            <!-- ── SECTION HEADER & FILTERS (COMBINED) ── -->
-                            <div class="ki-main-header mb-3 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.5s' : '0s' }">
+                        <!-- • PETA + DISTRIBUSI STAKEHOLDER • -->
+                        <div v-if="false" class="row g-3 mb-4 align-items-stretch">
+                            <div class="col-xl-5 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.2s' : '0s' }">
+                            </div>
+                            <div class="col-xl-7 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.3s' : '0s' }">
+                                <!-- 1. LIST STAKEHOLDER (Jika 1 Sub Sektor Dipilih) -->
+                                <div v-if="filterStore.subSektorId && filterStore.subSektorId !== 'ALL'" class="card custom-card mb-0 h-100">
+                                    <div class="card-header d-flex flex-column gap-3 py-3">
+                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="fs-rate-icon bg-primary-transparent">
+                                                    <i class="ri-list-check-2 text-primary"></i>
+                                                </div>
+                                                <div>
+                                                    <h6 class="mb-0 fw-bold">{{ activeSubSektorSummary?.nama_sektor || 'Data Stakeholder Aktif' }}</h6>
+                                                    <small class="text-muted">{{ baseStakeholders.length }} stakeholder di sub sektor ini</small>
+                                                </div>
+                                            </div>
+
+                                            <div v-if="activeSubSektorSummary" class="d-flex gap-3 align-items-center">
+                                                <div class="text-center">
+                                                    <span class="text-muted fs-11 d-block fw-medium">TOTAL</span>
+                                                    <span class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.total }}</span>
+                                                </div>
+                                                <div class="text-center">
+                                                    <span class="text-muted fs-11 d-block fw-medium">THN INI</span>
+                                                    <span v-if="activeSubSektorSummary.countYear > 0" class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.countYear }}</span>
+                                                    <span v-else class="text-muted small">0</span>
+                                                </div>
+                                                <div class="text-center">
+                                                    <span class="text-muted fs-11 d-block fw-medium">QTR INI</span>
+                                                    <span v-if="activeSubSektorSummary.countQuarter > 0" class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.countQuarter }}</span>
+                                                    <span v-else class="text-muted small">0</span>
+                                                </div>
+                                                <div class="text-center">
+                                                    <span class="text-muted fs-11 d-block fw-medium">BLN INI</span>
+                                                    <span v-if="activeSubSektorSummary.this_month > 0" class="badge bg-primary-transparent fw-bold">+{{ activeSubSektorSummary.this_month }}</span>
+                                                    <span v-else class="text-muted small">0</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.4s' : '0s' }">
+                                            <div class="flex-grow-1">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="fs-11 text-muted fw-medium">Sudah CSIRT</span>
+                                                    <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.csirtPercent }}</span>
+                                                </div>
+                                                <div class="progress" style="height: 4px;">
+                                                    <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.csirtPercent }"></div>
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="fs-11 text-muted fw-medium">Sudah IKAS</span>
+                                                    <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.ikasPercent }}</span>
+                                                </div>
+                                                <div class="progress" style="height: 4px;">
+                                                    <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.ikasPercent }"></div>
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1">
+                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                    <span class="fs-11 text-muted fw-medium">Data Lengkap</span>
+                                                    <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.lengkapPercent }}</span>
+                                                </div>
+                                                <div class="progress" style="height: 4px;">
+                                                    <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.lengkapPercent }"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body p-0 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.5s' : '0s' }">
+                                        <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                                            <table class="table table-hover mb-0 fs-sektor-table">
+                                                <thead style="position: sticky; top: 0; background-color: var(--custom-white); z-index: 1; box-shadow: 0 1px 0 rgba(0,0,0,0.05);">
+                                                    <tr>
+                                                        <th style="width:40px">#</th>
+                                                        <th>Nama Stakeholder</th>
+                                                        <th class="text-center" style="width:120px">Status CSIRT</th>
+                                                        <th class="text-center" style="width:100px">Skor IKAS</th>
+                                                        <th class="text-center" style="width:60px">Aksi</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="(s, idx) in baseStakeholders" :key="s.id">
+                                                        <td class="text-muted">{{ idx + 1 }}</td>
+                                                        <td>
+                                                            <span class="fw-medium text-primary">{{ s.nama_perusahaan || s.nama || 'Tanpa Nama' }}</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <div v-if="csirtStore.csirts.some(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id))">
+                                                                <i class="ri-checkbox-circle-fill text-primary fs-18" v-if="csirtStore.hasCompleteCsirt(s.id)" title="CSIRT Lengkap"></i>
+                                                                <i class="ri-checkbox-circle-line text-muted fs-18" v-else title="CSIRT Belum Lengkap (Hanya Registrasi)"></i>
+                                                            </div>
+                                                            <span v-else class="text-muted fs-11 fw-medium">-</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <span class="badge bg-primary-transparent fw-bold" v-if="ikasStore.ikasDataMap[s.slug]?.total_rata_rata">
+                                                                {{ Number(ikasStore.ikasDataMap[s.slug].total_rata_rata).toFixed(2) }}
+                                                            </span>
+                                                            <span v-else class="text-muted small">NA</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <button class="btn btn-sm btn-icon btn-primary-light" @click="router.push(`/stakeholders/${s.slug}`)" title="Lihat Detail">
+                                                                <i class="ri-arrow-right-up-line"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    <tr v-if="baseStakeholders.length === 0">
+                                                        <td colspan="5" class="text-center py-4 text-muted">Tidak ada data stakeholder</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 2. TABEL DISTRIBUSI SEKTOR (Default / Jika Semua Sub Sektor Dipilih) -->
+                                <div v-else-if="apiSektorCounts.length" class="card custom-card mb-0 h-100">
+                                    <div class="card-header d-flex align-items-center justify-content-between py-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="fs-rate-icon bg-primary-transparent">
+                                                <i class="ri-bar-chart-grouped-line text-primary"></i>
+                                            </div>
+                                            <div>
+                                                <h6 class="mb-0 fw-bold">Distribusi Stakeholder per {{ filterStore.sektorId ? 'Sub Sektor' : 'Sektor' }}</h6>
+                                                <small class="text-muted">{{ apiSektorCounts.length }} {{ filterStore.sektorId ? 'sub sektor' : 'sektor' }}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover mb-0 fs-sektor-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width:40px">#</th>
+                                                        <th>Nama Sektor</th>
+                                                        <th class="text-center" style="width:100px">Total</th>
+                                                        <th class="text-center" style="width:100px">Thn Ini</th>
+                                                        <th class="text-center" style="width:100px">Qtr Ini</th>
+                                                        <th class="text-center" style="width:100px">Bln Ini</th>
+                                                        <th style="width:180px">Distribusi</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="(sektor, idx) in apiSektorCounts" :key="sektor.id"
+                                                        @click="handleDrillDown({ type: sektor.nama_sektor })"
+                                                        style="cursor:pointer;">
+                                                        <td class="text-muted">{{ idx + 1 }}</td>
+                                                        <td>
+                                                            <span class="fw-medium">{{ sektor.nama_sektor }}</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <span class="badge bg-primary-transparent fw-bold">{{ sektor.total }}</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <span v-if="sektor.countYear > 0" class="badge bg-info-transparent fw-bold">{{ sektor.countYear }}</span>
+                                                            <span v-else class="text-muted small">0</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <span v-if="sektor.countQuarter > 0" class="badge bg-info-transparent fw-bold">{{ sektor.countQuarter }}</span>
+                                                            <span v-else class="text-muted small">0</span>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <span v-if="sektor.this_month > 0" class="badge bg-success-transparent fw-bold">
+                                                                +{{ sektor.this_month }}
+                                                            </span>
+                                                            <span v-else class="text-muted small">0</span>
+                                                        </td>
+                                                        <td>
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <div class="progress flex-grow-1" style="height: 5px;">
+                                                                    <div class="progress-bar" role="progressbar"
+                                                                        :style="{ 
+                                                                            width: (apiSektorCounts.length ? Math.max(2, (sektor.total / Math.max(...apiSektorCounts.map(s => s.total || 1))) * 100) : 0) + '%',
+                                                                            background: `hsl(${(idx * 35) % 360}, 65%, 55%)`
+                                                                        }"></div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- • ANALISIS KSE & IKAS SECTION • -->
+                        <div v-if="lowerSectionsReady" class="kse-ikas-analytics mb-4">
+                            <!--  SECTION HEADER & FILTERS (COMBINED)  -->
+                            <div class="ki-command-center mb-3 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.5s' : '0s' }">
+                            <div class="ki-main-header">
                                 <div class="ki-header-left">
                                     <div class="ki-header-icon">
                                         <i class="ri-shield-keyhole-line"></i>
@@ -2068,6 +2854,7 @@
                                     <div class="ki-segmented-control">
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'KSE' }" @click="summaryMode = 'KSE'">KSE</button>
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'IKAS' }" @click="summaryMode = 'IKAS'">IKAS</button>
+                                        <button class="ki-seg-btn" :class="{ active: summaryMode === 'CSIRT' }" @click="summaryMode = 'CSIRT'">CSIRT</button>
                                     </div>
                                 </div>
                                 
@@ -2082,7 +2869,7 @@
                                             {{ cat }}
                                         </button>
                                     </div>
-                                    <div class="ki-inline-filters" v-else>
+                                    <div class="ki-inline-filters" v-else-if="summaryMode === 'IKAS'">
                                         <button v-for="cat in ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5']" 
                                                 :key="cat"
                                                 class="ki-filter-pill"
@@ -2104,6 +2891,59 @@
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+
+                            <div v-if="kseIkasViewMode === 'overview'" class="ki-hero-banner">
+                                <div class="ki-hero-glow"></div>
+                                <div class="ki-hero-inner">
+                                    <!-- SVG Ring Progress -->
+                                    <div class="ki-ring-wrap">
+                                        <svg viewBox="0 0 120 120" class="ki-ring-svg">
+                                            <circle cx="60" cy="60" r="52" fill="none" stroke="#e8eef7" stroke-width="8"/>
+                                            <circle cx="60" cy="60" r="52" fill="none" stroke="url(#ringGrad)" stroke-width="8"
+                                                stroke-linecap="round" stroke-dasharray="326.73"
+                                                :stroke-dashoffset="326.73 - (326.73 * activeProgressRate / 100)"
+                                                class="ki-ring-progress"/>
+                                            <defs>
+                                                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                    <stop offset="0%" stop-color="#3b82f6"/>
+                                                    <stop offset="100%" stop-color="#06b6d4"/>
+                                                </linearGradient>
+                                            </defs>
+                                        </svg>
+                                        <div class="ki-ring-label">
+                                            <span class="ki-ring-value">{{ activeProgressRate }}%</span>
+                                            <span class="ki-ring-sub">Terisi</span>
+                                        </div>
+                                    </div>
+                                    <!-- Hero Stats -->
+                                    <div class="ki-hero-stats">
+                                        <h5 class="ki-hero-title">Progress {{ summaryMode }}</h5>
+                                        <p class="ki-hero-desc">Status kelengkapan data periode aktif</p>
+                                        <div class="ki-hero-pills">
+                                            <div class="ki-pill ki-pill-success">
+                                                <i class="ri-checkbox-circle-fill"></i>
+                                                <span>{{ activeFilledCount }}</span>
+                                                <small>Sudah</small>
+                                            </div>
+                                            <div class="ki-pill ki-pill-danger">
+                                                <i class="ri-close-circle-fill"></i>
+                                                <span>{{ activeUnfilledCount }}</span>
+                                                <small>Belum</small>
+                                            </div>
+                                            <div class="ki-pill ki-pill-info">
+                                                <i class="ri-team-fill"></i>
+                                                <span>{{ activeStatusTotal }}</span>
+                                                <small>Total</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- CTA -->
+                                    <button class="ki-hero-cta" @click="router.push(activeDetailRoute)">
+                                        Kelola <i class="ri-arrow-right-up-line"></i>
+                                    </button>
+                                </div>
+                            </div>
                             </div>
 
                             <!-- VIEW: TABLE (Premium Metric Cards) -->
@@ -2135,114 +2975,108 @@
 
                             <!-- VIEW: OVERVIEW (The Charts) -->
                             <div v-else class="ki-charts-section">
-                                <!-- ── Hero Stats Banner ── -->
-                                <div class="ki-hero-banner animate-show-up" style="animation-delay: 0.1s">
-                                    <div class="ki-hero-glow"></div>
-                                    <div class="ki-hero-inner">
-                                        <!-- SVG Ring Progress -->
-                                        <div class="ki-ring-wrap">
-                                            <svg viewBox="0 0 120 120" class="ki-ring-svg">
-                                                <circle cx="60" cy="60" r="52" fill="none" stroke="#f1f5f9" stroke-width="8"/>
-                                                <circle cx="60" cy="60" r="52" fill="none" stroke="url(#ringGrad)" stroke-width="8"
-                                                    stroke-linecap="round" stroke-dasharray="326.73"
-                                                    :stroke-dashoffset="326.73 - (326.73 * (summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate) / 100)"
-                                                    class="ki-ring-progress"/>
-                                                <defs>
-                                                    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                        <stop offset="0%" stop-color="#3b82f6"/>
-                                                        <stop offset="100%" stop-color="#06b6d4"/>
-                                                    </linearGradient>
-                                                </defs>
-                                            </svg>
-                                            <div class="ki-ring-label">
-                                                <span class="ki-ring-value">{{ summaryMode === 'KSE' ? kseFillRate : ikasCompletionRate }}%</span>
-                                                <span class="ki-ring-sub">Terisi</span>
-                                            </div>
-                                        </div>
-                                        <!-- Hero Stats -->
-                                        <div class="ki-hero-stats">
-                                            <h5 class="ki-hero-title">Progress {{ summaryMode }}</h5>
-                                            <p class="ki-hero-desc">Status kelengkapan data periode aktif</p>
-                                            <div class="ki-hero-pills">
-                                                <div class="ki-pill ki-pill-success">
-                                                    <i class="ri-checkbox-circle-fill"></i>
-                                                    <span>{{ summaryMode === 'KSE' ? (kseStatus?.sudah_mengisi_kse ?? 0) : stakeholdersWithIkas }}</span>
-                                                    <small>Sudah</small>
-                                                </div>
-                                                <div class="ki-pill ki-pill-danger">
-                                                    <i class="ri-close-circle-fill"></i>
-                                                    <span>{{ summaryMode === 'KSE' ? (kseStatus?.belum_mengisi_kse ?? 0) : Math.max(0, totalStakeholders - stakeholdersWithIkas) }}</span>
-                                                    <small>Belum</small>
-                                                </div>
-                                                <div class="ki-pill ki-pill-info">
-                                                    <i class="ri-team-fill"></i>
-                                                    <span>{{ totalStakeholders }}</span>
-                                                    <small>Total</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <!-- CTA -->
-                                        <button class="ki-hero-cta" @click="router.push(summaryMode === 'KSE' ? '/kse' : '/ikas')">
-                                            Kelola <i class="ri-arrow-right-up-line"></i>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="row g-3 mt-1">
+                                <div class="row g-3 mt-3">
                                     <!-- Main Chart Column -->
-                                    <div class="col-xl-7 animate-show-up" style="animation-delay: 0.15s">
+                                    <div class="col-xl-8 animate-show-up" style="animation-delay: 0.15s">
                                         <div class="ki-chart-card h-100">
                                             <div class="ki-chart-header">
                                                 <div class="ki-chart-header-left">
                                                     <div class="ki-chart-icon-wrap">
-                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : 'ri-bar-chart-grouped-fill'"></i>
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : (summaryMode === 'CSIRT' ? 'ri-shield-check-fill' : 'ri-bar-chart-grouped-fill')"></i>
                                                     </div>
                                                     <div>
                                                         <div class="ki-chart-title">Visualisasi {{ summaryMode }}</div>
-                                                        <div class="ki-chart-sub">{{ analyticsView === 'distribution' ? (summaryMode === 'KSE' ? 'Distribusi Kategori SE' : 'Distribusi Level Kematangan') : (summaryMode === 'KSE' ? 'Status Pengisian' : 'Rata-rata Domain') }}</div>
+                                                        <div class="ki-chart-sub">Distribusi dan status data periode aktif</div>
                                                     </div>
                                                 </div>
                                                 <div class="ki-chart-controls">
-                                                    <div class="ki-view-toggle">
-                                                        <button class="ki-vt-btn" :class="{ active: analyticsView === 'distribution' }" @click="analyticsView = 'distribution'">
-                                                            {{ summaryMode === 'KSE' ? 'Distribusi' : 'Level' }}
-                                                        </button>
-                                                        <button class="ki-vt-btn" :class="{ active: analyticsView === 'completion' }" @click="analyticsView = 'completion'">
-                                                            {{ summaryMode === 'KSE' ? 'Status' : 'Domain' }}
-                                                        </button>
-                                                    </div>
                                                     <div class="ki-chart-type-toggle">
-                                                        <button v-for="type in (summaryMode === 'KSE' ? ['donut', 'bar'] : ['donut', 'bar', 'radar'])" 
+                                                        <button v-for="type in ['donut', 'bar', 'pie']" 
                                                                 :key="type"
                                                                 class="ki-ct-btn"
-                                                                :class="{ active: (summaryMode === 'KSE' ? kseChartType : ikasChartType) === type }"
-                                                                @click="summaryMode === 'KSE' ? kseChartType = type : ikasChartType = type">
-                                                            <i :class="type === 'donut' ? 'ri-donut-chart-fill' : (type === 'bar' ? 'ri-bar-chart-fill' : 'ri-radar-line')"></i>
+                                                                :class="{ active: activeChartType === type }"
+                                                                @click="summaryMode === 'IKAS' ? ikasChartType = type : kseChartType = type">
+                                                            <i :class="type === 'donut' ? 'ri-donut-chart-fill' : (type === 'bar' ? 'ri-bar-chart-fill' : 'ri-pie-chart-2-fill')"></i>
                                                         </button>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="ki-chart-body d-flex flex-column justify-content-center" style="min-height: 280px; height: 100%;">
-                                                <apexchart
-                                                    height="280"
-                                                    width="100%"
-                                                    :type="summaryMode === 'KSE' ? kseChartType : ikasChartType"
-                                                    :options="mainAnalyticsOptions"
-                                                    :series="mainAnalyticsSeries"
-                                                />
+                                            <div class="ki-chart-body">
+                                                <div class="ki-chart-split-grid">
+                                                    <div class="ki-chart-pane">
+                                                        <div class="ki-chart-pane-title">
+                                                            <span>{{ analyticsPrimaryLabel }}</span>
+                                                            <small>{{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : 'Level Kematangan') }}</small>
+                                                        </div>
+                                                        <div class="ki-visual-strip">
+                                                            <div
+                                                                v-for="item in distributionVisualItems"
+                                                                :key="'dist-visual-' + item.label"
+                                                                class="ki-visual-pill"
+                                                            >
+                                                                <div class="ki-visual-pill-top">
+                                                                    <span class="ki-visual-dot" :style="{ background: item.color }"></span>
+                                                                    <span class="ki-visual-label">{{ item.label }}</span>
+                                                                </div>
+                                                                <div class="ki-visual-value">{{ item.value.toLocaleString('id-ID') }}</div>
+                                                                <div class="ki-visual-track">
+                                                                    <span :style="{ width: item.width, background: item.color }"></span>
+                                                                </div>
+                                                                <small>{{ item.percentLabel }}</small>
+                                                            </div>
+                                                        </div>
+                                                        <apexchart
+                                                            height="285"
+                                                            width="100%"
+                                                            :type="activeChartType"
+                                                            :options="distributionAnalyticsOptions"
+                                                            :series="distributionAnalyticsSeries"
+                                                        />
+                                                    </div>
+                                                    <div class="ki-chart-pane">
+                                                        <div class="ki-chart-pane-title">
+                                                            <span>{{ analyticsSecondaryLabel }}</span>
+                                                            <small>{{ summaryMode === 'KSE' ? 'Status Pengisian' : (summaryMode === 'CSIRT' ? 'Status Pembentukan' : 'Rata-rata Nilai') }}</small>
+                                                        </div>
+                                                        <div class="ki-visual-strip">
+                                                            <div
+                                                                v-for="item in completionVisualItems"
+                                                                :key="'comp-visual-' + item.label"
+                                                                class="ki-visual-pill"
+                                                            >
+                                                                <div class="ki-visual-pill-top">
+                                                                    <span class="ki-visual-dot" :style="{ background: item.color }"></span>
+                                                                    <span class="ki-visual-label">{{ item.label }}</span>
+                                                                </div>
+                                                                <div class="ki-visual-value">{{ item.value.toLocaleString('id-ID') }}</div>
+                                                                <div class="ki-visual-track">
+                                                                    <span :style="{ width: item.width, background: item.color }"></span>
+                                                                </div>
+                                                                <small>{{ item.percentLabel }}</small>
+                                                            </div>
+                                                        </div>
+                                                        <apexchart
+                                                            height="285"
+                                                            width="100%"
+                                                            :type="completionChartType"
+                                                            :options="completionAnalyticsOptions"
+                                                            :series="completionAnalyticsSeries"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
                                     <!-- Right Panel: Category Breakdown + Insight -->
-                                    <div class="col-xl-5 animate-show-up" style="animation-delay: 0.25s">
+                                    <div class="col-xl-4 animate-show-up" style="animation-delay: 0.25s">
                                         <div class="ki-side-panel h-100">
                                             <!-- Category Breakdown -->
                                             <div class="ki-breakdown">
                                                 <div class="ki-bp-header">
                                                     <span class="ki-bp-badge">
-                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : 'ri-bar-chart-box-line'"></i>
-                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : 'Level Kematangan' }}
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : (summaryMode === 'CSIRT' ? 'ri-shield-check-line' : 'ri-bar-chart-box-line')"></i>
+                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : 'Level Kematangan') }}
                                                     </span>
                                                 </div>
                                                 <div class="ki-bp-items" v-if="summaryMode === 'KSE'">
@@ -2268,7 +3102,7 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="ki-bp-items" v-else>
+                                                <div class="ki-bp-items" v-else-if="summaryMode === 'IKAS'">
                                                     <div v-for="(lvl, li) in [
                                                         { key: 'level1', label: 'Level 1 · Awal', color: '#e6533c' },
                                                         { key: 'level2', label: 'Level 2 · Berulang', color: '#f5b849' },
@@ -2291,20 +3125,42 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                                <div class="ki-bp-items" v-else>
+                                                    <div v-for="(item, ci) in [
+                                                        { label: 'Lengkap', value: csirtData.lengkap, total: csirtData.total_csirt, color: '#26bf94', icon: 'ri-checkbox-circle-fill' },
+                                                        { label: 'Belum Lengkap', value: csirtData.belum_lengkap, total: csirtData.total_csirt, color: '#f5b849', icon: 'ri-error-warning-fill' },
+                                                        { label: 'Punya SDM', value: csirtData.punya_sdm, total: csirtData.total_csirt, color: '#0ea5e9', icon: 'ri-team-fill' },
+                                                        { label: 'Punya SE', value: csirtData.punya_se, total: csirtData.total_csirt, color: '#6366f1', icon: 'ri-git-branch-fill' }
+                                                    ]" :key="item.label" class="ki-bp-row" :style="{ animationDelay: (ci * 0.08) + 's' }">
+                                                        <div class="ki-bp-left">
+                                                            <div class="ki-bp-icon" :style="{ background: item.color + '18', color: item.color }">
+                                                                <i :class="item.icon"></i>
+                                                            </div>
+                                                            <div>
+                                                                <div class="ki-bp-label">{{ item.label }}</div>
+                                                                <div class="ki-bp-count">{{ item.value }} <span>CSIRT</span></div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="ki-bp-bar-wrap">
+                                                            <div class="ki-bp-bar">
+                                                                <div class="ki-bp-bar-fill" :style="{ width: (item.total ? Math.max(3, (item.value / item.total) * 100) : 0) + '%', background: `linear-gradient(90deg, ${item.color}88, ${item.color})` }"></div>
+                                                            </div>
+                                                            <span class="ki-bp-pct" :style="{ color: item.color }">{{ item.total ? Math.round((item.value / item.total) * 100) : 0 }}%</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             <!-- IKAS Domain Scores or KSE Insight -->
                                             <div class="ki-insight-box">
                                                 <template v-if="summaryMode === 'IKAS'">
                                                     <div class="ki-domain-header">
-                                                        <i class="ri-focus-3-line"></i> Rata-rata Domain IKAS
+                                                        <i class="ri-focus-3-line"></i> Agregasi IKAS
                                                     </div>
                                                     <div class="ki-domain-grid">
                                                         <div v-for="(dom, di) in [
-                                                            { key: 'identifikasi', label: 'Identifikasi', icon: 'ri-search-eye-line', color: '#3b82f6' },
-                                                            { key: 'proteksi', label: 'Proteksi', icon: 'ri-shield-check-line', color: '#0ea5e9' },
-                                                            { key: 'deteksi', label: 'Deteksi', icon: 'ri-radar-line', color: '#f5b849' },
-                                                            { key: 'tanggulih', label: 'Tanggulih', icon: 'ri-refresh-line', color: '#10b981' }
+                                                            { key: 'avgNilaiKematangan', label: 'Rata-rata Kematangan', icon: 'ri-line-chart-line', color: '#3b82f6' },
+                                                            { key: 'avgTargetNilai', label: 'Rata-rata Target', icon: 'ri-focus-3-line', color: '#0ea5e9' }
                                                         ]" :key="dom.key" class="ki-domain-item">
                                                             <div class="ki-domain-icon" :style="{ background: dom.color + '15', color: dom.color }">
                                                                 <i :class="dom.icon"></i>
@@ -2312,14 +3168,14 @@
                                                             <div class="ki-domain-info">
                                                                 <span class="ki-domain-label">{{ dom.label }}</span>
                                                                 <div class="ki-domain-score-bar">
-                                                                    <div class="ki-domain-fill" :style="{ width: Math.min(100, (Number(ikasSummaryData.averages[dom.key]) / 5) * 100) + '%', background: dom.color }"></div>
+                                                                    <div class="ki-domain-fill" :style="{ width: Math.min(100, (Number(ikasSummaryData[dom.key]) / 5) * 100) + '%', background: dom.color }"></div>
                                                                 </div>
                                                             </div>
-                                                            <span class="ki-domain-val" :style="{ color: dom.color }">{{ ikasSummaryData.averages[dom.key] }}</span>
+                                                            <span class="ki-domain-val" :style="{ color: dom.color }">{{ Number(ikasSummaryData[dom.key] || 0).toFixed(2) }}</span>
                                                         </div>
                                                     </div>
                                                 </template>
-                                                <template v-else>
+                                                <template v-else-if="summaryMode === 'KSE'">
                                                     <div class="ki-insight-content">
                                                         <div class="ki-insight-icon-wrap">
                                                             <i class="ri-lightbulb-flash-fill"></i>
@@ -2334,7 +3190,22 @@
                                                         </div>
                                                     </div>
                                                 </template>
-                                                <button class="ki-export-btn" @click="router.push(summaryMode === 'KSE' ? '/kse' : '/ikas')">
+                                                <template v-else>
+                                                    <div class="ki-insight-content">
+                                                        <div class="ki-insight-icon-wrap">
+                                                            <i class="ri-shield-check-fill"></i>
+                                                        </div>
+                                                        <h6 class="ki-insight-title">Analisa Pembentukan</h6>
+                                                        <p class="ki-insight-text">
+                                                            Terdapat <strong>{{ csirtData.lengkap }}</strong> CSIRT lengkap dari total <strong>{{ csirtData.total_csirt }}</strong> CSIRT pada periode aktif.
+                                                        </p>
+                                                        <div class="ki-insight-tip">
+                                                            <i class="ri-information-line"></i>
+                                                            <span>CSIRT lengkap minimal memiliki data SDM dan Sistem Elektronik</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <button class="ki-export-btn" @click="router.push(activeDetailRoute)">
                                                     <i class="ri-external-link-line"></i> Lihat Detail {{ summaryMode }}
                                                 </button>
                                             </div>
@@ -2344,212 +3215,54 @@
                             </div>
                         </div>
                     </div>
-                </div>
-                                
-                                <!-- ═══ GEO MAP + DISTRIBUSI SEKTOR TABLE ═══ -->
-                                <div class="row g-3 mt-1 align-items-stretch">
-                                    <div class="col-xl-5 animate-show-up" style="animation-delay: 2.4s">
-                                        <GeoMap @sektor-click="handleSektorClick" class="w-100" />
-                                    </div>
-                                    <div class="col-xl-7 animate-show-up" style="animation-delay: 2.5s">
-                                        <!-- 1. LIST STAKEHOLDER (Jika 1 Sub Sektor Dipilih) -->
-                                        <div v-if="filterStore.subSektorId && filterStore.subSektorId !== 'ALL'" class="card custom-card mb-0 h-100">
-                                            <div class="card-header d-flex flex-column gap-3 py-3">
-                                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="fs-rate-icon bg-primary-transparent">
-                                                            <i class="ri-list-check-2 text-primary"></i>
-                                                        </div>
-                                                        <div>
-                                                            <h6 class="mb-0 fw-bold">{{ activeSubSektorSummary?.nama_sektor || 'Data Stakeholder Aktif' }}</h6>
-                                                            <small class="text-muted">{{ baseStakeholders.length }} stakeholder di sub sektor ini</small>
-                                                        </div>
-                                                    </div>
 
-                                                    <div v-if="activeSubSektorSummary" class="d-flex gap-3 align-items-center">
-                                                        <div class="text-center">
-                                                            <span class="text-muted fs-11 d-block fw-medium">TOTAL</span>
-                                                            <span class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.total }}</span>
-                                                        </div>
-                                                        <div class="text-center">
-                                                            <span class="text-muted fs-11 d-block fw-medium">THN INI</span>
-                                                            <span v-if="activeSubSektorSummary.countYear > 0" class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.countYear }}</span>
-                                                            <span v-else class="text-muted small">0</span>
-                                                        </div>
-                                                        <div class="text-center">
-                                                            <span class="text-muted fs-11 d-block fw-medium">QTR INI</span>
-                                                            <span v-if="activeSubSektorSummary.countQuarter > 0" class="badge bg-primary-transparent fw-bold">{{ activeSubSektorSummary.countQuarter }}</span>
-                                                            <span v-else class="text-muted small">0</span>
-                                                        </div>
-                                                        <div class="text-center">
-                                                            <span class="text-muted fs-11 d-block fw-medium">BLN INI</span>
-                                                            <span v-if="activeSubSektorSummary.this_month > 0" class="badge bg-primary-transparent fw-bold">+{{ activeSubSektorSummary.this_month }}</span>
-                                                            <span v-else class="text-muted small">0</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div v-if="activeSubSektorSummary" class="d-flex w-100 gap-4 mt-2 mb-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.2s' : '0s' }">
-                                                    <!-- CSIRT -->
-                                                    <div class="flex-grow-1">
-                                                        <div class="d-flex justify-content-between align-items-center mb-1">
-                                                            <span class="fs-11 text-muted fw-medium">Sudah CSIRT</span>
-                                                            <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.csirtPercent }}</span>
-                                                        </div>
-                                                        <div class="progress" style="height: 4px;">
-                                                            <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.csirtPercent }"></div>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    <!-- IKAS -->
-                                                    <div class="flex-grow-1">
-                                                        <div class="d-flex justify-content-between align-items-center mb-1">
-                                                            <span class="fs-11 text-muted fw-medium">Sudah IKAS</span>
-                                                            <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.ikasPercent }}</span>
-                                                        </div>
-                                                        <div class="progress" style="height: 4px;">
-                                                            <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.ikasPercent }"></div>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    <!-- Data Lengkap -->
-                                                    <div class="flex-grow-1">
-                                                        <div class="d-flex justify-content-between align-items-center mb-1">
-                                                            <span class="fs-11 text-muted fw-medium">Data Lengkap</span>
-                                                            <span class="fs-11 fw-bold text-primary">{{ activeSubSektorSummary.lengkapPercent }}</span>
-                                                        </div>
-                                                        <div class="progress" style="height: 4px;">
-                                                            <div class="progress-bar bg-primary" role="progressbar" :style="{ width: activeSubSektorSummary.lengkapPercent }"></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="card-body p-0 animate-show-up" :style="{ animationDelay: isFirstLoad ? '2.4s' : '0s' }">
-                                                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
-                                                    <table class="table table-hover mb-0 fs-sektor-table">
-                                                        <thead style="position: sticky; top: 0; background-color: var(--custom-white); z-index: 1; box-shadow: 0 1px 0 rgba(0,0,0,0.05);">
-                                                            <tr>
-                                                                <th style="width:40px">#</th>
-                                                                <th>Nama Stakeholder</th>
-                                                                <th class="text-center" style="width:120px">Status CSIRT</th>
-                                                                <th class="text-center" style="width:100px">Skor IKAS</th>
-                                                                <th class="text-center" style="width:60px">Aksi</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            <tr v-for="(s, idx) in baseStakeholders" :key="s.id">
-                                                                <td class="text-muted">{{ idx + 1 }}</td>
-                                                                <td>
-                                                                    <span class="fw-medium text-primary">{{ s.nama_perusahaan || s.nama || 'Tanpa Nama' }}</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <div v-if="csirtStore.csirts.some(c => String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id))">
-                                                                        <i class="ri-checkbox-circle-fill text-primary fs-18" v-if="csirtStore.hasCompleteCsirt(s.id)" title="CSIRT Lengkap"></i>
-                                                                        <i class="ri-checkbox-circle-line text-muted fs-18" v-else title="CSIRT Belum Lengkap (Hanya Registrasi)"></i>
-                                                                    </div>
-                                                                    <span v-else class="text-muted fs-11 fw-medium">-</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <span class="badge bg-primary-transparent fw-bold" v-if="ikasStore.ikasDataMap[s.slug]?.total_rata_rata">
-                                                                        {{ Number(ikasStore.ikasDataMap[s.slug].total_rata_rata).toFixed(2) }}
-                                                                    </span>
-                                                                    <span v-else class="text-muted small">NA</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <button class="btn btn-sm btn-icon btn-primary-light" @click="router.push(`/stakeholders/${s.slug}`)" title="Lihat Detail">
-                                                                        <i class="ri-arrow-right-up-line"></i>
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                            <tr v-if="baseStakeholders.length === 0">
-                                                                <td colspan="5" class="text-center py-4 text-muted">Tidak ada data stakeholder</td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
+                    <div v-if="!lowerSectionsReady" class="row g-3 mb-4">
+                        <div class="col-xl-8">
+                            <div class="card custom-card border-0 shadow-sm" style="min-height: 420px;">
+                                <div class="card-body placeholder-glow">
+                                    <div class="d-flex align-items-center justify-content-between mb-4">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="placeholder" style="width:42px;height:42px;border-radius:10px;"></span>
+                                            <span class="placeholder col-4" style="height:18px;border-radius:6px;"></span>
                                         </div>
-
-                                        <!-- 2. TABEL DISTRIBUSI SEKTOR (Default / Jika Semua Sub Sektor Dipilih) -->
-                                        <div v-else-if="apiSektorCounts.length" class="card custom-card mb-0 h-100">
-                                            <div class="card-header d-flex align-items-center justify-content-between py-3">
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <div class="fs-rate-icon bg-primary-transparent">
-                                                        <i class="ri-bar-chart-grouped-line text-primary"></i>
-                                                    </div>
-                                                    <div>
-                                                        <h6 class="mb-0 fw-bold">Distribusi Stakeholder per {{ filterStore.sektorId ? 'Sub Sektor' : 'Sektor' }}</h6>
-                                                        <small class="text-muted">{{ apiSektorCounts.length }} {{ filterStore.sektorId ? 'sub sektor' : 'sektor' }}</small>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="card-body p-0">
-                                                <div class="table-responsive">
-                                                    <table class="table table-hover mb-0 fs-sektor-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th style="width:40px">#</th>
-                                                                <th>Nama Sektor</th>
-                                                                <th class="text-center" style="width:100px">Total</th>
-                                                                <th class="text-center" style="width:100px">Thn Ini</th>
-                                                                <th class="text-center" style="width:100px">Qtr Ini</th>
-                                                                <th class="text-center" style="width:100px">Bln Ini</th>
-                                                                <th style="width:180px">Distribusi</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            <tr v-for="(sektor, idx) in apiSektorCounts" :key="sektor.id"
-                                                                @click="handleDrillDown({ type: sektor.nama_sektor })"
-                                                                style="cursor:pointer;">
-                                                                <td class="text-muted">{{ idx + 1 }}</td>
-                                                                <td>
-                                                                    <span class="fw-medium">{{ sektor.nama_sektor }}</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <span class="badge bg-primary-transparent fw-bold">{{ sektor.total }}</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <span v-if="sektor.countYear > 0" class="badge bg-info-transparent fw-bold">{{ sektor.countYear }}</span>
-                                                                    <span v-else class="text-muted small">0</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <span v-if="sektor.countQuarter > 0" class="badge bg-info-transparent fw-bold">{{ sektor.countQuarter }}</span>
-                                                                    <span v-else class="text-muted small">0</span>
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    <span v-if="sektor.this_month > 0" class="badge bg-success-transparent fw-bold">
-                                                                        +{{ sektor.this_month }}
-                                                                    </span>
-                                                                    <span v-else class="text-muted small">0</span>
-                                                                </td>
-                                                                <td>
-                                                                    <div class="d-flex align-items-center gap-2">
-                                                                        <div class="progress flex-grow-1" style="height: 5px;">
-                                                                            <div class="progress-bar" role="progressbar"
-                                                                                :style="{ 
-                                                                                    width: (apiSektorCounts.length ? Math.max(2, (sektor.total / Math.max(...apiSektorCounts.map(s => s.total || 1))) * 100) : 0) + '%',
-                                                                                    background: `hsl(${(idx * 35) % 360}, 65%, 55%)`
-                                                                                }"></div>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
+                                        <span class="placeholder col-2" style="height:32px;border-radius:10px;"></span>
+                                    </div>
+                                    <span class="placeholder col-12 mb-3" style="height:180px;border-radius:14px;"></span>
+                                    <div class="row g-3">
+                                        <div class="col-md-4" v-for="n in 3" :key="'analysis-skeleton-'+n">
+                                            <span class="placeholder col-12 mb-2" style="height:70px;border-radius:12px;"></span>
+                                            <span class="placeholder col-8" style="height:12px;border-radius:6px;"></span>
                                         </div>
                                     </div>
                                 </div>
-                            </template>
-        
+                            </div>
+                        </div>
+                        <div class="col-xl-4">
+                            <div class="card custom-card border-0 shadow-sm" style="min-height: 420px;">
+                                <div class="card-body placeholder-glow">
+                                    <span class="placeholder col-7 mb-4" style="height:18px;border-radius:6px;"></span>
+                                    <div v-for="n in 5" :key="'side-skeleton-'+n" class="d-flex align-items-center gap-3 mb-3">
+                                        <span class="placeholder" style="width:38px;height:38px;border-radius:10px;"></span>
+                                        <div class="flex-grow-1">
+                                            <span class="placeholder col-8 d-block mb-2" style="height:12px;border-radius:6px;"></span>
+                                            <span class="placeholder col-5 d-block" style="height:10px;border-radius:6px;"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </template>
+
                 <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
-                <SektorAnalytics />
+                <SektorAnalytics v-if="lowerSectionsReady" />
 
                 <!-- RADAR CHARTS -->
-                <div class="animate-show-up" :style="{ animationDelay: isFirstLoad ? '3.6s' : '0s' }">
+                <div v-if="lowerSectionsReady" class="animate-show-up" :style="{ animationDelay: isFirstLoad ? '3.6s' : '0s' }">
                     <RadarChartIkas />
                 </div>
+
             </template>
         </div>
 
@@ -2722,7 +3435,7 @@
         color: var(--default-text-color);
     }
 
-    /* ── Header Filter ── */
+    /*  Header Filter  */
     .fs-filter-pill {
         font-size: 0.75rem;
         font-weight: 700;
@@ -2751,7 +3464,7 @@
         backdrop-filter: blur(4px);
     }
 
-    /* ── Card Animation ── */
+    /*  Card Animation  */
     .fs-card-animate {
         animation: fsSlideFade 0.45s ease-out both;
     }
@@ -2769,7 +3482,7 @@
         }
     }
 
-    /* ── Rate Card ── */
+    /*  Rate Card  */
     .fs-rate-card {
         border: 1px solid rgba(0,0,0,0.04);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2813,7 +3526,7 @@
         background: rgba(0,0,0,0.04);
     }
 
-    /* ── Sektor Table ── */
+    /*  Sektor Table  */
     .fs-sektor-table thead th {
         font-size: 0.75rem;
         font-weight: 700;
@@ -2844,7 +3557,7 @@
         color: #0d47a1;
     }
 
-    /* ── Summary Mode Switcher ── */
+    /*  Summary Mode Switcher  */
     .summary-mode-switcher {
         display: flex;
         background: rgba(255, 255, 255, 0.6);
@@ -2879,7 +3592,7 @@
         box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
     }
 
-    /* ── Analytics Styles ── */
+    /*  Analytics Styles  */
     .btn-ghost {
         background: transparent;
         border: none;
@@ -2919,7 +3632,7 @@
         color: #1d4ed8;
     }
 
-    /* ─── SektorAnalytics Style Clones for KSE/IKAS ─── */
+    /* ” SektorAnalytics Style Clones for KSE/IKAS ” */
     .sa-section-header {
         display: flex; align-items: center; justify-content: space-between;
         margin-bottom: 1.25rem; padding: 1rem 1.5rem; border-radius: 14px;
@@ -3008,66 +3721,122 @@
     .fs-40 { font-size: 40px; }
     .line-height-1 { line-height: 1; }
 
-    /* ═══════════ KSE/IKAS PREMIUM REDESIGN ═══════════ */
+    /* • KSE/IKAS PREMIUM REDESIGN • */
 
-    /* ── Main Header ── */
+    .kse-ikas-analytics {
+        --ki-brand: #2563eb;
+        --ki-brand-deep: #102a7a;
+        --ki-cyan: #06b6d4;
+        --ki-ink: #111827;
+        --ki-muted: #69758c;
+        --ki-line: #dbe5f3;
+        --ki-soft: #f7faff;
+        --ki-shadow: 0 18px 48px rgba(23, 37, 84, 0.09);
+    }
+
+    .ki-command-center {
+        background: #ffffff;
+        border: 1px solid var(--ki-line);
+        border-radius: 18px;
+        box-shadow: var(--ki-shadow);
+        overflow: hidden;
+    }
+
+    .ki-command-center .ki-main-header {
+        border: 0;
+        border-bottom: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .ki-command-center:not(:has(.ki-hero-banner)) .ki-main-header {
+        border-bottom: 0;
+    }
+
+    .ki-command-center .ki-hero-banner {
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        border-top: 1px solid rgba(219, 229, 243, 0.85);
+    }
+
+    /*  Main Header  */
     .ki-main-header {
         display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
-        background: #1e40af; border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(30,64,175,0.15);
+        background:
+            linear-gradient(135deg, #132f99 0%, #1d4ed8 54%, #3b82f6 100%);
+        border: 1px solid var(--ki-line);
+        border-radius: 14px;
+        padding: 13px 16px;
+        box-shadow: var(--ki-shadow);
+        position: relative;
+        overflow: hidden;
     }
-    .ki-header-left { display: flex; align-items: center; gap: 16px; }
+    .ki-main-header::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: auto;
+        background:
+            linear-gradient(90deg, rgba(255,255,255,0.14), transparent 34%),
+            radial-gradient(circle at 88% 50%, rgba(255,255,255,0.12), transparent 26%);
+        pointer-events: none;
+    }
+    .ki-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; position: relative; z-index: 1; }
     .ki-header-icon {
-        width: 36px; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.15);
-        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.2rem;
+        width: 38px; height: 38px; border-radius: 11px; background: rgba(255,255,255,0.14);
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.1rem;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
     }
-    .ki-header-title { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0; }
+    .ki-header-title { font-size: 1.04rem; font-weight: 900; color: #fff; margin: 0; white-space: nowrap; }
     
     .ki-segmented-control {
-        display: flex; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 8px; gap: 2px;
+        display: flex; background: rgba(10, 34, 111, 0.28); padding: 4px; border-radius: 11px; gap: 2px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
     }
     .ki-seg-btn {
-        background: transparent; border: none; color: rgba(255,255,255,0.7); font-size: 0.8rem;
-        font-weight: 700; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+        background: transparent; border: none; color: rgba(255,255,255,0.72); font-size: 0.75rem;
+        font-weight: 900; padding: 7px 18px; border-radius: 9px; cursor: pointer; transition: all 0.2s;
     }
-    .ki-seg-btn.active { background: #fff; color: #1e40af; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .ki-seg-btn.active { background: #fff; color: var(--ki-brand); box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16); }
     
-    .ki-header-right { display: flex; align-items: center; gap: 16px; }
-    .ki-inline-filters { display: flex; gap: 6px; }
+    .ki-header-right { display: flex; align-items: center; gap: 10px; min-width: 0; position: relative; z-index: 1; }
+    .ki-inline-filters { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
     .ki-filter-pill {
-        background: transparent; border: 1px solid rgba(255,255,255,0.3); color: #fff;
-        font-size: 0.75rem; font-weight: 600; padding: 6px 14px; border-radius: 20px;
+        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.32); color: #fff;
+        font-size: 0.68rem; font-weight: 900; padding: 7px 12px; border-radius: 999px;
         cursor: pointer; transition: all 0.2s;
     }
-    .ki-filter-pill:hover { background: rgba(255,255,255,0.1); }
-    .ki-filter-pill.active { background: #fff; color: #1e40af; border-color: transparent; }
+    .ki-filter-pill:hover { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.55); color: #fff; }
+    .ki-filter-pill.active { background: #fff; color: var(--ki-brand); border-color: transparent; box-shadow: 0 8px 18px rgba(15,23,42,0.18); }
     
-    .ki-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.2); }
+    .ki-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.22); }
     
     .ki-view-toggles { display: flex; gap: 4px; }
     .ki-view-btn {
-        width: 34px; height: 34px; border: none; background: rgba(255,255,255,0.1); color: #fff;
+        width: 34px; height: 34px; border: 1px solid rgba(255,255,255,0.24); background: rgba(255,255,255,0.1); color: #fff;
         border-radius: 8px; display: flex; align-items: center; justify-content: center;
         cursor: pointer; transition: all 0.2s;
     }
-    .ki-view-btn.active { background: #fff; color: #1e40af; }
+    .ki-view-btn.active { background: #fff; color: var(--ki-brand); border-color: #fff; }
 
-    /* ── Metric Card ── */
+    /*  Metric Card  */
     .ki-metric-card {
-        position: relative; border-radius: 16px; overflow: hidden; cursor: pointer;
+        position: relative; border-radius: 12px; overflow: hidden; cursor: pointer;
         background: #fff; border: 1px solid rgba(0,0,0,0.06);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--ki-shadow); transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .ki-metric-card:hover { transform: translateY(-5px); box-shadow: 0 12px 32px rgba(0,0,0,0.1); }
-    .ki-metric-accent { height: 4px; width: 100%; }
+    .ki-metric-card:hover { transform: translateY(-3px); box-shadow: 0 18px 38px rgba(28,46,86,0.13); }
+    .ki-metric-accent { height: 3px; width: 100%; }
     .ki-metric-watermark {
         position: absolute; right: -8px; top: -8px; opacity: 0.04;
         font-size: 5rem; color: var(--ki-accent, #333); pointer-events: none;
         transform: rotate(-15deg);
     }
-    .ki-metric-body { padding: 1.1rem 1.25rem; position: relative; z-index: 1; }
-    .ki-metric-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .ki-metric-body { padding: 0.9rem 1rem; position: relative; z-index: 1; }
+    .ki-metric-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.7rem; }
     .ki-metric-icon-wrap {
-        width: 42px; height: 42px; border-radius: 12px;
+        width: 36px; height: 36px; border-radius: 10px;
         display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
     }
     .ki-metric-active-badge {
@@ -3075,36 +3844,47 @@
         padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
     }
     .ki-metric-value {
-        font-size: 1.75rem; font-weight: 900; color: #1e293b;
+        font-size: 1.45rem; font-weight: 900; color: var(--ki-ink);
         letter-spacing: -0.5px; line-height: 1; margin-bottom: 6px;
     }
     .ki-metric-label {
-        font-size: 0.7rem; font-weight: 700; color: #94a3b8;
+        font-size: 0.67rem; font-weight: 800; color: #8b98ad;
         text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .ki-metric-active { border: 2px solid #2563eb !important; transform: translateY(-5px); box-shadow: 0 15px 35px rgba(37,99,235,0.15) !important; }
+    .ki-metric-active { border: 1px solid #2563eb !important; transform: translateY(-3px); box-shadow: 0 15px 32px rgba(37,99,235,0.15) !important; }
     .ki-metric-muted { opacity: 0.4; filter: grayscale(85%); cursor: not-allowed !important; transform: none !important; }
     .ki-metric-muted * { pointer-events: none; }
 
-    /* ── Hero Banner ── */
+    /*  Hero Banner  */
     .ki-hero-banner {
-        position: relative; border-radius: 18px; overflow: hidden;
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.04);
-        padding: 1.25rem 1.5rem;
+        position: relative; border-radius: 16px; overflow: hidden;
+        background:
+            radial-gradient(circle at 10% 18%, rgba(37,99,235,0.1), transparent 26%),
+            radial-gradient(circle at 92% 16%, rgba(6,182,212,0.11), transparent 24%),
+            linear-gradient(135deg, #ffffff 0%, #f7fbff 58%, #eef9ff 100%);
+        border: 1px solid var(--ki-line);
+        box-shadow: 0 22px 54px rgba(15, 23, 42, 0.08);
+        padding: 0.65rem 1rem;
     }
     .ki-hero-glow {
-        display: none;
+        display: block;
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(90deg, rgba(37,99,235,0.045), transparent 34%),
+            radial-gradient(circle at 88% 20%, rgba(6,182,212,0.12), transparent 32%);
+        opacity: 0.9;
+        pointer-events: none;
     }
     .ki-hero-inner {
         position: relative; z-index: 1;
-        display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;
+        display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+        min-height: 72px;
     }
 
-    /* ── SVG Ring ── */
+    /*  SVG Ring  */
     .ki-ring-wrap {
-        position: relative; width: 110px; height: 110px; flex-shrink: 0;
+        position: relative; width: 68px; height: 68px; flex-shrink: 0;
     }
     .ki-ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
     .ki-ring-progress { transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -3112,184 +3892,367 @@
         position: absolute; inset: 0; display: flex; flex-direction: column;
         align-items: center; justify-content: center;
     }
-    .ki-ring-value { font-size: 1.6rem; font-weight: 900; color: #1e293b; line-height: 1; }
-    .ki-ring-sub { font-size: 0.65rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .ki-ring-value { font-size: 1.05rem; font-weight: 900; color: var(--ki-ink); line-height: 1; }
+    .ki-ring-sub { font-size: 0.49rem; font-weight: 900; color: #8b98ad; text-transform: uppercase; letter-spacing: 0.5px; }
 
-    /* ── Hero Stats ── */
+    /*  Hero Stats  */
     .ki-hero-stats { flex: 1; min-width: 200px; }
-    .ki-hero-title { font-size: 1.15rem; font-weight: 800; color: #1e293b; margin: 0 0 4px; }
-    .ki-hero-desc { font-size: 0.75rem; color: #64748b; margin: 0 0 12px; }
-    .ki-hero-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ki-hero-title { font-size: 0.98rem; font-weight: 900; color: var(--ki-ink); margin: 0 0 1px; }
+    .ki-hero-desc { font-size: 0.68rem; color: var(--ki-muted); margin: 0 0 7px; }
+    .ki-hero-pills { display: flex; gap: 6px; flex-wrap: wrap; }
     .ki-pill {
-        display: flex; align-items: center; gap: 6px; padding: 8px 14px;
-        border-radius: 12px; font-size: 0.8rem; border: 1px solid transparent;
+        display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+        border-radius: 10px; font-size: 0.68rem; border: 1px solid rgba(203, 213, 225, 0.82);
+        min-height: 34px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.94) 0%, rgba(248,250,252,0.86) 100%);
+        color: #334155;
+        box-shadow:
+            0 9px 22px rgba(15, 23, 42, 0.08),
+            inset 0 1px 0 rgba(255,255,255,0.86);
+        backdrop-filter: blur(8px);
     }
-    .ki-pill i { font-size: 1rem; }
-    .ki-pill span { font-weight: 800; font-size: 1.05rem; }
-    .ki-pill small { font-size: 0.65rem; font-weight: 600; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
-    .ki-pill-success { background: rgba(16, 185, 129, 0.1); color: #059669; border-color: rgba(16, 185, 129, 0.2); }
-    .ki-pill-danger { background: rgba(239, 68, 68, 0.1); color: #dc2626; border-color: rgba(239, 68, 68, 0.2); }
-    .ki-pill-info { background: rgba(59, 130, 246, 0.1); color: #2563eb; border-color: rgba(59, 130, 246, 0.2); }
+    .ki-pill i { font-size: 0.84rem; }
+    .ki-pill span { font-weight: 900; font-size: 0.9rem; }
+    .ki-pill small { font-size: 0.54rem; font-weight: 850; opacity: 0.82; text-transform: uppercase; letter-spacing: 0.35px; }
+    .ki-pill-success {
+        color: #047857;
+        background: linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.88) 100%);
+        border-color: rgba(16,185,129,0.32);
+        box-shadow: 0 9px 22px rgba(15,23,42,0.08), inset 0 0 0 1px rgba(16,185,129,0.08);
+    }
+    .ki-pill-danger {
+        color: #dc2626;
+        background: linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.88) 100%);
+        border-color: rgba(239,68,68,0.32);
+        box-shadow: 0 9px 22px rgba(15,23,42,0.08), inset 0 0 0 1px rgba(239,68,68,0.08);
+    }
+    .ki-pill-info {
+        color: #1d4ed8;
+        background: linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.88) 100%);
+        border-color: rgba(37,99,235,0.32);
+        box-shadow: 0 9px 22px rgba(15,23,42,0.08), inset 0 0 0 1px rgba(37,99,235,0.08);
+    }
 
     .ki-hero-cta {
-        background: #f8fafc; color: #1e40af; border: 1px solid #e2e8f0;
-        padding: 10px 22px; border-radius: 12px;
-        font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all 0.25s;
+        background: #fff; color: #102a7a; border: 1px solid #d5e2f5;
+        padding: 8px 16px; border-radius: 11px;
+        font-size: 0.72rem; font-weight: 900; cursor: pointer; transition: all 0.25s;
         display: flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0;
+        box-shadow: 0 12px 28px rgba(37, 99, 235, 0.1);
     }
     .ki-hero-cta:hover { background: #f1f5f9; border-color: #cbd5e1; transform: translateY(-2px); }
     .ki-hero-cta i { font-size: 1rem; }
 
-    /* ── Chart Card ── */
+    /*  Chart Card  */
     .ki-chart-card {
         border-radius: 18px; overflow: hidden; background: #fff;
-        border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+        border: 1px solid var(--ki-line); box-shadow: var(--ki-shadow);
         display: flex; flex-direction: column;
     }
     .ki-chart-header {
-        padding: 1rem 1.25rem; display: flex; align-items: center;
+        padding: 1rem 1.1rem; display: flex; align-items: center;
         justify-content: space-between; gap: 12px; flex-wrap: wrap;
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        border-bottom: 1px solid #e2e8f0;
+        background: #ffffff;
+        border-bottom: 1px solid var(--ki-line);
     }
-    .ki-chart-header-left { display: flex; align-items: center; gap: 12px; }
+    .ki-chart-header-compact {
+        padding: 0.85rem 0.95rem;
+        gap: 8px;
+    }
+    .ki-chart-header-left { display: flex; align-items: center; gap: 9px; }
     .ki-chart-icon-wrap {
-        width: 40px; height: 40px; border-radius: 12px;
-        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        width: 42px; height: 42px; border-radius: 12px;
+        background: linear-gradient(135deg, var(--ki-brand-deep) 0%, #0ea5e9 100%);
         display: flex; align-items: center; justify-content: center;
-        color: #fff; font-size: 1.1rem; flex-shrink: 0;
+        color: #fff; font-size: 1.12rem; flex-shrink: 0;
     }
-    .ki-chart-title { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
-    .ki-chart-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 1px; }
-    .ki-chart-controls { display: flex; align-items: center; gap: 8px; }
+    .ki-chart-header-compact .ki-chart-icon-wrap { width: 38px; height: 38px; border-radius: 11px; }
+    .ki-chart-icon-wrap-soft { background: linear-gradient(135deg, #1d4ed8 0%, #22c55e 100%); }
+    .ki-chart-title { font-size: 1rem; font-weight: 900; color: var(--ki-ink); }
+    .ki-chart-sub { font-size: 0.72rem; color: #7b879a; margin-top: 2px; }
+    .ki-chart-controls { display: flex; align-items: center; gap: 7px; }
     .ki-view-toggle {
-        display: flex; background: #fff; border: 1px solid #e2e8f0;
-        border-radius: 10px; padding: 3px; gap: 2px;
+        display: flex; background: #f1f6ff; border: 1px solid #dbeafe;
+        border-radius: 11px; padding: 4px; gap: 3px;
     }
     .ki-vt-btn {
-        border: none; background: transparent; padding: 5px 14px; border-radius: 8px;
-        font-size: 0.72rem; font-weight: 700; color: #94a3b8; cursor: pointer;
+        border: none; background: transparent; padding: 7px 15px; border-radius: 8px;
+        font-size: 0.72rem; font-weight: 900; color: #8190a7; cursor: pointer;
         transition: all 0.2s;
     }
-    .ki-vt-btn.active { background: #1e40af; color: #fff; box-shadow: 0 2px 8px rgba(30,64,175,0.3); }
-    .ki-chart-type-toggle { display: flex; gap: 2px; background: #f1f5f9; border-radius: 10px; padding: 3px; }
+    .ki-vt-btn.active { background: var(--ki-brand); color: #fff; box-shadow: 0 6px 14px rgba(30,64,175,0.22); }
+    .ki-chart-type-toggle { display: flex; gap: 3px; background: #eef4fc; border-radius: 11px; padding: 4px; }
     .ki-ct-btn {
-        width: 32px; height: 32px; border: none; border-radius: 8px; background: transparent;
+        width: 34px; height: 34px; border: none; border-radius: 8px; background: transparent;
         color: #94a3b8; display: flex; align-items: center; justify-content: center;
-        cursor: pointer; transition: all 0.2s; font-size: 0.9rem;
+        cursor: pointer; transition: all 0.2s; font-size: 0.94rem;
     }
-    .ki-ct-btn.active { background: #fff; color: #1e40af; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-    .ki-chart-body { padding: 1.25rem; }
+    .ki-ct-btn.active { background: #fff; color: var(--ki-brand); box-shadow: 0 2px 8px rgba(28,46,86,0.08); }
+    .ki-chart-body {
+        padding: 1.05rem 1rem 1.15rem;
+        background-color: #fbfdff;
+        background-image: linear-gradient(180deg, #ffffff 0%, rgba(251,253,255,0.9) 100%);
+    }
+    .ki-chart-split-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        min-height: 390px;
+        align-items: stretch;
+    }
+    .ki-chart-pane {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0.35rem 0.5rem 0.25rem;
+    }
+    .ki-chart-pane + .ki-chart-pane {
+        border-left: 1px solid rgba(219,234,254,0.9);
+    }
+    .ki-chart-pane-title {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 0 0.35rem 0.35rem;
+    }
+    .ki-chart-pane-title span {
+        font-size: 0.82rem; font-weight: 900; color: #172554;
+    }
+    .ki-chart-pane-title small {
+        font-size: 0.65rem; font-weight: 800; color: #8090a8;
+        white-space: nowrap;
+    }
+    .ki-chart-pane :deep(.apexcharts-pie-label) {
+        fill: #ffffff;
+    }
+    .ki-chart-pane :deep(.apexcharts-datalabel-value),
+    .ki-chart-pane :deep(.apexcharts-datalabel-label) {
+        fill: #172554 !important;
+        stroke: none !important;
+    }
+    .ki-chart-pane :deep(.apexcharts-legend) {
+        gap: 2px 8px !important;
+        padding-top: 4px !important;
+    }
+    .ki-chart-pane :deep(.apexcharts-legend-series) {
+        align-items: center;
+        border: 1px solid rgba(219, 229, 243, 0.86);
+        border-radius: 999px;
+        display: inline-flex !important;
+        min-height: 26px;
+        padding: 5px 9px !important;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+    .ki-chart-pane :deep(.apexcharts-legend-text) {
+        color: #22304a !important;
+        font-size: 11px !important;
+        font-weight: 850 !important;
+        line-height: 1.2;
+    }
+    .ki-chart-pane :deep(.apexcharts-tooltip) {
+        overflow: visible;
+        border: 0 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16) !important;
+    }
+    .ki-chart-pane :deep(.ki-chart-tooltip) {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 150px;
+        padding: 10px 12px;
+        background: #fff;
+        border: 1px solid rgba(219, 229, 243, 0.9);
+        border-radius: 12px;
+    }
+    .ki-chart-pane :deep(.ki-chart-tooltip-dot) {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.06);
+        flex-shrink: 0;
+    }
+    .ki-chart-pane :deep(.ki-chart-tooltip strong) {
+        display: block;
+        color: #172554;
+        font-size: 12px;
+        font-weight: 900;
+        line-height: 1.2;
+        margin-bottom: 2px;
+    }
+    .ki-chart-pane :deep(.ki-chart-tooltip small) {
+        display: block;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.2;
+    }
 
-    /* ── Side Panel ── */
+    /*  Visual Strip / Pills  */
+    .ki-visual-strip {
+        display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px;
+        scrollbar-width: thin; scrollbar-color: rgba(203, 213, 225, 0.5) transparent;
+    }
+    .ki-visual-pill {
+        flex: 1; min-width: 90px; padding: 8px 10px; border-radius: 10px;
+        background: #f8fafc; border: 1px solid #e2e8f0; display: flex;
+        flex-direction: column; gap: 4px;
+    }
+    .ki-visual-pill-top {
+        display: flex; align-items: center; gap: 5px;
+    }
+    .ki-visual-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+    }
+    .ki-visual-label {
+        font-size: 0.68rem; font-weight: 700; color: #64748b; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+    }
+    .ki-visual-value {
+        font-size: 1.05rem; font-weight: 900; color: #1e293b; line-height: 1;
+    }
+    .ki-visual-track {
+        height: 4px; width: 100%; background: #e2e8f0; border-radius: 999px;
+        margin-top: 2px; overflow: hidden;
+    }
+    .ki-visual-track span {
+        display: block; height: 100%; border-radius: 999px;
+        transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .ki-visual-pill small {
+        font-size: 0.65rem; font-weight: 800; color: #94a3b8; margin-top: 1px;
+    }
+
+    /*  Side Panel  */
     .ki-side-panel {
-        display: flex; flex-direction: column; gap: 1rem;
+        display: flex; flex-direction: column; gap: 0.85rem;
     }
 
-    /* ── Breakdown Card ── */
+    /*  Breakdown Card  */
     .ki-breakdown {
-        border-radius: 18px; background: #fff; border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.04); padding: 1.25rem; flex: 1;
+        border-radius: 18px; background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        border: 1px solid var(--ki-line);
+        box-shadow: var(--ki-shadow); padding: 1rem; flex: 1;
     }
-    .ki-bp-header { margin-bottom: 1rem; }
+    .ki-bp-header { margin-bottom: 0.85rem; }
     .ki-bp-badge {
-        display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem;
-        font-weight: 800; color: #1e40af; background: rgba(30,64,175,0.08);
-        padding: 5px 12px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.3px;
+        display: inline-flex; align-items: center; gap: 6px; font-size: 0.66rem;
+        font-weight: 900; color: #102a7a; background: #eef4ff;
+        padding: 7px 10px; border-radius: 9px; text-transform: uppercase; letter-spacing: 0.3px;
     }
-    .ki-bp-badge i { font-size: 0.9rem; }
-    .ki-bp-items { display: flex; flex-direction: column; gap: 10px; }
+    .ki-bp-badge i { font-size: 0.82rem; }
+    .ki-bp-items { display: flex; flex-direction: column; gap: 8px; }
     .ki-bp-row {
         display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        padding: 8px 10px; border-radius: 12px; transition: all 0.2s;
+        padding: 9px 10px; border-radius: 12px; transition: all 0.2s;
+        background: #fff;
+        border: 1px solid #eef3f9;
         animation: kiBpSlide 0.4s ease-out both;
     }
-    .ki-bp-row:hover { background: #f8fafc; }
+    .ki-bp-row:hover { border-color: #dbeafe; box-shadow: 0 10px 22px rgba(23,37,84,0.06); transform: translateY(-1px); }
     @keyframes kiBpSlide { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
-    .ki-bp-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .ki-bp-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .ki-bp-icon {
-        width: 34px; height: 34px; border-radius: 10px;
+        width: 32px; height: 32px; border-radius: 10px;
         display: flex; align-items: center; justify-content: center;
-        font-size: 1rem; flex-shrink: 0;
+        font-size: 0.96rem; flex-shrink: 0;
     }
-    .ki-bp-dot { width: 10px; height: 10px; border-radius: 4px; flex-shrink: 0; }
-    .ki-bp-label { font-size: 0.78rem; font-weight: 700; color: #334155; white-space: nowrap; }
-    .ki-bp-count { font-size: 0.72rem; font-weight: 600; color: #94a3b8; }
+    .ki-bp-dot { width: 9px; height: 9px; border-radius: 4px; flex-shrink: 0; }
+    .ki-bp-label { font-size: 0.74rem; font-weight: 900; color: #263348; white-space: nowrap; }
+    .ki-bp-count { font-size: 0.66rem; font-weight: 800; color: #8a98ad; }
     .ki-bp-count span { font-weight: 500; }
     .ki-bp-bar-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 80px; }
-    .ki-bp-bar { flex: 1; height: 6px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
-    .ki-bp-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-    .ki-bp-pct { font-size: 0.72rem; font-weight: 800; min-width: 32px; text-align: right; }
+    .ki-bp-bar { flex: 1; height: 7px; border-radius: 999px; background: #edf2f8; overflow: hidden; }
+    .ki-bp-bar-fill { height: 100%; border-radius: 999px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ki-bp-pct { font-size: 0.7rem; font-weight: 900; min-width: 34px; text-align: right; }
 
-    /* ── Insight Box ── */
+    /*  Insight Box  */
     .ki-insight-box {
         border-radius: 18px; overflow: hidden;
-        background: linear-gradient(145deg, #f8faff 0%, #fff 100%);
-        border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
-        padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;
+        background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+        border: 1px solid var(--ki-line); box-shadow: var(--ki-shadow);
+        padding: 1rem; display: flex; flex-direction: column; gap: 0.85rem;
     }
     .ki-domain-header {
-        font-size: 0.78rem; font-weight: 800; color: #334155; display: flex;
+        font-size: 0.72rem; font-weight: 900; color: #334155; display: flex;
         align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.3px;
     }
     .ki-domain-header i { font-size: 1rem; color: #3b82f6; }
-    .ki-domain-grid { display: flex; flex-direction: column; gap: 10px; }
+    .ki-domain-grid { display: flex; flex-direction: column; gap: 9px; }
     .ki-domain-item {
-        display: flex; align-items: center; gap: 10px; padding: 8px;
-        border-radius: 12px; background: #fff; border: 1px solid #f1f5f9;
+        display: flex; align-items: center; gap: 9px; padding: 9px;
+        border-radius: 12px; background: #fff; border: 1px solid #e9f0fb;
         transition: all 0.2s;
     }
     .ki-domain-item:hover { border-color: #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
     .ki-domain-icon {
-        width: 32px; height: 32px; border-radius: 8px;
+        width: 28px; height: 28px; border-radius: 8px;
         display: flex; align-items: center; justify-content: center;
-        font-size: 0.9rem; flex-shrink: 0;
+        font-size: 0.82rem; flex-shrink: 0;
     }
     .ki-domain-info { flex: 1; min-width: 0; }
-    .ki-domain-label { font-size: 0.72rem; font-weight: 600; color: #64748b; margin-bottom: 4px; }
-    .ki-domain-score-bar { height: 5px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
-    .ki-domain-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ki-domain-label { font-size: 0.66rem; font-weight: 750; color: #64748b; margin-bottom: 4px; }
+    .ki-domain-score-bar { height: 7px; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
+    .ki-domain-fill { height: 100%; border-radius: 999px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
     .ki-domain-val { font-size: 0.95rem; font-weight: 900; flex-shrink: 0; }
 
-    /* ── KSE Insight ── */
-    .ki-insight-content { text-align: center; padding: 0.5rem 0; }
+    /*  KSE Insight  */
+    .ki-insight-content { text-align: center; padding: 0.1rem 0; }
     .ki-insight-icon-wrap {
-        width: 48px; height: 48px; border-radius: 14px; margin: 0 auto 12px;
+        width: 42px; height: 42px; border-radius: 12px; margin: 0 auto 9px;
         background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(251, 191, 36, 0.1));
         display: flex; align-items: center; justify-content: center;
     }
-    .ki-insight-icon-wrap i { font-size: 1.4rem; color: #f59e0b; }
-    .ki-insight-title { font-size: 0.85rem; font-weight: 800; color: #1e293b; margin: 0 0 8px; }
-    .ki-insight-text { font-size: 0.75rem; color: #64748b; line-height: 1.6; margin: 0 0 12px; }
+    .ki-insight-icon-wrap i { font-size: 1.22rem; color: #f59e0b; }
+    .ki-insight-title { font-size: 0.8rem; font-weight: 900; color: var(--ki-ink); margin: 0 0 6px; }
+    .ki-insight-text { font-size: 0.7rem; color: #64748b; line-height: 1.5; margin: 0 0 10px; }
     .ki-insight-tip {
-        display: flex; align-items: center; gap: 6px; padding: 8px 12px;
-        border-radius: 10px; background: rgba(30,64,175,0.06); border: 1px solid rgba(30,64,175,0.08);
+        display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+        border-radius: 9px; background: rgba(29,78,216,0.06); border: 1px solid rgba(29,78,216,0.1);
     }
-    .ki-insight-tip i { font-size: 0.9rem; color: #3b82f6; flex-shrink: 0; }
-    .ki-insight-tip span { font-size: 0.7rem; font-weight: 600; color: #3b82f6; }
+    .ki-insight-tip i { font-size: 0.82rem; color: #3b82f6; flex-shrink: 0; }
+    .ki-insight-tip span { font-size: 0.66rem; font-weight: 750; color: #3b82f6; }
 
-    /* ── Export Button ── */
+    /*  Export Button  */
     .ki-export-btn {
-        width: 100%; padding: 10px; border-radius: 12px; border: 1.5px solid #e2e8f0;
-        background: #fff; color: #334155; font-size: 0.78rem; font-weight: 700;
+        width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #c9d8f2;
+        background: #fff; color: #273449; font-size: 0.76rem; font-weight: 900;
         cursor: pointer; transition: all 0.25s; display: flex; align-items: center;
         justify-content: center; gap: 6px;
     }
     .ki-export-btn:hover { border-color: #3b82f6; color: #1e40af; background: rgba(30,64,175,0.04); }
     .ki-export-btn i { font-size: 0.9rem; }
 
-    /* ── Responsive ── */
+    /*  Responsive  */
     @media (max-width: 1199px) {
-        .ki-hero-inner { gap: 1.25rem; }
-        .ki-ring-wrap { width: 90px; height: 90px; }
-        .ki-ring-value { font-size: 1.3rem; }
+        .ki-chart-split-grid { grid-template-columns: 1fr; }
+        .ki-hero-inner { gap: 0.9rem; }
+        .ki-ring-wrap { width: 76px; height: 76px; }
+        .ki-ring-value { font-size: 1.15rem; }
+        .ki-chart-body { min-height: 280px !important; }
+        .ki-chart-split-grid { min-height: 0; }
     }
     @media (max-width: 767px) {
-        .ki-hero-banner { padding: 1.25rem; }
+        .ki-main-header { align-items: stretch; padding: 10px; }
+        .ki-header-left,
+        .ki-header-right { width: 100%; }
+        .ki-header-right { justify-content: space-between; }
+        .ki-inline-filters { justify-content: flex-start; }
+        .ki-divider { display: none; }
+        .ki-hero-banner { padding: 0.9rem; }
         .ki-hero-inner { flex-direction: column; align-items: flex-start; }
-        .ki-ring-wrap { width: 80px; height: 80px; }
+        .ki-ring-wrap { width: 72px; height: 72px; }
+        .ki-hero-pills { width: 100%; }
+        .ki-pill { flex: 1 1 92px; justify-content: center; }
         .ki-hero-cta { width: 100%; justify-content: center; }
         .ki-chart-header { flex-direction: column; align-items: flex-start; }
         .ki-chart-controls { width: 100%; justify-content: space-between; }
+        .ki-chart-type-toggle { width: 100%; justify-content: center; }
+        .ki-view-toggle { flex: 1; }
+        .ki-vt-btn { flex: 1; }
+        .ki-chart-pane + .ki-chart-pane { border-left: 0; border-top: 1px solid rgba(219,234,254,0.9); padding-top: 0.85rem; }
+        .ki-chart-pane-title { align-items: flex-start; flex-direction: column; gap: 2px; }
+        .ki-bp-row { align-items: flex-start; flex-direction: column; gap: 7px; }
+        .ki-bp-bar-wrap { width: 100%; }
     }
     </style>

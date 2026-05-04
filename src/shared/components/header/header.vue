@@ -224,11 +224,11 @@
                     </div>
                     <div class="flex-fill" style="min-width: 0;">
                       <span class="d-block fw-semibold fs-13" style="white-space: normal; line-height: 1.4;">
-                        {{ evt.user?.name || 'Sistem' }}
-                        <span class="fw-normal text-muted">{{ evt.type === 'created' ? 'menambahkan' : evt.type === 'updated' ? 'memperbarui' : 'menghapus' }}</span>
-                        {{ evt.entity_name || evt.entity || 'data' }}
+                        {{ evt.actorName }}
+                        <span class="fw-normal text-muted">{{ evt.actionVerb }}</span>
+                        {{ evt.targetLabel }}
                       </span>
-                      <span class="d-block text-muted fs-12 mt-1" style="white-space: normal;">{{ evt.message }}</span>
+                      <span class="d-block text-muted fs-12 mt-1" style="white-space: normal;">{{ evt.details }}</span>
                     </div>
                     <div class="text-end flex-shrink-0">
                       <span class="d-block mb-1 fs-11 text-muted">{{ evt.timeAgoStr }}</span>

@@ -11,6 +11,9 @@ const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
 const filterStore = useDashboardFilterStore();
 const kseStore = useKseStore();
+const props = defineProps({
+    loading: { type: Boolean, default: false },
+});
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
@@ -47,6 +50,8 @@ function calcDelta(current, previous) {
 }
 
 const insights = computed(() => {
+    if (props.loading) return [];
+
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInGlobalRange(s.created_at);
         const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
@@ -179,7 +184,17 @@ const insights = computed(() => {
             </span>
         </div>
         <div class="dw-card-body" style="padding: 12px 16px;">
-            <div class="d-flex flex-column gap-2">
+            <div v-if="loading" class="d-flex flex-column gap-2 placeholder-glow">
+                <div v-for="n in 4" :key="'insight-skeleton-' + n" class="dw-insight-item">
+                    <span class="placeholder" style="width:36px;height:36px;border-radius:10px;"></span>
+                    <div class="flex-grow-1">
+                        <span class="placeholder col-9 d-block mb-2" style="height:12px;border-radius:6px;"></span>
+                        <span class="placeholder col-7 d-block" style="height:10px;border-radius:6px;"></span>
+                    </div>
+                    <span class="placeholder" style="width:26px;height:22px;border-radius:8px;"></span>
+                </div>
+            </div>
+            <div v-else class="d-flex flex-column gap-2">
                 <div v-for="(insight, idx) in insights" :key="idx"
                      class="dw-insight-item dw-fade-up"
                      :style="{ animationDelay: `${idx * 80}ms` }">

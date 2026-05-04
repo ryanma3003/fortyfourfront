@@ -63,9 +63,7 @@ onMounted(async () => {
         if (se) {
           kseStore.loadAnswersFromApi(currentSlug.value, se);
         }
-      } catch (e) {
-        console.warn('KSE: Failed to load penilaian from API:', e);
-      }
+      } catch {}
     } else {
       // Fallback: try localStorage for seId (legacy / Tambah SE flow)
       const profileKey = `kse_respondent_${currentSlug.value}`;
@@ -80,9 +78,7 @@ onMounted(async () => {
             }
           }
         }
-      } catch (e) {
-        console.warn('KSE: Failed to load penilaian from API:', e);
-      }
+      } catch {}
     }
   }
 });
@@ -157,8 +153,7 @@ const dataToPass = computed(() => {
       currentpage: 'KSE Assessment',
       activepage: 'KSE',
     };
-  } catch (error) {
-    console.error('KSE Error in computed:', error);
+  } catch {
     return {
         title: { label: 'Stakeholders', path: '/stakeholders' },
         currentpage: 'KSE Assessment',
@@ -298,9 +293,7 @@ const saveAndExit = async () => {
               });
             }
           }
-        } catch (e) {
-          console.warn('KSE → SE sync failed:', e);
-        }
+        } catch {}
 
         toast.success('Assessment berhasil diselesaikan dan disimpan', {
             theme: 'auto',
@@ -353,7 +346,7 @@ const editData = () => {
 </script>
 
 <template>
-  <div class="kse-container">
+  <div class="kse-container" :class="{ 'kse-container-embedded': embedded }">
     <Pageheader v-if="!embedded" :propData="dataToPass" />
 
     <!-- Progress Bar -->
@@ -640,6 +633,12 @@ const editData = () => {
   margin-bottom: 1rem; /* Add spacing to prevent overlap */
 }
 
+.kse-container-embedded .sticky-progress-row {
+  position: static;
+  top: auto;
+  z-index: auto;
+}
+
 .progress-wrapper {
   /* Let the child component (ProgressBar) handle the card styling */
   background: transparent;
@@ -656,6 +655,12 @@ const editData = () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.kse-container-embedded .sticky-sidebar {
+  position: static;
+  top: auto;
+  z-index: auto;
 }
 
 /* Shared sidebar card */

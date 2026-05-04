@@ -142,7 +142,6 @@ export const useCsirtStore = defineStore('csirt', {
                         csirtService.getAllSdm().catch((e) => { console.warn('[csirtStore] getAllSdm failed, sdmList will be empty:', e); return []; }),
                         csirtService.getAllSe().catch((e) => { console.warn('[csirtStore] getAllSe failed, seList will be empty:', e); return []; })
                     ]);
-                    console.log('CSIRTs from backend:', data);
                     this.csirts = (Array.isArray(data) ? data : []).map(c => ({
                         ...c,
                         slug: c.slug || this.generateSlug(c.nama_csirt),

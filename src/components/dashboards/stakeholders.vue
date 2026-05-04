@@ -9,6 +9,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useCsirtStore } from "../../stores/csirt";
+import { useResikoStore } from "../../stores/resiko";
 import { useUsersStore } from "../../stores/users";
 import { useListPage } from "../../composables/useListPage";
 import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
@@ -22,9 +23,9 @@ export default {
   data() {
     return {
       dataToPass: {
-        title: { label: "Dashboards", path: "/dashboard" },
-        currentpage: "Stakeholders",
-        activepage: "Stakeholders",
+        title: { label: "Dashboard", path: "/dashboard" },
+        currentpage: "Data Stakeholder",
+        activepage: "Data Stakeholder",
       },
     };
   },
@@ -35,6 +36,7 @@ export default {
     const ikasStore = useIkasStore();
     const kseStore = useKseStore();
     const csirtStore = useCsirtStore();
+    const resikoStore = useResikoStore();
     const usersStore = useUsersStore();
     const isAdmin = computed(() => authStore.isAdmin);
     const isFullAdmin = computed(() => authStore.isFullAdmin);
@@ -188,6 +190,72 @@ export default {
       return item.sub_sektor?.nama_sub_sektor || item.sektor || "";
     };
 
+    // Status helpers
+    const hasIkas = (slug: string): boolean => {
+      return ikasStore.hasIkas(slug);
+    };
+    const hasCompleteCsirt = (id_perusahaan: string | number): boolean => {
+      return csirtStore.hasCompleteCsirt(id_perusahaan);
+    };
+
+    const getRelatedCsirt = (idPerusahaan: string | number) => {
+      const pid = String(idPerusahaan);
+      return csirtStore.csirtByPerusahaanMap[pid] || null;
+    };
+
+    const getStakeholderSeCount = (idPerusahaan: string | number): number => {
+      const pid = String(idPerusahaan);
+      const csirt = getRelatedCsirt(pid);
+      const cid = csirt?.id ? String(csirt.id) : "";
+
+      const fromStore = csirtStore.seList.filter((item: any) =>
+        (cid && (
+          String(item.id_csirt) === cid ||
+          String(item.csirt_id) === cid ||
+          String(item.csirt?.id) === cid
+        )) ||
+        String(item.id_perusahaan) === pid
+      ).length;
+
+      const fromCsirt = Array.isArray((csirt as any)?.se_csirt) ? (csirt as any).se_csirt.length : 0;
+      return Math.max(fromStore, fromCsirt);
+    };
+
+    const isRiskSurveyCompleted = (slug: string): boolean => {
+      return resikoStore.progressMap[slug]?.status === "COMPLETED";
+    };
+
+    const getStakeholderConversion = (item: Stakeholder) => {
+      const checks = [
+        hasIkas(item.slug),
+        getStakeholderSeCount(item.id) > 0,
+        hasCompleteCsirt(item.id),
+        isRiskSurveyCompleted(item.slug),
+      ];
+      const completed = checks.filter(Boolean).length;
+      const total = checks.length;
+
+      return {
+        completed,
+        total,
+        percent: Math.round((completed / total) * 100),
+      };
+    };
+
+    const getMonitoringStatusLabel = (item: Stakeholder): string => {
+      const progress = getStakeholderConversion(item);
+      if (progress.completed === progress.total) return "Lengkap";
+      if (progress.completed > 0) return "Dalam Proses";
+      return "Belum Mulai";
+    };
+
+    const getProgressClass = (percent: number): string => {
+      if (percent >= 75) return "progress-good";
+      if (percent >= 50) return "progress-mid";
+      if (percent > 0) return "progress-low";
+      return "progress-empty";
+    };
+
     const isWithinDateRange = (item: Stakeholder): boolean => {
       if (!dateRangeStart.value && !dateRangeEnd.value) return true;
       if (!item.created_at) return true;
@@ -208,10 +276,7 @@ export default {
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
         data = data.filter(
-          (i) =>
-            i.nama_perusahaan.toLowerCase().includes(q) ||
-            getItemSubSektorName(i).toLowerCase().includes(q) ||
-            i.email.toLowerCase().includes(q)
+          (i) => i.nama_perusahaan.toLowerCase().includes(q)
         );
       } else {
         // Filter by user status
@@ -250,6 +315,8 @@ export default {
         if (sortField.value === "sektor") {
           aVal = getItemSubSektorName(a);
           bVal = getItemSubSektorName(b);
+        } else if (sortField.value === "status") {
+          return (getStakeholderConversion(a).completed - getStakeholderConversion(b).completed) * mod;
         } else {
           aVal = (a[sortField.value as keyof Stakeholder] as string) || "";
           bVal = (b[sortField.value as keyof Stakeholder] as string) || "";
@@ -480,6 +547,7 @@ export default {
       await loadAllSubSektors();
       await ikasStore.initialize();
       kseStore.initialize();
+      resikoStore.initialize();
       await csirtStore.initialize();
       // If CSIRTs exist but SDM/SE lists are empty (e.g., global endpoint failed on prior load),
       // force a refresh so hasCompleteCsirt reflects the actual backend state.
@@ -561,14 +629,6 @@ export default {
       }
     };
 
-    // Status helpers
-    const hasIkas = (slug: string): boolean => {
-      return ikasStore.hasIkas(slug);
-    };
-    const hasCompleteCsirt = (id_perusahaan: string | number): boolean => {
-      return csirtStore.hasCompleteCsirt(id_perusahaan);
-    };
-
     // Check if stakeholder has a user associated with it
     const hasUser = (stakeholderId: string | number): boolean => {
       return usersData.value.some(u => String(u.id_perusahaan) === String(stakeholderId));
@@ -612,6 +672,20 @@ export default {
       if (!filteredData.value.length) return 0;
       return filteredData.value.filter(item => hasIkas(item.slug) && hasCompleteCsirt(item.id)).length;
     });
+    const averageConversion = computed(() => {
+      if (!filteredData.value.length) return 0;
+      const total = filteredData.value.reduce((sum, item) => sum + getStakeholderConversion(item).percent, 0);
+      return Math.round(total / filteredData.value.length);
+    });
+    const completeStatusCount = computed(() =>
+      filteredData.value.filter(item => getStakeholderConversion(item).percent === 100).length
+    );
+    const inProgressStatusCount = computed(() =>
+      filteredData.value.filter(item => {
+        const percent = getStakeholderConversion(item).percent;
+        return percent > 0 && percent < 100;
+      }).length
+    );
     const visibleStart = computed(() =>
       filteredData.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0
     );
@@ -734,6 +808,9 @@ export default {
       coveredCount,
       countStakeholderWithUser,
       countStakeholderNoUser,
+      averageConversion,
+      completeStatusCount,
+      inProgressStatusCount,
       dateRangeEnd,
       dateRangeStart,
       datePreset,
@@ -817,6 +894,11 @@ export default {
       getSektorName,
       getSubSektorName,
       getSektorFromSubSektor,
+      getStakeholderConversion,
+      getStakeholderSeCount,
+      isRiskSurveyCompleted,
+      getMonitoringStatusLabel,
+      getProgressClass,
 
 getSektorBadgeStyle: (subSektorName: string) => {
   if (!subSektorName || subSektorName === "-") {
@@ -895,69 +977,33 @@ getSektorBadgeStyle: (subSektorName: string) => {
   <div class="row">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header">
-          <div class="stakeholders-header-main ">
-            <div class="stakeholders-hero-copy1 d-flex justify-content-between align-items-start flex-column">
+        <div class="stakeholder-header stakeholders-premium-header stakeholders-ikas-hero">
+          <div class="stakeholders-header-main">
+            <div class="stakeholders-hero-copy1">
               <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> Stakeholders</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Stakeholders</div>
-               <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Daftar Perusahaan Terdaftar</div>
-              </div>
-              <div class="stakeholders-meta-stack">
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Active Sub-Sektor</span>
-                  <strong><i class="ri-layout-grid-line"></i> {{ activeSubSectors }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Stakeholders</span>
-                  <strong><i class="ri-building-line"></i> {{ totalStakeholders }}</strong>
-                </div>
+                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> Data Stakeholder</div>
+                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Data Stakeholder</div>
+                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Monitoring data perusahaan, status IKAS, CSIRT, dan kelengkapan pengisian.</div>
               </div>
             </div>
             <div class="stakeholders-header-tools stakeholders-hero-tools">
-              <div class="search-container position-relative stakeholders-search">
-                <i class="ri-search-line card-search-icon"></i>
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  class="form-control form-control-sm header-search-input"
-                  placeholder="Search company, sector, sub-sector, or email"
-                />
-                <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
-                  <i class="ri-close-circle-fill"></i>
-                </button>
-              </div>
-              <div class="stakeholders-filter-panel">
-                <div class="stakeholders-filter-label">
-                  <i class="ri-filter-fill"></i>
-                  <span>Filter Data</span>
+              <div class="stakeholders-hero-status-card">
+                <div class="stakeholders-hero-status-title">
+                  <span>Kelengkapan Data</span>
+                  <strong>{{ averageConversion }}%</strong>
                 </div>
-                <div class="stakeholders-filter-controls">
-                  <select v-model="sektorFilter" class="form-select stakeholders-select-input">
-                    <option value="">All sectors</option>
-                    <option v-for="s in sektorList" :key="s.id" :value="s.id">{{ s.nama_sektor }}</option>
-                  </select>
-                  <select v-model="subSektorFilter" class="form-select stakeholders-select-input">
-                    <option value="">All sub-sectors</option>
-                    <option v-for="s in availableSubSektorFilters" :key="s.id" :value="s.id">{{ s.nama_sub_sektor }}</option>
-                  </select>
-                 <div class="dropdown">
-                  <button class="form-select stakeholders-select-input" type="button" data-bs-toggle="dropdown">
-                    <i class="ri-user-settings-line me-1"></i>
-                    {{
-                      userFilter === 'all'
-                        ? 'Semua stakeholder'
-                        : userFilter === 'hasUser'
-                        ? 'Sudah punya user'
-                        : 'Belum punya user'
-                    }}
-                  </button>
-                  <ul class="dropdown-menu shadow-sm stakeholders-toolbar-menu">
-                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">Semua ({{ filteredData.length }})</a></li>
-                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">Ada User ({{ countStakeholderWithUser }})</a></li>
-                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">Tanpa User ({{ countStakeholderNoUser }})</a></li>
-                  </ul>
+                <div class="stakeholders-hero-status-stats">
+                  <div>
+                    <span>Lengkap</span>
+                    <strong>{{ completeStatusCount }}</strong>
+                  </div>
+                  <div>
+                    <span>Proses</span>
+                    <strong>{{ inProgressStatusCount }}</strong>
+                  </div>
                 </div>
+                <div class="stakeholders-hero-progress" aria-hidden="true">
+                  <span :style="{ width: `${averageConversion}%` }"></span>
                 </div>
               </div>
             </div>
@@ -979,54 +1025,112 @@ getSektorBadgeStyle: (subSektorName: string) => {
           <template v-else>
             <div class="stakeholders-summary-grid mb-4">
               <div class="stakeholders-summary-card stakeholders-summary-card--indigo">
-                <div class="stakeholders-summary-icon"><i class="ri-file-chart-line"></i></div>
+                <div class="stakeholders-summary-icon"><i class="ri-building-line"></i></div>
                 <div>
-                  <div class="stakeholders-summary-value">{{ filteredIkasCount }}</div>
-                  <div class="stakeholders-summary-label">IKAS Count</div>
+                  <div class="stakeholders-summary-value">{{ totalStakeholders }}</div>
+                  <div class="stakeholders-summary-label">Total Stakeholder</div>
+                </div>
+              </div>
+              <div class="stakeholders-summary-card stakeholders-summary-card--cyan">
+                <div class="stakeholders-summary-icon"><i class="ri-layout-grid-line"></i></div>
+                <div>
+                  <div class="stakeholders-summary-value">{{ activeSubSectors }}</div>
+                  <div class="stakeholders-summary-label">Sub Sektor Aktif</div>
                 </div>
               </div>
               <div class="stakeholders-summary-card stakeholders-summary-card--emerald">
-                <div class="stakeholders-summary-icon"><i class="ri-shield-check-line"></i></div>
+                <div class="stakeholders-summary-icon"><i class="ri-file-chart-line"></i></div>
                 <div>
-                  <div class="stakeholders-summary-value">{{ filteredCsirtCount }}</div>
-                  <div class="stakeholders-summary-label">CSIRT Count</div>
+                  <div class="stakeholders-summary-value">{{ filteredIkasCount }}</div>
+                  <div class="stakeholders-summary-label">Jumlah IKAS</div>
                 </div>
               </div>
-              <div class="stakeholders-summary-card stakeholders-summary-card--slate">
-                <div class="stakeholders-summary-icon"><i class="ri-pulse-line"></i></div>
+              <div class="stakeholders-summary-card stakeholders-summary-card--amber">
+                <div class="stakeholders-summary-icon"><i class="ri-percent-line"></i></div>
                 <div>
                   <div class="stakeholders-summary-value">
-                    {{ coveredCount }} <span class="fs-15 text-muted fw-medium ms-1">/ {{ totalStakeholders }}</span>
+                    {{ averageConversion }}<span class="fs-15 text-muted fw-medium ms-1">%</span>
                   </div>
-                  <div class="stakeholders-summary-label">Ikas & Csirt</div>
+                  <div class="stakeholders-summary-label">Rata-rata Status</div>
                 </div>
               </div>
             </div>
 
-            <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar">
-
-
-              <div class="stakeholders-toolbar-right">
-                <div class="stakeholders-view-toggle" role="group" aria-label="View mode">
-                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" title="List view">
-                    <i class="ri-list-check-2"></i>
-                    <span>List view</span>
+            <div class="stakeholders-workbar mb-4">
+              <div class="stakeholders-workbar-top">
+                <div class="search-container position-relative stakeholders-search">
+                  <i class="ri-search-line card-search-icon"></i>
+                  <input
+                    v-model="searchQuery"
+                    type="text"
+                    class="form-control form-control-sm header-search-input"
+                    placeholder="Cari nama perusahaan"
+                  />
+                  <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Bersihkan pencarian">
+                    <i class="ri-close-circle-fill"></i>
                   </button>
-                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="Grid view">
+                </div>
+
+                <div class="stakeholders-workbar-filters">
+                  <label class="stakeholders-filter-field">
+                    <span><i class="ri-building-4-line"></i>Sektor</span>
+                    <select v-model="sektorFilter" class="form-select stakeholders-select-input">
+                      <option value="">Semua sektor</option>
+                      <option v-for="s in sektorList" :key="s.id" :value="s.id">{{ s.nama_sektor }}</option>
+                    </select>
+                  </label>
+                  <label class="stakeholders-filter-field">
+                    <span><i class="ri-community-line"></i>Sub Sektor</span>
+                    <select v-model="subSektorFilter" class="form-select stakeholders-select-input">
+                      <option value="">Semua sub sektor</option>
+                      <option v-for="s in availableSubSektorFilters" :key="s.id" :value="s.id">{{ s.nama_sub_sektor }}</option>
+                    </select>
+                  </label>
+                  <div class="dropdown stakeholders-filter-field">
+                    <span><i class="ri-user-settings-line"></i>Akun</span>
+                    <button class="form-select stakeholders-select-input text-start" type="button" data-bs-toggle="dropdown">
+                      {{
+                        userFilter === 'all'
+                          ? 'Semua stakeholder'
+                          : userFilter === 'hasUser'
+                          ? 'Sudah punya user'
+                          : 'Belum punya user'
+                      }}
+                    </button>
+                    <ul class="dropdown-menu shadow-sm stakeholders-toolbar-menu">
+                      <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">Semua ({{ filteredData.length }})</a></li>
+                      <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">Ada User ({{ countStakeholderWithUser }})</a></li>
+                      <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">Tanpa User ({{ countStakeholderNoUser }})</a></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div class="stakeholders-workbar-bottom">
+                <div class="stakeholders-view-toggle" role="group" aria-label="Mode tampilan">
+                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" title="Tampilan tabel">
+                    <i class="ri-list-check-2"></i>
+                    <span>Tabel</span>
+                  </button>
+                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="Tampilan grid">
                     <i class="ri-layout-grid-line"></i>
-                    <span>Grid view</span>
+                    <span>Grid</span>
                   </button>
                 </div>
                 <div class="stakeholders-per-page">
-                  <span>{{ viewMode === 'grid' ? 'Cards' : 'Rows' }}</span>
+                  <span>{{ viewMode === 'grid' ? 'Kartu' : 'Baris' }}</span>
                   <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
                     <option v-for="n in (viewMode === 'grid' ? [6, 12, 18, 24, 60] : [5, 10, 15, 20, 25, 50])" :key="n" :value="n">{{ n }}</option>
                   </select>
                 </div>
 
+                <button class="stakeholders-filter-reset" type="button" @click="clearSearch(); resetDateRange(); sektorFilter = ''; subSektorFilter = ''; userFilter = 'all';">
+                  <i class="ri-restart-line"></i>
+                  <span>Reset</span>
+                </button>
+
                 <button v-if="isAdmin" @click="openCreateModal" class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2">
                   <i class="ri-add-circle-line fs-13"></i>
-                  <span class="btn-text">Add Stakeholder</span>
+                  <span class="btn-text">Tambah Stakeholder</span>
                 </button>
               </div>
             </div>
@@ -1064,7 +1168,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     <th class="sortable fw-semibold th-name-wide">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-building-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Sort company">Company</span>
+                        <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Urutkan perusahaan">Perusahaan</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'nama_perusahaan' && sortOrder === 'asc' }" @click.stop="sortField = 'nama_perusahaan'; sortOrder = 'asc';"></i>
                           <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'nama_perusahaan' && sortOrder === 'desc' }" @click.stop="sortField = 'nama_perusahaan'; sortOrder = 'desc';"></i>
@@ -1074,7 +1178,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('sektor')" title="Sort sector">Sector &amp; Sub-sector</span>
+                        <span class="column-label" @click="toggleSort('sektor')" title="Urutkan sektor">Sektor &amp; Sub Sektor</span>
                         <div class="sort-arrows">
                           <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'sektor' && sortOrder === 'asc' }" @click.stop="sortField = 'sektor'; sortOrder = 'asc';"></i>
                           <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'sektor' && sortOrder === 'desc' }" @click.stop="sortField = 'sektor'; sortOrder = 'desc';"></i>
@@ -1087,10 +1191,14 @@ getSektorBadgeStyle: (subSektorName: string) => {
                         <span>Email</span>
                       </div>
                     </th>
-                    <th class="text-center th-status">
+                    <th class="text-center sortable th-status">
                       <div class="d-flex align-items-center justify-content-center gap-2">
                         <i class="ri-bar-chart-grouped-line text-primary"></i>
-                        <span>Status</span>
+                        <span class="column-label" @click="toggleSort('status')" title="Urutkan status">Status</span>
+                        <div class="sort-arrows">
+                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'status' && sortOrder === 'asc' }" @click.stop="sortField = 'status'; sortOrder = 'asc';"></i>
+                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'status' && sortOrder === 'desc' }" @click.stop="sortField = 'status'; sortOrder = 'desc';"></i>
+                        </div>
                       </div>
                     </th>
                     <th class="text-center th-actions-md">Aksi</th>
@@ -1098,17 +1206,17 @@ getSektorBadgeStyle: (subSektorName: string) => {
                 </thead>
                 <tbody>
                   <tr v-if="!displayData.length">
-                    <td colspan="7" class="text-center py-5">
+                    <td colspan="6" class="text-center py-5">
                       <div class="empty-state">
                         <div class="empty-icon-ring mb-3">
                           <div class="empty-icon-inner">
                             <i class="ri-building-2-line"></i>
                           </div>
                         </div>
-                        <h6 class="fw-semibold mb-1 empty-state-title">No stakeholders found</h6>
+                        <h6 class="fw-semibold mb-1 empty-state-title">Data stakeholder tidak ditemukan</h6>
                         <p class="text-muted fs-13 mb-3">Coba ubah pencarian, filter sektor, atau rentang tanggal.</p>
                         <button @click="clearSearch(); resetDateRange(); sektorFilter = ''; subSektorFilter = ''; userFilter = 'all';" class="btn btn-sm btn-outline-primary rounded-pill px-4">
-                          <i class="ri-refresh-line me-1"></i>Reset filters
+                          <i class="ri-refresh-line me-1"></i>Reset filter
                         </button>
                       </div>
                     </td>
@@ -1121,7 +1229,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </td>
                       <td class="align-middle">
                         <div class="stakeholder-company-cell">
-                          <button class="stakeholder-expand-btn" @click="toggleExpandedRow(item.slug)" :title="isExpanded(item.slug) ? 'Collapse row' : 'Expand row'">
+                          <button class="stakeholder-expand-btn" @click="toggleExpandedRow(item.slug)" :title="isExpanded(item.slug) ? 'Tutup detail' : 'Buka detail'">
                             <i :class="isExpanded(item.slug) ? 'ri-arrow-down-s-line' : 'ri-arrow-right-s-line'"></i>
                           </button>
                           <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
@@ -1148,40 +1256,70 @@ getSektorBadgeStyle: (subSektorName: string) => {
                         </a>
                       </td>
                       <td class="text-center align-middle">
-                        <div class="status-indicators">
-                          <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="IKAS status">
-                            <span class="badge-icon-dot">
-                              <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                            </span>
-                            <span class="badge-label">IKAS</span>
+                        <div class="d-flex align-items-center justify-content-center gap-3 flex-wrap flex-xl-nowrap">
+                          <div class="status-progress-cell m-0 flex-grow-1" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                            <div class="status-progress-head">
+                              <span class="monitoring-label" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                                {{ getMonitoringStatusLabel(item) }}
+                              </span>
+                              <strong>{{ getStakeholderConversion(item).percent }}%</strong>
+                            </div>
+                            <div class="conversion-track">
+                              <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
+                            </div>
+                            <small>{{ getStakeholderConversion(item).completed }}/{{ getStakeholderConversion(item).total }} data lengkap</small>
                           </div>
-                          <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="CSIRT status">
-                            <span class="badge-icon-dot">
-                              <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                            </span>
-                            <span class="badge-label">CSIRT</span>
+                          <div class="status-indicators m-0 d-flex flex-column gap-1 align-items-start" style="min-width: max-content;">
+                            <div class="d-flex gap-1">
+                              <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="Status IKAS">
+                                <span class="badge-icon-dot">
+                                  <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">IKAS</span>
+                              </div>
+                              <div class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'" title="Status SE">
+                                <span class="badge-icon-dot">
+                                  <i :class="getStakeholderSeCount(item.id) > 0 ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">SE</span>
+                              </div>
+                            </div>
+                            <div class="d-flex gap-1">
+                              <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="Status CSIRT">
+                                <span class="badge-icon-dot">
+                                  <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">CSIRT</span>
+                              </div>
+                              <div class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'" title="Status Risiko">
+                                <span class="badge-icon-dot">
+                                  <i :class="isRiskSurveyCompleted(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">Risiko</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td class="text-center align-middle">
                         <div class="d-flex gap-1 justify-content-center">
-                          <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
+                          <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="Lihat">
                             <i class="ri-eye-line"></i>
                           </router-link>
-                          <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Open IKAS">
+                          <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Buka IKAS">
                             <i class="ri-file-chart-line"></i>
                           </router-link>
-                          <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
+                          <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Ubah">
                             <i class="ri-edit-2-line"></i>
                           </button>
-                          <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
+                          <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
                             <i class="ri-delete-bin-3-line"></i>
                           </button>
                         </div>
                       </td>
                     </tr>
                     <tr v-if="isExpanded(item.slug)" class="stakeholder-detail-row">
-                      <td colspan="7">
+                      <td colspan="6">
                         <div class="stakeholder-detail-panel">
                           <div class="stakeholder-detail-item">
                             <span class="stakeholder-detail-label">Alamat</span>
@@ -1199,7 +1337,10 @@ getSektorBadgeStyle: (subSektorName: string) => {
                             <span class="stakeholder-detail-label">Monitoring</span>
                             <div class="stakeholder-detail-status">
                               <span class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'">IKAS</span>
+                              <span class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'">SE</span>
                               <span class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'">CSIRT</span>
+                              <span class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'">Risiko</span>
+                              <span class="status-badge" :class="getStakeholderConversion(item).percent === 100 ? 'badge-done' : 'badge-pending'">Status {{ getStakeholderConversion(item).percent }}%</span>
                             </div>
                           </div>
                         </div>
@@ -1218,7 +1359,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       <i class="ri-layout-grid-line"></i>
                     </div>
                   </div>
-                  <h6 class="fw-semibold mb-1 empty-state-title">Grid view is empty</h6>
+                  <h6 class="fw-semibold mb-1 empty-state-title">Tampilan grid kosong</h6>
                   <p class="text-muted fs-13 mb-0">Belum ada data yang cocok dengan filter aktif.</p>
                 </div>
               </div>
@@ -1235,16 +1376,16 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     </div>
                   </div>
                   <div class="d-flex gap-1">
-                    <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
+                    <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="Lihat">
                       <i class="ri-eye-line"></i>
                     </router-link>
-                    <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Open IKAS">
+                    <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Buka IKAS">
                       <i class="ri-file-chart-line"></i>
                     </router-link>
-                    <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
+                    <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Ubah">
                       <i class="ri-edit-2-line"></i>
                     </button>
-                    <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Delete">
+                    <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
                       <i class="ri-delete-bin-3-line"></i>
                     </button>
                   </div>
@@ -1256,7 +1397,18 @@ getSektorBadgeStyle: (subSektorName: string) => {
                   </div>
                   <div class="status-indicators justify-content-start">
                     <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'">IKAS</div>
+                    <div class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'">SE</div>
                     <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'">CSIRT</div>
+                    <div class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'">Risiko</div>
+                  </div>
+                  <div class="conversion-cell mt-3" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                    <div class="conversion-top">
+                      <strong>Status {{ getStakeholderConversion(item).percent }}%</strong>
+                      <span>{{ getMonitoringStatusLabel(item) }}</span>
+                    </div>
+                    <div class="conversion-track">
+                      <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
+                    </div>
                   </div>
                   <div class="stakeholders-grid-meta">
                     <div><i class="ri-phone-line"></i>{{ item.telepon || '-' }}</div>
@@ -1268,20 +1420,20 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
             <div class="pagination-container stakeholders-pagination">
               <div class="stakeholders-pagination-copy">
-                Showing {{ visibleStart }}-{{ visibleEnd }} of {{ filteredData.length }} stakeholders
+                Menampilkan {{ visibleStart }}-{{ visibleEnd }} dari {{ filteredData.length }} stakeholder
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                 
-                <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages || 1 }}</span>
+                <span class="stakeholders-page-pill">Halaman {{ currentPage }} dari {{ totalPages || 1 }}</span>
                 <nav v-if="totalPages > 1">
                 <ul class="pagination pagination-sm mb-0 gap-1">
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1" title="First">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1" title="Pertama">
                       <i class="ri-skip-back-mini-line"></i>
                     </a>
                   </li>
                   <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--" title="Previous">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--" title="Sebelumnya">
                       <i class="ri-arrow-left-s-line"></i>
                     </a>
                   </li>
@@ -1294,12 +1446,12 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     </li>
                   </template>
                   <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++" title="Next">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++" title="Berikutnya">
                       <i class="ri-arrow-right-s-line"></i>
                     </a>
                   </li>
                   <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages" title="Last">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages" title="Terakhir">
                       <i class="ri-skip-forward-mini-line"></i>
                     </a>
                   </li>
@@ -1324,7 +1476,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                 <i class="ri-add-circle-line"></i>
               </div>
               <div>
-                <div class="card-title mb-0 text-white fw-bold header-card-title">Tambah Stakeholder Baru</div>
+                <div class="card-title mb-0 text-white fw-bold header-card-title">Tambah Data Stakeholder Baru</div>
                 <div class="header-subtitle mt-1">Isi data perusahaan stakeholder baru</div>
               </div>
             </div>
@@ -1367,7 +1519,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </div>
                       <div class="d-flex align-items-center gap-3 fs-11 text-muted">
                         <span><i class="ri-file-type-line me-1"></i>{{ ALLOWED_EXTENSIONS }}</span>
-                        <span><i class="ri-upload-cloud-line me-1"></i>Max {{ MAX_FILE_SIZE_MB }}MB</span>
+                        <span><i class="ri-upload-cloud-line me-1"></i>Maks {{ MAX_FILE_SIZE_MB }}MB</span>
                       </div>
                     </div>
                   </div>
@@ -1508,8 +1660,8 @@ getSektorBadgeStyle: (subSektorName: string) => {
                 <i class="ri-building-2-line"></i>
               </div>
               <div>
-                <div class="card-title mb-0 text-white fw-bold header-card-title">Edit Stakeholder</div>
-                <div class="header-subtitle mt-1">Edit data detail informasi perusahaan</div>
+                <div class="card-title mb-0 text-white fw-bold header-card-title">Ubah Data Stakeholder</div>
+                <div class="header-subtitle mt-1">Ubah detail informasi perusahaan</div>
               </div>
             </div>
             <button type="button" class="btn-close btn-close-white" @click="showEditModal = false"></button>
@@ -1551,7 +1703,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </div>
                       <div class="d-flex align-items-center gap-3 fs-11 text-muted">
                         <span><i class="ri-file-type-line me-1"></i>{{ ALLOWED_EXTENSIONS }}</span>
-                        <span><i class="ri-upload-cloud-line me-1"></i>Max {{ MAX_FILE_SIZE_MB }}MB</span>
+                        <span><i class="ri-upload-cloud-line me-1"></i>Maks {{ MAX_FILE_SIZE_MB }}MB</span>
                       </div>
                     </div>
                   </div>
@@ -1715,8 +1867,477 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */
+.stakeholders-premium-header {
+  align-items: center;
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 22px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+  color: #ffffff;
+  display: flex;
+  gap: 28px;
+  justify-content: space-between;
+  min-height: 152px;
+  position: relative;
+  padding: 24px 26px;
+  overflow: hidden;
+}
+
+.stakeholders-premium-header::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  content: "";
+  position: absolute;
+  height: 1px;
+  inset: 0 20px auto;
+  pointer-events: none;
+}
+
+.stakeholders-header-main {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
+  gap: 28px;
+  align-items: center;
+  width: 100%;
+}
+
+.stakeholders-hero-copy1 {
+  min-width: 0;
+  max-width: 760px;
+}
+
+.stakeholders-inline-breadcrumb,
+.stakeholders-hero-subtitle,
+.stakeholders-meta-label {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.stakeholders-hero-title {
+  color: #fff !important;
+  font-size: 32px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.stakeholders-meta-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stakeholders-meta-card {
+  min-width: 150px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+.stakeholders-meta-card strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: #fff;
+  font-size: 1.08rem;
+}
+
+.stakeholders-header-tools {
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stakeholders-search .header-search-input {
+  min-height: 48px;
+  border-radius: 14px;
+}
+
+.stakeholders-hero-status-card {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  padding: 14px;
+  width: min(100%, 380px);
+}
+
+.stakeholders-hero-status-title,
+.stakeholders-hero-status-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stakeholders-hero-status-title span,
+.stakeholders-hero-status-stats span {
+  color: rgba(255, 255, 255, 0.78);
+  display: block;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.stakeholders-hero-status-title strong {
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.stakeholders-hero-status-stats {
+  margin-top: 12px;
+}
+
+.stakeholders-hero-status-stats > div {
+  flex: 1;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 10px;
+}
+
+.stakeholders-hero-status-stats strong {
+  color: #fff;
+  display: block;
+  font-size: 18px;
+  margin-top: 4px;
+}
+
+.stakeholders-hero-progress {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  height: 8px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.stakeholders-hero-progress span {
+  background: linear-gradient(90deg, #93c5fd, #ffffff);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.stakeholders-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.stakeholders-summary-card {
+  min-width: 0;
+}
+
+.stakeholders-workbar {
+  background: #ffffff;
+  border: 1px solid #dbe7f5;
+  border-radius: 20px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.07);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  position: relative;
+  overflow: visible;
+}
+
+.stakeholders-workbar::before {
+  background: linear-gradient(90deg, #2563eb, #06b6d4, #f59e0b);
+  border-radius: 999px;
+  content: "";
+  height: 3px;
+  inset: 0 18px auto;
+  position: absolute;
+}
+
+.stakeholders-workbar-top,
+.stakeholders-workbar-bottom {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.stakeholders-workbar-top {
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+}
+
+.stakeholders-workbar-bottom {
+  background: linear-gradient(180deg, #fbfdff, #f8fafc);
+  border: 1px solid #e8eef7;
+  border-radius: 16px;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  padding: 12px;
+}
+
+.stakeholders-workbar .stakeholders-search {
+  min-width: 0;
+}
+
+.stakeholders-workbar .header-search-input {
+  background: #f8fafc;
+  border: 1px solid #dbe7f5;
+  border-radius: 16px;
+  color: #0f172a;
+  height: 58px;
+  padding-left: 42px;
+}
+
+.stakeholders-workbar .header-search-input:focus {
+  background: #ffffff;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.stakeholders-filter-reset {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe7f5;
+  border-radius: 12px;
+  color: #1e40af;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 7px;
+  height: 46px;
+  justify-content: center;
+  padding: 0 14px;
+}
+
+.stakeholders-filter-reset:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.stakeholders-workbar-filters {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stakeholders-filter-field {
+  background: #f8fafc;
+  border: 1px solid #e8eef7;
+  border-radius: 16px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.stakeholders-filter-field > span {
+  align-items: center;
+  color: #1e3a8a;
+  display: flex;
+  font-size: 10px;
+  font-weight: 900;
+  gap: 6px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.stakeholders-filter-field > span i {
+  font-size: 13px;
+}
+
+.stakeholders-workbar .stakeholders-select-input {
+  background-color: #ffffff;
+  border-color: transparent;
+  border-radius: 10px;
+  color: #1e293b;
+  min-height: 34px;
+  padding: 4px 8px;
+  box-shadow: none;
+}
+
+.th-status {
+  min-width: 320px;
+}
+
+.conversion-cell {
+  min-width: 128px;
+  max-width: 170px;
+  margin-inline: auto;
+}
+
+.conversion-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.conversion-top strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.conversion-track {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.conversion-bar {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+.progress-good .conversion-bar {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+.progress-mid .conversion-bar {
+  background: linear-gradient(90deg, #0891b2, #06b6d4);
+}
+
+.progress-low .conversion-bar {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+
+.progress-empty .conversion-bar {
+  background: #cbd5e1;
+}
+
+.monitoring-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-progress-cell {
+  min-width: 190px;
+  max-width: 230px;
+  margin-inline: auto;
+}
+
+.status-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.status-progress-head strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-progress-cell small {
+  color: #64748b;
+  display: block;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.status-progress-cell + .status-indicators {
+  margin-top: 0px;
+}
+
+.status-indicators {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.status-badge {
+  white-space: nowrap;
+}
+
+.monitoring-label.progress-good {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.monitoring-label.progress-mid {
+  color: #155e75;
+  background: #cffafe;
+}
+
+.monitoring-label.progress-low {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.monitoring-label.progress-empty {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.stakeholders-summary-card--amber .stakeholders-summary-icon {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.stakeholders-summary-card--cyan .stakeholders-summary-icon {
+  color: #0e7490;
+  background: #cffafe;
+}
+
+[data-theme-mode='dark'] .conversion-top strong {
+  color: #f8fafc;
+}
+
+[data-theme-mode='dark'] .status-progress-head strong {
+  color: #f8fafc;
+}
+
+[data-theme-mode='dark'] .conversion-track {
+  background: rgba(148, 163, 184, 0.24);
+}
+
+[data-theme-mode='dark'] .stakeholders-workbar,
+[data-theme-mode='dark'] .stakeholders-workbar-bottom,
+[data-theme-mode='dark'] .stakeholders-filter-field {
+  background: #111827;
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+[data-theme-mode='dark'] .stakeholders-workbar .header-search-input,
+[data-theme-mode='dark'] .stakeholders-workbar .stakeholders-select-input,
+[data-theme-mode='dark'] .stakeholders-filter-reset {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #e5e7eb;
+}
 
 @media (max-width: 575.98px) {
+  .stakeholders-premium-header {
+    padding: 18px;
+  }
+
+  .stakeholders-header-main {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholders-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholders-workbar-top,
+  .stakeholders-workbar-bottom,
+  .stakeholders-workbar-filters {
+    grid-template-columns: 1fr;
+  }
+
   .custom-modal {
     margin: 10px auto;
     width: calc(100% - 20px) !important;
@@ -1784,6 +2405,28 @@ getSektorBadgeStyle: (subSektorName: string) => {
   .modal.fade.show.d-block .modal-dialog {
     margin-left: calc(250px + ((100% - 250px - 1000px) / 2)) !important;
     margin-right: auto !important;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .stakeholders-header-main {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholders-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stakeholders-workbar-top {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholders-workbar-bottom {
+    grid-template-columns: repeat(2, minmax(0, auto)) minmax(0, 1fr);
+  }
+
+  .stakeholders-workbar-filters {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -11,6 +11,7 @@ import { useStakeholdersStore } from '@/stores/stakeholders';
 import type { IkasPayload } from '@/types/ikas.types';
 
 let initializePromise: Promise<void> | null = null;
+let fetchAllPromise: Promise<void> | null = null;
 
 export interface IkasSummaryRecord {
   id: string;
@@ -114,6 +115,63 @@ export interface IkasData {
   edit_request_reason: string;
   details: Record<string, Record<string, Record<string, number>>>;
 }
+
+const normalizeEditRequestStatus = (record: any, fallback = 'none'): string => {
+  const rawStatus =
+    record?.edit_request_status ??
+    record?.editRequestStatus ??
+    record?.request_edit_status ??
+    record?.requestEditStatus ??
+    record?.status_request_edit ??
+    record?.edit_request?.status ??
+    record?.request_edit?.status ??
+    fallback;
+
+  const status = String(rawStatus || '').trim().toLowerCase();
+  return status || 'none';
+};
+
+const hasEditRequestStatus = (record: any): boolean => (
+  record?.edit_request_status !== undefined ||
+  record?.editRequestStatus !== undefined ||
+  record?.request_edit_status !== undefined ||
+  record?.requestEditStatus !== undefined ||
+  record?.status_request_edit !== undefined ||
+  record?.edit_request?.status !== undefined ||
+  record?.request_edit?.status !== undefined
+);
+
+const normalizeEditRequestReason = (record: any, fallback = ''): string => {
+  const rawReason =
+    record?.edit_request_reason ??
+    record?.editRequestReason ??
+    record?.request_edit_reason ??
+    record?.requestEditReason ??
+    record?.reject_reason ??
+    record?.rejectReason ??
+    record?.reason ??
+    record?.edit_request?.reason ??
+    record?.request_edit?.reason ??
+    record?.edit_request?.reject_reason ??
+    record?.request_edit?.reject_reason ??
+    fallback;
+
+  return String(rawReason || '').trim();
+};
+
+const normalizeValidatedStatus = (record: any, fallback = false): boolean => {
+  const rawStatus = record?.is_validated ?? record?.isValidated ?? record?.status ?? fallback;
+  if (typeof rawStatus === 'boolean') return rawStatus;
+  if (typeof rawStatus === 'number') return rawStatus === 1;
+
+  const normalized = String(rawStatus ?? '').trim().toLowerCase();
+  if (['true', '1', 'validated', 'active', 'approved'].includes(normalized)) return true;
+  if (['false', '0', 'draft', 'inactive'].includes(normalized)) return false;
+
+  return Boolean(fallback);
+};
+
+const unwrapIkasResponse = (response: any): any => response?.data || response?.record || response?.ikas || response || {};
 
 // Helper function untuk label maturity
 export const getMaturityLabel = (score: number | 'NA'): string => {
@@ -327,6 +385,60 @@ export const useIkasStore = defineStore('ikas', {
       return [];
     },
 
+    recordMatchesIkasIdentity(record: any, slug: string, ikasId: string | null, perusahaanId = ''): boolean {
+      const company = record?.perusahaan || {};
+      return (
+        (!!ikasId && String(record?.id || '') === String(ikasId)) ||
+        (!!slug && String(record?.slug || '') === String(slug)) ||
+        (!!slug && String(company?.slug || '') === String(slug)) ||
+        (!!perusahaanId && String(record?.id_perusahaan || company?.id || '') === String(perusahaanId))
+      );
+    },
+
+    patchIkasStatus(slug: string, patch: { is_validated?: boolean; edit_request_status?: string; edit_request_reason?: string }) {
+      if (!slug) return;
+
+      const ikasId = this.backendIkasIds[slug] || null;
+      const perusahaanId = this.ikasSummaryMap[slug]?.id_perusahaan || '';
+
+      if (!this.ikasDataMap[slug]) {
+        this.ikasDataMap[slug] = createDefaultIkasData();
+      }
+
+      if (typeof patch.is_validated === 'boolean') {
+        this.ikasDataMap[slug].is_validated = patch.is_validated;
+      }
+      if (patch.edit_request_status !== undefined) {
+        this.ikasDataMap[slug].edit_request_status = patch.edit_request_status || 'none';
+      }
+      if (patch.edit_request_reason !== undefined) {
+        this.ikasDataMap[slug].edit_request_reason = patch.edit_request_reason || '';
+      }
+
+      if (this.ikasSummaryMap[slug]) {
+        if (typeof patch.is_validated === 'boolean') {
+          this.ikasSummaryMap[slug].is_validated = patch.is_validated;
+        }
+        if (patch.edit_request_status !== undefined) {
+          this.ikasSummaryMap[slug].edit_request_status = patch.edit_request_status || 'none';
+        }
+        if (patch.edit_request_reason !== undefined) {
+          this.ikasSummaryMap[slug].edit_request_reason = patch.edit_request_reason || '';
+        }
+      }
+
+      this.ikasRawRecords = this.ikasRawRecords.map((record: any) => (
+        this.recordMatchesIkasIdentity(record, slug, ikasId, perusahaanId)
+          ? {
+              ...record,
+              ...(typeof patch.is_validated === 'boolean' ? { is_validated: patch.is_validated, status: patch.is_validated } : {}),
+              ...(patch.edit_request_status !== undefined ? { edit_request_status: patch.edit_request_status || 'none' } : {}),
+              ...(patch.edit_request_reason !== undefined ? { edit_request_reason: patch.edit_request_reason || '' } : {}),
+            }
+          : record
+      ));
+    },
+
     findLatestIkasRecord(records: any[], perusahaanId: string): any | null {
       const matching = records.filter((record: any) =>
         String(record?.perusahaan?.id || '') === String(perusahaanId) ||
@@ -370,15 +482,19 @@ export const useIkasStore = defineStore('ikas', {
       const idPerusahaan = String(record?.id_perusahaan || record?.perusahaan?.id || '');
       const score = this.numberValue(record?.nilai_kematangan ?? record?.total_rata_rata ?? record?.score ?? 0);
       const category = getMaturityLabel(score);
+      const previousEditRequestStatus = this.ikasDataMap[slug]?.edit_request_status || 'none';
+      const editRequestStatus = hasEditRequestStatus(record)
+        ? normalizeEditRequestStatus(record, 'none')
+        : previousEditRequestStatus;
       const summary: IkasSummaryRecord = {
         id,
         slug,
         id_perusahaan: idPerusahaan,
         score,
         category,
-        is_validated: !!record?.is_validated,
-        edit_request_status: record?.edit_request_status || 'none',
-        edit_request_reason: record?.edit_request_reason || '',
+        is_validated: normalizeValidatedStatus(record, this.ikasDataMap[slug]?.is_validated || false),
+        edit_request_status: editRequestStatus || 'none',
+        edit_request_reason: normalizeEditRequestReason(record, this.ikasDataMap[slug]?.edit_request_reason || ''),
         updated_at: record?.updated_at || record?.tanggal || record?.created_at || '',
         raw: record,
       };
@@ -454,25 +570,33 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     async fetchAllFromBackend() {
-      try {
-        const stakeholdersStore = useStakeholdersStore();
-        if (!stakeholdersStore.initialized) {
-          await stakeholdersStore.initialize();
-        }
+      if (fetchAllPromise) return fetchAllPromise;
 
-        const response = await ikasService.getIkasList();
-        const records = this.normalizeIkasRecords(response);
-        this.ikasRawRecords = records;
-        this.ikasSummaryMap = {};
-        
-        records.forEach((rec: any) => {
-          this.upsertSummaryRecord(rec);
-        });
-        
-        this.ikasVersion++;
-      } catch (error) {
-        console.error('[IKAS Store] fetchAllFromBackend failed:', error);
-      }
+      fetchAllPromise = (async () => {
+        try {
+          const stakeholdersStore = useStakeholdersStore();
+          if (!stakeholdersStore.initialized) {
+            await stakeholdersStore.initialize();
+          }
+
+          const response = await ikasService.getIkasList();
+          const records = this.normalizeIkasRecords(response);
+          this.ikasRawRecords = records;
+          this.ikasSummaryMap = {};
+          
+          records.forEach((rec: any) => {
+            this.upsertSummaryRecord(rec);
+          });
+          
+          this.ikasVersion++;
+        } catch (error) {
+          console.error('[IKAS Store] fetchAllFromBackend failed:', error);
+        } finally {
+          fetchAllPromise = null;
+        }
+      })();
+
+      return fetchAllPromise;
     },
 
     /** Refresh IKAS data */
@@ -796,7 +920,6 @@ export const useIkasStore = defineStore('ikas', {
 
         this.backendSyncedMap[slug] = true;
         this.apiLoading = false;
-        console.log('[IKAS Store] Backend submit success:', response);
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] Backend submit failed:', error);
@@ -844,7 +967,7 @@ export const useIkasStore = defineStore('ikas', {
             const detailed = await ikasService.getIkasById(matchedRecord.id);
             if (detailed) {
               // Handle { data: {...} } wrapper
-              detailedResponse = detailed.data || detailed;
+              detailedResponse = unwrapIkasResponse(detailed);
             }
           } catch (e) {
             console.warn('[IKAS Store] Could not fetch detailed record, using list data');
@@ -881,16 +1004,15 @@ export const useIkasStore = defineStore('ikas', {
           data.tanggulih.nilai_subdomain3 = response.gulih.nilai_subdomain3 || 0;
           data.tanggulih.nilai_subdomain4 = response.gulih.nilai_subdomain4 || 0;
         }
-        data.is_validated = response.is_validated || false;
-        data.edit_request_status = response.edit_request_status || 'none';
-        data.edit_request_reason = response.edit_request_reason || '';
+        data.is_validated = normalizeValidatedStatus(response, false);
+        data.edit_request_status = normalizeEditRequestStatus(response, data.edit_request_status || 'none');
+        data.edit_request_reason = normalizeEditRequestReason(response);
 
         // Recalculate averages from fetched data
         this.recalculate(slug);
         this.saveToStorage();
 
         this.apiLoading = false;
-        console.log('[IKAS Store] Fetched from backend:', matchedRecord);
 
         // Return respondent data for the caller to populate profiles
         return {
@@ -969,7 +1091,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createIdentifikasi(payload);
-        console.log('[IKAS Store] Identifikasi submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1006,7 +1127,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createProteksi(payload);
-        console.log('[IKAS Store] Proteksi submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1040,7 +1160,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createDeteksi(payload);
-        console.log('[IKAS Store] Deteksi submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1075,7 +1194,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createGulih(payload);
-        console.log('[IKAS Store] Gulih submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1098,7 +1216,6 @@ export const useIkasStore = defineStore('ikas', {
      */
     async seedAssessmentStructure(): Promise<{ success: boolean; error?: string }> {
       try {
-        console.log('[IKAS Store] Seeding assessment structure...');
 
         // Import assessment data structure
         const { assessmentData } = await import('@/data/assessment/assessment-data');
@@ -1163,7 +1280,6 @@ export const useIkasStore = defineStore('ikas', {
           }
         }
 
-        console.log('[IKAS Store] Assessment structure seeded successfully');
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] Seed assessment structure failed:', error);
@@ -1181,7 +1297,14 @@ export const useIkasStore = defineStore('ikas', {
         if (!ikasId) {
           throw new Error('ikas_id belum tersedia');
         }
-        await ikasService.validateIkas(ikasId);
+        const response = await ikasService.validateIkas(ikasId);
+        const updated = unwrapIkasResponse(response);
+        const editRequestStatus = normalizeEditRequestStatus(updated, 'none');
+        this.patchIkasStatus(slug, {
+          is_validated: normalizeValidatedStatus(updated, true),
+          edit_request_status: editRequestStatus === 'pending' ? 'none' : editRequestStatus,
+          edit_request_reason: normalizeEditRequestReason(updated),
+        });
         this.ikasVersion++;
         return { success: true };
       } catch (error: any) {
@@ -1202,12 +1325,45 @@ export const useIkasStore = defineStore('ikas', {
         if (!ikasId) {
           throw new Error('ikas_id belum tersedia');
         }
-        await ikasService.approveEditIkas(ikasId);
+        const response = await ikasService.approveEditIkas(ikasId);
+        const updated = unwrapIkasResponse(response);
+        this.patchIkasStatus(slug, {
+          is_validated: normalizeValidatedStatus(updated, false),
+          edit_request_status: normalizeEditRequestStatus(updated, 'approved'),
+          edit_request_reason: normalizeEditRequestReason(updated),
+        });
         this.ikasVersion++;
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] approveEditIkas failed:', error);
         return { success: false, error: error.message || 'Gagal menyetujui edit IKAS' };
+      } finally {
+        this.apiLoading = false;
+      }
+    },
+
+    /**
+     * Request edit for a validated IKAS record.
+     */
+    async requestEditIkas(slug: string, reason?: string): Promise<{ success: boolean; error?: string }> {
+      this.apiLoading = true;
+      try {
+        const ikasId = this.requireBackendIkasId(slug);
+        if (!ikasId) {
+          throw new Error('ikas_id belum tersedia');
+        }
+        const response = await ikasService.requestEditIkas(ikasId, reason);
+        const updated = unwrapIkasResponse(response);
+        this.patchIkasStatus(slug, {
+          is_validated: normalizeValidatedStatus(updated, true),
+          edit_request_status: normalizeEditRequestStatus(updated, 'pending'),
+          edit_request_reason: normalizeEditRequestReason(updated, reason || ''),
+        });
+        this.ikasVersion++;
+        return { success: true };
+      } catch (error: any) {
+        console.error('[IKAS Store] requestEditIkas failed:', error);
+        return { success: false, error: error.message || 'Gagal mengajukan request edit IKAS' };
       } finally {
         this.apiLoading = false;
       }
@@ -1223,7 +1379,13 @@ export const useIkasStore = defineStore('ikas', {
         if (!ikasId) {
           throw new Error('ikas_id belum tersedia');
         }
-        await ikasService.rejectEditIkas(ikasId, reason);
+        const response = await ikasService.rejectEditIkas(ikasId, reason);
+        const updated = unwrapIkasResponse(response);
+        this.patchIkasStatus(slug, {
+          is_validated: normalizeValidatedStatus(updated, true),
+          edit_request_status: normalizeEditRequestStatus(updated, 'rejected'),
+          edit_request_reason: normalizeEditRequestReason(updated, reason || ''),
+        });
         this.ikasVersion++;
         return { success: true };
       } catch (error: any) {

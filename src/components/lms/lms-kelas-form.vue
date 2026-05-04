@@ -23,6 +23,13 @@ export default {
     // Form state
     const namaKelas = ref("");
     const deskripsi = ref("");
+    const durasiJp = ref(0);
+    const informasiUmum = ref("");
+    const kategori = ref("");
+    const penyelenggara = ref("");
+    const syaratPendaftaran = ref("");
+    const targetPeserta = ref("");
+    const thumbnail = ref("");
     const status = ref("published");
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
@@ -52,6 +59,13 @@ export default {
         if (kelas) {
           namaKelas.value = kelas.nama_kelas;
           deskripsi.value = kelas.deskripsi;
+          durasiJp.value = kelas.durasi_jp || 0;
+          informasiUmum.value = kelas.informasi_umum || "";
+          kategori.value = kelas.kategori || "";
+          penyelenggara.value = kelas.penyelenggara || "";
+          syaratPendaftaran.value = kelas.syarat_pendaftaran || "";
+          targetPeserta.value = kelas.target_peserta || "";
+          thumbnail.value = kelas.thumbnail || "";
           status.value = kelas.status || "published";
         } else {
           showNotification("Kelas tidak ditemukan", "error");
@@ -64,8 +78,23 @@ export default {
       formErrors.value = {};
       if (!namaKelas.value.trim()) formErrors.value.nama_kelas = "Judul kelas wajib diisi";
       if (!deskripsi.value.trim()) formErrors.value.deskripsi = "Deskripsi wajib diisi";
+      if (Number(durasiJp.value) < 0) formErrors.value.durasi_jp = "Durasi tidak boleh negatif";
       return Object.keys(formErrors.value).length === 0;
     };
+
+    const buildPayload = () => ({
+      judul: namaKelas.value,
+      nama_kelas: namaKelas.value,
+      deskripsi: deskripsi.value,
+      durasi_jp: Number(durasiJp.value || 0),
+      informasi_umum: informasiUmum.value,
+      kategori: kategori.value,
+      penyelenggara: penyelenggara.value,
+      syarat_pendaftaran: syaratPendaftaran.value,
+      target_peserta: targetPeserta.value,
+      thumbnail: thumbnail.value,
+      status: status.value,
+    });
 
     const handleSubmit = async () => {
       if (!validate()) return;
@@ -73,18 +102,10 @@ export default {
       isSaving.value = true;
       try {
         if (isEdit.value) {
-          await lmsStore.updateKelas(route.params.id as string, {
-            nama_kelas: namaKelas.value,
-            deskripsi: deskripsi.value,
-            status: status.value,
-          });
+          await lmsStore.updateKelas(route.params.id as string, buildPayload());
           showNotification("Kelas berhasil diperbarui!", "success");
         } else {
-          await lmsStore.createKelas({
-            nama_kelas: namaKelas.value,
-            deskripsi: deskripsi.value,
-            status: status.value,
-          });
+          await lmsStore.createKelas(buildPayload());
           showNotification("Kelas berhasil ditambahkan!", "success");
         }
 
@@ -104,6 +125,13 @@ export default {
       pageTitle,
       namaKelas,
       deskripsi,
+      durasiJp,
+      informasiUmum,
+      kategori,
+      penyelenggara,
+      syaratPendaftaran,
+      targetPeserta,
+      thumbnail,
       status,
       formErrors,
       handleSubmit,
@@ -178,6 +206,39 @@ export default {
                 </select>
               </div>
 
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Kategori</label>
+                <input
+                  v-model="kategori"
+                  type="text"
+                  class="form-control kse-modal-input"
+                  placeholder="Contoh: Teknis, Manajerial"
+                />
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Penyelenggara</label>
+                <input
+                  v-model="penyelenggara"
+                  type="text"
+                  class="form-control kse-modal-input"
+                  placeholder="Nama penyelenggara"
+                />
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Durasi JP</label>
+                <input
+                  v-model.number="durasiJp"
+                  type="number"
+                  min="0"
+                  class="form-control kse-modal-input"
+                  :class="{ 'is-invalid': formErrors.durasi_jp }"
+                  placeholder="0"
+                />
+                <div v-if="formErrors.durasi_jp" class="invalid-feedback">{{ formErrors.durasi_jp }}</div>
+              </div>
+
               <!-- Deskripsi -->
               <div class="col-12">
                 <label class="form-label fw-semibold">Deskripsi <span class="text-danger">*</span></label>
@@ -189,6 +250,46 @@ export default {
                   placeholder="Deskripsi tentang kelas ini..."
                 ></textarea>
                 <div v-if="formErrors.deskripsi" class="invalid-feedback">{{ formErrors.deskripsi }}</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Target Peserta</label>
+                <input
+                  v-model="targetPeserta"
+                  type="text"
+                  class="form-control kse-modal-input"
+                  placeholder="Contoh: ASN, admin sistem, pengelola layanan"
+                />
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Thumbnail URL</label>
+                <input
+                  v-model="thumbnail"
+                  type="text"
+                  class="form-control kse-modal-input"
+                  placeholder="https://example.com/thumbnail.jpg"
+                />
+              </div>
+
+              <div class="col-12">
+                <label class="form-label fw-semibold">Informasi Umum</label>
+                <textarea
+                  v-model="informasiUmum"
+                  class="form-control kse-modal-input"
+                  rows="4"
+                  placeholder="Informasi umum kelas..."
+                ></textarea>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label fw-semibold">Syarat Pendaftaran</label>
+                <textarea
+                  v-model="syaratPendaftaran"
+                  class="form-control kse-modal-input"
+                  rows="4"
+                  placeholder="Syarat pendaftaran peserta..."
+                ></textarea>
               </div>
 
               <!-- Actions -->

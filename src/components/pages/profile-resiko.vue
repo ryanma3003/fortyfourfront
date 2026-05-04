@@ -1,22 +1,35 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useResikoStore } from '@/stores/resiko';
+import { useAuthStore } from '@/stores/auth';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 
 const router = useRouter();
 const currentRoute = useRoute();
 const stakeholdersStore = useStakeholdersStore();
 const resikoStore = useResikoStore();
+const authStore = useAuthStore();
 
 const currentSlug = computed(() => String(currentRoute.query.slug || ''));
+const isAdmin = computed(() => authStore.isAdmin);
 
 onMounted(async () => {
     if (!stakeholdersStore.initialized) {
         await stakeholdersStore.initialize();
     }
     resikoStore.initialize();
+    if (currentSlug.value) {
+        resikoStore.setCurrentStakeholder(currentSlug.value);
+    }
+    await loadSurveyResult();
+});
+
+watch(currentSlug, async (slug) => {
+    if (!slug) return;
+    resikoStore.setCurrentStakeholder(slug);
+    await loadSurveyResult();
 });
 
 const currentStakeholder = computed(() => {
@@ -26,9 +39,10 @@ const currentStakeholder = computed(() => {
     return null;
 });
 
-const resikoScore = computed(() => {
-    return resikoStore.completionPercentage || 0;
-});
+const loadSurveyResult = async () => {
+    if (!currentStakeholder.value?.id || !currentSlug.value) return;
+    await resikoStore.loadSurveyResult(currentStakeholder.value.id, currentSlug.value);
+};
 
 const dataToPass = computed(() => {
     const stakeholderName = currentStakeholder.value?.nama_perusahaan || 'Stakeholder';
@@ -39,19 +53,62 @@ const dataToPass = computed(() => {
     };
 });
 
-// Mock Risk Data for visualization
-const riskLevels = [
-    { label: 'Sangat Tinggi', color: '#f59e0b', count: 1 }, // Amber
-    { label: 'Tinggi', color: '#fbbf24', count: 2 },
-    { label: 'Sedang', color: '#6366f1', count: 4 }, // Indigo
-    { label: 'Rendah', color: '#818cf8', count: 8 },
-];
+const labelOf = (row: any, keys: string[], fallback = '-') => {
+    const found = keys.map(key => row?.[key]).find(value => value !== undefined && value !== null && value !== '');
+    return found !== undefined && found !== null && found !== '' ? String(found) : fallback;
+};
 
-const riskRegister = [
-    { id: 1, asset: 'Data Nasabah', risk: 'Kebocoran Data', impact: 'Sangat Tinggi', prob: 'Sedang', level: 'Tinggi', status: 'Mitigated' },
-    { id: 2, asset: 'Sistem Core Banking', risk: 'Downtime', impact: 'Tinggi', prob: 'Rendah', level: 'Sedang', status: 'Open' },
-    { id: 3, asset: 'Aplikasi Mobile', risk: 'Unauthorized Access', impact: 'Tinggi', prob: 'Tinggi', level: 'Sangat Tinggi', status: 'In Progress' },
-];
+const normalizeRiskLevel = (value: any) => {
+    const text = String(value || '').trim().toLowerCase();
+    const score = Number(value);
+    if (text.includes('sangat') || score >= 20 || score === 4) return 'Sangat Tinggi';
+    if (text.includes('tinggi') || score >= 12 || score === 3) return 'Tinggi';
+    if (text.includes('sedang') || score >= 6 || score === 2) return 'Sedang';
+    if (text.includes('rendah') || score >= 1 || score === 1) return 'Rendah';
+    return 'Belum Dinilai';
+};
+
+const normalizedRisks = computed(() => {
+    return (resikoStore.currentSurveyResult?.risks || []).map((row: any, index: number) => {
+        const level = normalizeRiskLevel(row.level || row.level_risiko || row.tingkat_risiko || row.nilai_risiko || row.risk_level);
+        return {
+            id: row.id || `${index}`,
+            asset: labelOf(row, ['aset', 'asset', 'nama_aset', 'namaAset', 'objek'], '-'),
+            risk: labelOf(row, ['risiko', 'risk', 'deskripsi_risiko', 'deskripsiRisiko', 'ancaman', 'reason'], '-'),
+            impact: labelOf(row, ['dampak', 'impact', 'nilai_dampak', 'impact_level'], '-'),
+            prob: labelOf(row, ['probabilitas', 'probability', 'kemungkinan', 'likelihood', 'nilai_kemungkinan'], '-'),
+            level,
+            status: labelOf(row, ['status', 'status_mitigasi', 'mitigasi_status'], 'Open'),
+        };
+    });
+});
+
+const riskLevels = computed(() => {
+    const levels = ['Sangat Tinggi', 'Tinggi', 'Sedang', 'Rendah'];
+    return levels.map(label => ({
+        label,
+        count: normalizedRisks.value.filter(r => r.level === label).length,
+    }));
+});
+
+const mitigationSummary = computed(() => {
+    const rows = resikoStore.currentSurveyResult?.risks || [];
+    const groups = [
+        { label: 'Kontrol Teknis', keys: ['teknis', 'technical'] },
+        { label: 'Kebijakan & Prosedur', keys: ['kebijakan', 'prosedur', 'policy'] },
+        { label: 'Audit Keamanan', keys: ['audit'] },
+    ];
+
+    return groups.map((group) => {
+        const related = rows.filter((row: any) => {
+            const text = JSON.stringify(row).toLowerCase();
+            return group.keys.some(key => text.includes(key));
+        });
+        const done = related.filter((row: any) => String(row.status || row.status_mitigasi || '').toLowerCase().includes('selesai')).length;
+        const percent = related.length ? Math.round((done / related.length) * 100) : 0;
+        return { ...group, percent, labelPercent: related.length ? `${percent}% Complete` : 'Belum Ada Data' };
+    });
+});
 
 </script>
 
@@ -75,12 +132,15 @@ const riskRegister = [
              <div class="text-end text-white border-end pe-3 border-white-10 me-1">
                 <div class="fs-11 text-uppercase fw-semibold opacity-75 mb-1">Status Survey</div>
                 <div class="fw-bold fs-16">
-                   {{ resikoStore.progressMap[currentSlug]?.status === 'COMPLETED' ? 'Lengkap' : 'Belum Lengkap' }}
+                   {{ normalizedRisks.length > 0 || resikoStore.progressMap[currentSlug]?.status === 'COMPLETED' ? 'Lengkap' : 'Belum Lengkap' }}
                 </div>
              </div>
-             <button @click="router.push({ path: '/survey-resiko', query: { slug: currentSlug } })" class="btn btn-save-primary rounded-pill shadow-sm">
+             <button v-if="!isAdmin" @click="router.push({ path: '/survey-resiko', query: { slug: currentSlug } })" class="btn btn-save-primary rounded-pill shadow-sm">
                 <i class="ri-edit-2-line me-1"></i> Update Survey
              </button>
+             <span v-else class="btn btn-light rounded-pill shadow-sm disabled-view-badge">
+                <i class="ri-eye-line me-1"></i> Mode Lihat Hasil
+             </span>
           </div>
         </div>
         
@@ -118,7 +178,16 @@ const riskRegister = [
                          </tr>
                       </thead>
                       <tbody>
-                         <tr v-for="r in riskRegister" :key="r.id" class="stakeholder-row">
+                         <tr v-if="resikoStore.surveyResultLoading">
+                            <td colspan="6" class="text-center text-muted py-4">Memuat hasil survey risiko...</td>
+                         </tr>
+                         <tr v-else-if="resikoStore.surveyResultError">
+                            <td colspan="6" class="text-center text-danger py-4">{{ resikoStore.surveyResultError }}</td>
+                         </tr>
+                         <tr v-else-if="normalizedRisks.length === 0">
+                            <td colspan="6" class="text-center text-muted py-4">Belum ada hasil survey risiko untuk perusahaan ini.</td>
+                         </tr>
+                         <tr v-for="r in normalizedRisks" :key="r.id" class="stakeholder-row">
                             <td class="fw-bold text-primary">{{ r.asset }}</td>
                             <td class="text-muted">{{ r.risk }}</td>
                             <td class="text-center">
@@ -148,31 +217,13 @@ const riskRegister = [
                       <div class="card-title fs-14 fw-bold">Mitigasi & Kontrol</div>
                    </div>
                    <div class="card-body">
-                      <div class="mb-4">
+                      <div v-for="(item, index) in mitigationSummary" :key="item.label" :class="{ 'mb-4': index < mitigationSummary.length - 1 }">
                          <div class="d-flex align-items-center justify-content-between mb-2">
-                             <div class="fs-13 fw-semibold">Kontrol Teknis</div>
-                             <div class="fs-12 text-muted">75% Complete</div>
+                             <div class="fs-13 fw-semibold">{{ item.label }}</div>
+                             <div class="fs-12 text-muted">{{ item.labelPercent }}</div>
                          </div>
                          <div class="kse-score-bar">
-                            <div class="kse-score-fill stat-icon-indigo" style="width: 75%"></div>
-                         </div>
-                      </div>
-                      <div class="mb-4">
-                         <div class="d-flex align-items-center justify-content-between mb-2">
-                             <div class="fs-13 fw-semibold">Kebijakan & Prosedur</div>
-                             <div class="fs-12 text-muted">90% Complete</div>
-                         </div>
-                         <div class="kse-score-bar">
-                            <div class="kse-score-fill stat-icon-amber" style="width: 90%"></div>
-                         </div>
-                      </div>
-                      <div>
-                         <div class="d-flex align-items-center justify-content-between mb-2">
-                             <div class="fs-13 fw-semibold">Audit Keamanan</div>
-                             <div class="fs-12 text-muted">40% Early Stage</div>
-                         </div>
-                         <div class="kse-score-bar">
-                            <div class="kse-score-fill stat-icon-blue" style="width: 40%"></div>
+                            <div class="kse-score-fill" :class="index === 0 ? 'stat-icon-indigo' : index === 1 ? 'stat-icon-amber' : 'stat-icon-blue'" :style="{ width: `${item.percent}%` }"></div>
                          </div>
                       </div>
                    </div>
@@ -199,5 +250,11 @@ const riskRegister = [
 
 .bg-light-transparent {
   background: rgba(248, 250, 252, 0.8);
+}
+
+.disabled-view-badge {
+  pointer-events: none;
+  color: #0f3f62;
+  font-weight: 700;
 }
 </style>

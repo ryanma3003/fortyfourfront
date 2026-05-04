@@ -7,7 +7,7 @@ import type {
   LmsFilePendukung,
   LmsKuis, CreateKuisPayload, UpdateKuisPayload,
   LmsSoal, CreateSoalPayload, UpdateSoalPayload,
-  LmsDiskusi
+  LmsFeedback
 } from '@/types/lms.types'
 
 // Re-export types for backward compatibility with components
@@ -33,7 +33,7 @@ export const useLmsStore = defineStore('lms', () => {
   const materiList = ref<LmsMateri[]>([])
   const kuisList = ref<LmsKuis[]>([])
   const soalList = ref<LmsSoal[]>([])
-  const diskusiList = ref<LmsDiskusi[]>([])
+  const feedbackList = ref<LmsFeedback[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -479,29 +479,15 @@ export const useLmsStore = defineStore('lms', () => {
     }
   }
 
-  // ─── Diskusi ───────────────────────────────────────────────
-  const fetchDiskusi = async (materiId: string | number) => {
+  // ─── Feedback ──────────────────────────────────────────────
+  const fetchFeedback = async (materiId: string | number) => {
     loading.value = true
     error.value = null
     try {
-      diskusiList.value = await lmsService.getDiskusiByMateri(materiId)
-      return diskusiList.value
+      feedbackList.value = await lmsService.getFeedbackByMateri(materiId)
+      return feedbackList.value
     } catch (e: any) {
-      error.value = e.message || 'Gagal memuat diskusi'
-      throw e
-    } finally {
-      loading.value = false
-    }
-  }
-
-  const deleteDiskusi = async (id: string | number) => {
-    loading.value = true
-    error.value = null
-    try {
-      await lmsService.deleteDiskusi(id)
-      diskusiList.value = diskusiList.value.filter(d => String(d.id) !== String(id))
-    } catch (e: any) {
-      error.value = e.message || 'Gagal menghapus diskusi'
+      error.value = e.message || 'Gagal memuat feedback'
       throw e
     } finally {
       loading.value = false
@@ -578,9 +564,8 @@ export const useLmsStore = defineStore('lms', () => {
     totalQuiz,
     totalSoal,
 
-    // Diskusi
-    diskusiList,
-    fetchDiskusi,
-    deleteDiskusi,
+    // Feedback
+    feedbackList,
+    fetchFeedback,
   }
 })

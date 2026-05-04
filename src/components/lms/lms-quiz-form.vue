@@ -380,7 +380,7 @@ export default {
     </div>
   </transition>
 
-  <div class="row">
+  <div class="row lms-quiz-form">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <!-- Header -->

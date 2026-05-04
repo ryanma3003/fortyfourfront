@@ -391,7 +391,6 @@ export const useProfileStore = defineStore('profile', {
               ? await usersService.updateProfilePhoto(id, photoForm)
               : await usersService.updateMePhoto(photoForm);
 
-            console.log("UPLOAD RESPONSE:", pr);
             this.fotoProfileUrl = this._mapApiUser(pr).photo || newFotoProfile;
           } catch (photoErr) {
             console.error('Photo upload failed:', photoErr);
@@ -411,7 +410,6 @@ export const useProfileStore = defineStore('profile', {
               ? await usersService.updateBanner(id, bannerForm)
               : await usersService.updateMeBanner(bannerForm);
 
-            console.log("UPLOAD RESPONSE:", br);
             this.bannerUrl = this._mapApiUser(br).banner || newBanner;
           } catch (bannerErr) {
             console.error('Banner upload failed:', bannerErr);

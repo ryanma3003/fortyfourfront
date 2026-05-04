@@ -62,7 +62,6 @@ const loadCurrentStakeholderIkas = async () => {
   if (stakeholder?.id) {
     const result = await ikasStore.fetchFromBackend(currentSlug.value, stakeholder.id);
     if (result.exists && result.respondentData) {
-      console.log('[IKAS CRUD] Loaded existing IKAS data from backend');
 
       // Populate the respondent profile in the assessment store
       // so hasRespondentProfile returns true and we skip to Step 2

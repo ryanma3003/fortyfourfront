@@ -35,9 +35,7 @@ const effectiveSlug = computed(() => {
         }
       }
     }
-  } catch (e) {
-    console.warn('Failed to parse local storage for seId lookup', e);
-  }
+  } catch {}
 
   // Fallback to purely synthetic API slug
   return `${stakeholderSlug.value}_kse_se_${seId.value}`;
@@ -108,9 +106,7 @@ onMounted(async () => {
 
         seDataLoaded.value = true;
       }
-    } catch (e) {
-      console.warn('Failed to load SE data from API:', e);
-    }
+    } catch {}
   }
 });
 

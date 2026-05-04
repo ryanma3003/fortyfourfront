@@ -65,7 +65,6 @@ export function getSubSektorParentId(s: SubSektor): string | number | undefined 
  * - { something: [] }
  */
 function unwrapArray<T>(res: any, label: string): T[] {
-  console.log(`[sektorService] ${label} raw response:`, res)
 
   if (Array.isArray(res)) return res as T[]
 

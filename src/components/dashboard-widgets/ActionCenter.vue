@@ -13,6 +13,9 @@ const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
 const filterStore = useDashboardFilterStore();
+const props = defineProps({
+    loading: { type: Boolean, default: false },
+});
 
 // Helper to filter by global date range
 function isInGlobalRange(createdAt) {
@@ -28,6 +31,8 @@ function isInGlobalRange(createdAt) {
 }
 
 const actions = computed(() => {
+    if (props.loading) return [];
+
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInGlobalRange(s.created_at);
         const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
@@ -160,7 +165,18 @@ function navigate(route) {
             </span>
         </div>
         <div class="dw-card-body" style="padding: 12px 16px;">
-            <div class="d-flex flex-column gap-2">
+            <div v-if="loading" class="d-flex flex-column gap-2 placeholder-glow">
+                <div v-for="n in 4" :key="'action-skeleton-' + n" class="dw-action-item">
+                    <span class="placeholder" style="width:4px;height:42px;border-radius:99px;"></span>
+                    <span class="placeholder" style="width:36px;height:36px;border-radius:10px;"></span>
+                    <div class="flex-grow-1">
+                        <span class="placeholder col-10 d-block mb-2" style="height:12px;border-radius:6px;"></span>
+                        <span class="placeholder col-7 d-block" style="height:10px;border-radius:6px;"></span>
+                    </div>
+                    <span class="placeholder" style="width:72px;height:28px;border-radius:8px;"></span>
+                </div>
+            </div>
+            <div v-else class="d-flex flex-column gap-2">
                 <div v-for="(item, idx) in actions" :key="idx"
                      class="dw-action-item dw-fade-up"
                      :style="{ animationDelay: `${idx * 60}ms` }"

@@ -54,12 +54,12 @@ const getOptionColorClass = (key: string) => {
 
 <template>
   <div 
-    class="card question-card border-0 mb-0 shadow-sm transition-all duration-300"
+    class="card kse-question-card border-0 mb-0 shadow-sm transition-all duration-300"
     :class="[
       displayMode === 'grid' ? 'mode-grid' : 'mode-list',
       `font-${fontSize}`,
       `icon-${iconSize}`,
-      { 'is-readonly': readonly }
+      { 'is-readonly': readonly, 'is-answered': selectedOption }
     ]"
   >
     <!-- Answered accent border -->
@@ -69,7 +69,7 @@ const getOptionColorClass = (key: string) => {
       <!-- Header -->
       <div class="q-header">
         <div class="q-header-left">
-          <span class="question-number">
+          <span class="kse-question-number">
             <i class="ri-questionnaire-line q-num-icon"></i>
             {{ question.no }}
           </span>
@@ -138,8 +138,8 @@ const getOptionColorClass = (key: string) => {
             
             <div class="d-flex flex-column flex-sm-row flex-grow-1 align-items-start align-items-sm-center gap-2" style="min-width: 0;">
                 <!-- Label -->
-                <div class="option-label-wrap">
-                  <span class="option-label">{{ option.label }}</span>
+                <div class="kse-option-label-wrap">
+                  <span class="kse-option-label">{{ option.label }}</span>
                 </div>
 
                 <!-- Right Side Info -->
@@ -172,7 +172,7 @@ const getOptionColorClass = (key: string) => {
 
 <style scoped>
 /* ========== CARD ========== */
-.question-card {
+.kse-question-card {
   position: relative;
   background: #ffffff;
   border-radius: 20px;
@@ -186,7 +186,7 @@ const getOptionColorClass = (key: string) => {
 }
 
 /* ========== GRID MODE (GRID) ========== */
-.mode-grid.question-card {
+.mode-grid.kse-question-card {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -206,7 +206,7 @@ const getOptionColorClass = (key: string) => {
 }
 
 /* ========== LIST MODE (SINGLE COLUMN) ========== */
-.mode-list.question-card {
+.mode-list.kse-question-card {
   margin-bottom: 0;
   border-radius: 16px;
 }
@@ -220,19 +220,19 @@ const getOptionColorClass = (key: string) => {
 
 /* Font Sizes */
 .font-small .question-hero { font-size: 0.85rem !important; }
-.font-small .option-label { font-size: 0.8rem !important; }
+.font-small .kse-option-label { font-size: 0.8rem !important; }
 .font-small .insight-desc { font-size: 0.75rem !important; line-height: 1.4 !important; }
 .font-small .insight-label { font-size: 9px !important; }
 .font-small .option-item { padding: 8px 12px; min-height: 40px; }
 
 .font-medium .question-hero { font-size: 0.95rem !important; }
-.font-medium .option-label { font-size: 0.85rem !important; }
+.font-medium .kse-option-label { font-size: 0.85rem !important; }
 .font-medium .insight-desc { font-size: 0.85rem !important; line-height: 1.5 !important; }
 .font-medium .insight-label { font-size: 10px !important; }
 .font-medium .option-item { padding: 12px 14px; min-height: 48px; }
 
 .font-large .question-hero { font-size: 1.1rem !important; }
-.font-large .option-label { font-size: 1rem !important; }
+.font-large .kse-option-label { font-size: 1rem !important; }
 .font-large .insight-desc { font-size: 0.95rem !important; line-height: 1.6 !important; }
 .font-large .insight-label { font-size: 11px !important; }
 .font-large .option-item { padding: 16px 18px; min-height: 56px; }
@@ -245,26 +245,26 @@ const getOptionColorClass = (key: string) => {
   .insight-box { padding: 12px; }
   
   .font-medium .question-hero { font-size: 0.9rem !important; margin-bottom: 12px; }
-  .font-medium .option-label { font-size: 0.8rem !important; }
+  .font-medium .kse-option-label { font-size: 0.8rem !important; }
   .font-medium .option-item { padding: 10px 12px; }
   
   .icon-medium .option-key { width: 32px; height: 32px; font-size: 13px; }
 }
 
 /* Icon Sizes */
-.icon-small .question-number { min-width: 20px; height: auto; font-size: 10px; padding: 4px 10px; }
+.icon-small .kse-question-number { min-width: 20px; height: auto; font-size: 10px; padding: 4px 10px; }
 .icon-small .insight-icon { width: 28px; height: 28px; min-width: 28px; font-size: 14px; }
 .icon-small .insight-icon i { font-size: 14px; }
 .icon-small .option-key { width: 28px; height: 28px; font-size: 12px; }
 .icon-small .bobot-star { font-size: 10px; }
 
-.icon-medium .question-number { min-width: 24px; height: auto; font-size: 12px; padding: 6px 14px; }
+.icon-medium .kse-question-number { min-width: 24px; height: auto; font-size: 12px; padding: 6px 14px; }
 .icon-medium .insight-icon { width: 34px; height: 34px; min-width: 34px; font-size: 17px; }
 .icon-medium .insight-icon i { font-size: 18px; }
 .icon-medium .option-key { width: 36px; height: 36px; font-size: 14px; }
 .icon-medium .bobot-star { font-size: 12px; }
 
-.icon-large .question-number { min-width: 32px; height: auto; font-size: 14px; padding: 8px 18px; }
+.icon-large .kse-question-number { min-width: 32px; height: auto; font-size: 14px; padding: 8px 18px; }
 .icon-large .insight-icon { width: 42px; height: 42px; min-width: 42px; font-size: 22px; }
 .icon-large .insight-icon i { font-size: 24px; }
 .icon-large .option-key { width: 44px; height: 44px; font-size: 18px; }
@@ -276,17 +276,17 @@ const getOptionColorClass = (key: string) => {
   height: 32px;
   font-size: 13px;
 }
-.mode-compact .option-item .option-label {
+.mode-compact .option-item .kse-option-label {
   font-size: 13px;
 }
 
-.question-card:hover {
+.kse-question-card:hover {
   box-shadow:
     0 2px 6px rgba(0,0,0,0.06),
     0 16px 40px -8px rgba(0,0,0,0.12);
 }
 
-.question-card.is-answered {
+.kse-question-card.is-answered {
   border-color: rgba(46, 204, 113, 0.2);
 }
 
@@ -323,7 +323,7 @@ const getOptionColorClass = (key: string) => {
   gap: 10px;
 }
 
-.question-number {
+.kse-question-number {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -557,11 +557,11 @@ const getOptionColorClass = (key: string) => {
 }
 
 /* Label */
-.option-label-wrap {
+.kse-option-label-wrap {
   flex: 1;
   min-width: 0;
 }
-.option-label {
+.kse-option-label {
   font-weight: 600;
   color: #334155;
   font-size: 14px;
@@ -634,15 +634,15 @@ const getOptionColorClass = (key: string) => {
 }
 
 /* ========== COMPREHENSIVE DARK MODE ========== */
-[data-theme-mode="dark"] .question-card {
+[data-theme-mode="dark"] .kse-question-card {
   background: #1e293b;
   border-color: rgba(255,255,255,0.06);
   box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 8px 24px -4px rgba(0,0,0,0.3);
 }
-[data-theme-mode="dark"] .question-card:hover {
+[data-theme-mode="dark"] .kse-question-card:hover {
   box-shadow: 0 2px 6px rgba(0,0,0,0.3), 0 16px 40px -8px rgba(0,0,0,0.4);
 }
-[data-theme-mode="dark"] .question-card.is-answered {
+[data-theme-mode="dark"] .kse-question-card.is-answered {
   border-color: rgba(46, 204, 113, 0.15);
 }
 
@@ -652,7 +652,7 @@ const getOptionColorClass = (key: string) => {
   box-shadow: 2px 0 12px rgba(46,204,113,0.2);
 }
 
-[data-theme-mode="dark"] .question-number {
+[data-theme-mode="dark"] .kse-question-number {
   color: #60a5fa;
   background: rgba(96,165,250,0.1);
 }
@@ -705,7 +705,7 @@ const getOptionColorClass = (key: string) => {
   background: linear-gradient(135deg, rgba(46,213,115,0.12) 0%, rgba(46,213,115,0.04) 100%);
 }
 
-[data-theme-mode="dark"] .option-label { color: #e2e8f0; }
+[data-theme-mode="dark"] .kse-option-label { color: #e2e8f0; }
 [data-theme-mode="dark"] .bobot-badge { background: rgba(255,255,255,0.06); color: #94a3b8; }
 [data-theme-mode="dark"] .click-ripple {
   background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 60%);

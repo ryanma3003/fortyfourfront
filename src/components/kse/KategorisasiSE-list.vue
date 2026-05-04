@@ -61,9 +61,7 @@ onMounted(async () => {
 async function fetchEditRequests() {
   try {
     editRequests.value = await seEditService.getRequests();
-  } catch (e) {
-    console.warn('Failed to fetch edit requests:', e);
-  }
+  } catch {}
 }
 
 async function loadEntries() {
@@ -134,9 +132,7 @@ async function loadEntries() {
         kseStore.loadAnswersFromApi(apiEntries[i].id, companySe[i]);
       }
     }
-  } catch (e) {
-    console.warn('Failed to load SE from API:', e);
-  }
+  } catch {}
 
   // 3. Merge: API entries first, then unique local entries
   const mappedIds = new Set(apiEntries.map(e => e.id));
@@ -259,9 +255,7 @@ async function confirmAdd() {
       if (myCsirt && myCsirt.id) {
         csirtId = String(myCsirt.id);
       }
-    } catch (e) {
-      console.warn('[KSE-list] Could not resolve CSIRT for company:', e);
-    }
+    } catch {}
   }
 
   // Pre-fill respondent profile with company + CSIRT data for the SE creation flow
@@ -312,7 +306,7 @@ async function confirmDelete() {
   if (!deleteTarget.value) return;
   if (deleteTarget.value.fromApi && deleteTarget.value.seId) {
     try { await csirtService.deleteSe(deleteTarget.value.seId as any); }
-    catch (e) { console.warn('Failed to delete SE from API:', e); }
+    catch {}
   }
   kseEntries.value = kseEntries.value.filter(e => e.id !== deleteTarget.value!.id);
   kseStore.resetStakeholderData(deleteTarget.value.id);

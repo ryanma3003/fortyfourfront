@@ -7,25 +7,50 @@ import {
   getSubSektorName,
   getSubSektorParentId,
 } from "@/services/sektor.service";
+import { useRouter } from "vue-router";
 import { useStakeholdersStore } from "@/stores/stakeholders";
+import { useDashboardFilterStore } from "@/stores/dashboardFilter";
 
 // ─── State ──────────────────────────────────────────────
+const props = defineProps({
+  sektorList: { type: Array, default: () => [] },
+  subSektorList: { type: Array, default: () => [] },
+});
+
 const sektorList = ref([]);
 const subSektorList = ref([]);
 const loading = ref(true);
 const error = ref(null);
 const stakeholdersStore = useStakeholdersStore();
+const filterStore = useDashboardFilterStore();
+const router = useRouter();
 
 // ─── Filters ────────────────────────────────────────────
 const searchQuery = ref("");
-const selectedSektorId = ref("");
-const selectedSubSektorId = ref("");
+const selectedSektorId = computed({
+  get: () => filterStore.sektorId || "",
+  set: (value) => filterStore.setSektorId(value || ""),
+});
+const selectedSubSektorId = computed({
+  get: () => (filterStore.subSektorId === "ALL" ? "" : filterStore.subSektorId || ""),
+  set: (value) => filterStore.setSubSektorId(value || ""),
+});
 const sortBy = ref("name"); // 'name' | 'count'
 const sortOrder = ref("asc"); // 'asc' | 'desc'
 const viewMode = ref("overview"); // 'overview' | 'table' | 'cards'
 const chartLevel = ref("sektor"); // 'sektor' | 'subsektor'
 const expandedSektors = ref(new Set());
 const isReady = ref(false);
+let fetchSeq = 0;
+
+const hasProvidedOptions = computed(() => props.sektorList.length > 0 && props.subSektorList.length > 0);
+
+const syncProvidedOptions = () => {
+  if (!hasProvidedOptions.value) return false;
+  sektorList.value = props.sektorList;
+  subSektorList.value = props.subSektorList;
+  return true;
+};
 
 // ─── Color Palette ──────────────────────────────────────
 const sektorColors = [
@@ -35,29 +60,91 @@ const sektorColors = [
   "#1d4ed8", "#b91c1c", "#475569", "#047857",
 ];
 
-const getSektorColor = (index) => sektorColors[index % sektorColors.length];
+const sektorColorRules = [
+  { keywords: ["agro", "surveyor", "jasa konstruksi"], color: "#2563eb" },
+  { keywords: ["kimia", "farmasi", "tekstil", "ikft"], color: "#059669" },
+  { keywords: ["logam", "mesin", "alat transportasi", "elektronika", "ilmate"], color: "#ea580c" },
+  { keywords: ["kawasan industri"], color: "#0d9488" },
+];
+
+const getSektorColor = (index, sektorName = "") => {
+  const normalized = String(sektorName || "").toLowerCase();
+  const matchedRule = sektorColorRules.find((rule) =>
+    rule.keywords.some((keyword) => normalized.includes(keyword))
+  );
+  return matchedRule?.color || sektorColors[index % sektorColors.length];
+};
+
+const hexToRgb = (hex) => {
+  const normalized = String(hex || "").replace("#", "");
+  const full = normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized;
+  const value = Number.parseInt(full, 16);
+  if (Number.isNaN(value)) return { r: 37, g: 99, b: 235 };
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
+};
+
+const rgbToHex = ({ r, g, b }) =>
+  "#" + [r, g, b].map((value) =>
+    Math.max(0, Math.min(255, Math.round(value)))
+      .toString(16)
+      .padStart(2, "0")
+  ).join("");
+
+const mixColor = (hex, mixHex, amount) => {
+  const base = hexToRgb(hex);
+  const mix = hexToRgb(mixHex);
+  return rgbToHex({
+    r: base.r + (mix.r - base.r) * amount,
+    g: base.g + (mix.g - base.g) * amount,
+    b: base.b + (mix.b - base.b) * amount,
+  });
+};
+
+const getSubSektorChartColor = (parentColor, subIndex) => {
+  const variants = [
+    parentColor,
+    mixColor(parentColor, "#ffffff", 0.22),
+    mixColor(parentColor, "#0f172a", 0.16),
+    mixColor(parentColor, "#ffffff", 0.36),
+    mixColor(parentColor, "#0f172a", 0.28),
+    mixColor(parentColor, "#38bdf8", 0.18),
+  ];
+  return variants[subIndex % variants.length];
+};
 
 // ─── Fetch Data ─────────────────────────────────────────
 const fetchData = async () => {
+  const token = ++fetchSeq;
   loading.value = true;
   error.value = null;
   try {
+    const optionsPromise = syncProvidedOptions()
+      ? Promise.resolve()
+      : (async () => {
+          const [sektors, subSektors] = await Promise.all([
+            sektorService.getAll(),
+            subSektorService.getAll(),
+          ]);
+          if (token !== fetchSeq) return;
+          sektorList.value = Array.isArray(sektors) ? sektors : [];
+          subSektorList.value = Array.isArray(subSektors) ? subSektors : [];
+        })();
+
     await Promise.all([
-      (async () => {
-        const [sektors, subSektors] = await Promise.all([
-          sektorService.getAll(),
-          subSektorService.getAll(),
-        ]);
-        sektorList.value = sektors;
-        subSektorList.value = subSektors;
-      })(),
-      stakeholdersStore.initialize(),
+      optionsPromise,
+      stakeholdersStore.initialized ? Promise.resolve() : stakeholdersStore.initialize(),
     ]);
   } catch (e) {
     console.error("Failed to fetch sektor data:", e);
     error.value = "Gagal memuat data stakeholder. Pastikan API tersedia.";
   } finally {
-    loading.value = false;
+    if (token === fetchSeq) loading.value = false;
   }
 };
 
@@ -65,8 +152,20 @@ onMounted(async () => {
   await fetchData();
   setTimeout(() => {
     isReady.value = true;
-  }, 4000);
+  }, 160);
 });
+
+watch(
+  () => [props.sektorList, props.subSektorList],
+  () => {
+    if (syncProvidedOptions()) {
+      error.value = null;
+      loading.value = false;
+      isReady.value = true;
+    }
+  },
+  { deep: true }
+);
 
 // ─── Computed: Enriched Sektor Data ─────────────────────
 
@@ -117,8 +216,51 @@ const resolveSektorId = (s, subSektors) => {
   return null;
 };
 
+const isInDateRange = (createdAt, range) => {
+  if (!range || (!range[0] && !range[1])) return true;
+  if (!createdAt) return false;
+
+  const date = new Date(createdAt);
+  if (isNaN(date.getTime())) return false;
+
+  const start = range[0] ? new Date(range[0]) : null;
+  const end = range[1] ? new Date(range[1]) : null;
+  if (start) start.setHours(0, 0, 0, 0);
+  if (end) end.setHours(23, 59, 59, 999);
+
+  return (!start || date >= start) && (!end || date <= end);
+};
+
+const analyticsStakeholders = computed(() => {
+  return stakeholdersStore.allStakeholders.filter((stakeholder) =>
+    isInDateRange(stakeholder.created_at || stakeholder.updated_at, filterStore.dateRange)
+  );
+});
+
+const normalizedSearchQuery = computed(() => searchQuery.value.trim().toLowerCase());
+
+const stakeholderMatchesSearch = (stakeholder, q) => {
+  if (!q) return true;
+  return [
+    stakeholder?.nama_perusahaan,
+    stakeholder?.nama,
+    stakeholder?.email,
+    stakeholder?.telepon,
+    stakeholder?.alamat,
+  ].some((value) => String(value || "").toLowerCase().includes(q));
+};
+
+const getStakeholdersBySubSektorId = (subSektorId, q = "") => {
+  return analyticsStakeholders.value.filter((stakeholder) => {
+    const stakeholderSubSektorId = resolveSubSektorId(stakeholder, subSektorList.value);
+    return stakeholderSubSektorId
+      && String(stakeholderSubSektorId) === String(subSektorId)
+      && stakeholderMatchesSearch(stakeholder, q);
+  });
+};
+
 const enrichedSektors = computed(() => {
-  const allStakeholders = stakeholdersStore.allStakeholders;
+  const allStakeholders = analyticsStakeholders.value;
   const allSubSektors = subSektorList.value;
 
   return sektorList.value.map((sektor, idx) => {
@@ -146,10 +288,12 @@ const enrichedSektors = computed(() => {
       };
     });
 
+    const displayName = getSektorName(sektor);
+
     return {
       ...sektor,
-      displayName: getSektorName(sektor),
-      color: getSektorColor(idx),
+      displayName,
+      color: getSektorColor(idx, displayName),
       stakeholderCount: sektorStakeholders.length,
       subSektors,
       subSektorCount: children.length,
@@ -177,25 +321,52 @@ const filteredSektors = computed(() => {
       )
     );
     // Also filter the sub sektors within each sektor to only the selected one
-    data = data.map((s) => ({
-      ...s,
-      subSektors: s.subSektors.filter(
+    data = data.map((s) => {
+      const subSektors = s.subSektors.filter(
         (ss) => String(ss.id) === String(selectedSubSektorId.value)
-      ),
-      subSektorCount: s.subSektors.filter(
-        (ss) => String(ss.id) === String(selectedSubSektorId.value)
-      ).length,
-    }));
+      );
+
+      return {
+        ...s,
+        subSektors,
+        subSektorCount: subSektors.length,
+        stakeholderCount: subSektors.reduce((total, subSektor) => total + subSektor.stakeholderCount, 0),
+      };
+    });
   }
 
-  // Filter by search
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase();
-    data = data.filter(
-      (s) =>
-        s.displayName.toLowerCase().includes(q) ||
-        s.subSektors.some((ss) => ss.displayName.toLowerCase().includes(q))
-    );
+  // Filter by search, including stakeholder names inside sub sectors.
+  if (normalizedSearchQuery.value) {
+    const q = normalizedSearchQuery.value;
+    data = data
+      .map((sektor) => {
+        const sektorMatches = sektor.displayName.toLowerCase().includes(q);
+        if (sektorMatches) return sektor;
+
+        const subSektors = sektor.subSektors
+          .map((subSektor) => {
+            const subSektorMatches = subSektor.displayName.toLowerCase().includes(q);
+            const matchedStakeholders = getStakeholdersBySubSektorId(subSektor.id, q);
+
+            if (!subSektorMatches && !matchedStakeholders.length) return null;
+
+            return {
+              ...subSektor,
+              stakeholderCount: subSektorMatches
+                ? subSektor.stakeholderCount
+                : matchedStakeholders.length,
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          ...sektor,
+          subSektors,
+          subSektorCount: subSektors.length,
+          stakeholderCount: subSektors.reduce((total, subSektor) => total + subSektor.stakeholderCount, 0),
+        };
+      })
+      .filter((sektor) => sektor.subSektors.length || sektor.displayName.toLowerCase().includes(q));
   }
 
   // Sort
@@ -210,10 +381,20 @@ const filteredSektors = computed(() => {
   return data;
 });
 
+const maxFilteredStakeholderCount = computed(() => {
+  if (!filteredSektors.value.length) return 1;
+  return Math.max(1, ...filteredSektors.value.map((sektor) => sektor.stakeholderCount || 0));
+});
+
+const maxFilteredSubSektorStakeholderCount = computed(() => {
+  if (!groupedSubSektorStakeholders.value.length) return 1;
+  return Math.max(1, ...groupedSubSektorStakeholders.value.map((group) => group.stakeholders.length || 0));
+});
+
 // Active filter count for badge
 const activeFilterCount = computed(() => {
   let count = 0;
-  if (searchQuery.value.trim()) count++;
+  if (normalizedSearchQuery.value) count++;
   if (selectedSektorId.value) count++;
   if (selectedSubSektorId.value) count++;
   if (sortBy.value !== "name" || sortOrder.value !== "asc") count++;
@@ -229,10 +410,20 @@ const filteredSubSektorOptions = computed(() => {
   });
 });
 
+const selectedSektorName = computed(() => (
+  enrichedSektors.value.find((sektor) => String(sektor.id) === String(selectedSektorId.value))?.displayName || "Sektor"
+));
+
+const selectedSubSektorName = computed(() => (
+  subSektorList.value.find((subSektor) => String(subSektor.id) === String(selectedSubSektorId.value))
+    ? getSubSektorName(subSektorList.value.find((subSektor) => String(subSektor.id) === String(selectedSubSektorId.value)))
+    : "Sub Sektor"
+));
+
 // ─── Computed: Stats ────────────────────────────────────
 const totalSektors = computed(() => sektorList.value.length);
 const totalSubSektors = computed(() => subSektorList.value.length);
-const totalStakeholders = computed(() => stakeholdersStore.allStakeholders.length);
+const totalStakeholders = computed(() => analyticsStakeholders.value.length);
 const avgStakeholderPerSektor = computed(() => {
   if (!totalSektors.value) return 0;
   return (totalStakeholders.value / totalSektors.value).toFixed(1);
@@ -257,16 +448,54 @@ const minStakeholderSektor = computed(() => {
 const flattenedSubSektors = computed(() => {
   const result = [];
   filteredSektors.value.forEach((sektor) => {
-    sektor.subSektors.forEach((ss) => {
+    sektor.subSektors.forEach((ss, subIndex) => {
       result.push({
         ...ss,
         parentName: sektor.displayName,
         parentColor: sektor.color,
+        chartColor: getSubSektorChartColor(sektor.color, subIndex),
       });
     });
   });
   return result;
 });
+
+const groupedSubSektorStakeholders = computed(() => {
+  return flattenedSubSektors.value
+    .map((subSektor) => {
+      const stakeholders = analyticsStakeholders.value
+        .filter((stakeholder) => {
+          const subSektorId = resolveSubSektorId(stakeholder, subSektorList.value);
+          return subSektorId && String(subSektorId) === String(subSektor.id);
+        })
+        .filter((stakeholder) => {
+          if (!normalizedSearchQuery.value) return true;
+          const q = normalizedSearchQuery.value;
+          return [
+            stakeholder.nama_perusahaan,
+            stakeholder.nama,
+            stakeholder.email,
+            subSektor.displayName,
+            subSektor.parentName,
+          ].some((value) => String(value || "").toLowerCase().includes(q));
+        })
+        .sort((a, b) =>
+          String(a.nama_perusahaan || a.nama || "").localeCompare(String(b.nama_perusahaan || b.nama || ""))
+        );
+
+      return {
+        ...subSektor,
+        stakeholders,
+      };
+    })
+    .filter((group) => group.stakeholders.length || selectedSubSektorId.value);
+});
+
+const openStakeholder = (stakeholder) => {
+  if (stakeholder?.slug) {
+    router.push(`/stakeholders/${stakeholder.slug}`);
+  }
+};
 
 // ─── Computed: Chart Data Source (sektor or sub-sektor level) ───
 const chartData = computed(() => {
@@ -274,7 +503,7 @@ const chartData = computed(() => {
     return {
       labels: flattenedSubSektors.value.map(ss => ss.displayName),
       values: flattenedSubSektors.value.map(ss => ss.stakeholderCount),
-      colors: flattenedSubSektors.value.map(ss => ss.parentColor),
+      colors: flattenedSubSektors.value.map(ss => ss.chartColor),
       tooltipSuffix: flattenedSubSektors.value.map(ss => ` (${ss.parentName})`),
       count: flattenedSubSektors.value.length,
     };
@@ -282,11 +511,22 @@ const chartData = computed(() => {
   return {
     labels: filteredSektors.value.map(s => s.displayName),
     values: filteredSektors.value.map(s => s.stakeholderCount),
-    colors: filteredSektors.value.map((_, i) => getSektorColor(i)),
+    colors: filteredSektors.value.map(s => s.color),
     tooltipSuffix: filteredSektors.value.map(() => ''),
     count: filteredSektors.value.length,
   };
 });
+
+const barChartHeight = computed(() => {
+  if (chartLevel.value === "subsektor") {
+    return Math.max(720, chartData.value.count * 24);
+  }
+  return Math.min(420, Math.max(260, chartData.value.count * 44));
+});
+
+const donutChartHeight = computed(() =>
+  chartLevel.value === "subsektor" ? 420 : 330
+);
 
 // ─── Chart Options: Bar Chart ───────────────────────────
 const barChartOptions = computed(() => ({
@@ -294,12 +534,13 @@ const barChartOptions = computed(() => ({
     type: "bar",
     toolbar: { show: true, tools: { download: true, selection: false, zoom: false, zoomin: false, zoomout: false, pan: false, reset: false } },
     fontFamily: "Inter, sans-serif",
+    animations: { enabled: true },
   },
   plotOptions: {
     bar: {
       horizontal: true,
-      borderRadius: 6,
-      barHeight: "65%",
+      borderRadius: 5,
+      barHeight: chartLevel.value === "subsektor" ? "72%" : "58%",
       distributed: true,
     },
   },
@@ -307,21 +548,30 @@ const barChartOptions = computed(() => ({
   dataLabels: {
     enabled: true,
     formatter: (val) => val + " stakeholder",
-    style: { fontSize: "11px", fontWeight: 600, colors: ["#fff"] },
+    style: { fontSize: "10px", fontWeight: 700, colors: ["#fff"] },
     offsetX: 4,
   },
   xaxis: {
     categories: chartData.value.labels,
-    labels: { style: { fontSize: "11px", colors: "#64748b" } },
+    labels: { style: { fontSize: "10px", colors: "#64748b" } },
   },
   yaxis: {
     labels: {
-      style: { fontSize: "11px", colors: "#64748b" },
-      maxWidth: 220,
+      style: {
+        fontSize: chartLevel.value === "subsektor" ? "11px" : "10px",
+        colors: "#475569",
+      },
+      maxWidth: chartLevel.value === "subsektor" ? 230 : 190,
     },
   },
   grid: { borderColor: "#f1f5f9", strokeDashArray: 4 },
   tooltip: {
+    fixed: {
+      enabled: chartLevel.value === "subsektor",
+      position: "topRight",
+      offsetX: -24,
+      offsetY: 12,
+    },
     y: { formatter: (val, opts) => {
       const suffix = chartData.value.tooltipSuffix[opts?.dataPointIndex] || '';
       return val + " stakeholder" + suffix;
@@ -343,25 +593,28 @@ const donutChartOptions = computed(() => ({
   chart: {
     type: "donut",
     fontFamily: "Inter, sans-serif",
+    parentHeightOffset: 0,
   },
   labels: chartData.value.labels,
   colors: chartData.value.colors,
   plotOptions: {
     pie: {
+      customScale: chartLevel.value === "subsektor" ? 1.3 : 1,
+      offsetY: chartLevel.value === "subsektor" ? 24 : 0,
       donut: {
-        size: "68%",
+        size: chartLevel.value === "subsektor" ? "58%" : "64%",
         labels: {
           show: true,
-          name: { fontSize: "13px", fontWeight: 700 },
+          name: { fontSize: "11px", fontWeight: 700 },
           value: {
-            fontSize: "20px",
+            fontSize: "18px",
             fontWeight: 800,
             formatter: (val) => val,
           },
           total: {
             show: true,
             label: "Total Stakeholder",
-            fontSize: "12px",
+            fontSize: "11px",
             color: "#94a3b8",
             formatter: (w) =>
               w.globals.seriesTotals.reduce((a, b) => a + b, 0),
@@ -373,11 +626,13 @@ const donutChartOptions = computed(() => ({
   stroke: { width: 3, colors: ["#fff"] },
   dataLabels: { enabled: false },
   legend: {
+    show: true,
     position: "bottom",
-    fontSize: "11px",
+    fontSize: "10px",
     fontWeight: 600,
-    markers: { width: 10, height: 10, radius: 3 },
-    itemMargin: { horizontal: 8, vertical: 4 },
+    markers: { width: 8, height: 8, radius: 3 },
+    itemMargin: { horizontal: 6, vertical: 3 },
+    offsetY: chartLevel.value === "subsektor" ? -8 : 0,
   },
   tooltip: {
     y: { formatter: (val) => val + " stakeholder" },
@@ -416,9 +671,21 @@ const toggleSortOrder = () => {
   sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
 };
 
-// Reset sub sektor dropdown when sektor changes
-watch(selectedSektorId, () => {
-  selectedSubSektorId.value = "";
+watch(sortBy, (newSortBy, oldSortBy) => {
+  if (newSortBy === "count" && oldSortBy !== "count") {
+    sortOrder.value = "desc";
+  }
+});
+
+watch(selectedSektorId, (newSektorId) => {
+  if (!newSektorId || !selectedSubSektorId.value) return;
+
+  const selectedSubSektor = subSektorList.value.find((subSektor) => String(subSektor.id) === String(selectedSubSektorId.value));
+  const parentId = selectedSubSektor ? getSubSektorParentId(selectedSubSektor) : null;
+
+  if (!parentId || String(parentId) !== String(newSektorId)) {
+    selectedSubSektorId.value = "";
+  }
 });
 </script>
 
@@ -613,15 +880,15 @@ watch(selectedSektorId, () => {
             <button @click="searchQuery = ''" class="sa-pill-close"><i class="ri-close-line"></i></button>
           </span>
           <span v-if="selectedSektorId" class="sa-filter-pill sa-pill-sektor">
-            <i class="ri-government-line"></i> {{ enrichedSektors.find(s => String(s.id) === String(selectedSektorId))?.displayName || 'Sektor' }}
+            <i class="ri-government-line"></i> {{ selectedSektorName }}
             <button @click="selectedSektorId = ''" class="sa-pill-close"><i class="ri-close-line"></i></button>
           </span>
           <span v-if="selectedSubSektorId" class="sa-filter-pill sa-pill-sub">
-            <i class="ri-node-tree"></i> Sub Sektor
+            <i class="ri-node-tree"></i> {{ selectedSubSektorName }}
             <button @click="selectedSubSektorId = ''" class="sa-pill-close"><i class="ri-close-line"></i></button>
           </span>
           <span v-if="sortBy !== 'name' || sortOrder !== 'asc'" class="sa-filter-pill sa-pill-sort">
-            <i class="ri-sort-asc"></i> {{ sortBy === 'name' ? 'Nama' : 'Jumlah' }} ({{ sortOrder === 'asc' ? '↑' : '↓' }})
+            <i :class="sortOrder === 'asc' ? 'ri-sort-asc' : 'ri-sort-desc'"></i> {{ sortBy === 'name' ? 'Nama' : 'Jumlah' }} ({{ sortOrder === 'asc' ? '↑' : '↓' }})
             <button @click="sortBy = 'name'; sortOrder = 'asc'" class="sa-pill-close"><i class="ri-close-line"></i></button>
           </span>
         </div>
@@ -662,9 +929,12 @@ watch(selectedSektorId, () => {
           </span>
         </div>
 
-        <div class="row g-4">
+        <div class="row g-3">
           <!-- Bar Chart -->
-          <div class="col-xl-7 animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.2s' }">
+          <div
+            class="col-xl-7 animate-show-up"
+            :style="{ animationDelay: isReady ? '0s' : '3.2s' }"
+          >
             <div class="sa-chart-card">
               <div class="sa-chart-header">
                 <div class="sa-chart-header-inner">
@@ -681,12 +951,12 @@ watch(selectedSektorId, () => {
                   </div>
                 </div>
               </div>
-              <div class="sa-chart-body">
+              <div class="sa-chart-body" :class="{ 'sa-chart-body--scroll': chartLevel === 'subsektor' }">
                 <apexchart
                   v-if="chartData.count"
                   :key="'bar-' + chartLevel"
                   type="bar"
-                  :height="Math.max(300, chartData.count * 45)"
+                  :height="barChartHeight"
                   :options="barChartOptions"
                   :series="barChartSeries"
                 />
@@ -699,7 +969,10 @@ watch(selectedSektorId, () => {
           </div>
 
           <!-- Donut Chart -->
-          <div class="col-xl-5 animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.3s' }">
+          <div
+            class="col-xl-5 animate-show-up"
+            :style="{ animationDelay: isReady ? '0s' : '3.3s' }"
+          >
             <div class="sa-chart-card">
               <div class="sa-chart-header">
                 <div class="sa-chart-header-inner">
@@ -714,16 +987,16 @@ watch(selectedSektorId, () => {
                   </div>
                 </div>
               </div>
-              <div class="sa-chart-body">
+              <div class="sa-chart-body sa-chart-body--donut">
                 <apexchart
                   v-if="chartData.count"
                   :key="'donut-' + chartLevel"
                   type="donut"
-                  height="380"
+                  :height="donutChartHeight"
                   :options="donutChartOptions"
                   :series="donutChartSeries"
                 />
-                <div v-else class="sa-empty-chart">
+                <div v-if="!chartData.count" class="sa-empty-chart">
                   <i class="ri-donut-chart-line"></i>
                   <span>Tidak ada data</span>
                 </div>
@@ -736,6 +1009,64 @@ watch(selectedSektorId, () => {
       </div>
 
       <!-- ═══════ VIEW: TABLE ═══════ -->
+        <div v-if="viewMode === 'overview' && selectedSubSektorId" class="sa-substakeholder-panel animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.35s' }">
+          <div class="sa-substakeholder-header">
+            <div>
+              <div class="sa-substakeholder-title">
+                <i class="ri-team-line"></i>
+                Daftar Stakeholder per Sub Sektor
+              </div>
+              <div class="sa-substakeholder-sub">
+                Mengikuti sektor, sub sektor, pencarian, dan periode dari filter aktif
+              </div>
+            </div>
+            <span class="sa-substakeholder-count">
+              {{ groupedSubSektorStakeholders.reduce((sum, group) => sum + group.stakeholders.length, 0) }} stakeholder
+            </span>
+          </div>
+
+          <div v-if="groupedSubSektorStakeholders.length" class="sa-substakeholder-grid">
+            <div
+              v-for="group in groupedSubSektorStakeholders"
+              :key="'stakeholder-group-' + group.id"
+              class="sa-substakeholder-card"
+            >
+              <div class="sa-substakeholder-card-head">
+                <span class="sa-substakeholder-dot" :style="{ background: group.parentColor }"></span>
+                <div class="min-w-0">
+                  <div class="sa-substakeholder-name" :title="group.displayName">{{ group.displayName }}</div>
+                  <div class="sa-substakeholder-parent" :title="group.parentName">{{ group.parentName }}</div>
+                </div>
+                <span class="sa-substakeholder-badge">{{ group.stakeholders.length }}</span>
+              </div>
+
+              <div v-if="group.stakeholders.length" class="sa-stakeholder-list">
+                <button
+                  v-for="stakeholder in group.stakeholders"
+                  :key="stakeholder.id || stakeholder.slug"
+                  class="sa-stakeholder-item"
+                  @click="openStakeholder(stakeholder)"
+                >
+                  <span class="sa-stakeholder-avatar">
+                    {{ String(stakeholder.nama_perusahaan || stakeholder.nama || '?').charAt(0).toUpperCase() }}
+                  </span>
+                  <span class="sa-stakeholder-copy">
+                    <span class="sa-stakeholder-name">{{ stakeholder.nama_perusahaan || stakeholder.nama || 'Tanpa Nama' }}</span>
+                    <span class="sa-stakeholder-meta">{{ stakeholder.email || stakeholder.telepon || '-' }}</span>
+                  </span>
+                  <i class="ri-arrow-right-up-line"></i>
+                </button>
+              </div>
+              <div v-else class="sa-stakeholder-empty">Tidak ada stakeholder</div>
+            </div>
+          </div>
+
+          <div v-else class="sa-substakeholder-empty">
+            <i class="ri-search-line"></i>
+            <span>Tidak ada stakeholder pada filter aktif</span>
+          </div>
+        </div>
+
       <div v-if="viewMode === 'table'" class="sa-table-section animate-show-up" :style="{ animationDelay: isReady ? '0s' : '3.4s' }">
         <div class="sa-table-card">
           <div class="sa-chart-header">
@@ -744,21 +1075,125 @@ watch(selectedSektorId, () => {
                 <i class="ri-table-2"></i>
               </div>
               <div>
-                <div class="sa-chart-title">Rincian Stakeholder per Sektor & Sub Sektor</div>
+                <div class="sa-chart-title">
+                  {{ selectedSubSektorId ? 'Rincian Stakeholder per Sub Sektor' : 'Rincian Stakeholder per Sektor & Sub Sektor' }}
+                </div>
                 <div class="sa-chart-sub">
-                  Klik baris sektor untuk melihat jumlah stakeholder di tiap sub sektornya
+                  {{ selectedSubSektorId
+                    ? 'Klik baris sub sektor untuk melihat daftar stakeholdernya'
+                    : 'Klik baris sektor untuk melihat jumlah stakeholder di tiap sub sektornya'
+                  }}
                 </div>
               </div>
             </div>
             <div class="sa-table-counter">
               <span class="badge bg-primary-transparent">
-                {{ filteredSektors.length }} sektor
+                {{ selectedSubSektorId ? groupedSubSektorStakeholders.length + ' sub sektor' : filteredSektors.length + ' sektor' }}
               </span>
             </div>
           </div>
 
           <div class="sa-table-body">
-            <table class="sa-table">
+            <table v-if="selectedSubSektorId" class="sa-table">
+              <thead>
+                <tr>
+                  <th style="width: 40px">#</th>
+                  <th>Nama Sub Sektor</th>
+                  <th style="width: 180px">Stakeholder</th>
+                  <th style="width: 60px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template
+                  v-for="(group, idx) in groupedSubSektorStakeholders"
+                  :key="'sub-table-' + group.id"
+                >
+                  <tr
+                    class="sa-sektor-row"
+                    :class="{ expanded: expandedSektors.has(group.id) }"
+                    @click="toggleExpand(group.id)"
+                  >
+                    <td class="sa-row-num">{{ idx + 1 }}</td>
+                    <td>
+                      <div class="sa-sektor-name-cell">
+                        <span
+                          class="sa-sektor-dot"
+                          :style="{ background: group.parentColor }"
+                        ></span>
+                        <span class="sa-sektor-name">{{ group.displayName }}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="sa-count-bar-wrap">
+                        <div
+                          class="sa-count-bar"
+                          :style="{
+                            width:
+                              (group.stakeholders.length /
+                                maxFilteredSubSektorStakeholderCount) *
+                                100 +
+                              '%',
+                            background: group.parentColor,
+                          }"
+                        ></div>
+                        <span class="sa-count-num">{{ group.stakeholders.length }}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <i
+                        class="sa-expand-icon"
+                        :class="
+                          expandedSektors.has(group.id)
+                            ? 'ri-arrow-up-s-line'
+                            : 'ri-arrow-down-s-line'
+                        "
+                      ></i>
+                    </td>
+                  </tr>
+
+                  <tr
+                    v-if="expandedSektors.has(group.id)"
+                    class="sa-sub-section-row"
+                  >
+                    <td colspan="4" class="p-0">
+                      <div class="sa-sub-table-wrap sa-sub-table-wrap--stakeholders">
+                        <div
+                          v-if="group.stakeholders.length === 0"
+                          class="sa-sub-empty"
+                        >
+                          <i class="ri-information-line"></i>
+                          Belum ada stakeholder
+                        </div>
+                        <button
+                          v-for="stakeholder in group.stakeholders"
+                          :key="stakeholder.id || stakeholder.slug"
+                          class="sa-stakeholder-item"
+                          @click.stop="openStakeholder(stakeholder)"
+                        >
+                          <span class="sa-stakeholder-avatar">
+                            {{ String(stakeholder.nama_perusahaan || stakeholder.nama || '?').charAt(0).toUpperCase() }}
+                          </span>
+                          <span class="sa-stakeholder-copy">
+                            <span class="sa-stakeholder-name">{{ stakeholder.nama_perusahaan || stakeholder.nama || 'Tanpa Nama' }}</span>
+                            <span class="sa-stakeholder-meta">{{ stakeholder.email || stakeholder.telepon || '-' }}</span>
+                          </span>
+                          <i class="ri-arrow-right-up-line"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+
+                <tr v-if="!groupedSubSektorStakeholders.length">
+                  <td colspan="4" class="sa-empty-table">
+                    <i class="ri-search-line"></i>
+                    <span>Tidak ada stakeholder pada sub sektor ini</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <table v-else class="sa-table">
               <thead>
                 <tr>
                   <th style="width: 40px">#</th>
@@ -803,7 +1238,7 @@ watch(selectedSektorId, () => {
                           :style="{
                             width:
                               (sektor.stakeholderCount /
-                                (maxStakeholderSektor.count || 1)) *
+                                maxFilteredStakeholderCount) *
                                 100 +
                               '%',
                             background: sektor.color,
@@ -972,19 +1407,19 @@ watch(selectedSektorId, () => {
    ══════════════════════════════════════════════════════════ */
 
 .sektor-analytics {
-  margin-top: 1.5rem;
-  margin-bottom: 2rem;
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 /* ─── Chart Level Toggle Bar ─────────────────────────── */
 .sa-level-toggle-bar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  margin-bottom: 1rem;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 0.85rem;
+  border-radius: 10px;
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
   flex-wrap: wrap;
 }
@@ -1014,10 +1449,10 @@ watch(selectedSektorId, () => {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 16px;
+  padding: 5px 12px;
   border: none;
   background: transparent;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: #64748b;
   cursor: pointer;
@@ -1061,9 +1496,9 @@ watch(selectedSektorId, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.25rem;
-  padding: 1rem 1.5rem;
-  border-radius: 14px;
+  margin-bottom: 0.9rem;
+  padding: 0.75rem 1.1rem;
+  border-radius: 12px;
   background: linear-gradient(
     135deg,
     #0c1e6b 0%,
@@ -1072,7 +1507,7 @@ watch(selectedSektorId, () => {
     #2563eb 75%,
     #3b82f6 100%
   );
-  box-shadow: 0 8px 32px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.18);
   position: relative;
   overflow: hidden;
 }
@@ -1094,11 +1529,11 @@ watch(selectedSektorId, () => {
 .sa-section-header-inner {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 .sa-section-icon {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1108,18 +1543,18 @@ watch(selectedSektorId, () => {
   flex-shrink: 0;
 }
 .sa-section-icon i {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   color: #fff;
 }
 .sa-section-title {
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 800;
   color: #fff;
   margin: 0;
   line-height: 1.2;
 }
 .sa-section-subtitle {
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: rgba(255, 255, 255, 0.6);
   margin: 2px 0 0;
 }
@@ -1129,14 +1564,14 @@ watch(selectedSektorId, () => {
   display: flex;
   gap: 4px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: 9px;
   padding: 3px;
 }
 .sa-view-btn {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border: none;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: rgba(255, 255, 255, 0.5);
   display: flex;
@@ -1144,7 +1579,7 @@ watch(selectedSektorId, () => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 1.1rem;
+  font-size: 0.98rem;
 }
 .sa-view-btn:hover {
   color: #fff;
@@ -1375,15 +1810,203 @@ watch(selectedSektorId, () => {
 }
 
 /* ─── Filter Bar ──────────────────────────────────────── */
+.sa-substakeholder-panel {
+  margin-top: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.sa-substakeholder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef4ff 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+.sa-substakeholder-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #172554;
+  font-size: 14px;
+  font-weight: 800;
+}
+.sa-substakeholder-title i {
+  color: #2563eb;
+  font-size: 17px;
+}
+.sa-substakeholder-sub {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.sa-substakeholder-count,
+.sa-substakeholder-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.sa-substakeholder-count {
+  padding: 6px 10px;
+}
+.sa-substakeholder-badge {
+  min-width: 28px;
+  height: 24px;
+  margin-left: auto;
+}
+.sa-substakeholder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.9rem;
+  padding: 1rem;
+}
+.sa-substakeholder-card {
+  min-width: 0;
+  border: 1px solid #e8eef7;
+  border-radius: 10px;
+  background: #fbfdff;
+  overflow: hidden;
+}
+.sa-substakeholder-card-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0.85rem 0.9rem;
+  background: #fff;
+  border-bottom: 1px solid #edf2f7;
+}
+.sa-substakeholder-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.sa-substakeholder-name,
+.sa-stakeholder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-substakeholder-name {
+  color: #172554;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.sa-substakeholder-parent {
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-stakeholder-list {
+  max-height: 246px;
+  overflow-y: auto;
+  padding: 0.55rem;
+}
+.sa-stakeholder-list,
+.sa-sub-table-wrap--stakeholders {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.sa-stakeholder-list::-webkit-scrollbar,
+.sa-sub-table-wrap--stakeholders::-webkit-scrollbar {
+  width: 6px;
+}
+.sa-stakeholder-list::-webkit-scrollbar-thumb,
+.sa-sub-table-wrap--stakeholders::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.sa-stakeholder-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 9px;
+  padding: 0.55rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.sa-stakeholder-item:hover {
+  background: #eef6ff;
+  transform: translateX(2px);
+}
+.sa-stakeholder-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+.sa-stakeholder-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.sa-stakeholder-name {
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 800;
+}
+.sa-stakeholder-meta,
+.sa-stakeholder-more,
+.sa-stakeholder-empty,
+.sa-substakeholder-empty {
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.sa-stakeholder-item i {
+  color: #94a3b8;
+  font-size: 15px;
+}
+.sa-stakeholder-more {
+  padding: 0.5rem 0.65rem 0.25rem;
+}
+.sa-stakeholder-empty,
+.sa-substakeholder-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 1rem;
+}
+.sa-substakeholder-empty {
+  min-height: 120px;
+}
+
 .sa-filter-bar {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  margin-bottom: 1.25rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
   overflow: hidden;
 }
 
@@ -1392,8 +2015,8 @@ watch(selectedSektorId, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 0.55rem 1rem;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 55%, #f3f7fc 100%);
   border-bottom: 1px solid #e2e8f0;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -1402,12 +2025,12 @@ watch(selectedSektorId, () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #334155;
 }
 .sa-filter-title-wrap > i {
-  font-size: 16px;
+  font-size: 14px;
   color: #2563eb;
 }
 .sa-filter-badge {
@@ -1435,13 +2058,13 @@ watch(selectedSektorId, () => {
   gap: 10px;
 }
 .sa-result-count {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #94a3b8;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   background: #f8fafc;
   border-radius: 6px;
   border: 1px solid #e2e8f0;
@@ -1453,12 +2076,11 @@ watch(selectedSektorId, () => {
 
 /* Filter Controls */
 .sa-filter-controls {
-  display: flex;
+  display: grid;
   align-items: flex-end;
-  gap: 1rem;
-  flex-wrap: wrap;
-  flex: 1;
-  padding: 1rem 1.25rem;
+  grid-template-columns: minmax(210px, 0.85fr) minmax(170px, 1.15fr) minmax(190px, 1.35fr) minmax(170px, 0.8fr);
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
 }
 .sa-filter-item {
   display: flex;
@@ -1466,7 +2088,7 @@ watch(selectedSektorId, () => {
   gap: 4px;
 }
 .sa-filter-label {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
@@ -1482,11 +2104,11 @@ watch(selectedSektorId, () => {
 }
 .sa-filter-select {
   min-width: 150px;
-  border-radius: 8px;
+  border-radius: 7px;
   border-color: #e2e8f0;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
-  height: 36px;
+  height: 34px;
   transition: all 0.2s;
 }
 .sa-filter-select:focus {
@@ -1503,7 +2125,7 @@ watch(selectedSektorId, () => {
 .sa-search-icon {
   position: absolute;
   left: 11px;
-  bottom: 10px;
+  bottom: 9px;
   font-size: 14px;
   color: #94a3b8;
   pointer-events: none;
@@ -1511,10 +2133,10 @@ watch(selectedSektorId, () => {
 .sa-search-input {
   padding-left: 34px;
   padding-right: 30px;
-  border-radius: 8px;
+  border-radius: 7px;
   border-color: #e2e8f0;
-  font-size: 12.5px;
-  height: 36px;
+  font-size: 12px;
+  height: 34px;
   transition: all 0.2s;
 }
 .sa-search-input:focus {
@@ -1544,16 +2166,16 @@ watch(selectedSektorId, () => {
   gap: 4px;
 }
 .sa-sort-group .sa-filter-select {
-  min-width: 120px;
+  min-width: 112px;
 }
 .sa-sort-btn {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   color: #64748b;
@@ -1568,19 +2190,19 @@ watch(selectedSektorId, () => {
 
 /* Reset Button */
 .sa-reset-btn {
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #64748b;
   white-space: nowrap;
-  height: 34px;
+  height: 30px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 .sa-reset-btn:hover:not(:disabled) {
   background: #fef2f2;
@@ -1597,7 +2219,7 @@ watch(selectedSektorId, () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0.6rem 1.25rem 0.8rem;
+  padding: 0.45rem 1rem 0.6rem;
   border-top: 1px solid #f1f5f9;
   flex-wrap: wrap;
 }
@@ -1665,22 +2287,16 @@ watch(selectedSektorId, () => {
 /* ─── Chart Cards ─────────────────────────────────────── */
 .sa-chart-card,
 .sa-table-card {
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.055);
   background: #fff;
-  border: none;
+  border: 1px solid #edf2f7;
 }
 .sa-chart-header {
-  background: linear-gradient(
-    135deg,
-    #0c1e6b 0%,
-    #1130a0 25%,
-    #1a3fc8 50%,
-    #2563eb 75%,
-    #3b82f6 100%
-  );
-  padding: 0.75rem 1.25rem;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 55%, #f3f7fc 100%);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.6rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1689,36 +2305,83 @@ watch(selectedSektorId, () => {
 .sa-chart-header-inner {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 .sa-chart-icon {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
 }
 .sa-chart-icon i {
-  font-size: 1.2rem;
-  color: #fff;
+  font-size: 1rem;
+  color: #2563eb;
 }
 .sa-chart-title {
-  font-size: 0.95rem;
+  font-size: 0.86rem;
   font-weight: 800;
-  color: #fff;
+  color: #0f172a;
   line-height: 1.2;
 }
 .sa-chart-sub {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  color: #64748b;
   margin-top: 2px;
 }
 .sa-chart-body {
-  padding: 1.25rem;
+  padding: 0.85rem 1rem 0.6rem;
   background: #fff;
+}
+.sa-chart-body--donut {
+  padding: 0.25rem 0.45rem 0.35rem;
+}
+.sa-chart-body--scroll {
+  max-height: 640px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 3.4rem;
+  padding-right: 0.45rem;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.sa-chart-body--scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sa-chart-body--scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.sa-chart-body--scroll :deep(.apexcharts-tooltip) {
+  z-index: 20 !important;
+  white-space: normal !important;
+  max-width: 360px;
+}
+.sa-chart-body :deep(.apexcharts-legend) {
+  justify-content: center !important;
+  gap: 2px 8px;
+}
+.sa-chart-body :deep(.apexcharts-legend.apx-legend-position-bottom) {
+  max-height: 130px;
+  overflow-y: auto;
+  padding: 6px 8px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.sa-chart-body :deep(.apexcharts-legend-series) {
+  align-items: center;
+  margin: 2px 6px !important;
+}
+.sa-chart-body :deep(.apexcharts-legend-text) {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sa-empty-chart {
   display: flex;
@@ -1846,6 +2509,10 @@ watch(selectedSektorId, () => {
 }
 .sa-sub-table-wrap {
   padding: 8px 16px 12px 56px;
+}
+.sa-sub-table-wrap--stakeholders {
+  max-height: 246px;
+  overflow-y: auto;
 }
 .sa-sub-row {
   display: flex;
@@ -2029,7 +2696,7 @@ watch(selectedSektorId, () => {
     grid-template-columns: 1fr;
   }
   .sa-filter-controls {
-    flex-direction: column;
+    grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
   }
   .sa-filter-item {
@@ -2072,14 +2739,24 @@ watch(selectedSektorId, () => {
   .sa-section-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
-    padding: 0.85rem 1rem;
+    gap: 10px;
+    padding: 0.75rem 0.9rem;
   }
   .sa-section-title {
     font-size: 1rem;
   }
   .sa-view-toggles {
     align-self: flex-end;
+  }
+  .sa-filter-controls {
+    grid-template-columns: 1fr;
+  }
+  .sa-level-toggle-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .sa-level-info {
+    margin-left: 0;
   }
   .sa-sub-table-wrap {
     padding-left: 24px;

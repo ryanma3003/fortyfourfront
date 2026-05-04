@@ -1,63 +1,142 @@
 import { defineStore } from 'pinia';
-
-export interface AppEvent {
-  id: string;
-  judul: string;
-  kategori: string;
-  status: 'upcoming' | 'ongoing' | 'past';
-  tanggal_mulai?: string;
-  tanggal_selesai?: string;
-  lokasi?: string;
-  deskripsi: string;
-  konten: string;
-  thumbnail?: string;
-  createdAt?: string;
-}
+import { kegiatanService } from '@/services/kegiatan.service';
+import type {
+    Kegiatan,
+    CreateKegiatanPayload,
+    UpdateKegiatanPayload,
+} from '@/types/kegiatan.types';
 
 export const useEventStore = defineStore('event', {
-  state: () => ({
-    events: [] as AppEvent[],
-    isLoaded: false,
-  }),
-  getters: {
-    totalEvents: (state) => state.events.length,
-    getEventById: (state) => (id: string) => state.events.find(e => String(e.id) === String(id)),
-  },
-  actions: {
-    async fetchEvents() {
-      if (this.isLoaded) return this.events;
-      const stored = localStorage.getItem('events_mock');
-      if (stored) {
-        this.events = JSON.parse(stored);
-      }
-      this.isLoaded = true;
-      return this.events;
+    state: () => ({
+        events: [] as Kegiatan[],
+        loading: false,
+        initialized: false,
+        error: null as string | null,
+    }),
+
+    getters: {
+        totalEvents: (state) => state.events.length,
+        getEventById: (state) => (id: number | string) =>
+            state.events.find((e) => e.id === Number(id)),
     },
-    async createEvent(payload: Omit<AppEvent, 'id'>) {
-      const newEvent: AppEvent = {
-        ...payload,
-        id: Date.now().toString(),
-        createdAt: new Date().toISOString(),
-      };
-      this.events.unshift(newEvent);
-      this.saveToStorage();
-      return newEvent;
+
+    actions: {
+        /**
+         * Fetch all events from the API.
+         * Caches in state; call refresh() to force-reload.
+         */
+        async fetchEvents() {
+            if (this.initialized) return this.events;
+
+            this.loading = true;
+            this.error = null;
+
+            try {
+                const res = await kegiatanService.getAll();
+                this.events = res.data || [];
+                this.initialized = true;
+            } catch (err: any) {
+                console.error('Failed to fetch kegiatan:', err);
+                this.error = err.message || 'Gagal memuat data event';
+                this.events = [];
+            } finally {
+                this.loading = false;
+            }
+
+            return this.events;
+        },
+
+        /**
+         * Force-refresh events list from the API.
+         */
+        async refresh() {
+            this.loading = true;
+            this.error = null;
+
+            try {
+                const res = await kegiatanService.getAll();
+                this.events = res.data || [];
+                this.initialized = true;
+            } catch (err: any) {
+                console.error('Failed to refresh kegiatan:', err);
+                this.error = err.message || 'Gagal memuat data event';
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        /**
+         * Fetch a single event by ID.
+         */
+        async fetchEventById(id: number) {
+            try {
+                const res = await kegiatanService.getById(id);
+                return res.data;
+            } catch (err: any) {
+                console.error('Failed to fetch kegiatan detail:', err);
+                throw err;
+            }
+        },
+
+        /**
+         * Create a new event.
+         */
+        async createEvent(payload: CreateKegiatanPayload) {
+            this.loading = true;
+            this.error = null;
+
+            try {
+                const res = await kegiatanService.create(payload);
+                // Refresh list to get full object from backend
+                await this.refresh();
+                return { success: true, data: res };
+            } catch (err: any) {
+                console.error('Failed to create kegiatan:', err);
+                this.error = err.message || 'Gagal membuat event';
+                this.loading = false;
+                return { success: false, error: this.error };
+            }
+        },
+
+        /**
+         * Update an existing event.
+         */
+        async updateEvent(id: number | string, payload: UpdateKegiatanPayload) {
+            this.loading = true;
+            this.error = null;
+
+            try {
+                await kegiatanService.update(Number(id), payload);
+                // Refresh list
+                await this.refresh();
+                return { success: true };
+            } catch (err: any) {
+                console.error('Failed to update kegiatan:', err);
+                this.error = err.message || 'Gagal mengupdate event';
+                this.loading = false;
+                return { success: false, error: this.error };
+            }
+        },
+
+        /**
+         * Delete an event by ID.
+         */
+        async deleteEvent(id: number | string) {
+            this.loading = true;
+            this.error = null;
+
+            try {
+                await kegiatanService.delete(Number(id));
+                // Remove locally for instant UI update
+                this.events = this.events.filter((e) => e.id !== Number(id));
+                this.loading = false;
+                return { success: true };
+            } catch (err: any) {
+                console.error('Failed to delete kegiatan:', err);
+                this.error = err.message || 'Gagal menghapus event';
+                this.loading = false;
+                return { success: false, error: this.error };
+            }
+        },
     },
-    async updateEvent(id: string, payload: Partial<AppEvent>) {
-      const idx = this.events.findIndex(e => String(e.id) === String(id));
-      if (idx !== -1) {
-        this.events[idx] = { ...this.events[idx], ...payload };
-        this.saveToStorage();
-        return this.events[idx];
-      }
-      throw new Error("Event not found");
-    },
-    async deleteEvent(id: string) {
-      this.events = this.events.filter(e => String(e.id) !== String(id));
-      this.saveToStorage();
-    },
-    saveToStorage() {
-      localStorage.setItem('events_mock', JSON.stringify(this.events));
-    }
-  }
 });
