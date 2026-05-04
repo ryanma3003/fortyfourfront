@@ -96,7 +96,6 @@ const dataToPass = computed(() => {
     try {
         const slug = route.query.slug;
         const source = route.query.source;
-        console.log("IKAS Debug: Slug:", slug, "Source:", source);
         
         // If source is 'list', user came from the list page, so back button should go to list.
         if (source === 'list') {
@@ -109,7 +108,6 @@ const dataToPass = computed(() => {
 
         if (slug) {
             const stakeholder = stakeholdersStore.getStakeholderBySlug(String(slug));
-            console.log("IKAS Debug: Found stakeholder:", stakeholder);
 
             if (stakeholder) {
                 return {
@@ -261,7 +259,6 @@ const validateAssessment = async () => {
         console.warn('[IKAS] Triggering validation for ID:', ikasId);
         const result = await ikasStore.validateIkas(currentSlug.value);
         if (result.success) {
-            console.log('[IKAS] Validation successful');
             alert('Data penilaian berhasil divalidasi.');
             syncIkasRecordState({ editRequestStatus: 'none', isValidated: true });
         } else {

@@ -134,8 +134,6 @@ const handleSaveAction = async () => {
     const stakeholder = slug ? stakeholdersStore.getStakeholderBySlug(slug) : null;
     const profile = assessmentStore.respondentProfile;
 
-  console.log('[AssessmentView] handleSaveAction start', { slug, allQuestionsAnswered: allQuestionsAnswered.value });
-
     if (!stakeholder?.id || !profile) {
       toast.error('Data Form Responden tidak lengkap', {
         autoClose: 4000,
@@ -154,14 +152,11 @@ const handleSaveAction = async () => {
     };
 
     if (allQuestionsAnswered.value) {
-      console.log('[AssessmentView] Saving final assessment', { respondentPayload });
       try {
         const result = await ikasStore.submitToBackend(slug, respondentPayload);
         const answerSyncResult = await assessmentStore.syncPendingAnswersToBackend(slug);
         // Domain summary sync is disabled for this backend. Skip submitAllDomainScores.
         const domainResult = { success: true, errors: [], warnings: ['Domain summary sync disabled on client'] };
-
-        console.log('[AssessmentView] save results', { result, answerSyncResult, domainResult });
 
         const completed = result.success && answerSyncResult.success && assessmentStore.completeAssessment();
 
@@ -195,13 +190,10 @@ const handleSaveAction = async () => {
       }
     } else {
       try {
-        console.log('[AssessmentView] Saving draft', { respondentPayload });
         const result = await ikasStore.submitToBackend(slug, respondentPayload);
         const answerSyncResult = await assessmentStore.syncPendingAnswersToBackend(slug);
         // Skip domain summary sync — backend doesn't expose these endpoints.
         const domainResult = { success: true, errors: [], warnings: ['Domain summary sync disabled on client'] };
-
-        console.log('[AssessmentView] draft save results', { result, answerSyncResult, domainResult });
 
         if (result.success && answerSyncResult.success) {
           toast.info('Data berhasil disimpan sementara ke server', {
@@ -247,7 +239,7 @@ const handleEditData = () => {
 </script>
 
 <template>
-  <div class="assessment-container">
+  <div class="assessment-container" :class="{ 'assessment-container-embedded': embedded }">
   <div class="row sticky-progress-row">
     <div class="col-12">
       <div class="progress-wrapper">
@@ -576,6 +568,12 @@ const handleEditData = () => {
   margin-top: -10px;
   padding-bottom: 1.25rem;
   margin-bottom: 1rem;
+}
+
+.assessment-container-embedded .sticky-progress-row {
+  position: static;
+  top: auto;
+  z-index: auto;
 }
 
 .progress-wrapper {

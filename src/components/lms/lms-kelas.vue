@@ -221,6 +221,7 @@ export default {
       formErrors.value = {};
       if (!formKelas.value.nama_kelas) formErrors.value.nama_kelas = "Wajib diisi";
       if (!formKelas.value.deskripsi) formErrors.value.deskripsi = "Wajib diisi";
+      if (!formKelas.value.kategori) formErrors.value.kategori = "Wajib diisi";
       if (Number(formKelas.value.durasi_jp) < 0) formErrors.value.durasi_jp = "Durasi tidak boleh negatif";
       if (Object.keys(formErrors.value).length > 0) return;
       
@@ -301,6 +302,8 @@ export default {
       return classKuisList.value.filter(k => String(k.id_materi) === String(materiId)).length;
     };
     
+    const kategoriOptions = ref(['Cybersecurity', 'CSIRT', 'Networking', 'Compliance', 'Risk Management', 'Incident Response', 'Lainnya']);
+    
     // UI Expand / Collapse Soal state
     return {
       isInitialLoading,
@@ -313,7 +316,7 @@ export default {
       openMateriModal, openKuisModal,
       openDeleteModal, confirmDelete, deleteType, deleteTarget,
       getAvatarClass, findMateriJudul, countKuisForMateri,
-      thumbnailPreview
+      thumbnailPreview, kategoriOptions
     };
   }
 };
@@ -614,8 +617,18 @@ export default {
                 <div class="invalid-feedback">{{ formErrors.deskripsi }}</div>
               </div>
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Kategori</label>
-                <input v-model="formKelas.kategori" type="text" class="form-control kse-modal-input" placeholder="Contoh: Teknis, Manajerial">
+                <label class="form-label fw-semibold">Kategori <span class="text-danger">*</span></label>
+                <VueMultiselect
+                  v-model="formKelas.kategori"
+                  :options="kategoriOptions"
+                  :searchable="true"
+                  placeholder="Pilih kategori..."
+                  select-label=""
+                  selected-label="Terpilih"
+                  deselect-label="Hapus"
+                  :class="{'is-invalid': formErrors.kategori}"
+                />
+                <div v-if="formErrors.kategori" class="text-danger fs-12 mt-1">{{ formErrors.kategori }}</div>
               </div>
               <div class="col-md-6">
                 <label class="form-label fw-semibold">Penyelenggara</label>
@@ -706,3 +719,38 @@ export default {
     </div>
   </div>
 </template>
+
+<style>
+/* Vue-Multiselect Dark Mode Fixes */
+[data-theme-mode="dark"] .multiselect__tags,
+[data-theme-mode="dark"] .multiselect__input,
+[data-theme-mode="dark"] .multiselect__single {
+  background-color: var(--custom-white) !important;
+  color: var(--default-text-color) !important;
+  border-color: var(--default-border) !important;
+}
+
+[data-theme-mode="dark"] .multiselect__content-wrapper {
+  background-color: var(--custom-white) !important;
+  border-color: var(--default-border) !important;
+}
+
+[data-theme-mode="dark"] .multiselect__option {
+  color: var(--default-text-color) !important;
+}
+
+[data-theme-mode="dark"] .multiselect__option--highlight {
+  background-color: var(--primary-color) !important;
+  color: #fff !important;
+}
+
+[data-theme-mode="dark"] .multiselect__option--selected {
+  background-color: rgba(var(--primary-rgb), 0.1) !important;
+  color: var(--default-text-color) !important;
+}
+
+[data-theme-mode="dark"] .multiselect__option--selected.multiselect__option--highlight {
+  background-color: var(--primary-color) !important;
+  color: #fff !important;
+}
+</style>

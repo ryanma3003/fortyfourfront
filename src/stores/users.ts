@@ -206,7 +206,6 @@ export const useUsersStore = defineStore('users', {
         if (userIdPerusahaan) {
           try {
             await stakeholdersService.delete(userIdPerusahaan);
-            console.log(`Company (${userIdPerusahaan}) deleted along with user (${id})`);
           } catch (companyError) {
             console.warn('Failed to delete associated company:', companyError);
             // Continue even if company deletion fails

@@ -920,7 +920,6 @@ export const useIkasStore = defineStore('ikas', {
 
         this.backendSyncedMap[slug] = true;
         this.apiLoading = false;
-        console.log('[IKAS Store] Backend submit success:', response);
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] Backend submit failed:', error);
@@ -1014,7 +1013,6 @@ export const useIkasStore = defineStore('ikas', {
         this.saveToStorage();
 
         this.apiLoading = false;
-        console.log('[IKAS Store] Fetched from backend:', matchedRecord);
 
         // Return respondent data for the caller to populate profiles
         return {
@@ -1093,7 +1091,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createIdentifikasi(payload);
-        console.log('[IKAS Store] Identifikasi submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1130,7 +1127,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createProteksi(payload);
-        console.log('[IKAS Store] Proteksi submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1164,7 +1160,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createDeteksi(payload);
-        console.log('[IKAS Store] Deteksi submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1199,7 +1194,6 @@ export const useIkasStore = defineStore('ikas', {
         };
 
         await ikasService.createGulih(payload);
-        console.log('[IKAS Store] Gulih submitted successfully');
         return { success: true };
       } catch (error: any) {
         if (this.isMissingDomainEndpointError(error)) {
@@ -1222,7 +1216,6 @@ export const useIkasStore = defineStore('ikas', {
      */
     async seedAssessmentStructure(): Promise<{ success: boolean; error?: string }> {
       try {
-        console.log('[IKAS Store] Seeding assessment structure...');
 
         // Import assessment data structure
         const { assessmentData } = await import('@/data/assessment/assessment-data');
@@ -1287,7 +1280,6 @@ export const useIkasStore = defineStore('ikas', {
           }
         }
 
-        console.log('[IKAS Store] Assessment structure seeded successfully');
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] Seed assessment structure failed:', error);

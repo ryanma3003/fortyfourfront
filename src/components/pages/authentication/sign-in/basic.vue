@@ -21,21 +21,15 @@ const handleLogin = async () => {
         password: password.value,
     });
     
-    console.log('Login result:', result);
-
     if (result.authenticated) {
-        console.log('Authenticated! Redirecting based on role...');
         try {
             // Redirect based on user role
             const userRole = authStore.userRole;
             const redirectPath = userRole === 'admin' ? '/dashboard' : '/dashboard';
             await router.push(redirectPath);
-            console.log(`Redirect called to ${redirectPath}`);
         } catch (e) {
             console.error('Redirect failed:', e);
         }
-    } else {
-        console.log('Not authenticated.');
     }
 };
 

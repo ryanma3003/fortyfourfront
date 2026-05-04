@@ -10,7 +10,6 @@
 import { ref } from 'vue';
 
 const toggleChat = () => {
-  console.log('Chatbot toggled');
   // Future implementation: toggle chat window
 };
 </script>

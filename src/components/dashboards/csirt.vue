@@ -125,8 +125,6 @@ export default {
             const id = csirtId.value;
             if (!id) return [];
             const sid = String(id);
-            console.log('[csirt.vue] filtering seList with target sid:', sid);
-            console.log('[csirt.vue] current seList:', csirtStore.seList);
             return csirtStore.seList.filter((item: any) => {
                 const currentPerusahaanId = String(currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id);
                 const match = String(item.id_csirt) === sid || 

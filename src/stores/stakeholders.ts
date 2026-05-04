@@ -105,7 +105,6 @@ export const useStakeholdersStore = defineStore('stakeholders', {
 
             initializePromise = (async () => {
                 const data = await stakeholdersService.getAll();
-                console.log('Stakeholders from backend:', data);
                 this.stakeholders = data.map(s => ({
                     ...s,
                     slug: s.slug || this.generateSlug(s.nama_perusahaan),

@@ -189,6 +189,7 @@ class ApiClient {
             soal: 'soal',
             aktivitas: 'aktivitas',
             kegiatan: 'kegiatan',
+            berita: 'berita',
             casbin: 'casbin_policy',
         };
 

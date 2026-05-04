@@ -156,7 +156,6 @@ class NotificationService {
             this.eventSource.onopen = () => {
                 this.reconnectAttempt = 0;
                 this.setConnected(true);
-                console.log('[NotifService] SSE connected →', url);
             };
 
             this.eventSource.onmessage = (event) => {

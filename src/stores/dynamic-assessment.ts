@@ -268,7 +268,6 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     try {
                         const subKResp = await ikasService.getSubKategoris();
                         const subKList = Array.isArray(subKResp) ? subKResp : (subKResp?.data || []);
-                        console.log('[DynamicAssessment] fetched sub-kategori count:', subKList.length);
                         subKList.forEach((sk: any) => {
                             const kategoriId = String(sk.kategori_id || sk.KategoriID || sk.kategori?.id || sk.Kategori?.ID || sk.kategori_id);
                             const domainId = String(sk.domain_id || sk.DomainID || sk.kategori?.domain?.id || sk.kategori?.Domain?.ID || '');
@@ -293,7 +292,6 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     try {
                         const rlResp = await ikasService.getRuangLingkups();
                         const rlList = Array.isArray(rlResp) ? rlResp : (rlResp?.data || []);
-                        console.log('[DynamicAssessment] fetched ruang-lingkup count:', rlList.length);
                     } catch (err) {
                         console.warn('[DynamicAssessment] Failed to fetch ruang-lingkups for seeding', err);
                     }
@@ -326,7 +324,6 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 this.rawJsonString = JSON.stringify(allQuestions.slice(0, 2), null, 2) || '';
 
                 if (allQuestions.length === 0) {
-                     console.log("[DynamicAssessment] No questions found across all endpoints, but domains are loaded.");
                 }
 
                 allQuestions.forEach((q: any, index: number) => {
@@ -566,8 +563,6 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     : await ikasService.createJawabanByKategori(domainKey, payload);
                 
                 try {
-                    console.log('[DynamicAssessment] syncAnswerToBackend payload:', payload);
-                    console.log('[DynamicAssessment] syncAnswerToBackend response:', response);
                 } catch (e) {}
 
                 this.syncedBackendAnswersMap[stakeholderSlug][questionId] = index;
@@ -608,7 +603,6 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
 
                 // Debug: log raw results for each domain fetch
                 try {
-                    console.log('[DynamicAssessment] hydrateAnswers raw results:', results);
                 } catch (e) {}
 
                 // Process each result set separately to preserve domain type info

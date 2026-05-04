@@ -116,11 +116,8 @@ onMounted(async () => {
 
   // 1. Fill company info from stakeholder profile (API /api/perusahaan)
   const companySlug = props.stakeholderSlug || '';
-  console.log('[RespondentFormKse] props:', { slug: props.slug, stakeholderSlug: props.stakeholderSlug, seId: props.seId });
-  console.log('[RespondentFormKse] companySlug:', companySlug, '| stakeholders count:', stakeholdersStore.stakeholders.length);
   if (companySlug) {
     const stakeholder = stakeholdersStore.getStakeholderBySlug(companySlug);
-    console.log('[RespondentFormKse] stakeholder found:', stakeholder ? stakeholder.nama_perusahaan : 'NOT FOUND');
     if (stakeholder) {
       formData.namaPerusahaan = stakeholder.nama_perusahaan || '';
       formData.alamat         = stakeholder.alamat          || '';
@@ -162,9 +159,7 @@ onMounted(async () => {
         formData.id_sub_sektor = se.id_sub_sektor || formData.id_sub_sektor;
         formData.fromCsirt     = true;  // SE data fields editable
       }
-    } catch (e) {
-      console.warn('Failed to load SE data from API:', e);
-    }
+    } catch {}
   }
 
   // 4. Auto-fill namaSistem from kse store if still empty

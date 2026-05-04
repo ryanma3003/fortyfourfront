@@ -294,7 +294,6 @@ const saveProfile = async () => {
       if (found) profileData.jabatan = found.nama_jabatan;
     }
     
-    console.log('Saving profile data:', profileData);
     
     // Save to API
     const result = await profileStore.saveToApi(profileData);

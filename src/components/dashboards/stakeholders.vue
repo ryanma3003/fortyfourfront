@@ -1256,42 +1256,48 @@ getSektorBadgeStyle: (subSektorName: string) => {
                         </a>
                       </td>
                       <td class="text-center align-middle">
-                        <div class="status-progress-cell" :class="getProgressClass(getStakeholderConversion(item).percent)">
-                          <div class="status-progress-head">
-                            <span class="monitoring-label" :class="getProgressClass(getStakeholderConversion(item).percent)">
-                              {{ getMonitoringStatusLabel(item) }}
-                            </span>
-                            <strong>{{ getStakeholderConversion(item).percent }}%</strong>
+                        <div class="d-flex align-items-center justify-content-center gap-3 flex-wrap flex-xl-nowrap">
+                          <div class="status-progress-cell m-0 flex-grow-1" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                            <div class="status-progress-head">
+                              <span class="monitoring-label" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                                {{ getMonitoringStatusLabel(item) }}
+                              </span>
+                              <strong>{{ getStakeholderConversion(item).percent }}%</strong>
+                            </div>
+                            <div class="conversion-track">
+                              <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
+                            </div>
+                            <small>{{ getStakeholderConversion(item).completed }}/{{ getStakeholderConversion(item).total }} data lengkap</small>
                           </div>
-                          <div class="conversion-track">
-                            <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
-                          </div>
-                          <small>{{ getStakeholderConversion(item).completed }}/{{ getStakeholderConversion(item).total }} data lengkap</small>
-                        </div>
-                        <div class="status-indicators">
-                          <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="Status IKAS">
-                            <span class="badge-icon-dot">
-                              <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                            </span>
-                            <span class="badge-label">IKAS</span>
-                          </div>
-                          <div class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'" title="Status SE">
-                            <span class="badge-icon-dot">
-                              <i :class="getStakeholderSeCount(item.id) > 0 ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                            </span>
-                            <span class="badge-label">SE</span>
-                          </div>
-                          <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="Status CSIRT">
-                            <span class="badge-icon-dot">
-                              <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                            </span>
-                            <span class="badge-label">CSIRT</span>
-                          </div>
-                          <div class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'" title="Status Risiko">
-                            <span class="badge-icon-dot">
-                              <i :class="isRiskSurveyCompleted(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                            </span>
-                            <span class="badge-label">Risiko</span>
+                          <div class="status-indicators m-0 d-flex flex-column gap-1 align-items-start" style="min-width: max-content;">
+                            <div class="d-flex gap-1">
+                              <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="Status IKAS">
+                                <span class="badge-icon-dot">
+                                  <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">IKAS</span>
+                              </div>
+                              <div class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'" title="Status SE">
+                                <span class="badge-icon-dot">
+                                  <i :class="getStakeholderSeCount(item.id) > 0 ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">SE</span>
+                              </div>
+                            </div>
+                            <div class="d-flex gap-1">
+                              <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="Status CSIRT">
+                                <span class="badge-icon-dot">
+                                  <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">CSIRT</span>
+                              </div>
+                              <div class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'" title="Status Risiko">
+                                <span class="badge-icon-dot">
+                                  <i :class="isRiskSurveyCompleted(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                </span>
+                                <span class="badge-label">Risiko</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -2146,7 +2152,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
 }
 
 .th-status {
-  min-width: 260px;
+  min-width: 320px;
 }
 
 .conversion-cell {
@@ -2241,7 +2247,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
 }
 
 .status-progress-cell + .status-indicators {
-  margin-top: 9px;
+  margin-top: 0px;
 }
 
 .status-indicators {

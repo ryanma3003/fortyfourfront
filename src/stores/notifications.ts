@@ -602,7 +602,6 @@ export const useNotificationStore = defineStore('notifications', {
 
             this.initialized = true;
             this.loading = true;
-            console.log('[NotifStore] Initializing...');
 
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
@@ -644,7 +643,6 @@ export const useNotificationStore = defineStore('notifications', {
 
         startClock() {
             if (this.clockTimer) return;
-            console.log('[NotifStore] Starting reactive clock...');
             this.currentTime = Date.now();
             this.clockTimer = setInterval(() => {
                 this.currentTime = Date.now();
@@ -653,7 +651,6 @@ export const useNotificationStore = defineStore('notifications', {
 
         stopClock() {
             if (this.clockTimer) {
-                console.log('[NotifStore] Stopping reactive clock...');
                 clearInterval(this.clockTimer);
                 this.clockTimer = null;
             }
@@ -670,7 +667,6 @@ export const useNotificationStore = defineStore('notifications', {
                     if (status === 401) return false;
                     return true;
                 }
-                console.log('[NotifStore] DB load:', notifications.length, 'items, unread:', unread_count);
 
                 const normalized = notifications
                     .map(raw => normalizeToServerEvent(raw))
@@ -857,7 +853,6 @@ export const useNotificationStore = defineStore('notifications', {
                 if (matchIdx !== -1) {
                     const currentUser = getCurrentUser();
                     if (currentUser) {
-                        console.log('[NotifStore] Attributing SSE event to current user:', currentUser.name);
                         event.user = currentUser;
                     }
                     this.trackedActions.splice(matchIdx, 1);
@@ -883,7 +878,6 @@ export const useNotificationStore = defineStore('notifications', {
                 event.user.role = event.user.role || 'system';
             }
 
-            console.log('[NotifStore] Processed SSE event:', event);
 
             // ── DEDUPLICATION ──
             const isDup = this.events.some(e =>

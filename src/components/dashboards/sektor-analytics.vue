@@ -12,6 +12,11 @@ import { useStakeholdersStore } from "@/stores/stakeholders";
 import { useDashboardFilterStore } from "@/stores/dashboardFilter";
 
 // ─── State ──────────────────────────────────────────────
+const props = defineProps({
+  sektorList: { type: Array, default: () => [] },
+  subSektorList: { type: Array, default: () => [] },
+});
+
 const sektorList = ref([]);
 const subSektorList = ref([]);
 const loading = ref(true);
@@ -36,6 +41,16 @@ const viewMode = ref("overview"); // 'overview' | 'table' | 'cards'
 const chartLevel = ref("sektor"); // 'sektor' | 'subsektor'
 const expandedSektors = ref(new Set());
 const isReady = ref(false);
+let fetchSeq = 0;
+
+const hasProvidedOptions = computed(() => props.sektorList.length > 0 && props.subSektorList.length > 0);
+
+const syncProvidedOptions = () => {
+  if (!hasProvidedOptions.value) return false;
+  sektorList.value = props.sektorList;
+  subSektorList.value = props.subSektorList;
+  return true;
+};
 
 // ─── Color Palette ──────────────────────────────────────
 const sektorColors = [
@@ -105,25 +120,31 @@ const getSubSektorChartColor = (parentColor, subIndex) => {
 
 // ─── Fetch Data ─────────────────────────────────────────
 const fetchData = async () => {
+  const token = ++fetchSeq;
   loading.value = true;
   error.value = null;
   try {
+    const optionsPromise = syncProvidedOptions()
+      ? Promise.resolve()
+      : (async () => {
+          const [sektors, subSektors] = await Promise.all([
+            sektorService.getAll(),
+            subSektorService.getAll(),
+          ]);
+          if (token !== fetchSeq) return;
+          sektorList.value = Array.isArray(sektors) ? sektors : [];
+          subSektorList.value = Array.isArray(subSektors) ? subSektors : [];
+        })();
+
     await Promise.all([
-      (async () => {
-        const [sektors, subSektors] = await Promise.all([
-          sektorService.getAll(),
-          subSektorService.getAll(),
-        ]);
-        sektorList.value = sektors;
-        subSektorList.value = subSektors;
-      })(),
-      stakeholdersStore.initialize(),
+      optionsPromise,
+      stakeholdersStore.initialized ? Promise.resolve() : stakeholdersStore.initialize(),
     ]);
   } catch (e) {
     console.error("Failed to fetch sektor data:", e);
     error.value = "Gagal memuat data stakeholder. Pastikan API tersedia.";
   } finally {
-    loading.value = false;
+    if (token === fetchSeq) loading.value = false;
   }
 };
 
@@ -131,8 +152,20 @@ onMounted(async () => {
   await fetchData();
   setTimeout(() => {
     isReady.value = true;
-  }, 4000);
+  }, 160);
 });
+
+watch(
+  () => [props.sektorList, props.subSektorList],
+  () => {
+    if (syncProvidedOptions()) {
+      error.value = null;
+      loading.value = false;
+      isReady.value = true;
+    }
+  },
+  { deep: true }
+);
 
 // ─── Computed: Enriched Sektor Data ─────────────────────
 

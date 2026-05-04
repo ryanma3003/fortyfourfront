@@ -212,7 +212,6 @@ export const useAssessmentStore = defineStore('assessment', {
             const oldKeys = ['respondent_profile', 'assessment_answers', 'assessment_progress'];
             oldKeys.forEach(key => {
                 if (localStorage.getItem(key)) {
-                    console.log(`Migrating: removing old global key '${key}'`);
                     localStorage.removeItem(key);
                 }
             });

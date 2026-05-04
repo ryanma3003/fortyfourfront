@@ -1,9 +1,11 @@
 <script lang="ts">
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { useEventStore } from "../../stores/event";
+import { useBeritaStore } from "../../stores/berita";
+import { useAuthStore } from "../../stores/auth";
+import { useUsersStore } from "../../stores/users";
 import { useRouter } from "vue-router";
-import type { Kegiatan } from "../../types/kegiatan.types";
+import type { Berita } from "../../types/berita.types";
 
 export default {
   components: { Pageheader },
@@ -12,128 +14,29 @@ export default {
       dataToPass: {
         title: { label: "Dashboard", path: "/dashboard" },
         currentpage: "Event & Berita",
-        activepage: "Event",
+        activepage: "Berita",
       },
     };
   },
   setup() {
-    const eventStore = useEventStore();
+    const beritaStore = useBeritaStore();
+    const authStore = useAuthStore();
+    const usersStore = useUsersStore();
     const router = useRouter();
-    
+
     const searchQuery = ref("");
     const currentPage = ref(1);
     const itemsPerPage = ref(10);
     const isLoading = ref(true);
-    
-    // Toast
     const showToast = ref(false);
     const toastMessage = ref("");
     const toastType = ref<"success" | "error">("success");
+
     const showNotification = (msg: string, type: "success" | "error") => {
       toastMessage.value = msg;
       toastType.value = type;
       showToast.value = true;
       setTimeout(() => (showToast.value = false), 3000);
-    };
-
-    onMounted(async () => {
-      try {
-        await eventStore.fetchEvents();
-      } catch (e: any) {
-        showNotification("Gagal memuat data event", "error");
-      } finally {
-        isLoading.value = false;
-      }
-    });
-
-    const filteredData = computed(() => {
-      const q = searchQuery.value.toLowerCase().trim();
-      if (!q) return eventStore.events;
-      return eventStore.events.filter(
-        (k) =>
-          (k.judul || "").toLowerCase().includes(q) ||
-          (k.lokasi || "").toLowerCase().includes(q) ||
-          stripHtml(k.deskripsi || "").toLowerCase().includes(q)
-      );
-    });
-
-    const totalPages = computed(() => Math.max(1, Math.ceil(filteredData.value.length / itemsPerPage.value)));
-    const displayData = computed(() => {
-      const start = (currentPage.value - 1) * itemsPerPage.value;
-      return filteredData.value.slice(start, start + itemsPerPage.value);
-    });
-
-    // Modals state
-    const activeModal = ref<'delete' | null>(null);
-    const deleteTarget = ref<Kegiatan | null>(null);
-    const isSaving = ref(false);
-
-    const openCreate = () => router.push('/event/create');
-    const openEdit = (item: Kegiatan) => router.push(`/event/edit/${item.id}`);
-    const openView = (item: Kegiatan) => router.push(`/event/view/${item.id}`);
-    const switchToBerita = () => router.push('/event/berita');
-
-    // DELETE
-    const openDeleteModal = (item: Kegiatan) => {
-      deleteTarget.value = item;
-      activeModal.value = 'delete';
-    };
-    const confirmDelete = async () => {
-      if (!deleteTarget.value) return;
-      isSaving.value = true;
-      try {
-        const result = await eventStore.deleteEvent(deleteTarget.value.id);
-        if (result.success) {
-          showNotification("Event berhasil dihapus", "success");
-          activeModal.value = null;
-        } else {
-          showNotification("Gagal menghapus event: " + (result.error || ''), "error");
-        }
-      } catch(e: any) { 
-        showNotification("Gagal menghapus event", "error"); 
-      } finally { 
-        isSaving.value = false; 
-      }
-    };
-
-    const getAvatarClass = (letter: string) => {
-      const variants = ["avatar-blue","avatar-indigo","avatar-violet","avatar-purple","avatar-teal","avatar-cyan","avatar-green","avatar-amber","avatar-orange","avatar-red"];
-      const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
-      return variants[idx];
-    };
-
-    const getStatusClass = (status: string) => {
-      const s = (status || '').toLowerCase();
-      if (s === 'upcoming' || s === 'akan datang') return 'badge-sektor-amber';
-      if (s === 'ongoing' || s === 'berlangsung' || s === 'sedang berjalan') return 'badge-sektor-teal';
-      if (s === 'selesai' || s === 'past' || s === 'completed') return 'bg-secondary-transparent text-secondary';
-      if (s === 'aktif' || s === 'active') return 'badge-sektor-teal';
-      return 'bg-light text-muted';
-    };
-
-    const getStatusText = (status: string) => {
-      const s = (status || '').toLowerCase();
-      if (s === 'upcoming' || s === 'akan datang') return 'Upcoming';
-      if (s === 'ongoing' || s === 'berlangsung' || s === 'sedang berjalan') return 'Sedang Berjalan';
-      if (s === 'selesai' || s === 'past' || s === 'completed') return 'Selesai';
-      if (s === 'aktif' || s === 'active') return 'Aktif';
-      return status || '-';
-    };
-
-    const formatDate = (dateStr: string) => {
-      if (!dateStr) return '-';
-      try {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('id-ID', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-      } catch {
-        return dateStr;
-      }
     };
 
     const decodeHtmlEntities = (value: string) => {
@@ -157,15 +60,124 @@ export default {
         .replace(/&nbsp;/g, " ")
         .trim();
     };
-    
+
+    onMounted(async () => {
+      try {
+        await Promise.all([
+          beritaStore.fetchBerita(),
+          usersStore.initialize().catch(() => undefined),
+        ]);
+      } catch {
+        showNotification("Gagal memuat data berita", "error");
+      } finally {
+        isLoading.value = false;
+      }
+    });
+
+    const getAuthorName = (item: Berita) => {
+      const raw = item as any;
+      const directName =
+        raw.author?.display_name ||
+        raw.author?.name ||
+        raw.author?.username ||
+        raw.user?.display_name ||
+        raw.user?.name ||
+        raw.user?.username ||
+        raw.author_name ||
+        raw.nama_author ||
+        raw.user_name ||
+        raw.username;
+
+      if (directName) return directName;
+
+      const authorId = String(item.author_id || "");
+      const matchedUser = authorId ? usersStore.getUserById(authorId) : undefined;
+      if (matchedUser) {
+        return matchedUser.display_name || matchedUser.name || matchedUser.username || "Admin";
+      }
+
+      if (authStore.currentUser?.id && authorId === authStore.currentUser.id) {
+        return authStore.currentUser.display_name || authStore.currentUser.name || authStore.currentUser.username || "Admin";
+      }
+
+      return "Admin";
+    };
+
+    const filteredData = computed(() => {
+      const q = searchQuery.value.toLowerCase().trim();
+      if (!q) return beritaStore.berita;
+      return beritaStore.berita.filter(
+          (item) =>
+          (item.judul || "").toLowerCase().includes(q) ||
+          getAuthorName(item).toLowerCase().includes(q) ||
+          stripHtml(item.deskripsi || "").toLowerCase().includes(q)
+      );
+    });
+
+    const totalPages = computed(() => Math.max(1, Math.ceil(filteredData.value.length / itemsPerPage.value)));
+    const displayData = computed(() => {
+      const start = (currentPage.value - 1) * itemsPerPage.value;
+      return filteredData.value.slice(start, start + itemsPerPage.value);
+    });
+
+    const activeModal = ref<'delete' | null>(null);
+    const deleteTarget = ref<Berita | null>(null);
+    const isSaving = ref(false);
+
+    const openCreate = () => router.push('/event/berita/create');
+    const openEdit = (item: Berita) => router.push(`/event/berita/edit/${item.id}`);
+    const openView = (item: Berita) => router.push(`/event/berita/view/${item.id}`);
+    const switchToEvent = () => router.push('/event');
+
+    const openDeleteModal = (item: Berita) => {
+      deleteTarget.value = item;
+      activeModal.value = 'delete';
+    };
+
+    const confirmDelete = async () => {
+      if (!deleteTarget.value) return;
+      isSaving.value = true;
+      try {
+        const result = await beritaStore.deleteBerita(deleteTarget.value.id);
+        if (result.success) {
+          showNotification("Berita berhasil dihapus", "success");
+          activeModal.value = null;
+        } else {
+          showNotification("Gagal menghapus berita: " + (result.error || ''), "error");
+        }
+      } catch {
+        showNotification("Gagal menghapus berita", "error");
+      } finally {
+        isSaving.value = false;
+      }
+    };
+
+    const getAvatarClass = (letter: string) => {
+      const variants = ["avatar-blue","avatar-indigo","avatar-violet","avatar-purple","avatar-teal","avatar-cyan","avatar-green","avatar-amber","avatar-orange","avatar-red"];
+      const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
+      return variants[idx];
+    };
+
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return '-';
+      try {
+        return new Date(dateStr).toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch {
+        return dateStr;
+      }
+    };
+
     return {
-      isLoading,
-      router, eventStore, searchQuery, currentPage, itemsPerPage, filteredData, totalPages, displayData,
-      showToast, toastMessage, toastType,
-      activeModal, isSaving, deleteTarget,
-      openCreate, openEdit, openView, openDeleteModal, confirmDelete,
-      switchToBerita,
-      getAvatarClass, getStatusClass, getStatusText, formatDate, stripHtml
+      beritaStore, searchQuery, currentPage, itemsPerPage, filteredData, totalPages, displayData,
+      isLoading, showToast, toastMessage, toastType, activeModal, deleteTarget, isSaving,
+      openCreate, openEdit, openView, switchToEvent, openDeleteModal, confirmDelete,
+      getAvatarClass, getAuthorName, formatDate, stripHtml
     };
   }
 };
@@ -190,7 +202,6 @@ export default {
 
   <div class="row">
     <div class="col-xl-12">
-      <!-- Premium UI like Stakeholders -->
       <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
         <div class="stakeholder-header stakeholders-premium-header">
           <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
@@ -202,15 +213,15 @@ export default {
               </div>
               <div class="stakeholders-meta-stack">
                 <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Event</span>
-                  <strong><i class="ri-calendar-event-line"></i> {{ eventStore.totalEvents }}</strong>
+                  <span class="stakeholders-meta-label">Total Berita</span>
+                  <strong><i class="ri-newspaper-line"></i> {{ beritaStore.totalBerita }}</strong>
                 </div>
               </div>
             </div>
             <div class="stakeholders-hero-tools">
               <div class="stakeholders-search position-relative">
                 <i class="ri-search-line lms-search-icon"></i>
-                <input v-model="searchQuery" type="text" class="form-control form-control-sm lms-search-input" placeholder="Cari judul, lokasi..." />
+                <input v-model="searchQuery" type="text" class="form-control form-control-sm lms-search-input" placeholder="Cari judul, author..." />
                 <button v-if="searchQuery" @click="searchQuery = ''" class="lms-clear-btn" title="Clear search">
                   <i class="ri-close-circle-fill"></i>
                 </button>
@@ -220,12 +231,12 @@ export default {
         </div>
 
         <div class="card-body p-4 stakeholders-premium-body">
-          <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar mb-4">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
             <div class="btn-group" role="tablist" aria-label="Event dan berita">
-              <button type="button" class="btn btn-primary">
+              <button type="button" class="btn btn-light" @click="switchToEvent">
                 <i class="ri-calendar-event-line me-1"></i> Event
               </button>
-              <button type="button" class="btn btn-light" @click="switchToBerita">
+              <button type="button" class="btn btn-primary">
                 <i class="ri-newspaper-line me-1"></i> Berita
               </button>
             </div>
@@ -238,7 +249,7 @@ export default {
               </div>
               <button @click="openCreate()" class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2">
                 <i class="ri-add-circle-line fs-13"></i>
-                <span class="btn-text">Tambah Event</span>
+                <span class="btn-text">Tambah Berita</span>
               </button>
             </div>
           </div>
@@ -249,9 +260,9 @@ export default {
                 <tr>
                   <th class="th-no" style="width: 50px;">No</th>
                   <th>Judul</th>
-                  <th>Lokasi</th>
-                  <th>Tanggal</th>
-                  <th class="text-center">Status</th>
+                  <th>Pembuat</th>
+                  <th>Dibuat</th>
+                  <th>Diupdate</th>
                   <th class="text-center">Aksi</th>
                 </tr>
               </thead>
@@ -274,60 +285,49 @@ export default {
                 <tr v-else-if="!displayData.length">
                   <td colspan="6" class="text-center py-5">
                     <div class="empty-state">
-                      <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-calendar-event-line"></i></div></div>
+                      <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-newspaper-line"></i></div></div>
                       <h6 class="fw-semibold mb-1 empty-state-title">Belum Ada Data</h6>
-                      <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Event" untuk membuat event baru.</p>
+                      <p class="text-muted fs-13 mb-3">Klik tombol "Tambah Berita" untuk membuat berita baru.</p>
                     </div>
                   </td>
                 </tr>
-                <template v-for="(item, i) in displayData" :key="item.id">
-                  <tr class="stakeholder-row">
-                    <td class="align-middle text-center">
-                      <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
-                    </td>
-                    <td class="align-middle">
-                      <div class="stakeholder-company-cell">
-                        <div class="company-avatar overflow-hidden" :class="getAvatarClass((item.judul || 'E').charAt(0))">
-                          <span class="company-avatar-letter">{{ (item.judul || 'E').charAt(0).toUpperCase() }}</span>
-                        </div>
-                        <div class="company-name-wrap">
-                          <span class="company-name d-block fw-bold">{{ item.judul }}</span>
-                          <span class="text-muted fs-12 text-truncate" style="max-width: 250px; display: inline-block;">{{ stripHtml(item.deskripsi || '') || '-' }}</span>
-                        </div>
+                <tr v-for="(item, i) in displayData" :key="item.id" class="stakeholder-row">
+                  <td class="align-middle text-center">
+                    <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
+                  </td>
+                  <td class="align-middle">
+                    <div class="stakeholder-company-cell">
+                      <div class="company-avatar overflow-hidden" :class="getAvatarClass((item.judul || 'B').charAt(0))">
+                        <span class="company-avatar-letter">{{ (item.judul || 'B').charAt(0).toUpperCase() }}</span>
                       </div>
-                    </td>
-                    <td class="align-middle">
-                      <span class="d-flex align-items-center gap-1 fs-13">
-                        <i class="ri-map-pin-line text-primary"></i>
-                        {{ item.lokasi || '-' }}
-                      </span>
-                    </td>
-                    <td class="align-middle">
-                      <div class="d-flex flex-column gap-1 fs-12 text-muted">
-                        <span v-if="item.tanggal"><i class="ri-calendar-line text-primary me-1"></i> <span class="fw-medium text-dark">{{ formatDate(item.tanggal) }}</span></span>
-                        <span v-else>-</span>
+                      <div class="company-name-wrap">
+                        <span class="company-name d-block fw-bold">{{ item.judul }}</span>
+                        <span class="text-muted fs-12 text-truncate" style="max-width: 320px; display: inline-block;">{{ stripHtml(item.deskripsi || '') || '-' }}</span>
                       </div>
-                    </td>
-                    <td class="align-middle text-center">
-                      <span class="badge-sektor" :class="getStatusClass(item.status)">
-                        {{ getStatusText(item.status) }}
-                      </span>
-                    </td>
-                    <td class="align-middle text-center">
-                      <div class="d-flex gap-1 justify-content-center">
-                        <button @click="openView(item)" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
-                          <i class="ri-eye-line"></i>
-                        </button>
-                        <button @click="openEdit(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
-                          <i class="ri-edit-2-line"></i>
-                        </button>
-                        <button @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
-                          <i class="ri-delete-bin-3-line"></i>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
+                    </div>
+                  </td>
+                  <td class="align-middle">
+                    <span class="d-flex align-items-center gap-1 fs-13">
+                      <i class="ri-user-line text-primary"></i>
+                      {{ getAuthorName(item) }}
+                    </span>
+                  </td>
+                  <td class="align-middle"><span class="fs-12 text-muted">{{ formatDate(item.created_at) }}</span></td>
+                  <td class="align-middle"><span class="fs-12 text-muted">{{ formatDate(item.updated_at) }}</span></td>
+                  <td class="align-middle text-center">
+                    <div class="d-flex gap-1 justify-content-center">
+                      <button @click="openView(item)" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="View">
+                        <i class="ri-eye-line"></i>
+                      </button>
+                      <button @click="openEdit(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit">
+                        <i class="ri-edit-2-line"></i>
+                      </button>
+                      <button @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
+                        <i class="ri-delete-bin-3-line"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -357,7 +357,6 @@ export default {
     </div>
   </div>
 
-  <!-- DELETE MODAL -->
   <div v-if="activeModal === 'delete'" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="activeModal = null">
     <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
       <div class="modal-content border-0 bg-transparent">
@@ -365,9 +364,7 @@ export default {
           <div class="kse-modal-header kse-modal-header-danger">
             <div class="d-flex align-items-center gap-3">
               <div class="kse-modal-icon-wrap"><i class="ri-delete-bin-line"></i></div>
-              <div>
-                <div class="kse-modal-title">Hapus Event</div>
-              </div>
+              <div><div class="kse-modal-title">Hapus Berita</div></div>
             </div>
           </div>
           <div class="kse-modal-body text-center">

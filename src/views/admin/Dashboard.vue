@@ -1,5 +1,5 @@
     <script setup>
-    import { ref, computed, onMounted, watch, onUnmounted, nextTick, defineAsyncComponent } from "vue";
+    import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent } from "vue";
     import { useRouter, useRoute } from "vue-router";
 
     // ” Dashboard Widgets 
@@ -28,7 +28,6 @@
     const ActivityFeed = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActivityFeed.vue'));
     const QuickActions = defineAsyncComponent(() => import('@/components/dashboard-widgets/QuickActions.vue'));
     const DrillDownModal = defineAsyncComponent(() => import('@/components/dashboard-widgets/DrillDownModal.vue'));
-    const DashboardExport = defineAsyncComponent(() => import('@/components/dashboard-widgets/DashboardExport.vue'));
 
     const router = useRouter();
     const route = useRoute();
@@ -38,6 +37,14 @@
     const dashboardDetailsReady = ref(false);
     const lowerSectionsReady = ref(false);
     const summaryMode = ref('KSE'); // 'KSE', 'IKAS', or 'CSIRT'
+    const DASHBOARD_LOAD_STAGGER_MS = 90;
+    const DASHBOARD_RELOAD_DEBOUNCE_MS = 450;
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let dashboardLoadSeq = 0;
+    let dashboardLoadInFlight = false;
+    let dashboardFilterInitialized = false;
+    let dashboardOptionsPromise = null;
+    let lastDashboardLoadAt = 0;
 
     // Stores
     const stakeholdersStore = useStakeholdersStore();
@@ -1293,82 +1300,124 @@
     }
 
     // ” Fetch all data ”
-    const runWhenIdle = (callback) => {
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-            window.requestIdleCallback(callback, { timeout: 1200 });
-        } else {
-            setTimeout(callback, 150);
+    const isLatestDashboardLoad = (token) => token === dashboardLoadSeq;
+
+    const initializeDashboardFilter = () => {
+        if (dashboardFilterInitialized) return;
+        filterStore.loadFromStorage();
+        initDateFromStore();
+        dashboardFilterInitialized = true;
+    };
+
+    const loadDashboardOptions = async () => {
+        if (sektorList.value.length && subSektorList.value.length) return;
+        if (dashboardOptionsPromise) return dashboardOptionsPromise;
+
+        dashboardOptionsPromise = (async () => {
+            const [sektors, subSektors] = await Promise.all([
+                sektorList.value.length ? Promise.resolve(sektorList.value) : sektorService.getAll(),
+                subSektorList.value.length ? Promise.resolve(subSektorList.value) : subSektorService.getAll(),
+            ]);
+            sektorList.value = Array.isArray(sektors) ? sektors : [];
+            subSektorList.value = Array.isArray(subSektors) ? subSektors : [];
+        })();
+
+        try {
+            await dashboardOptionsPromise;
+        } finally {
+            dashboardOptionsPromise = null;
+        }
+    };
+
+    const openReopenedDrillDown = () => {
+        if (!route.query.reopen) return;
+
+        const typeToOpen = String(route.query.reopen).replace('Detail: ', '');
+        nextTick(() => {
+            handleDrillDown({ type: typeToOpen });
+            setTimeout(() => {
+                const newQuery = { ...route.query };
+                delete newQuery.reopen;
+                delete newQuery.from;
+                router.replace({ query: newQuery });
+            }, 500);
+        });
+    };
+
+    const loadDashboardData = async (options = {}) => {
+        const now = Date.now();
+        if (!options.force && (dashboardLoadInFlight || now - lastDashboardLoadAt < DASHBOARD_RELOAD_DEBOUNCE_MS)) {
+            return;
+        }
+
+        lastDashboardLoadAt = now;
+        dashboardLoadInFlight = true;
+        const token = ++dashboardLoadSeq;
+
+        loading.value = true;
+        dashboardDetailsReady.value = false;
+        lowerSectionsReady.value = false;
+        isFirstLoad.value = true;
+
+        initializeDashboardFilter();
+
+        const loadStore = (store, refreshMethod = 'refresh') => {
+            if (options.refresh && store.initialized && typeof store[refreshMethod] === 'function') return store[refreshMethod]();
+            return store.initialized ? Promise.resolve() : store.initialize();
+        };
+
+        try {
+            const summaryPromise = filterStore.fetchDashboardData();
+
+            await Promise.allSettled([
+                loadStore(stakeholdersStore),
+                loadDashboardOptions(),
+            ]);
+
+            if (!isLatestDashboardLoad(token)) return;
+
+            loading.value = false;
+            triggerAlertVisibility();
+
+            await delay(DASHBOARD_LOAD_STAGGER_MS);
+
+            await Promise.allSettled([
+                loadStore(csirtStore),
+                loadStore(ikasStore),
+                summaryPromise,
+            ]);
+
+            if (!isLatestDashboardLoad(token)) return;
+            dashboardDetailsReady.value = true;
+
+            await delay(DASHBOARD_LOAD_STAGGER_MS);
+
+            if (!isLatestDashboardLoad(token)) return;
+            lowerSectionsReady.value = true;
+            setTimeout(() => {
+                if (isLatestDashboardLoad(token)) isFirstLoad.value = false;
+            }, 650);
+        } catch (e) {
+            console.error("Dashboard data load error:", e);
+            if (isLatestDashboardLoad(token)) {
+                loading.value = false;
+                dashboardDetailsReady.value = true;
+                lowerSectionsReady.value = true;
+            }
+        } finally {
+            if (isLatestDashboardLoad(token)) {
+                dashboardLoadInFlight = false;
+                openReopenedDrillDown();
+            }
         }
     };
 
     onMounted(async () => {
-        loading.value = true;
-        dashboardDetailsReady.value = false;
-        lowerSectionsReady.value = false;
-        
-        // Initialize Dashboard Filter Config
-        filterStore.loadFromStorage();
-        initDateFromStore(); // Sync datepicker with stored filter
-        
-        try {
-            // Start fetching all data in parallel
-            const corePromises = [
-                stakeholdersStore.initialize(),
-                (async () => {
-                    const sektors = sektorList.value.length > 0 ? sektorList.value : await sektorService.getAll();
-                    const subSektors = subSektorList.value.length > 0 ? subSektorList.value : await subSektorService.getAll();
-                    sektorList.value = sektors;
-                    subSektorList.value = subSektors;
-                })(),
-            ];
+        await loadDashboardData({ force: true });
+    });
 
-            // Start summary data fetch but don't let it block the main layout if it's slow
-            const summaryPromise = filterStore.fetchDashboardData();
-
-            // Wait for core data to show the main dashboard structure
-            await Promise.all(corePromises);
-            
-            // Set loading false immediately when core data is ready
-            loading.value = false;
-            triggerAlertVisibility();
-
-            runWhenIdle(async () => {
-                await Promise.allSettled([
-                    ikasStore.initialize(),
-                    csirtStore.initialize(),
-                    summaryPromise,
-                ]);
-
-                dashboardDetailsReady.value = true;
-
-                runWhenIdle(() => {
-                    lowerSectionsReady.value = true;
-                    setTimeout(() => {
-                        isFirstLoad.value = false;
-                    }, 800);
-                });
-            });
-
-        } catch (e) {
-            console.error("Dashboard data load error:", e);
-            loading.value = false; // Ensure we stop loading even on error
-            dashboardDetailsReady.value = true;
-            lowerSectionsReady.value = true;
-        } finally {
-            // Handle reopen modal from query param
-            if (route.query.reopen) {
-                const typeToOpen = String(route.query.reopen).replace('Detail: ', '');
-                nextTick(() => {
-                    handleDrillDown({ type: typeToOpen });
-                    setTimeout(() => {
-                        const newQuery = { ...route.query };
-                        delete newQuery.reopen;
-                        delete newQuery.from;
-                        router.replace({ query: newQuery });
-                    }, 500);
-                });
-            }
-        }
+    onActivated(async () => {
+        await loadDashboardData();
     });
 
     // ” Color Palette 
@@ -2383,23 +2432,7 @@
     }
 
     async function handleRefreshData() {
-        loading.value = true;
-        try {
-            await Promise.all([
-                stakeholdersStore.refresh(),
-                csirtStore.refresh(),
-                ikasStore.refresh(),
-                filterStore.fetchDashboardData(),
-            ]);
-        } catch (e) {
-            console.error('Refresh failed:', e);
-        } finally {
-            loading.value = false;
-        }
-    }
-
-    function handleExportPdf() {
-        // Handled by DashboardExport component
+        await loadDashboardData({ force: true, refresh: true });
     }
 
     </script>
@@ -2467,7 +2500,6 @@
                 <QuickActions
                     @refresh-data="handleRefreshData"
                 />
-                <DashboardExport />
                 <div>
                     <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
                         <i class="ri-bar-chart-box-line"></i>
@@ -2482,10 +2514,6 @@
         </div>
 
         <div v-if="!showMetabase" id="dashboard-capture">
-            <!-- ••• ALERT STATUS BAR ••• -->
-            <AlertIndicators v-if="showAlertIndicators" :summary-error="filterStore.error" />
-
-            <!-- ••• GLOBAL FILTER (always visible) ••• -->
             <div class="mb-3">
                 <GlobalFilter
                     :sektor-list="sektorList"
@@ -2568,7 +2596,7 @@
 
 
                 <!-- ••• KPI CARDS (Meaningful KPIs) ••• -->
-                <div v-if="!dashboardDetailsReady" class="row g-3 mt-1">
+                <div v-if="false" class="row g-3 mt-1">
                     <div class="col-xl-3 col-md-6" v-for="n in 4" :key="'ops-loading-'+n">
                         <div class="card custom-card dashboard-main-card border-0 shadow-sm" style="height: 132px;">
                             <div class="card-body placeholder-glow">
@@ -2580,20 +2608,20 @@
                     </div>
                 </div>
 
-                <div v-if="dashboardDetailsReady" class="mb-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.8s' : '0s' }">
-                    <KpiCards @drill-down="handleDrillDown" />
+                <div class="mb-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.8s' : '0s' }">
+                    <KpiCards :loading="!dashboardDetailsReady" @drill-down="handleDrillDown" />
                 </div>
 
                 <!-- ••• INSIGHT + ACTIVITY ROW ••• -->
-                <div v-if="dashboardDetailsReady" class="row g-3 mb-4">
+                <div class="row g-3 mb-4">
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.0s' : '0s' }">
-                        <InsightCard />
+                        <InsightCard :loading="!dashboardDetailsReady" />
                     </div>
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.2s' : '0s' }">
-                        <ActionCenter />
+                        <ActionCenter :loading="!dashboardDetailsReady" />
                     </div>
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.4s' : '0s' }">
-                        <ActivityFeed />
+                        <ActivityFeed :loading="!dashboardDetailsReady" />
                     </div>
                 </div>
 
@@ -3181,6 +3209,43 @@
                                                     <i class="ri-external-link-line"></i> Lihat Detail {{ summaryMode }}
                                                 </button>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="!lowerSectionsReady" class="row g-3 mb-4">
+                        <div class="col-xl-8">
+                            <div class="card custom-card border-0 shadow-sm" style="min-height: 420px;">
+                                <div class="card-body placeholder-glow">
+                                    <div class="d-flex align-items-center justify-content-between mb-4">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="placeholder" style="width:42px;height:42px;border-radius:10px;"></span>
+                                            <span class="placeholder col-4" style="height:18px;border-radius:6px;"></span>
+                                        </div>
+                                        <span class="placeholder col-2" style="height:32px;border-radius:10px;"></span>
+                                    </div>
+                                    <span class="placeholder col-12 mb-3" style="height:180px;border-radius:14px;"></span>
+                                    <div class="row g-3">
+                                        <div class="col-md-4" v-for="n in 3" :key="'analysis-skeleton-'+n">
+                                            <span class="placeholder col-12 mb-2" style="height:70px;border-radius:12px;"></span>
+                                            <span class="placeholder col-8" style="height:12px;border-radius:6px;"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xl-4">
+                            <div class="card custom-card border-0 shadow-sm" style="min-height: 420px;">
+                                <div class="card-body placeholder-glow">
+                                    <span class="placeholder col-7 mb-4" style="height:18px;border-radius:6px;"></span>
+                                    <div v-for="n in 5" :key="'side-skeleton-'+n" class="d-flex align-items-center gap-3 mb-3">
+                                        <span class="placeholder" style="width:38px;height:38px;border-radius:10px;"></span>
+                                        <div class="flex-grow-1">
+                                            <span class="placeholder col-8 d-block mb-2" style="height:12px;border-radius:6px;"></span>
+                                            <span class="placeholder col-5 d-block" style="height:10px;border-radius:6px;"></span>
                                         </div>
                                     </div>
                                 </div>
