@@ -334,6 +334,7 @@ export const useProfileStore = defineStore('profile', {
         // ── 2. PUT text fields (attempted for all roles) ──
         try {
           const textPayload: Record<string, any> = {
+            id:         id,
             username:   data.name     ?? this.name,
             display_name: data.display_name ?? this.display_name,
             email:      data.email    ?? this.email,
@@ -384,6 +385,7 @@ export const useProfileStore = defineStore('profile', {
         if (newFotoProfile && newFotoProfile !== this.fotoProfileUrl && newFotoProfile.startsWith('data:')) {
           try {
             const photoForm = new FormData();
+            photoForm.append('id', id);
             const blob = await (await fetch(newFotoProfile)).blob();
             photoForm.append('profile_photo', blob, 'foto_profile.jpg');
 
@@ -403,6 +405,7 @@ export const useProfileStore = defineStore('profile', {
         if (newBanner && newBanner !== this.bannerUrl && newBanner.startsWith('data:')) {
           try {
             const bannerForm = new FormData();
+            bannerForm.append('id', id);
             const blob = await (await fetch(newBanner)).blob();
             bannerForm.append('banner', blob, 'banner.jpg');
 

@@ -164,8 +164,8 @@ typography
 /*black set*/
 /* dark mode */
 [data-theme-mode=dark] {
-  --body-bg-rgb: 22, 22, 35;
-  --body-bg-rgb2: 38, 38, 52;
+  --body-bg-rgb: 11, 18, 32;
+  --body-bg-rgb2: 0, 5, 37;
   --menu-bg: rgb(var(--body-bg-rgb));
   --menu-border-color: rgba(255, 255, 255, 0.1);
   --menu-prime-color: rgba(255, 255, 255, 0.7);
@@ -178,7 +178,7 @@ typography
   --custom-black: #fff;
   --default-border: rgba(255, 255, 255, 0.1);
   --default-text-color: rgba(255, 255, 255, 0.8);
-  --light-rgb: 38, 38, 52;
+  --light-rgb: 15, 23, 42;
   --dark-rgb: 240, 245, 248;
   --bootstrap-card-border: rgba(255, 255, 255, 0.1);
   --list-hover-focus-bg: rgba(255, 255, 255, 0.1);

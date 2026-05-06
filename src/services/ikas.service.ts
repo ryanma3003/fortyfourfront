@@ -139,11 +139,17 @@ export const ikasService = {
         }
     },
 
-    /** Get IKAS audit logs, optionally filtered by IKAS ID. */
-    async getIkasAuditLogs(ikasId?: string | number): Promise<IkasAuditLogListResponse> {
-        const query = ikasId
-            ? `?ikas_id=${encodeURIComponent(String(ikasId))}`
-            : '';
+    /** Get IKAS audit logs, optionally filtered by IKAS ID, with backend pagination. */
+    async getIkasAuditLogs(
+        ikasId?: string | number,
+        options: { page?: number; limit?: number } = {},
+    ): Promise<IkasAuditLogListResponse> {
+        const params = new URLSearchParams();
+        if (ikasId) params.set('ikas_id', String(ikasId));
+        if (options.page) params.set('page', String(options.page));
+        if (options.limit) params.set('limit', String(options.limit));
+
+        const query = params.toString() ? `?${params.toString()}` : '';
         return api.get<IkasAuditLogListResponse>(`/api/maturity/ikas-audit-logs${query}`);
     },
 

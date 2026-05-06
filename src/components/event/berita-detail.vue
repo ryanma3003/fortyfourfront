@@ -1,5 +1,6 @@
 <script lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick, onBeforeUnmount } from "vue";
+import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useBeritaStore } from "../../stores/berita";
 import { useAuthStore } from "../../stores/auth";
@@ -27,6 +28,9 @@ export default {
     const showToast = ref(false);
     const toastMessage = ref("");
     const toastType = ref<"success" | "error">("success");
+    const isDarkMode = ref(false);
+    let gsapCtx: gsap.Context | null = null;
+    let themeObserver: MutationObserver | undefined;
 
     const showNotification = (msg: string, type: "success" | "error") => {
       toastMessage.value = msg;
@@ -35,7 +39,31 @@ export default {
       setTimeout(() => (showToast.value = false), 3000);
     };
 
+    const syncThemeMode = () => {
+      if (typeof document === "undefined") return;
+      const root = document.documentElement;
+      isDarkMode.value = root.getAttribute("data-theme-mode") === "dark" || root.classList.contains("dark");
+    };
+
+    const runDetailAnimation = () => {
+      nextTick(() => {
+        gsapCtx?.revert();
+        gsapCtx = gsap.context(() => {
+          const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+          tl.from(".brd-masthead", { y: 16, opacity: 0, duration: 0.44 })
+            .from(".brd-meta-pill", { y: 8, opacity: 0, duration: 0.24, stagger: 0.045 }, "-=0.18")
+            .from(".brd-panel", { y: 16, opacity: 0, duration: 0.34, stagger: 0.075 }, "-=0.12")
+            .from(".brd-info-row", { x: 12, opacity: 0, duration: 0.24, stagger: 0.045 }, "-=0.12");
+        });
+      });
+    };
+
     onMounted(async () => {
+      syncThemeMode();
+      if (typeof document !== "undefined") {
+        themeObserver = new MutationObserver(syncThemeMode);
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode", "class"] });
+      }
       try {
         await usersStore.initialize().catch(() => undefined);
         const data = await beritaStore.fetchBeritaById(Number(route.params.id));
@@ -50,7 +78,13 @@ export default {
         router.push("/event/berita");
       } finally {
         isLoading.value = false;
+        runDetailAnimation();
       }
+    });
+
+    onBeforeUnmount(() => {
+      gsapCtx?.revert();
+      themeObserver?.disconnect();
     });
 
     const goBack = () => router.push("/event/berita");
@@ -153,7 +187,7 @@ export default {
     };
 
     return {
-      dataToPass, beritaData, isLoading, goBack, goEdit, showToast, toastMessage, toastType,
+      dataToPass, beritaData, isLoading, isDarkMode, goBack, goEdit, showToast, toastMessage, toastType,
       getAuthorName, formatDate, formatDateShort, htmlOrFallback
     };
   },
@@ -179,84 +213,84 @@ export default {
     </div>
   </transition>
 
-  <div class="row" v-if="isLoading">
-    <div class="col-xl-12">
-      <div class="card custom-card">
-        <div class="card-body p-5 text-center">
-          <span class="spinner-border spinner-border-sm text-primary" style="width: 2rem; height: 2rem;"></span>
-          <div class="mt-2 text-muted fs-13">Memuat Detail Berita...</div>
-        </div>
-      </div>
+  <section :class="['brd-shell', { 'is-dark': isDarkMode }]" v-if="isLoading">
+    <div class="brd-loading">
+      <span class="spinner-border spinner-border-sm"></span>
+      <p>Memuat detail berita...</p>
     </div>
-  </div>
+  </section>
 
-  <div class="row" v-else-if="beritaData">
-    <div class="col-xl-8">
-      <div class="card custom-card">
-        <div class="card-body p-4">
-          <div class="d-flex align-items-start justify-content-between gap-3 mb-4">
-            <div class="d-flex gap-3">
-              <button class="btn btn-sm btn-icon btn-light border" @click="goBack" title="Kembali">
-                <i class="ri-arrow-left-line"></i>
-              </button>
-              <div>
-                <div class="d-flex align-items-center gap-2 mb-2">
-                  <span class="badge bg-primary-transparent text-primary border border-primary border-opacity-25">Berita</span>
-                </div>
-                <h4 class="fw-bold mb-1 text-dark fs-20">{{ beritaData.judul }}</h4>
-                <p class="text-muted fs-13 mb-0">Dipublikasikan oleh {{ getAuthorName(beritaData) }} pada {{ formatDate(beritaData.created_at) }}</p>
-              </div>
-            </div>
-            <button @click="goEdit" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
-              <i class="ri-edit-line"></i> Edit
-            </button>
-          </div>
-        </div>
+  <section :class="['brd-shell', { 'is-dark': isDarkMode }]" v-else-if="beritaData">
+    <header class="brd-masthead">
+      <div class="brd-line"></div>
+      <div class="brd-topbar">
+        <button type="button" class="brd-icon-btn" @click="goBack" title="Kembali"><i class="ri-arrow-left-line"></i></button>
+        <span class="brd-meta-pill"><i class="ri-newspaper-line"></i> Berita</span>
+        <span class="brd-meta-pill"><i class="ri-user-3-line"></i> {{ getAuthorName(beritaData) }}</span>
       </div>
+      <h1>{{ beritaData.judul }}</h1>
+      <p>Dipublikasikan pada {{ formatDate(beritaData.created_at) }}</p>
+      <div class="brd-actions">
+        <button type="button" class="brd-btn brd-btn-soft" @click="goBack"><i class="ri-arrow-left-line"></i><span>Kembali</span></button>
+        <button type="button" class="brd-btn brd-btn-dark" @click="goEdit"><i class="ri-edit-line"></i><span>Edit Berita</span></button>
+      </div>
+    </header>
 
-      <div class="card custom-card mt-3">
-        <div class="card-header">
-          <div class="card-title fs-14 fw-semibold">Isi Berita</div>
+    <div class="brd-layout">
+      <main class="brd-panel brd-reader">
+        <div class="brd-panel-head">
+          <span>Isi Berita</span>
+          <i class="ri-quill-pen-line"></i>
         </div>
-        <div class="card-body p-4">
-          <div class="event-html-content text-dark fs-14" v-html="htmlOrFallback(beritaData.deskripsi)"></div>
+        <div class="event-html-content" v-html="htmlOrFallback(beritaData.deskripsi)"></div>
+      </main>
+
+      <aside class="brd-panel brd-sidebar">
+        <div class="brd-panel-head">
+          <span>Informasi Sistem</span>
+          <i class="ri-information-line"></i>
         </div>
-      </div>
+        <div class="brd-info-row"><span><i class="ri-hashtag"></i>Berita ID</span><strong>#{{ beritaData.id }}</strong></div>
+        <div class="brd-info-row"><span><i class="ri-user-line"></i>Pembuat</span><strong>{{ getAuthorName(beritaData) }}</strong></div>
+        <div class="brd-info-row"><span><i class="ri-time-line"></i>Dibuat</span><strong>{{ formatDateShort(beritaData.created_at) }}</strong></div>
+        <div class="brd-info-row"><span><i class="ri-history-line"></i>Diupdate</span><strong>{{ formatDateShort(beritaData.updated_at) }}</strong></div>
+      </aside>
     </div>
-
-    <div class="col-xl-4">
-      <div class="card custom-card">
-        <div class="card-header">
-          <div class="card-title fs-14 fw-semibold">Informasi Sistem</div>
-        </div>
-        <div class="card-body p-0">
-          <ul class="list-group list-group-flush">
-            <li class="list-group-item d-flex justify-content-between align-items-center p-3">
-              <span class="text-muted fs-13 d-flex align-items-center gap-2"><i class="ri-hashtag text-primary"></i> Berita ID</span>
-              <span class="fw-semibold text-dark fs-13">#{{ beritaData.id }}</span>
-            </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center p-3">
-              <span class="text-muted fs-13 d-flex align-items-center gap-2"><i class="ri-user-line text-info"></i> Pembuat</span>
-              <span class="fw-medium text-dark fs-13 text-end">{{ getAuthorName(beritaData) }}</span>
-            </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center p-3">
-              <span class="text-muted fs-13 d-flex align-items-center gap-2"><i class="ri-time-line text-success"></i> Dibuat</span>
-              <span class="fw-medium text-dark fs-13 text-end">{{ formatDateShort(beritaData.created_at) }}</span>
-            </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center p-3">
-              <span class="text-muted fs-13 d-flex align-items-center gap-2"><i class="ri-history-line text-warning"></i> Diupdate</span>
-              <span class="fw-medium text-dark fs-13 text-end">{{ formatDateShort(beritaData.updated_at) }}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
+.brd-shell{position:relative;padding:2px 2px 18px;color:#14213d}
+.brd-loading{min-height:260px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;border-radius:18px;background:#f8fbff;border:1px solid #dbeafe;box-shadow:0 18px 42px rgba(20,33,61,.07);color:#2563eb}
+.brd-loading p{margin:0;font-size:13px;font-weight:800;color:#52616b}
+.brd-masthead{position:relative;overflow:hidden;border-radius:18px;padding:34px 36px;background:linear-gradient(135deg,#f8fbff 0%,#eff6ff 58%,#eaf7ff 100%);border:1px solid #cfe0ff;box-shadow:0 22px 54px rgba(37,99,235,.1)}
+.brd-masthead::before{content:"";position:absolute;right:-120px;bottom:-150px;width:360px;height:360px;border-radius:999px;background:radial-gradient(circle,rgba(37,99,235,.13),transparent 66%)}
+.brd-topbar{position:relative;z-index:1;display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:18px}
+.brd-icon-btn{width:36px;height:36px;border-radius:11px;border:1px solid #cfe0ff;background:#fff;color:#2563eb;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.brd-icon-btn:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(37,99,235,.12)}
+.brd-meta-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid #cfe0ff;background:#ffffffb8;border-radius:999px;padding:7px 11px;font-size:11.5px;font-weight:900;color:#1d4ed8}
+.brd-masthead h1{position:relative;z-index:1;max-width:900px;margin:0;font-size:34px;line-height:1.16;font-weight:900;color:#14213d;letter-spacing:0}
+.brd-masthead p{position:relative;z-index:1;margin:12px 0 0;color:#64748b;font-size:14px;line-height:1.6}
+.brd-actions{position:relative;z-index:1;display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}
+.brd-btn{border:0;border-radius:11px;display:inline-flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;font-weight:900;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.brd-btn:hover{transform:translateY(-2px)}
+.brd-btn-soft{background:#fff;color:#1d4ed8;border:1px solid #cfe0ff}
+.brd-btn-dark{background:#1d4ed8;color:#fff;box-shadow:0 16px 28px rgba(37,99,235,.2)}
+.brd-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;margin-top:18px;align-items:start}
+.brd-panel{background:#fff;border:1px solid #dbeafe;border-radius:16px;box-shadow:0 18px 42px rgba(20,33,61,.07)}
+.brd-reader{padding:30px}
+.brd-sidebar{padding:18px;position:sticky;top:90px}
+.brd-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #edf4ff;font-size:13px;font-weight:900;color:#14213d}
+.brd-panel-head i{font-size:18px;color:#2563eb}
+.brd-info-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid #edf4ff}
+.brd-info-row:last-child{border-bottom:0}
+.brd-info-row span{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#64748b}
+.brd-info-row span i{color:#2563eb}
+.brd-info-row strong{font-size:12.5px;color:#14213d;text-align:right;line-height:1.35}
 .event-html-content {
   line-height: 1.75;
+  color:#253044;
+  font-size:14px;
 }
 
 .event-html-content :deep(p) {
@@ -272,5 +306,195 @@ export default {
 .event-html-content :deep(img) {
   max-width: 100%;
   height: auto;
+  border-radius:14px;
+  border:1px solid #e2e8f0;
+  box-shadow:0 16px 38px rgba(20,33,61,.08);
+}
+
+.brd-shell.is-dark,
+:global(html[data-theme-mode="dark"]) .brd-shell,
+:global(html.dark) .brd-shell {
+  color-scheme: dark;
+}
+
+.brd-shell.is-dark .brd-loading,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-loading,
+:global(html.dark) .brd-shell .brd-loading {
+  background: linear-gradient(180deg, #0b1220, #111827);
+  border-color: #22314a;
+  color: #38bdf8;
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.34);
+}
+
+.brd-shell.is-dark .brd-loading p,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-loading p,
+:global(html.dark) .brd-shell .brd-loading p {
+  color: #cbd5e1;
+}
+
+.brd-shell.is-dark .brd-masthead,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead,
+:global(html.dark) .brd-shell .brd-masthead {
+  background: linear-gradient(135deg, #081225 0%, #11294d 54%, #164e77 100%);
+  border-color: #22314a;
+  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.38);
+}
+
+.brd-shell.is-dark .brd-masthead::before,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead::before,
+:global(html.dark) .brd-shell .brd-masthead::before {
+  background: radial-gradient(circle, rgba(125, 211, 252, 0.16), transparent 66%);
+}
+
+.brd-shell.is-dark .brd-icon-btn,
+.brd-shell.is-dark .brd-meta-pill,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-icon-btn,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-meta-pill,
+:global(html.dark) .brd-shell .brd-icon-btn,
+:global(html.dark) .brd-shell .brd-meta-pill {
+  background: rgba(15, 23, 42, 0.42);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #e0f2fe;
+}
+
+.brd-shell.is-dark .brd-masthead h1,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead h1,
+:global(html.dark) .brd-shell .brd-masthead h1 {
+  color: #f8fafc;
+}
+
+.brd-shell.is-dark .brd-masthead p,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead p,
+:global(html.dark) .brd-shell .brd-masthead p {
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.brd-shell.is-dark .brd-btn-soft,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-btn-soft,
+:global(html.dark) .brd-shell .brd-btn-soft {
+  background: rgba(15, 23, 42, 0.46);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #f8fafc;
+}
+
+.brd-shell.is-dark .brd-btn-dark,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-btn-dark,
+:global(html.dark) .brd-shell .brd-btn-dark {
+  background: #17243a;
+  color: #93c5fd;
+  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.28);
+}
+
+.brd-shell.is-dark .brd-panel,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-panel,
+:global(html.dark) .brd-shell .brd-panel {
+  background: linear-gradient(180deg, #0f172a 0%, #111c2e 100%);
+  border-color: #22314a;
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.3);
+}
+
+.brd-shell.is-dark .brd-panel-head,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-panel-head,
+:global(html.dark) .brd-shell .brd-panel-head {
+  border-bottom-color: #24364f;
+  color: #f8fafc;
+}
+
+.brd-shell.is-dark .brd-panel-head i,
+.brd-shell.is-dark .brd-info-row span i,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-panel-head i,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row span i,
+:global(html.dark) .brd-shell .brd-panel-head i,
+:global(html.dark) .brd-shell .brd-info-row span i {
+  color: #38bdf8;
+}
+
+.brd-shell.is-dark .brd-info-row,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row,
+:global(html.dark) .brd-shell .brd-info-row {
+  border-bottom-color: #24364f;
+}
+
+.brd-shell.is-dark .brd-info-row span,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row span,
+:global(html.dark) .brd-shell .brd-info-row span {
+  color: #94a3b8;
+}
+
+.brd-shell.is-dark .brd-info-row strong,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row strong,
+:global(html.dark) .brd-shell .brd-info-row strong {
+  color: #e2e8f0;
+}
+
+.brd-shell.is-dark .event-html-content,
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content,
+:global(html.dark) .brd-shell .event-html-content {
+  color: #cbd5e1;
+}
+
+.brd-shell.is-dark .event-html-content :deep(*),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(*),
+:global(html.dark) .brd-shell .event-html-content :deep(*) {
+  background-color: transparent !important;
+  color: white;
+}
+
+.brd-shell.is-dark .event-html-content :deep(div),
+.brd-shell.is-dark .event-html-content :deep(p),
+.brd-shell.is-dark .event-html-content :deep(li),
+.brd-shell.is-dark .event-html-content :deep(blockquote),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(div),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(p),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(li),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(blockquote),
+:global(html.dark) .brd-shell .event-html-content :deep(div),
+:global(html.dark) .brd-shell .event-html-content :deep(p),
+:global(html.dark) .brd-shell .event-html-content :deep(li),
+:global(html.dark) .brd-shell .event-html-content :deep(blockquote) {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.brd-shell.is-dark .event-html-content :deep(h1),
+.brd-shell.is-dark .event-html-content :deep(h2),
+.brd-shell.is-dark .event-html-content :deep(h3),
+.brd-shell.is-dark .event-html-content :deep(h4),
+.brd-shell.is-dark .event-html-content :deep(strong),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h1),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h2),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h3),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h4),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(strong),
+:global(html.dark) .brd-shell .event-html-content :deep(h1),
+:global(html.dark) .brd-shell .event-html-content :deep(h2),
+:global(html.dark) .brd-shell .event-html-content :deep(h3),
+:global(html.dark) .brd-shell .event-html-content :deep(h4),
+:global(html.dark) .brd-shell .event-html-content :deep(strong) {
+  color: #f8fafc;
+}
+
+.brd-shell.is-dark .event-html-content :deep(a),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(a),
+:global(html.dark) .brd-shell .event-html-content :deep(a) {
+  color: #7dd3fc;
+}
+
+.brd-shell.is-dark .event-html-content :deep(img),
+:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(img),
+:global(html.dark) .brd-shell .event-html-content :deep(img) {
+  border-color: #24364f;
+  box-shadow: 0 16px 38px rgba(2, 6, 23, 0.32);
+}
+
+@media(max-width:1100px){
+  .brd-layout{grid-template-columns:1fr}
+  .brd-sidebar{position:static}
+}
+
+@media(max-width:640px){
+  .brd-masthead{padding:26px 24px}
+  .brd-masthead h1{font-size:26px}
+  .brd-reader{padding:22px}
+  .brd-btn{width:100%;justify-content:center}
 }
 </style>

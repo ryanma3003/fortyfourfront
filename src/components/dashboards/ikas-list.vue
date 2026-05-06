@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import gsap from 'gsap';
 import { useRouter } from 'vue-router';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 import { ikasService } from '@/services/ikas.service';
@@ -76,8 +77,12 @@ const actionConfirmation = ref<{ action: IkasAction; record: IkasRecord } | null
 const rejectReason = ref('');
 const exportLoadingId = ref('');
 const isDarkMode = ref(false);
+const ikasPageRef = ref<HTMLElement | null>(null);
 let actionSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let themeObserver: MutationObserver | undefined;
+let gsapCtx: gsap.Context | null = null;
+let isPageTransitioning = false;
+let hasRunInitialEntrance = false;
 
 const normalizeResponse = (response: any): any[] => {
   if (Array.isArray(response)) return response;
@@ -253,27 +258,25 @@ const getRecordIdentity = (record: any, resolvedSlug = '') => {
 
 const findSummaryForRecord = (record: any, resolvedSlug = '') => {
   const identity = getRecordIdentity(record, resolvedSlug);
+  const recordIds = Array.from(identity.ikasIds);
+  const summaries = Object.values(ikasStore.ikasSummaryMap);
+
+  if (recordIds.length) {
+    return summaries.find((summary) => identity.ikasIds.has(String(summary.id)));
+  }
 
   for (const slug of identity.slugs) {
     const summary = ikasStore.ikasSummaryMap[slug];
     if (summary) return summary;
   }
 
-  return Object.values(ikasStore.ikasSummaryMap).find((summary) => (
-    identity.ikasIds.has(String(summary.id)) ||
+  return summaries.find((summary) => (
     identity.companyIds.has(String(summary.id_perusahaan)) ||
     identity.slugs.has(String(summary.slug))
   ));
 };
 
 const getStoreDataForRecord = (record: any, resolvedSlug = '') => {
-  const identity = getRecordIdentity(record, resolvedSlug);
-
-  for (const slug of identity.slugs) {
-    const data = ikasStore.ikasDataMap[slug];
-    if (data) return data;
-  }
-
   const summary = findSummaryForRecord(record, resolvedSlug);
   return summary?.slug ? ikasStore.ikasDataMap[summary.slug] : undefined;
 };
@@ -796,10 +799,18 @@ const updateSelectedRecord = (recordId: string) => {
 const recordsReferToSameIkas = (rawRecord: any, record: IkasRecord) => {
   const rawIdentity = getRecordIdentity(rawRecord, rawRecord?.perusahaan?.slug || rawRecord?.slug || '');
   const recordIdentity = getRecordIdentity(record.raw, record.slug);
+  const rawIds = Array.from(rawIdentity.ikasIds);
+  const recordIds = Array.from(recordIdentity.ikasIds);
+
+  if (rawIds.length || recordIds.length) {
+    return (
+      rawIdentity.ikasIds.has(record.id) ||
+      recordIdentity.ikasIds.has(String(rawRecord?.id || '')) ||
+      rawIds.some((id) => recordIdentity.ikasIds.has(id))
+    );
+  }
 
   return (
-    rawIdentity.ikasIds.has(record.id) ||
-    recordIdentity.ikasIds.has(String(rawRecord?.id || '')) ||
     [...rawIdentity.companyIds].some((id) => recordIdentity.companyIds.has(id)) ||
     [...rawIdentity.slugs].some((slug) => recordIdentity.slugs.has(slug))
   );
@@ -973,6 +984,7 @@ const executeIkasAction = async (action: IkasAction, record: IkasRecord, reason 
     }
 
     applyLocalActionResult(action, record, reason.trim());
+    window.dispatchEvent(new Event('ikas-requests-updated'));
     scheduleActionSync();
     return true;
   } catch (error: any) {
@@ -1087,6 +1099,235 @@ function formatRelativeTime(value: string | number | Date) {
   return '-';
 }
 
+const prefersReducedMotion = () => (
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+);
+
+const getVisibleMotionItems = () => {
+  const root = ikasPageRef.value;
+  if (!root) return [];
+
+  return Array.from(root.querySelectorAll<HTMLElement>('.ikas-table-row, .ikas-mobile-card')).filter((item) => (
+    item.getClientRects().length > 0
+  ));
+};
+
+const animateListItems = (quick = false, done?: () => void) => {
+  nextTick(() => {
+    if (prefersReducedMotion()) {
+      done?.();
+      return;
+    }
+
+    const items = getVisibleMotionItems();
+    if (!items.length) {
+      done?.();
+      return;
+    }
+
+    gsap.killTweensOf(items);
+    gsap.set(items, { y: quick ? 16 : 24, opacity: 0, scale: quick ? 0.992 : 0.98, force3D: true });
+
+    const tl = gsap.timeline({
+      defaults: { duration: quick ? 0.28 : 0.42, ease: 'power3.out', overwrite: 'auto' },
+      onComplete: done,
+    });
+
+    items.forEach((item, index) => {
+      tl.to(item, { y: 0, opacity: 1, scale: 1, clearProps: 'transform,opacity' }, index * (quick ? 0.04 : 0.06));
+    });
+  });
+};
+
+const animateSummaryPanel = (panel: HTMLElement) => {
+  const summaryHero = panel.querySelector<HTMLElement>('.ikas-summary-hero');
+  const summaryIcon = panel.querySelector<HTMLElement>('.ikas-summary-icon');
+  const stats = Array.from(panel.querySelectorAll<HTMLElement>('.ikas-attention-stat'));
+  const priorityCard = panel.querySelector<HTMLElement>('.ikas-attention-card');
+  const priorityRows = Array.from(panel.querySelectorAll<HTMLElement>('.ikas-attention-row'));
+  const priorityEmpty = panel.querySelector<HTMLElement>('.ikas-attention-empty');
+  const sectorCard = panel.querySelector<HTMLElement>('.ikas-summary-sector');
+  const sectorRows = Array.from(panel.querySelectorAll<HTMLElement>('.ikas-summary-sector-row'));
+  const animatedItems = [
+    summaryHero,
+    summaryIcon,
+    priorityCard,
+    priorityEmpty,
+    sectorCard,
+    ...stats,
+    ...priorityRows,
+    ...sectorRows,
+  ].filter(Boolean) as HTMLElement[];
+
+  gsap.killTweensOf(animatedItems);
+
+  const tl = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } });
+
+  if (summaryHero) {
+    tl.fromTo(summaryHero, {
+      clipPath: 'inset(0 0 100% 0)',
+      opacity: 0,
+    }, {
+      clipPath: 'inset(0 0 0% 0)',
+      opacity: 1,
+      duration: 0.42,
+      clearProps: 'clipPath,opacity',
+    }, 0);
+  }
+
+  if (summaryIcon) {
+    tl.from(summaryIcon, {
+      rotate: -18,
+      opacity: 0,
+      duration: 0.42,
+      ease: 'back.out(1.7)',
+      clearProps: 'transform,opacity',
+    }, 0.08);
+  }
+
+  tl.from(stats, {
+    y: 14,
+    opacity: 0,
+    duration: 0.32,
+    stagger: { each: 0.055, from: 'edges' },
+    clearProps: 'transform,opacity',
+  }, 0.14);
+
+  if (priorityCard) {
+    tl.from(priorityCard, {
+      x: 18,
+      opacity: 0,
+      duration: 0.36,
+      clearProps: 'transform,opacity',
+    }, 0.28);
+  }
+
+  tl.from(priorityRows, {
+    x: (index) => (index % 2 === 0 ? -18 : 18),
+    opacity: 0,
+    duration: 0.28,
+    stagger: 0.045,
+    clearProps: 'transform,opacity',
+  }, 0.42);
+
+  if (priorityEmpty) {
+    tl.from(priorityEmpty, {
+      y: 10,
+      opacity: 0,
+      duration: 0.3,
+      ease: 'back.out(1.35)',
+      clearProps: 'transform,opacity',
+    }, 0.42);
+  }
+
+  if (sectorCard) {
+    tl.from(sectorCard, {
+      clipPath: 'inset(100% 0 0 0)',
+      opacity: 0,
+      duration: 0.38,
+      clearProps: 'clipPath,opacity',
+    }, 0.62);
+  }
+
+  tl.from(sectorRows, {
+    y: 10,
+    opacity: 0,
+    duration: 0.24,
+    stagger: 0.05,
+    clearProps: 'transform,opacity',
+  }, 0.72);
+};
+
+const animateDetailPanel = () => {
+  nextTick(() => {
+    if (prefersReducedMotion()) return;
+
+    const root = ikasPageRef.value;
+    const panel = root?.querySelector<HTMLElement>('.ikas-detail-panel');
+    if (!panel) return;
+
+    if (!selectedRecord.value || panel.classList.contains('is-summary')) {
+      animateSummaryPanel(panel);
+      return;
+    }
+
+    const panelChildren = Array.from(panel.querySelectorAll<HTMLElement>('*'));
+    const panelSections = Array.from(panel.querySelectorAll<HTMLElement>('.ikas-panel-hero, .ikas-summary-hero, .ikas-action-error, .ikas-detail-actions, .ikas-request-reason, .ikas-detail-facts > div, .ikas-panel-score, .ikas-detail-timeline > div, .ikas-domain-card, .ikas-panel-meta, .ikas-open-detail, .ikas-export-pdf'));
+
+    gsap.killTweensOf(panel);
+    gsap.killTweensOf(panelChildren);
+
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } });
+    tl.fromTo(panel, { y: 12, opacity: 0.88 }, { y: 0, opacity: 1, duration: 0.3, clearProps: 'transform,opacity' }, 0);
+    tl.from(panelSections, {
+      y: 14,
+      opacity: 0,
+      duration: 0.34,
+      stagger: 0.05,
+      clearProps: 'transform,opacity',
+    }, 0.05);
+  });
+};
+
+const runEntranceAnimations = () => {
+  nextTick(() => {
+    const root = ikasPageRef.value;
+    if (!root || prefersReducedMotion()) {
+      animateListItems(true);
+      return;
+    }
+
+    gsapCtx?.revert();
+    gsapCtx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+      tl.from('.ikas-hero-header', { y: 18, opacity: 0, duration: 0.48, clearProps: 'transform,opacity' })
+        .from('.ikas-inline-breadcrumb', { y: -8, opacity: 0, duration: 0.3, clearProps: 'transform,opacity' }, '-=0.28')
+        .from('.ikas-hero-copy h1', { y: 18, opacity: 0, duration: 0.42, clearProps: 'transform,opacity' }, '-=0.18')
+        .from('.ikas-hero-copy p', { y: 14, opacity: 0, duration: 0.34, clearProps: 'transform,opacity' }, '-=0.26')
+        .from('.ikas-hero-tools', { y: 18, opacity: 0, duration: 0.42, clearProps: 'transform,opacity' }, '-=0.3')
+        .from('.ikas-kpi-card', { y: 18, opacity: 0, scale: 0.96, duration: 0.4, stagger: 0.06, ease: 'back.out(1.4)', clearProps: 'transform,opacity' }, '-=0.15')
+        .from('.ikas-filter-shell', { y: 22, opacity: 0, duration: 0.42, clearProps: 'transform,opacity' }, '-=0.08')
+        .from('.ikas-list-shell', { y: 24, opacity: 0, duration: 0.48, clearProps: 'transform,opacity' }, '-=0.12')
+        .from('.ikas-detail-panel', { y: 24, opacity: 0, duration: 0.48, clearProps: 'transform,opacity' }, '-=0.38');
+    }, root);
+
+    animateListItems(true);
+  });
+};
+
+const goToPage = (page: number) => {
+  const nextPage = Math.min(Math.max(page, 1), totalPages.value);
+  if (nextPage === currentPage.value || isPageTransitioning) return;
+
+  const items = getVisibleMotionItems();
+  isPageTransitioning = true;
+
+  const applyPage = () => {
+    currentPage.value = nextPage;
+    nextTick(() => {
+      animateListItems(true, () => {
+        isPageTransitioning = false;
+      });
+    });
+  };
+
+  if (!items.length || prefersReducedMotion()) {
+    applyPage();
+    return;
+  }
+
+  gsap.killTweensOf(items);
+  const tl = gsap.timeline({
+    defaults: { duration: 0.2, ease: 'power1.in', overwrite: 'auto' },
+    onComplete: applyPage,
+  });
+
+  items.forEach((item, index) => {
+    tl.to(item, { y: -12, opacity: 0, scale: 0.985, force3D: true }, index * 0.03);
+  });
+};
+
 watch(sectorFilter, () => {
   subSectorFilter.value = 'all';
 });
@@ -1095,12 +1336,38 @@ watch([searchQuery, sectorFilter, subSectorFilter, statusFilter, yearFilter, mon
   currentPage.value = 1;
 });
 
+watch(loading, (isLoading) => {
+  if (!isLoading) {
+    if (!hasRunInitialEntrance) {
+      hasRunInitialEntrance = true;
+      runEntranceAnimations();
+      return;
+    }
+
+    animateListItems();
+    animateDetailPanel();
+  }
+});
+
 watch(filteredRecords, (items) => {
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value;
   if (selectedRecord.value && !items.some((item) => item.id === selectedRecord.value?.id)) {
     selectedRecord.value = items[0] || null;
   }
+  if (!loading.value) animateListItems(true);
 });
+
+watch(currentPage, () => {
+  if (!isPageTransitioning && !loading.value) animateListItems(true);
+});
+
+watch(selectedRecord, () => {
+  if (!loading.value) animateDetailPanel();
+}, { flush: 'post' });
+
+watch([attentionRecords, summaryTopSectors], () => {
+  if (!loading.value && !selectedRecord.value) animateDetailPanel();
+}, { flush: 'post' });
 
 watch(
   () => ikasStore.ikasVersion,
@@ -1135,6 +1402,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibilityRefresh);
   themeObserver?.disconnect();
+  gsapCtx?.revert();
   if (actionSyncTimer) clearTimeout(actionSyncTimer);
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
 });
@@ -1496,7 +1764,7 @@ const IkasCard = defineComponent({
 <template>
   <Pageheader :propData="pageData" />
 
-  <main :class="['ikas-page', { 'is-dark': isDarkMode }]">
+  <main ref="ikasPageRef" :class="['ikas-page', { 'is-dark': isDarkMode }]">
     <header class="ikas-hero-header">
       <div class="ikas-hero-content">
         <div class="ikas-hero-copy">
@@ -1529,126 +1797,233 @@ const IkasCard = defineComponent({
       </div>
     </header>
 
-    <section class="ikas-kpi-grid" aria-label="IKAS summary">
-      <KpiCard v-for="item in kpiItems" :key="item.label" :item="item" />
-    </section>
-
-    <FilterBar
-      v-model:search-query="searchQuery"
-      v-model:sector-filter="sectorFilter"
-      v-model:sub-sector-filter="subSectorFilter"
-      v-model:status-filter="statusFilter"
-      v-model:year-filter="yearFilter"
-      v-model:month-filter="monthFilter"
-      v-model:filters-open="filtersOpen"
-      :sectors="sectors"
-      :sub-sectors="subSectors"
-      :years="years"
-      :months="months"
-      :loading="loading"
-      :active-filters-count="activeFiltersCount"
-      @refresh="loadData"
-      @clear="clearFilters"
-    />
-
-    <section class="ikas-content-grid">
-      <div class="ikas-list-shell">
-        <div class="ikas-list-header">
-          <div>
-            <h2>All IKAS Records</h2>
-            <p>
-              Showing {{ visibleRangeStart }}-{{ visibleRangeEnd }} of {{ filteredRecords.length }} assessments
-            </p>
+    <template v-if="loading">
+      <section class="ikas-kpi-grid" aria-label="IKAS summary loading">
+        <article v-for="index in 5" :key="index" class="ikas-kpi-card ikas-kpi-skeleton">
+          <div class="ikas-kpi-topline">
+            <div class="ikas-kpi-icon ikas-skel-icon"></div>
           </div>
-          <label class="ikas-page-size">
-            <span>Rows</span>
-            <select v-model.number="pageSize" aria-label="Rows per page">
-              <option :value="8">8</option>
-              <option :value="12">12</option>
-              <option :value="20">20</option>
-            </select>
-          </label>
-        </div>
+          <div class="ikas-kpi-body">
+            <span class="ikas-skel-line ikas-skel-mini"></span>
+            <strong class="ikas-skel-line ikas-skel-kpi"></strong>
+            <small class="ikas-skel-line ikas-skel-mini"></small>
+          </div>
+        </article>
+      </section>
 
-        <div v-if="loading" class="ikas-skeleton-list" aria-label="Loading IKAS records">
-          <div v-for="index in 7" :key="index" class="ikas-skeleton-row">
-            <span></span>
-            <span></span>
-            <span></span>
+      <section class="ikas-filter-shell ikas-filter-skeleton" aria-hidden="true">
+        <div class="ikas-filter-primary">
+          <div class="ikas-filter-title">
+            <span class="ikas-filter-title-row">
+              <span class="ikas-filter-title-icon ikas-skel-icon"></span>
+              <span class="ikas-skel-line ikas-skel-filter-title"></span>
+            </span>
+            <span class="ikas-skel-line ikas-skel-filter-subtitle"></span>
+          </div>
+          <div class="ikas-skeleton-search"></div>
+          <div class="ikas-filter-actions">
+            <span class="ikas-skel-pill"></span>
+            <span class="ikas-skel-pill"></span>
           </div>
         </div>
-
-        <div v-else-if="!filteredRecords.length" class="ikas-empty-state">
-          <div class="ikas-empty-illustration" aria-hidden="true">
-            <i class="ri-folder-search-line"></i>
+        <div class="ikas-filter-fields is-open">
+          <div v-for="index in 5" :key="index" class="ikas-field ikas-skeleton-field">
+            <span class="ikas-skel-line ikas-skel-mini"></span>
+            <div class="ikas-skel-select"></div>
           </div>
-          <h3>No IKAS data found</h3>
-          <p>Try adjusting the search, sector, status, or date range filters.</p>
-          <button class="ikas-refresh-btn" type="button" @click="clearFilters">Clear filters</button>
+          <div class="ikas-clear-btn ikas-skel-clear"></div>
+        </div>
+      </section>
+
+      <section class="ikas-content-grid" aria-label="IKAS loading content">
+        <div class="ikas-list-shell">
+          <div class="ikas-list-header">
+            <div>
+              <div class="ikas-skel-line ikas-skel-list-title"></div>
+              <div class="ikas-skel-line ikas-skel-list-subtitle"></div>
+            </div>
+            <div class="ikas-skel-select ikas-skel-rows"></div>
+          </div>
+
+          <div class="ikas-skeleton-list" aria-label="Loading IKAS records">
+            <div v-for="index in 6" :key="index" class="ikas-skeleton-row">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+
+          <div class="ikas-pagination ikas-skeleton-pagination" aria-hidden="true">
+            <span class="ikas-skel-pill ikas-skel-page-btn"></span>
+            <span class="ikas-skel-line ikas-skel-page-info"></span>
+            <span class="ikas-skel-pill ikas-skel-page-btn"></span>
+          </div>
         </div>
 
-        <template v-else>
-          <div class="ikas-table-wrap">
-            <table class="ikas-table">
-              <colgroup>
-                <col class="ikas-col-company" />
-                <col class="ikas-col-score" />
-                <col class="ikas-col-status" />
-                <col class="ikas-col-updated" />
-                <col class="ikas-col-actions" />
-                <col class="ikas-col-detail" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">Company Name</th>
-                  <th scope="col">IKAS Score</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Last Updated</th>
-                  <th scope="col">Tindakan</th>
-                  <th scope="col">Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                <IkasTableRow
-                  v-for="item in paginatedRecords"
-                  :key="item.id"
-                  :item="item"
-                  :selected="selectedRecord?.id === item.id"
-                  :pending-action="pendingActionFor(item)"
-                  @select="selectRecord"
-                  @action="handleIkasAction"
-                />
-              </tbody>
-            </table>
+        <aside class="ikas-detail-panel is-summary" aria-label="IKAS insight panel loading">
+          <div class="ikas-skeleton-panel-shell">
+            <div class="ikas-skeleton-summary-header">
+              <div>
+                <span class="ikas-skel-line ikas-skel-mini"></span>
+                <span class="ikas-skel-line ikas-skel-detail-title"></span>
+                <span class="ikas-skel-line ikas-skel-detail-subtitle"></span>
+              </div>
+              <span class="ikas-skel-icon ikas-skel-detail-badge"></span>
+            </div>
+
+            <div class="ikas-attention-grid">
+              <div v-for="index in 4" :key="index" class="ikas-attention-stat ikas-skeleton-tile">
+                <span class="ikas-skel-icon"></span>
+                <span class="ikas-skel-line ikas-skel-mini"></span>
+                <strong class="ikas-skel-line ikas-skel-tile-number"></strong>
+                <small class="ikas-skel-line ikas-skel-tile-sub"></small>
+              </div>
+            </div>
+
+            <div class="ikas-attention-card ikas-skeleton-card">
+              <div class="ikas-card-title">
+                <span class="ikas-skel-line ikas-skel-card-title"></span>
+                <span class="ikas-skel-pill"></span>
+              </div>
+              <div class="ikas-skeleton-list compact">
+                <div v-for="index in 5" :key="index" class="ikas-skeleton-row is-panel">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="ikas-summary-sector ikas-skeleton-card">
+              <div class="ikas-card-title">
+                <span class="ikas-skel-line ikas-skel-card-title"></span>
+                <span class="ikas-skel-pill"></span>
+              </div>
+              <div class="ikas-skeleton-list compact">
+                <div v-for="index in 3" :key="index" class="ikas-skeleton-row is-sector">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </template>
+
+    <template v-else>
+      <section class="ikas-kpi-grid" aria-label="IKAS summary">
+        <KpiCard v-for="item in kpiItems" :key="item.label" :item="item" />
+      </section>
+
+      <FilterBar
+        v-model:search-query="searchQuery"
+        v-model:sector-filter="sectorFilter"
+        v-model:sub-sector-filter="subSectorFilter"
+        v-model:status-filter="statusFilter"
+        v-model:year-filter="yearFilter"
+        v-model:month-filter="monthFilter"
+        v-model:filters-open="filtersOpen"
+        :sectors="sectors"
+        :sub-sectors="subSectors"
+        :years="years"
+        :months="months"
+        :loading="loading"
+        :active-filters-count="activeFiltersCount"
+        @refresh="loadData"
+        @clear="clearFilters"
+      />
+
+      <section class="ikas-content-grid">
+        <div class="ikas-list-shell">
+          <div class="ikas-list-header">
+            <div>
+              <h2>All IKAS Records</h2>
+              <p>
+                Showing {{ visibleRangeStart }}-{{ visibleRangeEnd }} of {{ filteredRecords.length }} assessments
+              </p>
+            </div>
+            <label class="ikas-page-size">
+              <span>Rows</span>
+              <select v-model.number="pageSize" aria-label="Rows per page">
+                <option :value="8">8</option>
+                <option :value="12">12</option>
+                <option :value="20">20</option>
+              </select>
+            </label>
           </div>
 
-          <div class="ikas-mobile-list">
-            <IkasCard
-              v-for="item in paginatedRecords"
-              :key="item.id"
-              :item="item"
-              :selected="selectedRecord?.id === item.id"
-              :pending-action="pendingActionFor(item)"
-              @select="selectRecord"
-              @action="handleIkasAction"
-            />
+          <div v-if="!filteredRecords.length" class="ikas-empty-state">
+            <div class="ikas-empty-illustration" aria-hidden="true">
+              <i class="ri-folder-search-line"></i>
+            </div>
+            <h3>No IKAS data found</h3>
+            <p>Try adjusting the search, sector, status, or date range filters.</p>
+            <button class="ikas-refresh-btn" type="button" @click="clearFilters">Clear filters</button>
           </div>
 
-          <nav class="ikas-pagination" aria-label="IKAS pagination">
-            <button type="button" :disabled="currentPage === 1" @click="currentPage -= 1">
-              <i class="ri-arrow-left-s-line" aria-hidden="true"></i>
-              Previous
-            </button>
-            <span>Page {{ currentPage }} of {{ totalPages }}</span>
-            <button type="button" :disabled="currentPage === totalPages" @click="currentPage += 1">
-              Next
-              <i class="ri-arrow-right-s-line" aria-hidden="true"></i>
-            </button>
-          </nav>
-        </template>
-      </div>
+          <template v-else>
+            <div class="ikas-table-wrap">
+              <table class="ikas-table">
+                <colgroup>
+                  <col class="ikas-col-company" />
+                  <col class="ikas-col-score" />
+                  <col class="ikas-col-status" />
+                  <col class="ikas-col-updated" />
+                  <col class="ikas-col-actions" />
+                  <col class="ikas-col-detail" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">Company Name</th>
+                    <th scope="col">IKAS Score</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Last Updated</th>
+                    <th scope="col">Tindakan</th>
+                    <th scope="col">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <IkasTableRow
+                    v-for="item in paginatedRecords"
+                    :key="item.id"
+                    :item="item"
+                    :selected="selectedRecord?.id === item.id"
+                    :pending-action="pendingActionFor(item)"
+                    @select="selectRecord"
+                    @action="handleIkasAction"
+                  />
+                </tbody>
+              </table>
+            </div>
 
-      <aside class="ikas-detail-panel" :class="{ 'is-summary': !selectedRecord }" aria-label="IKAS insight panel">
+            <div class="ikas-mobile-list">
+              <IkasCard
+                v-for="item in paginatedRecords"
+                :key="item.id"
+                :item="item"
+                :selected="selectedRecord?.id === item.id"
+                :pending-action="pendingActionFor(item)"
+                @select="selectRecord"
+                @action="handleIkasAction"
+              />
+            </div>
+
+            <nav class="ikas-pagination" aria-label="IKAS pagination">
+              <button type="button" :disabled="currentPage === 1" @click="goToPage(currentPage - 1)">
+                <i class="ri-arrow-left-s-line" aria-hidden="true"></i>
+                Previous
+              </button>
+              <span>Page {{ currentPage }} of {{ totalPages }}</span>
+              <button type="button" :disabled="currentPage === totalPages" @click="goToPage(currentPage + 1)">
+                Next
+                <i class="ri-arrow-right-s-line" aria-hidden="true"></i>
+              </button>
+            </nav>
+          </template>
+        </div>
+
+        <aside class="ikas-detail-panel" :class="{ 'is-summary': !selectedRecord }" aria-label="IKAS insight panel">
         <template v-if="selectedRecord">
         <button class="ikas-panel-close" type="button" aria-label="Show IKAS analytics" @click="closePanel">
           <i class="ri-close-line" aria-hidden="true"></i>
@@ -1853,8 +2228,9 @@ const IkasCard = defineComponent({
             </div>
           </div>
         </template>
-      </aside>
-    </section>
+        </aside>
+      </section>
+    </template>
 
     <div
       v-if="actionConfirmation"
@@ -3189,14 +3565,32 @@ const IkasCard = defineComponent({
   gap: 10px;
 }
 
+.ikas-skeleton-list.compact {
+  gap: 8px;
+}
+
 .ikas-skeleton-row {
   align-items: center;
+  animation: ikasSkeletonPanelIn 0.4s ease both;
   border: 1px solid var(--ikas-border);
   border-radius: 16px;
   display: grid;
   gap: 18px;
   grid-template-columns: 1.4fr 0.8fr 1fr;
+  overflow: hidden;
   padding: 18px;
+}
+
+.ikas-skeleton-row.is-panel {
+  gap: 12px;
+  grid-template-columns: 28px minmax(0, 1fr) 58px;
+  padding: 12px 14px;
+}
+
+.ikas-skeleton-row.is-sector {
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  padding: 12px 14px;
 }
 
 .ikas-skeleton-row span {
@@ -3205,6 +3599,227 @@ const IkasCard = defineComponent({
   background-size: 200% 100%;
   border-radius: 999px;
   height: 14px;
+}
+
+.ikas-skeleton-hero,
+.ikas-skeleton-panel-shell,
+.ikas-filter-skeleton,
+.ikas-kpi-skeleton,
+.ikas-skeleton-card {
+  overflow: hidden;
+}
+
+.ikas-skel-line {
+  animation: ikasSkeleton 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, #edf2f7, #f8fafc, #edf2f7);
+  background-size: 200% 100%;
+  border-radius: 999px;
+  display: block;
+}
+
+.ikas-skel-icon {
+  animation: ikasSkeleton 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, #e6edf7, #f8fafc, #e6edf7);
+  background-size: 200% 100%;
+  border-radius: 12px;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.ikas-skel-pill {
+  animation: ikasSkeleton 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, #edf2f7, #f8fafc, #edf2f7);
+  background-size: 200% 100%;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 999px;
+  display: inline-flex;
+  height: 24px;
+  width: 64px;
+}
+
+.ikas-skel-breadcrumb {
+  height: 12px;
+  width: 190px;
+}
+
+.ikas-skel-title {
+  height: 28px;
+  width: min(380px, 72%);
+}
+
+.ikas-skel-desc {
+  height: 16px;
+  width: min(520px, 88%);
+}
+
+.ikas-skel-mini {
+  height: 10px;
+  width: 100%;
+}
+
+.ikas-skel-number {
+  height: 24px;
+  width: 76px;
+}
+
+.ikas-skel-kpi {
+  height: 30px;
+  width: 88px;
+}
+
+.ikas-skel-filter-title {
+  height: 13px;
+  width: 160px;
+}
+
+.ikas-skel-filter-subtitle {
+  height: 12px;
+  width: 250px;
+}
+
+.ikas-skeleton-search,
+.ikas-skel-select,
+.ikas-skel-clear {
+  animation: ikasSkeleton 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, #eef2f7, #f8fafc, #eef2f7);
+  background-size: 200% 100%;
+  border: 1px solid #dbe5f3;
+  border-radius: 12px;
+}
+
+.ikas-skeleton-search {
+  height: 42px;
+  width: 100%;
+}
+
+.ikas-skel-select {
+  height: 44px;
+  width: 100%;
+}
+
+.ikas-skel-clear {
+  height: 48px;
+}
+
+.ikas-skel-list-title {
+  height: 18px;
+  width: 170px;
+}
+
+.ikas-skel-list-subtitle {
+  height: 12px;
+  margin-top: 6px;
+  width: 250px;
+}
+
+.ikas-skel-rows {
+  height: 38px;
+  width: 86px;
+}
+
+.ikas-skel-page-btn {
+  height: 34px;
+  width: 92px;
+}
+
+.ikas-skel-page-info {
+  height: 12px;
+  width: 180px;
+}
+
+.ikas-skeleton-panel-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.ikas-skeleton-summary-header {
+  align-items: center;
+  border-bottom: 1px solid var(--ikas-border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  padding-bottom: 12px;
+}
+
+.ikas-skel-detail-title {
+  height: 18px;
+  margin-top: 8px;
+  width: 180px;
+}
+
+.ikas-skel-detail-subtitle {
+  height: 12px;
+  margin-top: 6px;
+  width: 240px;
+}
+
+.ikas-skel-detail-badge {
+  height: 42px;
+  width: 42px;
+}
+
+.ikas-skeleton-tile {
+  border: 1px solid var(--ikas-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.ikas-skeleton-tile .ikas-skel-icon {
+  height: 30px;
+  width: 30px;
+}
+
+.ikas-skel-tile-number {
+  height: 24px;
+  width: 36px;
+}
+
+.ikas-skel-tile-sub {
+  height: 12px;
+  width: 100%;
+}
+
+.ikas-skeleton-card {
+  border: 1px solid var(--ikas-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.ikas-skel-card-title {
+  height: 16px;
+  width: 132px;
+}
+
+.ikas-skeleton-card .ikas-card-title {
+  align-items: center;
+}
+
+.ikas-page.is-dark .ikas-skel-line,
+.ikas-page.is-dark .ikas-skel-icon,
+.ikas-page.is-dark .ikas-skel-pill,
+.ikas-page.is-dark .ikas-skeleton-search,
+.ikas-page.is-dark .ikas-skel-select,
+.ikas-page.is-dark .ikas-skel-clear,
+.ikas-page.is-dark .ikas-skeleton-row span,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skel-line,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skel-icon,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skel-pill,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skeleton-search,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skel-select,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skel-clear,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-skeleton-row span,
+:global(html.dark) .ikas-page .ikas-skel-line,
+:global(html.dark) .ikas-page .ikas-skel-icon,
+:global(html.dark) .ikas-page .ikas-skel-pill,
+:global(html.dark) .ikas-page .ikas-skeleton-search,
+:global(html.dark) .ikas-page .ikas-skel-select,
+:global(html.dark) .ikas-page .ikas-skel-clear,
+:global(html.dark) .ikas-page .ikas-skeleton-row span {
+  background: linear-gradient(90deg, #162338 25%, #23344d 50%, #162338 75%);
+  background-size: 200% 100%;
+  border-color: rgba(51, 65, 85, 0.9);
 }
 
 .ikas-empty-state {
@@ -3270,6 +3885,17 @@ const IkasCard = defineComponent({
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+@keyframes ikasSkeletonPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -8115,6 +8741,70 @@ const IkasCard = defineComponent({
   .ikas-mobile-card :deep(.ikas-no-action) {
     min-width: 0;
     width: 100%;
+  }
+}
+
+/* Final header sizing + GSAP-friendly motion targets */
+.ikas-hero-copy h1 {
+  font-size: 24px;
+  font-weight: 820;
+  line-height: 1.12;
+}
+
+.ikas-hero-copy p {
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 660px;
+}
+
+.ikas-list-header h2 {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.ikas-list-header p {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ikas-page {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.ikas-attention-card .ikas-card-title,
+.ikas-summary-sector .ikas-card-title {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.ikas-attention-card .ikas-card-title h3,
+.ikas-summary-sector .ikas-card-title h3 {
+  color: var(--ikas-text);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.ikas-attention-card .ikas-card-title span,
+.ikas-summary-sector .ikas-card-title span {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  padding: 5px 7px;
+}
+
+@media (max-width: 768px) {
+  .ikas-hero-copy h1 {
+    font-size: 22px;
+  }
+
+  .ikas-hero-copy p {
+    font-size: 12.5px;
+  }
+
+  .ikas-list-header h2 {
+    font-size: 14px;
   }
 }
 </style>

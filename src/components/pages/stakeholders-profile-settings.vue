@@ -318,7 +318,7 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
   </transition>
 
   <!-- Main Container -->
-  <div class="row">
+  <div class="row stakeholder-settings-page">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <!-- Page Header -->
@@ -364,7 +364,7 @@ const errorMessage = ref("Terjadi kesalahan. Silakan coba lagi.");
             :style="{ 
               cursor: dragState.isDragging ? 'grabbing' : 'grab',
               backgroundImage: form.photo ? `url(${form.photo})` : 'none',
-              backgroundColor: form.photo ? 'transparent' : '#e9ecef',
+              backgroundColor: form.photo ? 'transparent' : 'var(--stakeholder-photo-empty-bg, #e9ecef)',
               backgroundSize: 'cover',
               backgroundPosition: `${photoPosition.x}% ${photoPosition.y}%`
             }"

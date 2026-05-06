@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch, nextTick } from 'vue';
+import { computed, watch, nextTick, ref, onMounted, onUnmounted } from 'vue';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -10,6 +10,38 @@ const props = defineProps({
 });
 
 const filterStore = useDashboardFilterStore();
+const isDarkMode = ref(false);
+let themeObserver;
+
+function syncThemeMode() {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const body = document.body;
+    isDarkMode.value =
+        root.getAttribute('data-theme-mode') === 'dark' ||
+        body?.getAttribute('data-theme-mode') === 'dark' ||
+        root.classList.contains('dark') ||
+        body?.classList.contains('dark');
+}
+
+onMounted(() => {
+    syncThemeMode();
+    themeObserver = new MutationObserver(syncThemeMode);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme-mode', 'class'],
+    });
+    if (document.body) {
+        themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['data-theme-mode', 'class'],
+        });
+    }
+});
+
+onUnmounted(() => {
+    themeObserver?.disconnect();
+});
 
 const currentYear = new Date().getFullYear();
 const startYear = 2025;
@@ -158,7 +190,7 @@ const detailedFilterLabel = computed(() => {
 
 
 <template>
-    <div class="gf-card">
+    <div class="gf-card" :class="{ 'is-dark': isDarkMode }">
         <!-- ── Header ── -->
         <div class="gf-header">
             <div class="gf-header-inner">
@@ -588,6 +620,257 @@ const detailedFilterLabel = computed(() => {
     color: #2563eb;
     font-size: 15px;
     flex-shrink: 0;
+}
+
+.gf-card.is-dark {
+    color-scheme: dark;
+    background: #151a2b;
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow:
+        0 16px 38px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.gf-card.is-dark .gf-header {
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+    background: linear-gradient(180deg, rgba(23, 30, 48, 0.98), rgba(21, 26, 43, 0.96));
+}
+
+.gf-card.is-dark .gf-body {
+    background:
+        radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.12), transparent 34%),
+        linear-gradient(145deg, #161b2d 0%, #111827 100%);
+}
+
+.gf-card.is-dark .gf-header-title {
+    color: #eef4ff;
+}
+
+.gf-card.is-dark .gf-header-sub,
+.gf-card.is-dark .gf-quick-label {
+    color: #8fa3bf;
+}
+
+.gf-card.is-dark .gf-quick-bar {
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.gf-card.is-dark .gf-pill {
+    background: rgba(15, 23, 42, 0.86) !important;
+    border-color: rgba(147, 197, 253, 0.26) !important;
+    color: #bfdbfe !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.gf-card.is-dark .gf-pill:hover {
+    background: rgba(37, 99, 235, 0.2) !important;
+    border-color: rgba(96, 165, 250, 0.72) !important;
+    color: #e0f2fe !important;
+}
+
+.gf-card.is-dark .gf-pill.active {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #60a5fa 100%) !important;
+    border-color: rgba(96, 165, 250, 0.72) !important;
+    color: #fff !important;
+    box-shadow:
+        0 8px 20px rgba(37, 99, 235, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.gf-card.is-dark .gf-label {
+    color: #c6d3e5;
+}
+
+.gf-card.is-dark .gf-select {
+    background-color: rgba(15, 23, 42, 0.9) !important;
+    border-color: rgba(147, 197, 253, 0.28) !important;
+    color: #e5eefb !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    color-scheme: dark;
+}
+
+.gf-card.is-dark .gf-select:hover {
+    background-color: rgba(17, 24, 39, 0.96) !important;
+    border-color: rgba(96, 165, 250, 0.76) !important;
+}
+
+.gf-card.is-dark .gf-select:focus {
+    background-color: rgba(17, 24, 39, 0.98) !important;
+    border-color: #60a5fa !important;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18) !important;
+}
+
+.gf-card.is-dark .gf-select:disabled {
+    background: rgba(30, 41, 59, 0.62) !important;
+    border-color: rgba(148, 163, 184, 0.14) !important;
+    color: #7f8da3 !important;
+}
+
+.gf-card.is-dark .gf-select option {
+    background: #111827 !important;
+    color: #e5eefb !important;
+}
+
+.gf-card.is-dark .gf-select-caret {
+    color: #93c5fd !important;
+}
+
+.gf-card.is-dark .gf-count-badge {
+    background: rgba(37, 99, 235, 0.18);
+    border-color: rgba(96, 165, 250, 0.35);
+    color: #bfdbfe;
+}
+
+.gf-card.is-dark .gf-reset-btn {
+    background: rgba(239, 68, 68, 0.13);
+    border-color: rgba(248, 113, 113, 0.3);
+    color: #fca5a5;
+}
+
+.gf-card.is-dark .gf-reset-btn:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+}
+
+.gf-card.is-dark .gf-summary {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.88) 0%, rgba(17, 24, 39, 0.92) 100%);
+    border-color: rgba(148, 163, 184, 0.2);
+    color: #dbeafe;
+}
+
+/* Dark mode */
+:global(html[data-theme-mode="dark"]) .gf-card,
+:global(html.dark) .gf-card {
+    color-scheme: dark;
+    background: #151a2b;
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow:
+        0 16px 38px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-header,
+:global(html.dark) .gf-header {
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+    background: linear-gradient(180deg, rgba(23, 30, 48, 0.98), rgba(21, 26, 43, 0.96));
+}
+
+:global(html[data-theme-mode="dark"]) .gf-body,
+:global(html.dark) .gf-body {
+    background:
+        radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.12), transparent 34%),
+        linear-gradient(145deg, #161b2d 0%, #111827 100%);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-header-title,
+:global(html.dark) .gf-header-title {
+    color: #eef4ff;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-header-sub,
+:global(html.dark) .gf-header-sub,
+:global(html[data-theme-mode="dark"]) .gf-quick-label,
+:global(html.dark) .gf-quick-label {
+    color: #8fa3bf;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-quick-bar,
+:global(html.dark) .gf-quick-bar {
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-pill,
+:global(html.dark) .gf-pill {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(147, 197, 253, 0.24);
+    color: #bfdbfe;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-pill:hover,
+:global(html.dark) .gf-pill:hover {
+    background: rgba(37, 99, 235, 0.16);
+    border-color: rgba(96, 165, 250, 0.62);
+    color: #e0f2fe;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-pill.active,
+:global(html.dark) .gf-pill.active {
+    color: #fff;
+    box-shadow:
+        0 8px 20px rgba(37, 99, 235, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-label,
+:global(html.dark) .gf-label {
+    color: #c6d3e5;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-select,
+:global(html.dark) .gf-select {
+    background-color: rgba(15, 23, 42, 0.76);
+    border-color: rgba(147, 197, 253, 0.24);
+    color: #e5eefb;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-select:hover,
+:global(html.dark) .gf-select:hover {
+    border-color: rgba(96, 165, 250, 0.68);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-select:focus,
+:global(html.dark) .gf-select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+:global(html[data-theme-mode="dark"]) .gf-select:disabled,
+:global(html.dark) .gf-select:disabled {
+    background: rgba(30, 41, 59, 0.62);
+    border-color: rgba(148, 163, 184, 0.14);
+    color: #7f8da3;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-select option,
+:global(html.dark) .gf-select option {
+    background: #111827;
+    color: #e5eefb;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-select-caret,
+:global(html.dark) .gf-select-caret {
+    color: #7aa7e8;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-count-badge,
+:global(html.dark) .gf-count-badge {
+    background: rgba(37, 99, 235, 0.18);
+    border-color: rgba(96, 165, 250, 0.35);
+    color: #bfdbfe;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-reset-btn,
+:global(html.dark) .gf-reset-btn {
+    background: rgba(239, 68, 68, 0.13);
+    border-color: rgba(248, 113, 113, 0.3);
+    color: #fca5a5;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-reset-btn:hover,
+:global(html.dark) .gf-reset-btn:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+}
+
+:global(html[data-theme-mode="dark"]) .gf-summary,
+:global(html.dark) .gf-summary {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.88) 0%, rgba(17, 24, 39, 0.92) 100%);
+    border-color: rgba(148, 163, 184, 0.2);
+    color: #dbeafe;
 }
 
 /* ═══════ Animations ═══════ */

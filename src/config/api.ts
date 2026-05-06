@@ -136,9 +136,14 @@ class ApiClient {
         const bodyId = body && !(body instanceof FormData) && typeof body === 'object'
             ? String(body.id || body.entity_id || body.resource_id || body.record_id || '')
             : '';
+        const formDataId = body instanceof FormData
+            ? String(body.get('id') || body.get('user_id') || body.get('entity_id') || body.get('resource_id') || '')
+            : '';
         const idFrom = (index: number) => segments[index] && !['review', 'validate', 'approve-edit', 'reject-edit', 'request-edit'].includes(segments[index])
             ? segments[index]
             : '';
+
+        if (segments[0] === 'me') return { entity: 'user', id: bodyId || formDataId };
 
         if (segments[0] === 'maturity') {
             const resource = segments[1] || '';

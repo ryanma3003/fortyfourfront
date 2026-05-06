@@ -20,6 +20,7 @@ const ikasStore = useIkasStore();
 // Get current stakeholder slug and source from route query
 const currentSlug = computed(() => String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
+const requestedYear = computed(() => String(route.query.year || new Date().getFullYear()));
 
 // Step management: 1 = Respondent Form, 2 = Assessment
 const currentStep = ref(1);
@@ -41,6 +42,18 @@ const deriveTargetLevel = (targetNilai: string | number | null | undefined): num
   return 5;
 };
 
+const normalizeMeasurementDate = (tanggal: string | null | undefined, tahun: string | number | null | undefined): string => {
+  const normalizedYear = String(tahun || '').match(/\d{4}/)?.[0] || String(new Date().getFullYear());
+  const normalizedDate = String(tanggal || '').trim();
+  if (normalizedDate && normalizedDate.startsWith(`${normalizedYear}-`)) {
+    return normalizedDate;
+  }
+  if (!normalizedDate && normalizedYear === String(new Date().getFullYear())) {
+    return new Date().toISOString().split('T')[0];
+  }
+  return `${normalizedYear}-01-01`;
+};
+
 const loadCurrentStakeholderIkas = async () => {
   assessmentStore.initializeLocalData();
   await assessmentStore.fetchAssessmentStructure();
@@ -60,7 +73,7 @@ const loadCurrentStakeholderIkas = async () => {
   // Try fetching existing IKAS data from backend
   const stakeholder = currentStakeholder.value;
   if (stakeholder?.id) {
-    const result = await ikasStore.fetchFromBackend(currentSlug.value, stakeholder.id);
+    const result = await ikasStore.fetchFromBackend(currentSlug.value, stakeholder.id, requestedYear.value);
     if (result.exists && result.respondentData) {
 
       // Populate the respondent profile in the assessment store
@@ -73,7 +86,7 @@ const loadCurrentStakeholderIkas = async () => {
         namaResponden: result.respondentData.responden,
         jabatanResponden: result.respondentData.jabatan,
         nomorTelepon: result.respondentData.telepon,
-        tahunPengukuran: result.respondentData.tanggal ? new Date(result.respondentData.tanggal).getFullYear().toString() : new Date().getFullYear().toString(),
+        tahunPengukuran: result.respondentData.tahun_pengukuran || (result.respondentData.tanggal ? new Date(result.respondentData.tanggal).getFullYear().toString() : requestedYear.value),
         targetLevel: deriveTargetLevel(result.respondentData.target_nilai),
         targetNilai: String(result.respondentData.target_nilai || ''),
         acuan: '',
@@ -89,6 +102,25 @@ const loadCurrentStakeholderIkas = async () => {
     }
   }
 
+  if (currentSlug.value) {
+    assessmentStore.saveRespondentProfile({
+      instansi: stakeholder?.nama_perusahaan || '',
+      sektor: stakeholder?.sub_sektor?.nama_sub_sektor || stakeholder?.sektor || '',
+      alamat: stakeholder?.alamat || '',
+      email: stakeholder?.email || '',
+      namaResponden: '',
+      jabatanResponden: '',
+      nomorTelepon: '',
+      tahunPengukuran: requestedYear.value,
+      targetLevel: 3,
+      targetNilai: '3',
+      acuan: '',
+      tanggalPengisian: normalizeMeasurementDate('', requestedYear.value),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+
   currentStep.value = 1;
 };
 
@@ -97,8 +129,9 @@ onMounted(async () => {
   await loadCurrentStakeholderIkas();
 });
 
-watch(currentSlug, async (newSlug, oldSlug) => {
-  if (!newSlug || newSlug === oldSlug) return;
+watch([currentSlug, requestedYear], async ([newSlug], [oldSlug, oldYear]) => {
+  if (!newSlug) return;
+  if (newSlug === oldSlug && requestedYear.value === oldYear) return;
   await loadCurrentStakeholderIkas();
 });
 
@@ -146,7 +179,8 @@ const handleFormSubmit = async () => {
         responden: profile.namaResponden || '',
         jabatan: profile.jabatanResponden || '',
         telepon: profile.nomorTelepon || '',
-        tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+        tanggal: normalizeMeasurementDate(profile.tanggalPengisian, profile.tahunPengukuran || requestedYear.value),
+        tahun_pengukuran: profile.tahunPengukuran || requestedYear.value,
         target_nilai: parseTargetNilai(profile.targetNilai),
       });
 
@@ -179,7 +213,8 @@ const handleSaveRespondent = async () => {
       responden: profile.namaResponden || '',
       jabatan: profile.jabatanResponden || '',
       telepon: profile.nomorTelepon || '',
-      tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+      tanggal: normalizeMeasurementDate(profile.tanggalPengisian, profile.tahunPengukuran || requestedYear.value),
+      tahun_pengukuran: profile.tahunPengukuran || requestedYear.value,
       target_nilai: parseTargetNilai(profile.targetNilai),
     });
 
@@ -204,7 +239,7 @@ const handleEditData = () => {
 
 const backToIkas = () => {
   if (currentSlug.value) {
-    router.push({ path: '/ikas', query: { slug: currentSlug.value } });
+    router.push({ path: '/ikas', query: { slug: currentSlug.value, year: requestedYear.value } });
   } else {
     router.push('/stakeholders');
   }

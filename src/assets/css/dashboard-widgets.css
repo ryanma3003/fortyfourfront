@@ -577,7 +577,7 @@
     0 8px 24px rgba(0, 0, 0, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   width: 100%;
-  max-width: 960px;
+  max-width: 1240px;
   max-height: 88vh;
   overflow: hidden;
   display: flex;
@@ -788,12 +788,14 @@
 .ddm-table-wrap {
   border: 1px solid var(--dw-card-border);
   border-radius: 14px;
-  overflow: hidden;
+  overflow: auto;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+  max-width: 100%;
 }
 
 .ddm-table {
   width: 100%;
+  min-width: 1240px;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -892,12 +894,18 @@
   color: var(--dw-text);
   border-bottom: 1px solid var(--ddm-border);
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 /* ── Cell Variants ── */
 .ddm-cell-primary {
   color: var(--dw-text);
   font-size: 0.82rem;
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .ddm-sektor-tag {
@@ -919,6 +927,12 @@
   font-size: 0.75rem;
   color: var(--dw-text-secondary);
   white-space: nowrap;
+}
+
+.ddm-status-badge,
+.ddm-score-pill,
+.ddm-sektor-tag {
+  max-width: 170px;
 }
 
 .ddm-cell-date i {

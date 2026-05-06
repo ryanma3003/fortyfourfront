@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ikasService } from '../../services/ikas.service';
 
 const props = defineProps({
@@ -10,13 +10,20 @@ const props = defineProps({
   perusahaanId: {
     type: String,
     default: null
+  },
+  activeYear: {
+    type: [String, Number],
+    default: null
   }
 });
+
+const emit = defineEmits(['year-selected']);
 
 // --- STATE ---
 const currentYear = new Date().getFullYear();
 const availableYears = ref([]);
 const selectedYears = ref([currentYear]);
+const comparisonPickerOpen = ref(false);
 const allIkasRecords = ref([]);
 const loading = ref(false);
 const error = ref('');
@@ -62,18 +69,42 @@ const toYearNumber = (value) => {
   return Number.isFinite(year) ? year : null;
 };
 
+const getRecordMeasurementYear = (record) => {
+  const explicitYear = String(
+    record?.tahun_pengukuran ||
+    record?.tahunPengukuran ||
+    record?.tahun ||
+    record?.year ||
+    '',
+  ).match(/\d{4}/)?.[0];
+
+  if (explicitYear) return Number(explicitYear);
+
+  const date = record?.tanggal || record?.created_at || record?.updated_at;
+  if (!date) return null;
+
+  const year = new Date(date).getFullYear();
+  return Number.isFinite(year) ? year : null;
+};
+
 const recordsByYear = computed(() => {
   const map = {};
   allIkasRecords.value.forEach(record => {
-    const date = record.tanggal || record.created_at;
-    if (!date) return;
-    const year = new Date(date).getFullYear();
-    if (!Number.isFinite(year)) return;
+    const year = getRecordMeasurementYear(record);
+    if (!year) return;
     if (!map[year]) map[year] = [];
     map[year].push(record);
   });
   return map;
 });
+
+const hasRecordForYear = (year) => {
+  const normalizedYear = toYearNumber(year);
+  return normalizedYear !== null && !!recordsByYear.value[normalizedYear]?.length;
+};
+
+const activeYearNumber = computed(() => toYearNumber(props.activeYear) ?? currentYear);
+const hasAnyComparableData = computed(() => availableYears.value.some((year) => hasRecordForYear(year)));
 
 // Get the latest record for a given year
 const getRecordForYear = (year) => {
@@ -130,36 +161,48 @@ const maxScore = 5;
 
 // Toggle year selection
 const normalizeSelectedYears = (years) => {
+  const allowedYears = new Set(availableYears.value.map(toYearNumber).filter((year) => year !== null));
   const uniqueYears = Array.from(new Set(
     years
       .map(toYearNumber)
-      .filter((year) => year !== null)
+      .filter((year) => year !== null && (!allowedYears.size || allowedYears.has(year)))
   ));
 
-  const normalized = uniqueYears.length ? uniqueYears : [currentYear];
+  const normalized = uniqueYears.length
+    ? uniqueYears
+    : (availableYears.value.length ? [availableYears.value[availableYears.value.length - 1]] : []);
 
   return normalized
     .sort((a, b) => a - b)
     .slice(-4);
 };
 
-const toggleYear = (year) => {
+const viewYear = (year) => {
   const normalizedYear = toYearNumber(year);
   if (normalizedYear === null) return;
+  emit('year-selected', normalizedYear);
+};
 
+const toggleComparisonYear = (year) => {
+  const normalizedYear = toYearNumber(year);
+  if (normalizedYear === null || !hasRecordForYear(normalizedYear)) return;
   const idx = selectedYears.value.indexOf(normalizedYear);
   if (idx > -1) {
     if (selectedYears.value.length > 1) {
       selectedYears.value = normalizeSelectedYears(
-        selectedYears.value.filter((item) => item !== normalizedYear)
+        selectedYears.value.filter((item) => item !== normalizedYear && hasRecordForYear(item))
       );
     }
   } else {
     selectedYears.value = normalizeSelectedYears([
-      ...selectedYears.value,
+      ...selectedYears.value.filter((item) => hasRecordForYear(item)),
       normalizedYear,
     ]);
   }
+};
+
+const toggleComparisonPicker = () => {
+  comparisonPickerOpen.value = !comparisonPickerOpen.value;
 };
 
 // Trend indicator
@@ -305,34 +348,37 @@ const fetchAllRecords = async () => {
         String(r.id_perusahaan || '') === String(props.perusahaanId)
       );
       
-      // Build available years from the data
-      const years = new Set();
+      // Build available years from the data. Keep current/active year visible
+      // so a missing year can be selected and created from the main table.
+      const years = new Set([currentYear]);
+      const activeYear = toYearNumber(props.activeYear);
+      if (activeYear !== null) years.add(activeYear);
       allIkasRecords.value.forEach(record => {
-        const date = record.tanggal || record.created_at;
-        if (date) {
-          const year = new Date(date).getFullYear();
-          if (Number.isFinite(year)) years.add(year);
-        }
+        const year = getRecordMeasurementYear(record);
+        if (year) years.add(year);
       });
-      
-      // Always include the current year
-      years.add(currentYear);
       
       // Show the timeline from older years on the left to newer years on the right.
       availableYears.value = Array.from(years).sort((a, b) => a - b);
       
-      // Default to the system year only.
-      selectedYears.value = [currentYear];
+      const dataYears = allIkasRecords.value
+        .map(getRecordMeasurementYear)
+        .filter(Boolean)
+        .sort((a, b) => a - b);
+      const latestDataYear = dataYears[dataYears.length - 1];
+      selectedYears.value = normalizeSelectedYears([
+        activeYear ?? latestDataYear ?? availableYears.value[availableYears.value.length - 1],
+      ]);
     } else {
-      // No data — show current year and some past years
-      availableYears.value = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
-      selectedYears.value = [currentYear];
+      const activeYear = toYearNumber(props.activeYear);
+      availableYears.value = Array.from(new Set([currentYear, activeYear].filter((year) => year !== null))).sort((a, b) => a - b);
+      selectedYears.value = activeYear !== null ? [activeYear] : [currentYear];
     }
   } catch (err) {
     console.error('[IkasComparison] Failed to fetch records:', err);
     error.value = 'Gagal memuat data perbandingan';
-    availableYears.value = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
-    selectedYears.value = [currentYear];
+    availableYears.value = [];
+    selectedYears.value = [];
   } finally {
     loading.value = false;
   }
@@ -340,16 +386,33 @@ const fetchAllRecords = async () => {
 
 onMounted(() => {
   fetchAllRecords();
+  window.addEventListener('ikas-requests-updated', fetchAllRecords);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('ikas-requests-updated', fetchAllRecords);
 });
 
 watch(() => props.perusahaanId, () => {
   fetchAllRecords();
 });
 
+watch(() => props.activeYear, (year) => {
+  const normalizedYear = toYearNumber(year);
+  if (normalizedYear === null) return;
+  if (!availableYears.value.map(toYearNumber).includes(normalizedYear)) {
+    availableYears.value = Array.from(new Set([...availableYears.value, normalizedYear])).sort((a, b) => a - b);
+  }
+  selectedYears.value = normalizeSelectedYears([normalizedYear]);
+});
+
 watch(availableYears, (years) => {
-  if (!years.length) return;
+  if (!years.length) {
+    selectedYears.value = [];
+    return;
+  }
   if (!selectedYears.value.length) {
-    selectedYears.value = [currentYear];
+    selectedYears.value = [years[years.length - 1]];
     return;
   }
 
@@ -370,11 +433,12 @@ watch(availableYears, (years) => {
           v-for="year in availableYears"
           :key="year"
           class="year-pill"
-          :class="{ active: selectedYears.includes(year) }"
-          @click="toggleYear(year)"
+          :class="{ active: String(year) === String(activeYearNumber), 'is-active-context': String(year) === String(activeYearNumber) }"
+          @click="viewYear(year)"
         >
           {{ year }}
           <span v-if="year === currentYear" class="current-badge">Terkini</span>
+          <span v-else-if="!hasRecordForYear(year)" class="current-badge">Baru</span>
         </button>
       </div>
     </div>
@@ -392,13 +456,37 @@ watch(availableYears, (years) => {
             <div class="comparison-header-sub">Visualisasi tren nilai kematangan keamanan siber</div>
           </div>
         </div>
-        <div class="comparison-header-actions" v-if="hasData">
+        <div class="comparison-header-actions" v-if="hasAnyComparableData">
+          <button type="button" class="comparison-picker-btn" @click="toggleComparisonPicker">
+            <i class="ri-git-compare-line"></i>
+            <span>Pilih Perbandingan</span>
+          </button>
           <div class="year-legend">
             <span v-for="(item, idx) in comparisonData" :key="item.year" class="legend-chip" :style="{ background: item.color.light, color: item.color.solid }">
               <span class="legend-dot" :style="{ background: item.color.solid }"></span>
               {{ item.year }}
             </span>
           </div>
+        </div>
+      </div>
+
+      <div v-if="comparisonPickerOpen" class="comparison-picker-panel">
+        <div class="comparison-picker-copy">
+          <strong>Tahun perbandingan</strong>
+          <span>Pilih maksimal 4 tahun yang punya data.</span>
+        </div>
+        <div class="comparison-picker-years">
+          <button
+            v-for="year in availableYears"
+            :key="`compare-${year}`"
+            type="button"
+            class="comparison-year-btn"
+            :class="{ active: selectedYears.includes(year), disabled: !hasRecordForYear(year) }"
+            :disabled="!hasRecordForYear(year)"
+            @click="toggleComparisonYear(year)"
+          >
+            {{ year }}
+          </button>
         </div>
       </div>
 
@@ -639,6 +727,11 @@ watch(availableYears, (years) => {
   box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35);
 }
 
+.year-pill.is-active-context {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 2px;
+}
+
 .year-pill.active:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
@@ -723,6 +816,86 @@ watch(availableYears, (years) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.comparison-picker-btn {
+  align-items: center;
+  background: #1d4ed8;
+  border: 1px solid #1d4ed8;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.comparison-picker-btn:hover {
+  background: #1e40af;
+  border-color: #1e40af;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.22);
+}
+
+.comparison-picker-panel {
+  align-items: center;
+  background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%);
+  border-bottom: 1px solid #dbeafe;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 24px;
+  flex-wrap: wrap;
+}
+
+.comparison-picker-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.comparison-picker-copy strong {
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.comparison-picker-copy span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.comparison-picker-years {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.comparison-year-btn {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 30px;
+  padding: 0 13px;
+}
+
+.comparison-year-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.comparison-year-btn.disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 .year-legend {

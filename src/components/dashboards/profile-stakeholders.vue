@@ -4,7 +4,7 @@ import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder } from "../../types/stakeholders.types";
-import { computed, ref, onMounted, onActivated, watch } from "vue";
+import { computed, ref, onMounted, onActivated, onUnmounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import { picService } from "../../services/pic.service";
@@ -62,6 +62,7 @@ const isLoadingAktivitas = ref(false);
 const isLoadingIkasAuditLogs = ref(false);
 const isSavingAktivitas = ref(false);
 const isActivityFormVisible = ref(false);
+const isProfileDarkMode = ref(false);
 const editingAktivitasId = ref<number | null>(null);
 const aktivitasForm = ref<AktivitasPayload>({
   judul: "",
@@ -80,6 +81,18 @@ let lastProfileLoadAt = 0;
 let jenisAktivitasLoaded = false;
 let profileDependenciesPromise: Promise<void> | null = null;
 let profileLoadInFlightSlug = "";
+let profileThemeObserver: MutationObserver | null = null;
+
+const syncProfileTheme = () => {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const body = document.body;
+  isProfileDarkMode.value =
+    root.getAttribute("data-theme-mode") === "dark" ||
+    body?.getAttribute("data-theme-mode") === "dark" ||
+    root.classList.contains("dark") ||
+    body?.classList.contains("dark");
+};
 
 const isLatestProfileLoad = (token: number, slug: string) => (
   token === profileLoadSeq && slug === stakeholderSlug.value
@@ -510,6 +523,18 @@ const currentStakeholder = computed<Stakeholder | undefined>(() => {
 });
 
 onMounted(async () => {
+    syncProfileTheme();
+    profileThemeObserver = new MutationObserver(syncProfileTheme);
+    profileThemeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme-mode', 'class'],
+    });
+    if (document.body) {
+        profileThemeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['data-theme-mode', 'class'],
+        });
+    }
     await loadProfileData({ force: true });
 });
 
@@ -523,6 +548,10 @@ watch(stakeholderSlug, async (newSlug, oldSlug) => {
     if (newSlug && newSlug !== oldSlug) {
         await loadProfileData({ force: true, resetUi: true });
     }
+});
+
+onUnmounted(() => {
+    profileThemeObserver?.disconnect?.();
 });
 
 // Dynamic penilaian from IKAS and KSE stores
@@ -1573,89 +1602,6 @@ const profileCompletion = computed(() => {
 /* ─────────────────────────────────────────────
    DARK MODE
    ───────────────────────────────────────────── */
-html[data-theme-mode="dark"] .contact-bar-item,
-html.dark .contact-bar-item {
-  background: linear-gradient(135deg, rgba(37,99,235,0.10) 0%, rgba(124,58,237,0.06) 100%);
-  border-color: rgba(255,255,255,0.08);
-  color: #c7d9f5;
-}
-html[data-theme-mode="dark"] .contact-bar-item:hover,
-html.dark .contact-bar-item:hover {
-  border-color: rgba(37,99,235,0.3);
-  box-shadow: 0 6px 20px rgba(37,99,235,0.15), 0 2px 8px rgba(0,0,0,0.3);
-  color: #dbeafe;
-}
-html[data-theme-mode="dark"] .contact-bar-sep,
-html.dark .contact-bar-sep {
-  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.12), transparent);
-}
-
-html[data-theme-mode="dark"] .info-grid-item,
-html.dark .info-grid-item {
-  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%);
-  border-color: rgba(255,255,255,0.08);
-}
-html[data-theme-mode="dark"] .info-grid-item:hover,
-html.dark .info-grid-item:hover {
-  border-color: rgba(37,99,235,0.25);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.3);
-}
-html[data-theme-mode="dark"] .info-grid-value,
-html.dark .info-grid-value { color: #dde8f5; }
-html[data-theme-mode="dark"] .info-grid-label,
-html.dark .info-grid-label { color: #4a6580; }
-
-html[data-theme-mode="dark"] .sp-section-title,
-html.dark .sp-section-title { color: #4a6580; }
-html[data-theme-mode="dark"] .sp-section-title::after,
-html.dark .sp-section-title::after { background: linear-gradient(to right, rgba(37,99,235,0.15), transparent); }
-
-html[data-theme-mode="dark"] .hero-card-shell,
-html.dark .hero-card-shell {
-  box-shadow: 0 16px 56px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.2);
-}
-
-html[data-theme-mode="dark"] .activity-form-panel,
-html.dark .activity-form-panel,
-html[data-theme-mode="dark"] .activity-timeline-content,
-html.dark .activity-timeline-content {
-  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%);
-  border-color: rgba(255,255,255,0.08);
-}
-html[data-theme-mode="dark"] .activity-modal,
-html.dark .activity-modal,
-html[data-theme-mode="dark"] .activity-modal-header,
-html.dark .activity-modal-header,
-html[data-theme-mode="dark"] .activity-modal-footer,
-html.dark .activity-modal-footer {
-  background: #162131;
-  border-color: rgba(255,255,255,0.08);
-}
-html[data-theme-mode="dark"] .activity-modal h6,
-html.dark .activity-modal h6 {
-  color: #dde8f5 !important;
-}
-html[data-theme-mode="dark"] .profile-side-card,
-html.dark .profile-side-card {
-  background: #162131;
-}
-html[data-theme-mode="dark"] .activity-title,
-html.dark .activity-title {
-  color: #dde8f5;
-}
-html[data-theme-mode="dark"] .activity-kind-check,
-html.dark .activity-kind-check {
-  background: #1a2535;
-  border-color: rgba(255,255,255,0.08);
-  color: #dde8f5;
-}
-html[data-theme-mode="dark"] .activity-year-chip,
-html.dark .activity-year-chip {
-  background: rgba(37,99,235,0.14);
-  border-color: rgba(147,197,253,0.2);
-  color: #93c5fd;
-}
-
 /* ─────────────────────────────────────────────
    PIC TABLE UTILITIES
    ───────────────────────────────────────────── */
@@ -1997,6 +1943,11 @@ html.dark .activity-year-chip {
 .profile-side-card > .card-header,
 .custom-card:not(.gradient-header-card):not(.hero-card-shell) > .card-header {
   padding: 1rem 1.1rem !important;
+  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+}
+
+.profile-section-header {
   background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
 }
@@ -2696,6 +2647,328 @@ html.dark .activity-year-chip {
   background: #fff !important;
 }
 
+/* Dark mode: keep this below the light profile refresh styles. */
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page,
+:global(html.dark) .profile-stakeholder-page {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-shell,
+:global(html.dark) .profile-stakeholder-shell {
+  background: #0f172a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .gradient-header-card,
+:global(html.dark) .profile-stakeholder-page .gradient-header-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-side-card,
+:global(html.dark) .profile-stakeholder-page .profile-side-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-audit-log-card,
+:global(html.dark) .profile-stakeholder-page .profile-audit-log-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-about-rail,
+:global(html.dark) .profile-stakeholder-page .profile-about-rail,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card,
+:global(html.dark) .profile-stakeholder-page .activity-timeline-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card,
+:global(html.dark) .profile-stakeholder-page .profile-action-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-header:not(.stakeholder-header),
+:global(html.dark) .profile-stakeholder-page .card-header:not(.stakeholder-header),
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-section-header,
+:global(html.dark) .profile-stakeholder-page .profile-section-header,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-body,
+:global(html.dark) .profile-stakeholder-page .card-body,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-body1,
+:global(html.dark) .profile-stakeholder-page .card-body1,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .bg-white,
+:global(html.dark) .profile-stakeholder-page .bg-white {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(html.dark) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .pic-card-list,
+:global(html.dark) .profile-stakeholder-page .pic-card-list {
+  background: #111827 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter,
+:global(html.dark) .profile-stakeholder-page .activity-year-filter {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(17, 24, 39, 0.88) 72%, rgba(17, 24, 39, 0)) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .contact-bar-item,
+:global(html.dark) .contact-bar-item,
+:global(html[data-theme-mode="dark"]) .info-grid-item,
+:global(html.dark) .info-grid-item,
+:global(html[data-theme-mode="dark"]) .activity-form-panel,
+:global(html.dark) .activity-form-panel,
+:global(html[data-theme-mode="dark"]) .activity-timeline-content,
+:global(html.dark) .activity-timeline-content,
+:global(html[data-theme-mode="dark"]) .pic-contact-card,
+:global(html.dark) .pic-contact-card,
+:global(html[data-theme-mode="dark"]) .ikas-audit-log-item,
+:global(html.dark) .ikas-audit-log-item {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #c7d9f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .contact-bar-item:hover,
+:global(html.dark) .contact-bar-item:hover,
+:global(html[data-theme-mode="dark"]) .info-grid-item:hover,
+:global(html.dark) .info-grid-item:hover,
+:global(html[data-theme-mode="dark"]) .activity-timeline-content:hover,
+:global(html.dark) .activity-timeline-content:hover,
+:global(html[data-theme-mode="dark"]) .pic-contact-card:hover,
+:global(html.dark) .pic-contact-card:hover {
+  border-color: rgba(37, 99, 235, 0.3) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .text-dark,
+:global(html.dark) .profile-stakeholder-page .text-dark,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .company-name,
+:global(html.dark) .profile-stakeholder-page .company-name,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-title,
+:global(html.dark) .profile-stakeholder-page .activity-title,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .info-grid-value,
+:global(html.dark) .profile-stakeholder-page .info-grid-value,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-top h6,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-top h6,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card strong,
+:global(html.dark) .profile-stakeholder-page .profile-action-card strong {
+  color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .text-muted,
+:global(html.dark) .profile-stakeholder-page .text-muted,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .info-grid-label,
+:global(html.dark) .profile-stakeholder-page .info-grid-label,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description,
+:global(html.dark) .profile-stakeholder-page .activity-description,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-date,
+:global(html.dark) .profile-stakeholder-page .activity-date,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-meta,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-meta,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-content p,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-content p,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card small,
+:global(html.dark) .profile-stakeholder-page .profile-action-card small {
+  color: #94a3b8 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .contact-bar-sep,
+:global(html.dark) .contact-bar-sep {
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.12), transparent) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .sp-section-title,
+:global(html.dark) .sp-section-title {
+  color: #4a6580 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .sp-section-title::after,
+:global(html.dark) .sp-section-title::after {
+  background: linear-gradient(to right, rgba(37, 99, 235, 0.15), transparent) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .hero-card-shell,
+:global(html.dark) .hero-card-shell {
+  box-shadow: 0 16px 56px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-chip,
+:global(html.dark) .activity-year-chip,
+:global(html[data-theme-mode="dark"]) .activity-tags span,
+:global(html.dark) .activity-tags span,
+:global(html[data-theme-mode="dark"]) .pic-count-badge,
+:global(html.dark) .pic-count-badge,
+:global(html[data-theme-mode="dark"]) .pic-index,
+:global(html.dark) .pic-index {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .pic-meta-pill,
+:global(html.dark) .pic-meta-pill,
+:global(html[data-theme-mode="dark"]) .activity-year-filter-chip,
+:global(html.dark) .activity-year-filter-chip,
+:global(html[data-theme-mode="dark"]) .activity-year-filter-reset,
+:global(html.dark) .activity-year-filter-reset {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-chip.active,
+:global(html.dark) .activity-year-filter-chip.active {
+  background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-modal,
+:global(html.dark) .activity-modal,
+:global(html[data-theme-mode="dark"]) .activity-modal-header,
+:global(html.dark) .activity-modal-header,
+:global(html[data-theme-mode="dark"]) .activity-modal-body,
+:global(html.dark) .activity-modal-body,
+:global(html[data-theme-mode="dark"]) .activity-modal-footer,
+:global(html.dark) .activity-modal-footer {
+  background: #162131 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-modal h6,
+:global(html.dark) .activity-modal h6 {
+  color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-kind-check,
+:global(html.dark) .activity-kind-check,
+:global(html[data-theme-mode="dark"]) .activity-modal .form-control,
+:global(html.dark) .activity-modal .form-control,
+:global(html[data-theme-mode="dark"]) .activity-modal .form-select,
+:global(html.dark) .activity-modal .form-select {
+  background: #1a2535 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .skeleton-block,
+:global(html.dark) .profile-stakeholder-page .skeleton-block {
+  background: linear-gradient(90deg, #1e293b 0%, #263449 50%, #1e293b 100%) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .skeleton-block::after,
+:global(html.dark) .profile-stakeholder-page .skeleton-block::after {
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-skeleton-item,
+:global(html.dark) .profile-stakeholder-page .activity-skeleton-item,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .audit-skeleton-item,
+:global(html.dark) .profile-stakeholder-page .audit-skeleton-item,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .pic-skeleton-card,
+:global(html.dark) .profile-stakeholder-page .pic-skeleton-card {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+}
+
+/* Local dark fallback, same idea as Dashboard.vue's .is-dark wrapper. */
+.profile-stakeholder-page.is-dark,
+.profile-stakeholder-page.is-dark .profile-stakeholder-shell {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+
+.profile-stakeholder-page.is-dark .gradient-header-card,
+.profile-stakeholder-page.is-dark .profile-side-card,
+.profile-stakeholder-page.is-dark .profile-audit-log-card,
+.profile-stakeholder-page.is-dark .profile-about-rail,
+.profile-stakeholder-page.is-dark .activity-timeline-card,
+.profile-stakeholder-page.is-dark .profile-action-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+}
+
+.profile-stakeholder-page.is-dark .card-header:not(.stakeholder-header),
+.profile-stakeholder-page.is-dark .profile-section-header,
+.profile-stakeholder-page.is-dark .card-body,
+.profile-stakeholder-page.is-dark .card-body1,
+.profile-stakeholder-page.is-dark .bg-white {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-timeline-card > .card-body,
+.profile-stakeholder-page.is-dark .pic-card-list {
+  background: #111827 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-year-filter {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(17, 24, 39, 0.88) 72%, rgba(17, 24, 39, 0)) !important;
+}
+
+.profile-stakeholder-page.is-dark .contact-bar-item,
+.profile-stakeholder-page.is-dark .info-grid-item,
+.profile-stakeholder-page.is-dark .activity-form-panel,
+.profile-stakeholder-page.is-dark .activity-timeline-content,
+.profile-stakeholder-page.is-dark .pic-contact-card,
+.profile-stakeholder-page.is-dark .ikas-audit-log-item {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #c7d9f5 !important;
+}
+
+.profile-stakeholder-page.is-dark .text-dark,
+.profile-stakeholder-page.is-dark .company-name,
+.profile-stakeholder-page.is-dark .activity-title,
+.profile-stakeholder-page.is-dark .info-grid-value,
+.profile-stakeholder-page.is-dark .ikas-audit-log-top h6,
+.profile-stakeholder-page.is-dark .profile-action-card strong {
+  color: #dde8f5 !important;
+}
+
+.profile-stakeholder-page.is-dark .text-muted,
+.profile-stakeholder-page.is-dark .info-grid-label,
+.profile-stakeholder-page.is-dark .activity-description,
+.profile-stakeholder-page.is-dark .activity-date,
+.profile-stakeholder-page.is-dark .ikas-audit-log-meta,
+.profile-stakeholder-page.is-dark .ikas-audit-log-content p,
+.profile-stakeholder-page.is-dark .profile-action-card small {
+  color: #94a3b8 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-year-chip,
+.profile-stakeholder-page.is-dark .activity-tags span,
+.profile-stakeholder-page.is-dark .pic-count-badge,
+.profile-stakeholder-page.is-dark .pic-index {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  color: #93c5fd !important;
+}
+
+.profile-stakeholder-page.is-dark .pic-meta-pill,
+.profile-stakeholder-page.is-dark .activity-year-filter-chip,
+.profile-stakeholder-page.is-dark .activity-year-filter-reset {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #e2e8f0 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-year-filter-chip.active {
+  background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+.profile-stakeholder-page.is-dark .skeleton-block {
+  background: linear-gradient(90deg, #1e293b 0%, #263449 50%, #1e293b 100%) !important;
+}
+
+.profile-stakeholder-page.is-dark .skeleton-block::after {
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent) !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-skeleton-item,
+.profile-stakeholder-page.is-dark .audit-skeleton-item,
+.profile-stakeholder-page.is-dark .pic-skeleton-card {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+}
+
 @media (max-width: 767px) {
   .gradient-header-card > .card-body {
     padding: 1rem !important;
@@ -2791,7 +3064,7 @@ html.dark .activity-year-chip {
   <Pageheader :propData="dataToPass" />
 
   <!-- Main container -->
-  <div class="row">
+  <div class="row profile-stakeholder-page" :class="{ 'is-dark': isProfileDarkMode }">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <!-- Page Header -->
@@ -2817,7 +3090,7 @@ html.dark .activity-year-chip {
           </router-link>
         </div>
 
-        <div class="card-body p-4">
+        <div class="card-body p-4 profile-stakeholder-shell">
           <!-- Empty state -->
           <div v-if="!currentStakeholder" class="text-center py-5">
             <div class="empty-state">
@@ -2936,7 +3209,7 @@ html.dark .activity-year-chip {
 
                       <div class="col-xl-7 col-12 mb-3 profile-activity-column">
                         <div class="card custom-card activity-timeline-card profile-side-card overflow-hidden">
-                          <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 bg-white border-bottom">
+                          <div class="card-header profile-section-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 border-bottom">
                             <div class="d-flex align-items-center gap-2">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-timeline-view text-primary fs-16"></i>
@@ -3054,7 +3327,7 @@ html.dark .activity-year-chip {
                         </div>
 
                         <div class="card custom-card profile-audit-log-card overflow-hidden shadow-sm">
-                          <div class="card-header d-flex align-items-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
+                          <div class="card-header profile-section-header d-flex align-items-center justify-content-between gap-3 py-3 border-bottom border-light">
                             <div class="d-flex align-items-center gap-2 min-w-0">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-history-line text-primary fs-16"></i>
@@ -3115,7 +3388,7 @@ html.dark .activity-year-chip {
      
                       <div class="col-xl-5 col-12 mb-4 profile-side-stack">
                         <div class="card custom-card profile-side-card overflow-hidden shadow-sm">
-                          <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
+                          <div class="card-header profile-section-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 border-bottom border-light">
                             <div class="d-flex align-items-center gap-2">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-contacts-line text-primary fs-16"></i>
@@ -3197,7 +3470,7 @@ html.dark .activity-year-chip {
 
                       <!-- ═══════════  TENTANG PERUSAHAAN  ═══════════ -->
                         <div class="card custom-card profile-about-rail">
-                          <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom">
+                          <div class="card-header profile-section-header d-flex align-items-center gap-3 border-bottom">
                             <div>
                               <div class="card-title mb-0 fw-semibold text-dark">Tentang Perusahaan</div>
                               <div class="text-muted fs-13 mt-1">{{ currentStakeholder.sub_sektor?.nama_sub_sektor || currentStakeholder.sektor }}</div>
@@ -3320,3 +3593,4 @@ html.dark .activity-year-chip {
   </div>
 
 </template>
+

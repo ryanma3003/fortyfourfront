@@ -397,6 +397,7 @@ const saveProfile = async () => {
   try {
     const isAktif = formData.value.status === 'Aktif';
     const rawPayload: any = {
+      id:           user.value.id,
       username:     (user.value.username || '').toString(),
       name:         (formData.value.display_name || user.value?.name || user.value?.username || '').toString(), 
       email:        (formData.value.email || '').toString(),
@@ -436,12 +437,14 @@ const saveProfile = async () => {
 
     if (fotoPreview.value.startsWith('data:')) {
       const photoData = new FormData();
+      photoData.append('id', user.value.id);
       photoData.append('profile_photo', dataURLtoBlob(fotoPreview.value), 'foto_profile.jpg');
       isCurrentUser.value ? await usersService.updateMePhoto(photoData) : await usersService.updateProfilePhoto(user.value!.id, photoData);
     }
 
     if (bannerPreview.value.startsWith('data:')) {
       const bannerData = new FormData();
+      bannerData.append('id', user.value.id);
       bannerData.append('banner', dataURLtoBlob(bannerPreview.value), 'banner.jpg');
       isCurrentUser.value ? await usersService.updateMeBanner(bannerData) : await usersService.updateBanner(user.value!.id, bannerData);
     }

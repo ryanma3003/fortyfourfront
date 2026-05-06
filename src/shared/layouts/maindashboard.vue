@@ -95,4 +95,20 @@ onBeforeUnmount(() => {
   <NotificationToast />
 </template>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+:global(html[data-theme-mode="dark"]),
+:global(html[data-theme-mode="dark"] body) {
+  background: rgb(var(--body-bg-rgb2, 5, 9, 20)) !important;
+}
+
+:global(html[data-theme-mode="dark"] .page),
+:global(html[data-theme-mode="dark"] .main-content.app-content),
+:global(html[data-theme-mode="dark"] .main-content.app-content > .page-container) {
+  background-color: rgb(var(--body-bg-rgb2, 5, 9, 20)) !important;
+}
+
+:global(html[data-theme-mode="dark"] .app-content .main-body-container) {
+  background-color: rgb(var(--body-bg-rgb, 11, 18, 32)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+</style>
