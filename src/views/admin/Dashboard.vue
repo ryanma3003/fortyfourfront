@@ -1,6 +1,7 @@
     <script setup>
     import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent } from "vue";
     import { useRouter, useRoute } from "vue-router";
+    import gsap from "gsap";
 
     // ” Dashboard Widgets 
     import AlertIndicators from '@/components/dashboard-widgets/AlertIndicators.vue';
@@ -35,6 +36,9 @@
     const showMetabase = ref(false);
     const isFirstLoad = ref(true);
     const loading = ref(true);
+    const showDashboardLoader = ref(true);
+    const dashboardLoaderRef = ref(null);
+    const dashboardLoaderExiting = ref(false);
     const dashboardDetailsReady = ref(false);
     const lowerSectionsReady = ref(false);
     const summaryMode = ref('KSE'); // 'KSE', 'IKAS', or 'CSIRT'
@@ -46,6 +50,7 @@
     let dashboardFilterInitialized = false;
     let dashboardOptionsPromise = null;
     let lastDashboardLoadAt = 0;
+    let dashboardLoaderTimeline = null;
 
     // Stores
     const stakeholdersStore = useStakeholdersStore();
@@ -87,10 +92,162 @@
         const body = document.body;
         isDashboardDarkMode.value =
             root.getAttribute('data-theme-mode') === 'dark' ||
+            root.getAttribute('data-bs-theme') === 'dark' ||
             body?.getAttribute('data-theme-mode') === 'dark' ||
+            body?.getAttribute('data-bs-theme') === 'dark' ||
             root.classList.contains('dark') ||
-            body?.classList.contains('dark');
+            root.classList.contains('dark-mode') ||
+            body?.classList.contains('dark') ||
+            body?.classList.contains('dark-mode');
     };
+
+    const dashboardSkeletonVars = computed(() => (
+        isDashboardDarkMode.value
+            ? {
+                '--dashboard-skeleton-card-bg': 'linear-gradient(180deg, #151a2b 0%, #111827 100%)',
+                '--dashboard-skeleton-card-border': 'rgba(148, 163, 184, 0.22)',
+                '--dashboard-skeleton-block-bg': 'rgba(100, 116, 139, 0.42)',
+                '--dashboard-skeleton-block-shine': 'linear-gradient(90deg, rgba(71, 85, 105, 0.34) 0%, rgba(148, 163, 184, 0.28) 50%, rgba(71, 85, 105, 0.34) 100%)',
+                '--dashboard-skeleton-muted': '#93c5fd',
+                '--dashboard-loader-surface': 'rgba(15, 23, 42, 0.76)',
+                '--dashboard-loader-border': 'rgba(147, 197, 253, 0.18)',
+                '--dashboard-loader-shadow': '0 20px 46px rgba(0, 0, 0, 0.24)',
+                '--dashboard-ball-one': '#60a5fa',
+                '--dashboard-ball-two': '#38bdf8',
+                '--dashboard-ball-three': '#34d399',
+            }
+            : {
+                '--dashboard-skeleton-card-bg': '#ffffff',
+                '--dashboard-skeleton-card-border': 'rgba(15, 23, 42, 0.06)',
+                '--dashboard-skeleton-block-bg': '#d7dbe3',
+                '--dashboard-skeleton-block-shine': 'linear-gradient(90deg, #e9ecef 0%, #f8f9fa 50%, #e9ecef 100%)',
+                '--dashboard-skeleton-muted': '#64748b',
+                '--dashboard-loader-surface': 'rgba(255, 255, 255, 0.88)',
+                '--dashboard-loader-border': 'rgba(37, 99, 235, 0.12)',
+                '--dashboard-loader-shadow': '0 20px 46px rgba(37, 99, 235, 0.12)',
+                '--dashboard-ball-one': '#2563eb',
+                '--dashboard-ball-two': '#0891b2',
+                '--dashboard-ball-three': '#059669',
+            }
+    ));
+
+    const finishDashboardLoader = () => {
+        dashboardLoaderExiting.value = false;
+        showDashboardLoader.value = false;
+        dashboardLoaderTimeline = null;
+    };
+
+    const isDashboardRevealReady = () => !loading.value && dashboardDetailsReady.value && lowerSectionsReady.value;
+
+    const playDashboardLoaderExit = async () => {
+        await nextTick();
+        const root = dashboardLoaderRef.value;
+        const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+        dashboardLoaderTimeline?.kill();
+
+        if (!root || reduceMotion) {
+            finishDashboardLoader();
+            return;
+        }
+
+        const shell = root.querySelector('.dashboard-loader-stage');
+        const balls = root.querySelectorAll('.bouncing-loader-ball');
+        const shards = root.querySelectorAll('.bouncing-loader-shard');
+        const cards = root.querySelectorAll('.dashboard-loading-card');
+
+        dashboardLoaderExiting.value = true;
+        root.classList.add('is-breaking');
+
+        gsap.set(shards, { autoAlpha: 0, scale: 0.25, x: 0, y: 0, rotate: 0 });
+
+        dashboardLoaderTimeline = gsap.timeline({
+            defaults: { overwrite: true },
+            onComplete: finishDashboardLoader,
+        });
+
+        dashboardLoaderTimeline
+            .to(balls, {
+                y: -18,
+                scale: 1.08,
+                duration: 0.16,
+                stagger: 0.035,
+                ease: 'power2.out',
+            })
+            .to(balls, {
+                x: (index) => [-76, 0, 76][index] || 0,
+                y: (index) => [-44, -72, -44][index] || -50,
+                rotate: (index) => [-70, 25, 70][index] || 0,
+                scale: 0,
+                autoAlpha: 0,
+                duration: 0.42,
+                stagger: 0.035,
+                ease: 'power3.in',
+            }, '>-0.02')
+            .to(shards, {
+                autoAlpha: 1,
+                scale: 1,
+                x: (index) => [-54, -22, 22, 54, -38, 38][index] || 0,
+                y: (index) => [-20, -46, -46, -20, 24, 24][index] || 0,
+                rotate: (index) => [-24, -12, 12, 24, -18, 18][index] || 0,
+                duration: 0.18,
+                stagger: 0.018,
+                ease: 'power2.out',
+            }, '<0.08')
+            .to(shards, {
+                autoAlpha: 0,
+                y: '+=16',
+                scale: 0.2,
+                duration: 0.24,
+                stagger: 0.012,
+                ease: 'power2.in',
+            }, '>-0.02')
+            .to(shell, {
+                autoAlpha: 0,
+                y: -8,
+                filter: 'blur(8px)',
+                duration: 0.24,
+                ease: 'power2.in',
+            }, '<')
+            .to(cards, {
+                autoAlpha: 0,
+                y: 10,
+                duration: 0.22,
+                stagger: 0.035,
+                ease: 'power1.in',
+            }, '<0.04');
+    };
+
+    const maybePlayDashboardLoaderExit = () => {
+        if (showDashboardLoader.value && !dashboardLoaderExiting.value && isDashboardRevealReady()) {
+            playDashboardLoaderExit();
+        }
+    };
+
+    watch(loading, (isLoading) => {
+        if (isLoading) {
+            dashboardLoaderTimeline?.kill();
+            dashboardLoaderTimeline = null;
+            dashboardLoaderExiting.value = false;
+            showDashboardLoader.value = true;
+            nextTick(() => {
+                const root = dashboardLoaderRef.value;
+                root?.classList.remove('is-breaking');
+                if (root) {
+                    gsap.set(root.querySelectorAll('.dashboard-loading-card, .dashboard-loader-stage, .bouncing-loader-ball, .bouncing-loader-shard'), {
+                        clearProps: 'opacity,visibility,transform,filter',
+                    });
+                }
+            });
+            return;
+        }
+
+        maybePlayDashboardLoaderExit();
+    });
+
+    watch([dashboardDetailsReady, lowerSectionsReady], () => {
+        maybePlayDashboardLoaderExit();
+    });
 
     // Sync datepicker model from filterStore on load
     const initDateFromStore = () => {
@@ -157,6 +314,7 @@
 
     onUnmounted(() => {
         if (alertTimeout) clearTimeout(alertTimeout);
+        dashboardLoaderTimeline?.kill();
         dashboardThemeObserver?.disconnect?.();
     });
 
@@ -2607,7 +2765,7 @@
                 <div>
                     <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
                         <i class="ri-bar-chart-box-line"></i>
-                        <span class="d-none d-md-inline">Metabase</span>
+                        <span class="d-none d-md-inline">Dashboard Alt</span>
                     </button>
                     <button v-if="showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
                         <i class="ri-dashboard-3-line"></i>
@@ -2625,10 +2783,16 @@
                 />
             </div>
 
-            <!-- LOADING SKELETON (10s Lazy Load) -->
-            <div v-if="loading" class="row g-3 mb-4">
+            <!-- Initial loading skeleton -->
+            <div
+                v-if="showDashboardLoader"
+                ref="dashboardLoaderRef"
+                class="row g-3 mb-4 dashboard-loading-skeleton"
+                :class="{ 'is-breaking': dashboardLoaderExiting }"
+                :style="dashboardSkeletonVars"
+            >
                 <div class="col-md-4" v-for="n in 3" :key="'skel-top-'+n">
-                    <div class="card custom-card dashboard-main-card border-0 shadow-sm" style="height: 160px; background: #fff;">
+                    <div class="card custom-card dashboard-main-card dashboard-loading-card border-0 shadow-sm" style="height: 160px;">
                         <div class="card-body">
                             <div class="placeholder-glow">
                                 <div class="d-flex align-items-center gap-2 mb-3">
@@ -2644,11 +2808,30 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-12 mt-4 text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+                <div class="col-12 mt-4 dashboard-loading-status">
+                    <div class="dashboard-loader-stage" role="status" aria-live="polite">
+                        <div class="bouncing-loader-orbit" aria-hidden="true">
+                            <span class="bouncing-loader-shadow bouncing-loader-shadow-1"></span>
+                            <span class="bouncing-loader-shadow bouncing-loader-shadow-2"></span>
+                            <span class="bouncing-loader-shadow bouncing-loader-shadow-3"></span>
+                            <span class="bouncing-loader-ball bouncing-loader-ball-1"></span>
+                            <span class="bouncing-loader-ball bouncing-loader-ball-2"></span>
+                            <span class="bouncing-loader-ball bouncing-loader-ball-3"></span>
+                            <span class="bouncing-loader-shard bouncing-loader-shard-1"></span>
+                            <span class="bouncing-loader-shard bouncing-loader-shard-2"></span>
+                            <span class="bouncing-loader-shard bouncing-loader-shard-3"></span>
+                            <span class="bouncing-loader-shard bouncing-loader-shard-4"></span>
+                            <span class="bouncing-loader-shard bouncing-loader-shard-5"></span>
+                            <span class="bouncing-loader-shard bouncing-loader-shard-6"></span>
+                        </div>
+                        <div class="dashboard-loader-copy">
+                            <p class="text-muted fs-12 fw-medium mb-2">Menyiapkan dashboard...</p>
+                            <div class="bouncing-loader-line" aria-hidden="true">
+                                <span></span>
+                            </div>
+                        </div>
+                        <span class="visually-hidden">Menyiapkan dashboard...</span>
                     </div>
-                    <p class="text-muted mt-2 fs-12 fw-medium">Menyiapkan dashboard...</p>
                 </div>
             </div>
 
@@ -3469,6 +3652,181 @@
     .skeleton-number {
         border-radius: 4px;
         background: #e9ecef;
+    }
+
+    .dashboard-loading-card {
+        background: var(--dashboard-skeleton-card-bg, #ffffff) !important;
+        border-color: var(--dashboard-skeleton-card-border, rgba(15, 23, 42, 0.06)) !important;
+    }
+
+    .dashboard-loading-skeleton .placeholder {
+        background-color: var(--dashboard-skeleton-block-bg, #d7dbe3) !important;
+        background-image: var(--dashboard-skeleton-block-shine, none) !important;
+        opacity: 1 !important;
+    }
+
+    .dashboard-loading-status .text-muted {
+        color: var(--dashboard-skeleton-muted, #64748b) !important;
+    }
+
+    .dashboard-loading-status {
+        display: flex;
+        justify-content: center;
+    }
+
+    .dashboard-loader-stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: min(320px, 100%);
+        margin-inline: auto;
+        padding: 16px 18px 15px;
+        border: 1px solid var(--dashboard-loader-border, rgba(37, 99, 235, 0.12));
+        border-radius: 16px;
+        background:
+            linear-gradient(180deg, var(--dashboard-loader-surface, rgba(255, 255, 255, 0.88)), transparent),
+            radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.14), transparent 58%);
+        box-shadow: var(--dashboard-loader-shadow, 0 20px 46px rgba(37, 99, 235, 0.12));
+        backdrop-filter: blur(10px);
+        color: var(--dashboard-skeleton-muted, #64748b);
+    }
+
+    .bouncing-loader-orbit {
+        position: relative;
+        width: 128px;
+        height: 62px;
+        margin-top: 2px;
+    }
+
+    .dashboard-loader-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .bouncing-loader-ball {
+        position: absolute;
+        top: 5px;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        box-shadow:
+            inset -4px -5px 8px rgba(15, 23, 42, 0.18),
+            0 12px 22px rgba(37, 99, 235, 0.2);
+        transform-origin: center bottom;
+        animation: dashboardBallBounce 0.88s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+        will-change: transform;
+    }
+
+    .bouncing-loader-ball-1 {
+        left: 28px;
+        background: radial-gradient(circle at 35% 28%, #bfdbfe 0 14%, var(--dashboard-ball-one, #2563eb) 56%, #1d4ed8 100%);
+    }
+
+    .bouncing-loader-ball-2 {
+        left: 55px;
+        background: radial-gradient(circle at 35% 28%, #cffafe 0 14%, var(--dashboard-ball-two, #0891b2) 58%, #0e7490 100%);
+        animation-delay: 0.12s;
+    }
+
+    .bouncing-loader-ball-3 {
+        left: 82px;
+        background: radial-gradient(circle at 35% 28%, #bbf7d0 0 14%, var(--dashboard-ball-three, #059669) 58%, #047857 100%);
+        animation-delay: 0.24s;
+    }
+
+    .bouncing-loader-shadow {
+        position: absolute;
+        bottom: 8px;
+        width: 22px;
+        height: 5px;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.16);
+        filter: blur(1px);
+        animation: dashboardBallShadow 0.88s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+    }
+
+    .bouncing-loader-shadow-1 { left: 26px; }
+    .bouncing-loader-shadow-2 { left: 53px; animation-delay: 0.12s; }
+    .bouncing-loader-shadow-3 { left: 80px; animation-delay: 0.24s; }
+
+    .bouncing-loader-shard {
+        position: absolute;
+        left: 59px;
+        top: 20px;
+        width: 7px;
+        height: 7px;
+        border-radius: 2px 999px 999px 999px;
+        background: linear-gradient(135deg, #93c5fd, #22d3ee);
+        opacity: 0;
+        transform: scale(0.25);
+        pointer-events: none;
+    }
+
+    .bouncing-loader-shard-2,
+    .bouncing-loader-shard-5 {
+        background: linear-gradient(135deg, #a7f3d0, #34d399);
+    }
+
+    .bouncing-loader-shard-3,
+    .bouncing-loader-shard-6 {
+        background: linear-gradient(135deg, #bae6fd, #0ea5e9);
+    }
+
+    .bouncing-loader-line {
+        position: relative;
+        width: min(180px, 70%);
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(96, 165, 250, 0.14);
+        overflow: hidden;
+    }
+
+    .bouncing-loader-line span {
+        position: absolute;
+        inset-block: 0;
+        left: 0;
+        width: 36%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, transparent, var(--dashboard-ball-two, #0891b2), transparent);
+        animation: dashboardLoaderLine 1.35s ease-in-out infinite;
+    }
+
+    .dashboard-loading-skeleton.is-breaking .bouncing-loader-ball,
+    .dashboard-loading-skeleton.is-breaking .bouncing-loader-shadow,
+    .dashboard-loading-skeleton.is-breaking .bouncing-loader-line span {
+        animation-play-state: paused;
+    }
+
+    @keyframes dashboardBallBounce {
+        0%, 100% { transform: translateY(24px) scale(1.08, 0.84); }
+        15% { transform: translateY(24px) scale(1.12, 0.78); }
+        50% { transform: translateY(0) scale(0.92, 1.08); }
+        72% { transform: translateY(17px) scale(1, 1); }
+    }
+
+    @keyframes dashboardBallShadow {
+        0%, 100% { opacity: 0.34; transform: scaleX(1.1); }
+        50% { opacity: 0.1; transform: scaleX(0.58); }
+    }
+
+    @keyframes dashboardLoaderLine {
+        0% { transform: translateX(-110%); opacity: 0; }
+        18%, 82% { opacity: 1; }
+        100% { transform: translateX(280%); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .bouncing-loader-ball,
+        .bouncing-loader-shadow,
+        .bouncing-loader-line span {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+        }
     }
 
     .shimmer {
@@ -4333,6 +4691,46 @@
         background: #151a2b !important;
     }
 
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .dashboard-loading-card,
+    :global(html.dark) #dashboard-capture .dashboard-loading-card {
+        background: linear-gradient(180deg, #151a2b 0%, #111827 100%) !important;
+        border-color: rgba(148, 163, 184, 0.2) !important;
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .dashboard-loading-skeleton .placeholder,
+    :global(html.dark) #dashboard-capture .dashboard-loading-skeleton .placeholder,
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .placeholder-glow .placeholder,
+    :global(html.dark) #dashboard-capture .placeholder-glow .placeholder {
+        background-color: rgba(100, 116, 139, 0.42);
+        box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.06);
+        opacity: 1;
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .dashboard-loading-status .text-muted,
+    :global(html.dark) #dashboard-capture .dashboard-loading-status .text-muted {
+        color: #93c5fd !important;
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .skeleton-icon,
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .skeleton-text,
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .skeleton-number,
+    :global(html.dark) #dashboard-capture .skeleton-icon,
+    :global(html.dark) #dashboard-capture .skeleton-text,
+    :global(html.dark) #dashboard-capture .skeleton-number {
+        background: rgba(100, 116, 139, 0.34);
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .shimmer,
+    :global(html.dark) #dashboard-capture .shimmer {
+        background: linear-gradient(
+            90deg,
+            rgba(71, 85, 105, 0.34) 25%,
+            rgba(148, 163, 184, 0.26) 50%,
+            rgba(71, 85, 105, 0.34) 75%
+        );
+        background-size: 200% 100%;
+    }
+
     :global(html[data-theme-mode="dark"]) #dashboard-capture .card-header,
     :global(html.dark) #dashboard-capture .card-header {
         background: #171e31;
@@ -4626,6 +5024,65 @@
     /*  Dashboard-root dark layer  */
     .dashboard-capture.is-dark {
         color-scheme: dark;
+    }
+
+    .dashboard-capture.is-dark .dashboard-loading-card,
+    .dashboard-capture.is-dark .card.custom-card.dashboard-loading-card,
+    .dashboard-capture.is-dark .dashboard-main-card.dashboard-loading-card,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .dashboard-loading-card,
+    :global(body.dark) #dashboard-capture .dashboard-loading-card {
+        background: linear-gradient(180deg, #151a2b 0%, #111827 100%) !important;
+        border-color: rgba(148, 163, 184, 0.22) !important;
+        color: #dbeafe !important;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28) !important;
+    }
+
+    .dashboard-capture.is-dark .dashboard-loading-skeleton .placeholder,
+    .dashboard-capture.is-dark .dashboard-loading-skeleton .placeholder-glow .placeholder,
+    .dashboard-capture.is-dark .placeholder-glow .placeholder,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .dashboard-loading-skeleton .placeholder,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .placeholder-glow .placeholder,
+    :global(body.dark) #dashboard-capture .dashboard-loading-skeleton .placeholder,
+    :global(body.dark) #dashboard-capture .placeholder-glow .placeholder {
+        background-color: rgba(100, 116, 139, 0.42) !important;
+        background-image: linear-gradient(
+            90deg,
+            rgba(71, 85, 105, 0.34) 0%,
+            rgba(148, 163, 184, 0.28) 50%,
+            rgba(71, 85, 105, 0.34) 100%
+        ) !important;
+        border: 1px solid rgba(148, 163, 184, 0.06) !important;
+        opacity: 1 !important;
+    }
+
+    .dashboard-capture.is-dark .dashboard-loading-status .text-muted,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .dashboard-loading-status .text-muted,
+    :global(body.dark) #dashboard-capture .dashboard-loading-status .text-muted {
+        color: #93c5fd !important;
+    }
+
+    .dashboard-capture.is-dark .skeleton-icon,
+    .dashboard-capture.is-dark .skeleton-text,
+    .dashboard-capture.is-dark .skeleton-number,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .skeleton-icon,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .skeleton-text,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .skeleton-number,
+    :global(body.dark) #dashboard-capture .skeleton-icon,
+    :global(body.dark) #dashboard-capture .skeleton-text,
+    :global(body.dark) #dashboard-capture .skeleton-number {
+        background: rgba(100, 116, 139, 0.34) !important;
+    }
+
+    .dashboard-capture.is-dark .shimmer,
+    :global(body[data-theme-mode="dark"]) #dashboard-capture .shimmer,
+    :global(body.dark) #dashboard-capture .shimmer {
+        background: linear-gradient(
+            90deg,
+            rgba(71, 85, 105, 0.34) 25%,
+            rgba(148, 163, 184, 0.26) 50%,
+            rgba(71, 85, 105, 0.34) 75%
+        ) !important;
+        background-size: 200% 100% !important;
     }
 
     .dashboard-capture.is-dark .bg-light {

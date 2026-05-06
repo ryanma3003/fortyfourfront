@@ -1,5 +1,6 @@
 <script setup>
 import { computed, watch, nextTick, ref, onMounted, onUnmounted } from 'vue';
+import gsap from 'gsap';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
@@ -11,6 +12,7 @@ const props = defineProps({
 
 const filterStore = useDashboardFilterStore();
 const isDarkMode = ref(false);
+const isFilterBodyHidden = ref(false);
 let themeObserver;
 
 function syncThemeMode() {
@@ -186,6 +188,44 @@ const detailedFilterLabel = computed(() => {
 
     return parts.join(' | ');
 });
+
+function beforeFilterEnter(el) {
+    gsap.killTweensOf(el);
+    gsap.set(el, {
+        height: 0,
+        overflow: 'hidden',
+    });
+}
+
+function enterFilter(el, done) {
+    gsap.killTweensOf(el);
+    gsap.to(el, {
+        height: el.scrollHeight,
+        duration: 0.18,
+        ease: 'power1.out',
+        onComplete: () => {
+            gsap.set(el, { height: 'auto', overflow: 'visible' });
+            done();
+        },
+    });
+}
+
+function leaveFilter(el, done) {
+    gsap.killTweensOf(el);
+    gsap.fromTo(
+        el,
+        {
+            height: el.offsetHeight,
+            overflow: 'hidden',
+        },
+        {
+            height: 0,
+            duration: 0.16,
+            ease: 'power1.in',
+            onComplete: done,
+        },
+    );
+}
 </script>
 
 
@@ -194,9 +234,15 @@ const detailedFilterLabel = computed(() => {
         <!-- ── Header ── -->
         <div class="gf-header">
             <div class="gf-header-inner">
-                <div class="gf-icon-box">
+                <button
+                    type="button"
+                    class="gf-icon-box"
+                    :title="isFilterBodyHidden ? 'Tampilkan filter' : 'Sembunyikan filter'"
+                    :aria-label="isFilterBodyHidden ? 'Tampilkan filter' : 'Sembunyikan filter'"
+                    @click="isFilterBodyHidden = !isFilterBodyHidden"
+                >
                     <i class="ri-filter-3-line"></i>
-                </div>
+                </button>
                 <div>
                     <h5 class="gf-header-title">Filter & Analisis</h5>
                     <p class="gf-header-sub">Sesuaikan periode, sektor, dan kategori data</p>
@@ -213,7 +259,13 @@ const detailedFilterLabel = computed(() => {
         </div>
 
         <!-- ── Body ── -->
-        <div class="gf-body">
+        <transition
+            :css="false"
+            @before-enter="beforeFilterEnter"
+            @enter="enterFilter"
+            @leave="leaveFilter"
+        >
+        <div v-if="!isFilterBodyHidden" class="gf-body">
             <!-- Quick Range Pills -->
             <div class="gf-quick-bar">
                 <span class="gf-quick-label">
@@ -313,6 +365,7 @@ const detailedFilterLabel = computed(() => {
                 </div>
             </transition>
         </div>
+        </transition>
     </div>
 </template>
 
@@ -346,24 +399,33 @@ const detailedFilterLabel = computed(() => {
 .gf-header-inner {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
 }
 
 /* Icon box */
 .gf-icon-box {
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
-    box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    box-shadow: 0 3px 10px rgba(37,99,235,0.3);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gf-icon-box:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px rgba(37,99,235,0.38);
 }
 
 .gf-icon-box i {
-    font-size: 1.2rem;
+    font-size: 1rem;
     color: #fff;
 }
 

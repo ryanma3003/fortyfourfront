@@ -10,12 +10,14 @@ import { useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useCsirtStore } from "../../stores/csirt";
 import { useResikoStore } from "../../stores/resiko";
+import { useKonversiStore } from "../../stores/konversi";
 import { useUsersStore } from "../../stores/users";
 import { useListPage } from "../../composables/useListPage";
 import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
 import type { SubSektor, Sektor } from "../../services/sektor.service";
 import { csirtService } from "../../services/csirt.service";
 import type { User } from "../../types/user.types";
+import { getKonversiDisplay, getKonversiProgress, getKonversiTotalPoint } from "../../services/konversi.service";
 
 
 
@@ -37,6 +39,7 @@ export default {
     const kseStore = useKseStore();
     const csirtStore = useCsirtStore();
     const resikoStore = useResikoStore();
+    const konversiStore = useKonversiStore();
     const usersStore = useUsersStore();
     const isAdmin = computed(() => authStore.isAdmin);
     const isFullAdmin = computed(() => authStore.isFullAdmin);
@@ -225,22 +228,22 @@ export default {
       return resikoStore.progressMap[slug]?.status === "COMPLETED";
     };
 
-    const getStakeholderConversion = (item: Stakeholder) => {
-      const checks = [
-        hasIkas(item.slug),
-        getStakeholderSeCount(item.id) > 0,
-        hasCompleteCsirt(item.id),
-        isRiskSurveyCompleted(item.slug),
-      ];
-      const completed = checks.filter(Boolean).length;
-      const total = checks.length;
+    const getStakeholderKonversiRecord = (item: Stakeholder) => (
+      konversiStore.getByPerusahaanId(item.id)
+    );
 
+    const getStakeholderConversion = (item: Stakeholder) => {
+      const record = getStakeholderKonversiRecord(item);
+      const progress = getKonversiProgress(record);
       return {
-        completed,
-        total,
-        percent: Math.round((completed / total) * 100),
+        ...progress,
+        totalPoint: getKonversiTotalPoint(record),
       };
     };
+
+    const getStakeholderConversionPoints = (item: Stakeholder) => (
+      getKonversiDisplay(getStakeholderKonversiRecord(item)).pointMetrics
+    );
 
     const getMonitoringStatusLabel = (item: Stakeholder): string => {
       const progress = getStakeholderConversion(item);
@@ -548,6 +551,7 @@ export default {
       await ikasStore.initialize();
       kseStore.initialize();
       resikoStore.initialize();
+      await konversiStore.initialize();
       await csirtStore.initialize();
       // If CSIRTs exist but SDM/SE lists are empty (e.g., global endpoint failed on prior load),
       // force a refresh so hasCompleteCsirt reflects the actual backend state.
@@ -642,20 +646,25 @@ export default {
       stakeholdersStore.stakeholders.filter(s => !hasUser(s.id)).length
     );
 
+    const getStakeholderPointValue = (item: Stakeholder, key: string): number => {
+      const point = getStakeholderConversionPoints(item).find(metric => metric.key === key);
+      return point?.value || 0;
+    };
+
     const countIkasOnly = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && !hasCompleteCsirt(s.id)).length
+      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') > 0 && getStakeholderPointValue(s, 'poin_csirt') <= 0).length
     );
     const countCsirtOnly = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => !hasIkas(s.slug) && hasCompleteCsirt(s.id)).length
+      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') <= 0 && getStakeholderPointValue(s, 'poin_csirt') > 0).length
     );
     const countBoth = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug) && hasCompleteCsirt(s.id)).length
+      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') > 0 && getStakeholderPointValue(s, 'poin_csirt') > 0).length
     );
     const countIkas = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasIkas(s.slug)).length
+      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') > 0).length
     );
     const countCsirt = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasCompleteCsirt(s.id)).length
+      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_csirt') > 0).length
     );
 
     const totalStakeholders = computed(() => filteredData.value.length);
@@ -663,14 +672,14 @@ export default {
       new Set(filteredData.value.map(item => getItemSubSektorName(item)).filter(Boolean)).size
     );
     const filteredIkasCount = computed(() =>
-      filteredData.value.filter(item => hasIkas(item.slug)).length
+      filteredData.value.filter(item => getStakeholderPointValue(item, 'poin_ikas') > 0).length
     );
     const filteredCsirtCount = computed(() =>
-      filteredData.value.filter(item => hasCompleteCsirt(item.id)).length
+      filteredData.value.filter(item => getStakeholderPointValue(item, 'poin_csirt') > 0).length
     );
     const coveredCount = computed(() => {
       if (!filteredData.value.length) return 0;
-      return filteredData.value.filter(item => hasIkas(item.slug) && hasCompleteCsirt(item.id)).length;
+      return filteredData.value.filter(item => getStakeholderConversion(item).isComplete).length;
     });
     const averageConversion = computed(() => {
       if (!filteredData.value.length) return 0;
@@ -895,6 +904,8 @@ export default {
       getSubSektorName,
       getSektorFromSubSektor,
       getStakeholderConversion,
+      getStakeholderConversionPoints,
+      getStakeholderPointValue,
       getStakeholderSeCount,
       isRiskSurveyCompleted,
       getMonitoringStatusLabel,
@@ -1273,35 +1284,21 @@ getSektorBadgeStyle: (subSektorName: string) => {
                             <div class="conversion-track">
                               <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
                             </div>
-                            <small>{{ getStakeholderConversion(item).completed }}/{{ getStakeholderConversion(item).total }} data lengkap</small>
+                            <small>{{ getStakeholderConversion(item).completed }}/{{ getStakeholderConversion(item).total }} poin terisi - Total {{ getStakeholderConversion(item).totalPoint }} poin</small>
                           </div>
                           <div class="status-indicators m-0 d-flex flex-column gap-1 align-items-start" style="min-width: max-content;">
-                            <div class="d-flex gap-1">
-                              <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'" title="Status IKAS">
+                            <div class="conversion-point-badges">
+                              <div
+                                v-for="point in getStakeholderConversionPoints(item)"
+                                :key="`${item.id}-${point.key}`"
+                                class="status-badge"
+                                :class="point.isComplete ? 'badge-done' : 'badge-pending'"
+                                :title="`${point.label}: ${point.value} poin`"
+                              >
                                 <span class="badge-icon-dot">
-                                  <i :class="hasIkas(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                  <i :class="point.isComplete ? 'ri-check-line' : 'ri-subtract-line'"></i>
                                 </span>
-                                <span class="badge-label">IKAS</span>
-                              </div>
-                              <div class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'" title="Status SE">
-                                <span class="badge-icon-dot">
-                                  <i :class="getStakeholderSeCount(item.id) > 0 ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                                </span>
-                                <span class="badge-label">SE</span>
-                              </div>
-                            </div>
-                            <div class="d-flex gap-1">
-                              <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'" title="Status CSIRT">
-                                <span class="badge-icon-dot">
-                                  <i :class="hasCompleteCsirt(item.id) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                                </span>
-                                <span class="badge-label">CSIRT</span>
-                              </div>
-                              <div class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'" title="Status Risiko">
-                                <span class="badge-icon-dot">
-                                  <i :class="isRiskSurveyCompleted(item.slug) ? 'ri-check-line' : 'ri-subtract-line'"></i>
-                                </span>
-                                <span class="badge-label">Risiko</span>
+                                <span class="badge-label">{{ point.label }}: {{ point.value }}</span>
                               </div>
                             </div>
                           </div>
@@ -1342,10 +1339,13 @@ getSektorBadgeStyle: (subSektorName: string) => {
                           <div class="stakeholder-detail-item">
                             <span class="stakeholder-detail-label">Monitoring</span>
                             <div class="stakeholder-detail-status">
-                              <span class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'">IKAS</span>
-                              <span class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'">SE</span>
-                              <span class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'">CSIRT</span>
-                              <span class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'">Risiko</span>
+                              <span
+                                v-for="point in getStakeholderConversionPoints(item)"
+                                :key="`${item.id}-detail-${point.key}`"
+                                class="status-badge"
+                                :class="point.isComplete ? 'badge-done' : 'badge-pending'"
+                              >{{ point.label }}: {{ point.value }}</span>
+                              <span class="status-badge badge-done">Total Poin: {{ getStakeholderConversion(item).totalPoint }}</span>
                               <span class="status-badge" :class="getStakeholderConversion(item).percent === 100 ? 'badge-done' : 'badge-pending'">Status {{ getStakeholderConversion(item).percent }}%</span>
                             </div>
                           </div>
@@ -1402,10 +1402,15 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">{{ getItemSubSektorName(item) }}</span>
                   </div>
                   <div class="status-indicators justify-content-start">
-                    <div class="status-badge" :class="hasIkas(item.slug) ? 'badge-done' : 'badge-pending'">IKAS</div>
-                    <div class="status-badge" :class="getStakeholderSeCount(item.id) > 0 ? 'badge-done' : 'badge-pending'">SE</div>
-                    <div class="status-badge" :class="hasCompleteCsirt(item.id) ? 'badge-done' : 'badge-pending'">CSIRT</div>
-                    <div class="status-badge" :class="isRiskSurveyCompleted(item.slug) ? 'badge-done' : 'badge-pending'">Risiko</div>
+                    <div
+                      v-for="point in getStakeholderConversionPoints(item)"
+                      :key="`${item.id}-grid-${point.key}`"
+                      class="status-badge"
+                      :class="point.isComplete ? 'badge-done' : 'badge-pending'"
+                      :title="`${point.label}: ${point.value} poin`"
+                    >
+                      {{ point.label }}: {{ point.value }}
+                    </div>
                   </div>
                   <div class="conversion-cell mt-3" :class="getProgressClass(getStakeholderConversion(item).percent)">
                     <div class="conversion-top">
@@ -1415,6 +1420,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     <div class="conversion-track">
                       <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
                     </div>
+                    <small>Total {{ getStakeholderConversion(item).totalPoint }} poin</small>
                   </div>
                   <div class="stakeholders-grid-meta">
                     <div><i class="ri-phone-line"></i>{{ item.telepon || '-' }}</div>
@@ -2262,6 +2268,12 @@ getSektorBadgeStyle: (subSektorName: string) => {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: center;
+}
+
+.conversion-point-badges {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, max-content));
 }
 
 .status-badge {

@@ -8,6 +8,12 @@ interface AnalyticItem {
   svgColor: string;
   title: string;
   value: string | number;
+  valueSuffix?: string;
+  maxValue?: string | number;
+  meterPercent?: number;
+  caption?: string;
+  subLabel?: string;
+  detailType?: "ikas" | "kse" | "csirt" | "resiko" | null;
 }
 
 const props = withDefaults(defineProps<{
@@ -116,7 +122,7 @@ const normalizeValue = (value: string | number) => String(value ?? "").trim();
 const statusText = (item: AnalyticItem) => normalizeValue(item.value) || "Belum Diisi";
 
 const isBelum = (value: string) => value === "Belum Diisi" || value === "Belum Terdaftar";
-const isRegistered = (value: string) => value === "Terdaftar" || value === "Sudah Terdaftar" || /^\d+\s+SE\s+Terdaftar$/i.test(value);
+const isRegistered = (value: string) => value === "Terdaftar" || value === "Sudah Terdaftar" || value === "Sudah Diisi" || /^\d+\s+SE\s+Terdaftar$/i.test(value);
 const isAktif = (value: string) => value === "Aktif";
 const isSedangSetup = (value: string) => value === "Sedang Setup";
 const isNumeric = (value: string) => !Number.isNaN(parseFloat(value)) && Number.isFinite(Number(value));
@@ -140,7 +146,12 @@ const scorePercent = (title: string, value: string) => {
 };
 
 const meterPercent = (item: AnalyticItem) => {
+  if (typeof item.meterPercent === "number") return Math.max(0, Math.min(100, item.meterPercent));
   const value = statusText(item);
+  const maxValue = Number(item.maxValue);
+  if (isNumeric(value) && Number.isFinite(maxValue) && maxValue > 0) {
+    return Math.min((Number(value) / maxValue) * 100, 100);
+  }
   if (isNumeric(value)) return scorePercent(item.title, value);
 
   const level = value.match(/Level\s+(\d+)/i);
@@ -180,6 +191,7 @@ const statusIcon = (item: AnalyticItem) => {
 };
 
 const metricCaption = (item: AnalyticItem) => {
+  if (item.caption) return item.caption;
   const value = statusText(item);
   if (isBelum(value)) return "Perlu tindakan";
   if (isSedangSetup(value) || value === "Dalam Proses") return "Dalam proses";
@@ -189,6 +201,11 @@ const metricCaption = (item: AnalyticItem) => {
 };
 
 const navigateToDetail = (item: AnalyticItem) => {
+  if (item.detailType === "ikas") return handleIkas();
+  if (item.detailType === "csirt") return handleCsirt();
+  if (item.detailType === "kse") return handleKse();
+  if (item.detailType === "resiko") return handleResiko();
+  if (item.detailType === null) return;
   if (item.title === "IKAS") return handleIkas();
   if (item.title === "CSIRT") return handleCsirt();
   if (item.title === "KSE") return handleKse();
@@ -295,7 +312,9 @@ const handleCardLeave = (event: MouseEvent) => {
               <template v-if="isNumeric(statusText(item))">
                 <div class="as-value-row">
                   <span class="as-value">{{ statusText(item) }}</span>
-                  <span v-if="item.title === 'IKAS'" class="as-max">/ 4.00</span>
+                  <span v-if="item.valueSuffix" class="as-max">{{ item.valueSuffix }}</span>
+                  <span v-else-if="item.maxValue" class="as-max">/ {{ item.maxValue }}</span>
+                  <span v-else-if="item.title === 'IKAS'" class="as-max">/ 4.00</span>
                 </div>
               </template>
 
@@ -328,7 +347,7 @@ const handleCardLeave = (event: MouseEvent) => {
 
           <div class="as-footer">
             <span class="as-sublabel">
-              <i class="ri-information-line me-1"></i>{{ subLabel[item.title] }}
+              <i class="ri-information-line me-1"></i>{{ item.subLabel || subLabel[item.title] || 'Poin konversi' }}
             </span>
             <button
               type="button"
