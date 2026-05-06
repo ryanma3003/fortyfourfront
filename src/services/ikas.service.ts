@@ -468,11 +468,11 @@ export const ikasService = {
     },
 
     async createJawabanIdentifikasi(payload: JawabanIdentifikasiPayload): Promise<JawabanResponse> {
-        return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload);
+        return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload, undefined, { skipQueue: true });
     },
 
     async updateJawabanIdentifikasi(id: string, payload: JawabanIdentifikasiPayload): Promise<JawabanResponse> {
-        return api.put<JawabanResponse>(`/api/maturity/jawaban-identifikasi/${id}`, payload);
+        return api.put<JawabanResponse>(`/api/maturity/jawaban-identifikasi/${id}`, payload, undefined, { skipQueue: true });
     },
 
     async deleteJawabanIdentifikasi(id: string): Promise<any> {
@@ -491,11 +491,11 @@ export const ikasService = {
     },
 
     async createJawabanProteksi(payload: JawabanProteksiPayload): Promise<JawabanResponse> {
-        return api.post<JawabanResponse>('/api/maturity/jawaban-proteksi', payload);
+        return api.post<JawabanResponse>('/api/maturity/jawaban-proteksi', payload, undefined, { skipQueue: true });
     },
 
     async updateJawabanProteksi(id: string, payload: JawabanProteksiPayload): Promise<JawabanResponse> {
-        return api.put<JawabanResponse>(`/api/maturity/jawaban-proteksi/${id}`, payload);
+        return api.put<JawabanResponse>(`/api/maturity/jawaban-proteksi/${id}`, payload, undefined, { skipQueue: true });
     },
 
     async deleteJawabanProteksi(id: string): Promise<any> {
@@ -514,11 +514,11 @@ export const ikasService = {
     },
 
     async createJawabanDeteksi(payload: JawabanDeteksiPayload): Promise<JawabanResponse> {
-        return api.post<JawabanResponse>('/api/maturity/jawaban-deteksi', payload);
+        return api.post<JawabanResponse>('/api/maturity/jawaban-deteksi', payload, undefined, { skipQueue: true });
     },
 
     async updateJawabanDeteksi(id: string, payload: JawabanDeteksiPayload): Promise<JawabanResponse> {
-        return api.put<JawabanResponse>(`/api/maturity/jawaban-deteksi/${id}`, payload);
+        return api.put<JawabanResponse>(`/api/maturity/jawaban-deteksi/${id}`, payload, undefined, { skipQueue: true });
     },
 
     async deleteJawabanDeteksi(id: string): Promise<any> {
@@ -537,11 +537,11 @@ export const ikasService = {
     },
 
     async createJawabanGulih(payload: JawabanGulihPayload): Promise<JawabanGulihResponse> {
-        return api.post<JawabanGulihResponse>('/api/maturity/jawaban-gulih', payload);
+        return api.post<JawabanGulihResponse>('/api/maturity/jawaban-gulih', payload, undefined, { skipQueue: true });
     },
 
     async updateJawabanGulih(id: string, payload: JawabanGulihPayload): Promise<JawabanGulihResponse> {
-        return api.put<JawabanGulihResponse>(`/api/maturity/jawaban-gulih/${id}`, payload);
+        return api.put<JawabanGulihResponse>(`/api/maturity/jawaban-gulih/${id}`, payload, undefined, { skipQueue: true });
     },
 
     async deleteJawabanGulih(id: string): Promise<any> {
@@ -558,11 +558,11 @@ export const ikasService = {
 
     async createJawabanByKategori(kategori: string, payload: JawabanPayload): Promise<any> {
         const resolved = this.resolveKategoriKey(kategori);
-        return api.post<any>(`/api/maturity/jawaban-${resolved}`, payload);
+        return api.post<any>(`/api/maturity/jawaban-${resolved}`, payload, undefined, { skipQueue: true });
     },
 
     async updateJawabanByKategori(kategori: string, id: string, payload: JawabanPayload): Promise<any> {
         const resolved = this.resolveKategoriKey(kategori);
-        return api.put<any>(`/api/maturity/jawaban-${resolved}/${id}`, payload);
+        return api.put<any>(`/api/maturity/jawaban-${resolved}/${id}`, payload, undefined, { skipQueue: true });
     },
 };

@@ -1,6 +1,10 @@
 import { config } from './env';
 import type { HttpMethod } from '@/types/api.types';
 
+type RequestOptions = {
+    skipQueue?: boolean;
+};
+
 /**
  * Custom Error class for API errors
  */
@@ -241,6 +245,7 @@ class ApiClient {
         customHeaders?: HeadersInit,
         isRetry = false,
         retryAttempt = 0,
+        requestOptions: RequestOptions = {},
     ): Promise<T> {
         const cleanBaseUrl = this.baseUrl.replace(/\/$/, '');
         const cleanEndpoint = endpoint.replace(/^\//, '');
@@ -268,7 +273,7 @@ class ApiClient {
             headers['Content-Type'] = 'application/x-www-form-urlencoded';
         }
 
-        const options: RequestInit = {
+        const fetchOptions: RequestInit = {
             method,
             headers,
             credentials: 'include', // Enable HTTP-only cookie support
@@ -278,8 +283,15 @@ class ApiClient {
 
 
         try {
-            await this.waitTurn();
-            const response = await fetch(url, options);
+            if (requestOptions.skipQueue) {
+                const cooldownMs = Math.max(0, this.rateLimitedUntil - Date.now());
+                if (cooldownMs > 0) {
+                    await this.sleep(cooldownMs);
+                }
+            } else {
+                await this.waitTurn();
+            }
+            const response = await fetch(url, fetchOptions);
 
             // -------------------------------------------------------
             // 401 Handling — attempt token refresh then retry once
@@ -304,7 +316,7 @@ class ApiClient {
 
                     if (refreshed) {
                         // Retry the original request with the new cookie
-                        return this.request<T>(endpoint, method, body, customHeaders, true, retryAttempt);
+                        return this.request<T>(endpoint, method, body, customHeaders, true, retryAttempt, requestOptions);
                     } else {
                         // Refresh failed — session is truly expired
                         this.onUnauthorized?.();
@@ -321,7 +333,7 @@ class ApiClient {
                 }
                 console.warn(`[ApiClient] ${response.status} for ${cleanEndpoint}. Retrying in ${delay}ms...`);
                 await this.sleep(delay);
-                return this.request<T>(endpoint, method, body, customHeaders, isRetry, retryAttempt + 1);
+                return this.request<T>(endpoint, method, body, customHeaders, isRetry, retryAttempt + 1, requestOptions);
             }
 
             // Handle non-2xx responses
@@ -377,7 +389,7 @@ class ApiClient {
                 const delay = this.getRetryDelay(new Response(null, { status: 503 }), retryAttempt);
                 console.warn(`[ApiClient] Network error for ${cleanEndpoint}. Retrying in ${delay}ms...`, error);
                 await this.sleep(delay);
-                return this.request<T>(endpoint, method, body, customHeaders, isRetry, retryAttempt + 1);
+                return this.request<T>(endpoint, method, body, customHeaders, isRetry, retryAttempt + 1, requestOptions);
             }
 
             // Network errors or JSON parsing errors
@@ -390,24 +402,24 @@ class ApiClient {
 
     // Public convenience methods
 
-    public get<T>(endpoint: string, headers?: HeadersInit): Promise<T> {
-        return this.request<T>(endpoint, 'GET', undefined, headers);
+    public get<T>(endpoint: string, headers?: HeadersInit, options?: RequestOptions): Promise<T> {
+        return this.request<T>(endpoint, 'GET', undefined, headers, false, 0, options);
     }
 
-    public post<T>(endpoint: string, body: any, headers?: HeadersInit): Promise<T> {
-        return this.request<T>(endpoint, 'POST', body, headers);
+    public post<T>(endpoint: string, body: any, headers?: HeadersInit, options?: RequestOptions): Promise<T> {
+        return this.request<T>(endpoint, 'POST', body, headers, false, 0, options);
     }
 
-    public put<T>(endpoint: string, body: any, headers?: HeadersInit): Promise<T> {
-        return this.request<T>(endpoint, 'PUT', body, headers);
+    public put<T>(endpoint: string, body: any, headers?: HeadersInit, options?: RequestOptions): Promise<T> {
+        return this.request<T>(endpoint, 'PUT', body, headers, false, 0, options);
     }
 
-    public delete<T>(endpoint: string, body?: any, headers?: HeadersInit): Promise<T> {
-        return this.request<T>(endpoint, 'DELETE', body, headers);
+    public delete<T>(endpoint: string, body?: any, headers?: HeadersInit, options?: RequestOptions): Promise<T> {
+        return this.request<T>(endpoint, 'DELETE', body, headers, false, 0, options);
     }
 
-    public patch<T>(endpoint: string, body: any, headers?: HeadersInit): Promise<T> {
-        return this.request<T>(endpoint, 'PATCH', body, headers);
+    public patch<T>(endpoint: string, body: any, headers?: HeadersInit, options?: RequestOptions): Promise<T> {
+        return this.request<T>(endpoint, 'PATCH', body, headers, false, 0, options);
     }
 }
 

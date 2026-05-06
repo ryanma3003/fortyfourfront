@@ -548,16 +548,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 if (storedAnswer?.evidence) payload.evidence = storedAnswer.evidence;
                 if (storedAnswer?.validasi) payload.validasi = storedAnswer.validasi;
 
-                const existingJawabanList = this.normalizeApiCollection(
-                    await ikasService.getJawabanByKategori(domainKey, finalIkasId)
-                );
-                const existingJawaban = this.findExistingBackendAnswer(existingJawabanList, question, finalIkasId);
-                const existingJawabanId = String(
-                    existingJawaban?.id ||
-                    existingJawaban?.ID ||
-                    this.backendAnswerIdsMap[stakeholderSlug][questionId] ||
-                    ''
-                );
+                const existingJawabanId = String(this.backendAnswerIdsMap[stakeholderSlug][questionId] || '');
                 const response = existingJawabanId
                     ? await ikasService.updateJawabanByKategori(domainKey, existingJawabanId, payload)
                     : await ikasService.createJawabanByKategori(domainKey, payload);
@@ -674,12 +665,112 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 !answer.backendSyncedAt || !!answer.backendSyncError || (answer.updatedAt && answer.updatedAt > answer.backendSyncedAt)
             );
 
+            if (!pendingAnswers.length) {
+                this.syncToIkas(stakeholderSlug);
+                return { success: true, errors: [] };
+            }
+
+            const stakeholdersStore = useStakeholdersStore();
+            const stakeholder = stakeholdersStore.getStakeholderBySlug(stakeholderSlug);
+            const ikasStore = useIkasStore();
+            const finalIkasId = ikasStore.getBackendIkasId(stakeholderSlug);
+
+            if (!stakeholder?.id || !finalIkasId) {
+                const errors = pendingAnswers.map((answer) => answer.questionId);
+                errors.forEach((questionId) => {
+                    if (this.answersMap[stakeholderSlug]?.[questionId]) {
+                        this.answersMap[stakeholderSlug][questionId].backendSyncError = 'ikas_id atau stakeholder tidak tersedia';
+                    }
+                });
+                return { success: false, errors };
+            }
+
+            if (!this.syncedBackendAnswersMap[stakeholderSlug]) {
+                this.syncedBackendAnswersMap[stakeholderSlug] = {};
+            }
+            if (!this.backendAnswerIdsMap[stakeholderSlug]) {
+                this.backendAnswerIdsMap[stakeholderSlug] = {};
+            }
+
+            const questionById = new Map(
+                this.domains
+                    .flatMap(domain => domain.categories)
+                    .flatMap(category => category.questions)
+                    .map(question => [question.id, question])
+            );
+
+            const pendingWithQuestions = pendingAnswers
+                .map((answer) => ({ answer, question: questionById.get(answer.questionId) }))
+                .filter((item): item is { answer: Answer; question: DynamicQuestion } => !!item.question);
+
+            const pertanyaanFieldMap: Record<string, string> = {
+                identifikasi: 'pertanyaan_identifikasi_id',
+                proteksi: 'pertanyaan_proteksi_id',
+                deteksi: 'pertanyaan_deteksi_id',
+                gulih: 'pertanyaan_gulih_id',
+            };
+            const jawabanFieldMap: Record<string, string> = {
+                identifikasi: 'jawaban_identifikasi',
+                proteksi: 'jawaban_proteksi',
+                deteksi: 'jawaban_deteksi',
+                gulih: 'jawaban_gulih',
+            };
+
+            this.syncingAnswersCount += pendingWithQuestions.length;
             const errors: string[] = [];
-            for (const answer of pendingAnswers) {
-                const synced = await this.syncAnswerToBackend(stakeholderSlug, answer.questionId, answer.index);
-                if (!synced) {
-                    errors.push(answer.questionId);
+
+            const syncResults = await Promise.all(pendingWithQuestions.map(async ({ answer, question }) => {
+                try {
+                    if (this.syncedBackendAnswersMap[stakeholderSlug][answer.questionId] === answer.index) {
+                        return { success: true, questionId: answer.questionId };
+                    }
+
+                    const domainKey = question.domainKey;
+                    const pertanyaanField = pertanyaanFieldMap[domainKey] || 'id_pertanyaan';
+                    const jawabanField = jawabanFieldMap[domainKey] || 'jawaban';
+                    const numericId = question.originalId ? Number(question.originalId) : Number(answer.questionId.split('_').pop());
+                    const payload: Record<string, any> = {
+                        ikas_id: finalIkasId,
+                        perusahaan_id: stakeholder.id,
+                        [pertanyaanField]: numericId,
+                        jawaban: answer.index,
+                        [jawabanField]: answer.index,
+                    };
+
+                    const storedAnswer = this.answersMap[stakeholderSlug]?.[answer.questionId];
+                    if (storedAnswer?.evidence) payload.evidence = storedAnswer.evidence;
+                    if (storedAnswer?.validasi) payload.validasi = storedAnswer.validasi;
+
+                    const existingJawabanId = String(this.backendAnswerIdsMap[stakeholderSlug][answer.questionId] || '');
+                    const response = existingJawabanId
+                        ? await ikasService.updateJawabanByKategori(domainKey, existingJawabanId, payload)
+                        : await ikasService.createJawabanByKategori(domainKey, payload);
+
+                    this.syncedBackendAnswersMap[stakeholderSlug][answer.questionId] = answer.index;
+                    const persistedId = String(response?.id || response?.data?.id || existingJawabanId || '');
+                    if (persistedId) {
+                        this.backendAnswerIdsMap[stakeholderSlug][answer.questionId] = persistedId;
+                    }
+                    if (this.answersMap[stakeholderSlug]?.[answer.questionId]) {
+                        this.answersMap[stakeholderSlug][answer.questionId].backendSyncedAt = Date.now();
+                        this.answersMap[stakeholderSlug][answer.questionId].backendSyncError = null;
+                    }
+
+                    return { success: true, questionId: answer.questionId };
+                } catch (error: any) {
+                    console.error('[DynamicAssessment] Failed to batch sync answer:', error);
+                    if (this.answersMap[stakeholderSlug]?.[answer.questionId]) {
+                        this.answersMap[stakeholderSlug][answer.questionId].backendSyncError =
+                            error?.message || 'Gagal menyimpan jawaban';
+                    }
+                    return { success: false, questionId: answer.questionId };
+                } finally {
+                    this.syncingAnswersCount = Math.max(0, this.syncingAnswersCount - 1);
                 }
+            }));
+
+            for (const result of syncResults) {
+                if (!result.success) errors.push(result.questionId);
             }
 
             if (errors.length === 0) {
