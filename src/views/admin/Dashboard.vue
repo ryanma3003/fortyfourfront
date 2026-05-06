@@ -13,8 +13,10 @@
     import { useStakeholdersStore } from "@/stores/stakeholders";
     import { useIkasStore } from "@/stores/ikas";
     import { useCsirtStore } from "@/stores/csirt";
+    import { useKonversiStore } from "@/stores/konversi";
     import { useDashboardFilterStore } from "@/stores/dashboardFilter";
     import { useNotificationStore } from "@/stores/notifications";
+    import { getKonversiProgress, isKonversiComplete } from "@/services/konversi.service";
 
     // Services
     import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
@@ -22,7 +24,6 @@
     const SpkReusebleJobs = defineAsyncComponent(() => import("@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue"));
     const RadarChartIkas = defineAsyncComponent(() => import('@/shared/components/@spk/charts/ikas-charts.vue'));
     const SektorAnalytics = defineAsyncComponent(() => import('@/components/dashboards/sektor-analytics.vue'));
-    const KpiCards = defineAsyncComponent(() => import('@/components/dashboard-widgets/KpiCards.vue'));
     const InsightCard = defineAsyncComponent(() => import('@/components/dashboard-widgets/InsightCard.vue'));
     const ActionCenter = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActionCenter.vue'));
     const ActivityFeed = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActivityFeed.vue'));
@@ -37,7 +38,7 @@
     const dashboardDetailsReady = ref(false);
     const lowerSectionsReady = ref(false);
     const summaryMode = ref('KSE'); // 'KSE', 'IKAS', or 'CSIRT'
-    const DASHBOARD_LOAD_STAGGER_MS = 90;
+    const DASHBOARD_LOAD_STAGGER_MS = 40;
     const DASHBOARD_RELOAD_DEBOUNCE_MS = 450;
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     let dashboardLoadSeq = 0;
@@ -50,6 +51,7 @@
     const stakeholdersStore = useStakeholdersStore();
     const ikasStore = useIkasStore();
     const csirtStore = useCsirtStore();
+    const konversiStore = useKonversiStore();
     const filterStore = useDashboardFilterStore();
     const notifStore = useNotificationStore();
     
@@ -76,6 +78,19 @@
     const customUnit = ref('days');
     const singleDateValue = ref('');
     let isSyncingDateFromStore = false;
+    const isDashboardDarkMode = ref(false);
+    let dashboardThemeObserver = null;
+
+    const syncDashboardTheme = () => {
+        if (typeof document === 'undefined') return;
+        const root = document.documentElement;
+        const body = document.body;
+        isDashboardDarkMode.value =
+            root.getAttribute('data-theme-mode') === 'dark' ||
+            body?.getAttribute('data-theme-mode') === 'dark' ||
+            root.classList.contains('dark') ||
+            body?.classList.contains('dark');
+    };
 
     // Sync datepicker model from filterStore on load
     const initDateFromStore = () => {
@@ -142,6 +157,7 @@
 
     onUnmounted(() => {
         if (alertTimeout) clearTimeout(alertTimeout);
+        dashboardThemeObserver?.disconnect?.();
     });
 
     watch(() => filterStore.error, (newError) => {
@@ -648,7 +664,7 @@
     };
 
     const buildAnalyticsTooltip = (data) => ({
-        theme: 'light',
+        theme: isDashboardDarkMode.value ? 'dark' : 'light',
         fillSeriesColor: false,
         custom: ({ series, seriesIndex, dataPointIndex, w }) => {
             const isAxisSeries = Array.isArray(series?.[seriesIndex]);
@@ -693,6 +709,13 @@
     const completionVisualItems = computed(() => buildVisualItems(completionAnalyticsData.value));
 
     const buildAnalyticsOptions = (data, type, view = 'distribution') => {
+        const isDark = isDashboardDarkMode.value;
+        const textColor = isDark ? '#dbeafe' : '#172554';
+        const mutedColor = isDark ? '#94a3b8' : '#64748b';
+        const axisColor = isDark ? '#cbd5e1' : '#334155';
+        const gridColor = isDark ? 'rgba(148, 163, 184, 0.18)' : '#eef3f9';
+        const strokeColor = isDark ? '#151a2b' : '#ffffff';
+
         // Base options
         const options = {
             chart: {
@@ -706,7 +729,12 @@
                     dynamicAnimation: { enabled: true, speed: 320 }
                 }
             },
+            theme: {
+                mode: isDark ? 'dark' : 'light'
+            },
+            foreColor: axisColor,
             grid: {
+                borderColor: gridColor,
                 padding: {
                     top: 12,
                     right: 18,
@@ -716,12 +744,15 @@
             },
             colors: data.colors,
             labels: data.labels,
-            stroke: { width: 2, colors: ['#fff'] },
+            stroke: { width: 2, colors: [strokeColor] },
             dataLabels: { enabled: true },
             legend: {
                 position: 'bottom',
                 fontSize: '11px',
                 fontWeight: 600,
+                labels: {
+                    colors: axisColor
+                },
                 markers: { radius: 12 },
                 itemMargin: { horizontal: 5, vertical: 0 }
             },
@@ -749,7 +780,7 @@
                         color: '#000000'
                     }
                 },
-                stroke: { width: 3, colors: ["#fff"] },
+                stroke: { width: 3, colors: [strokeColor] },
                 legend: {
                     show: false
                 },
@@ -769,7 +800,7 @@
                 ...options,
                 chart: { ...options.chart, type },
                 dataLabels: { enabled: false },
-                stroke: { width: 4, colors: ["#fff"] },
+                stroke: { width: 4, colors: [strokeColor] },
                 legend: {
                     show: false
                 },
@@ -784,13 +815,13 @@
                                 name: {
                                     fontSize: "12px",
                                     fontWeight: 850,
-                                    color: "#64748b",
+                                    color: mutedColor,
                                     offsetY: -6
                                 },
                                 value: {
                                     fontSize: "28px",
                                     fontWeight: 900,
-                                    color: "#172554",
+                                    color: textColor,
                                     offsetY: 8,
                                     formatter: (val) => formatChartNumber(val),
                                 },
@@ -799,7 +830,7 @@
                                     label: view === 'completion' ? 'Total Status' : (summaryMode.value === 'KSE' ? 'Total KSE' : (summaryMode.value === 'CSIRT' ? 'Total CSIRT' : 'Total IKAS')),
                                     fontSize: "12px",
                                     fontWeight: 850,
-                                    color: "#64748b",
+                                    color: mutedColor,
                                     formatter: (w) => formatChartNumber(w.globals.seriesTotals.reduce((a, b) => a + b, 0))
                                 }
                             }
@@ -822,7 +853,7 @@
                     style: {
                         fontSize: '11px',
                         fontWeight: 900,
-                        colors: ['#172554']
+                        colors: [textColor]
                     },
                     background: {
                         enabled: false
@@ -832,12 +863,12 @@
                         top: 0,
                         left: 0,
                         blur: 3,
-                        color: '#ffffff',
-                        opacity: 1
+                        color: isDark ? '#0f172a' : '#ffffff',
+                        opacity: isDark ? 0.65 : 1
                     }
                 },
                 grid: {
-                    borderColor: '#eef3f9',
+                    borderColor: gridColor,
                     strokeDashArray: 4,
                     padding: { top: 10, right: 44, bottom: 4, left: 8 }
                 },
@@ -861,7 +892,7 @@
                 yaxis: {
                     labels: {
                         style: {
-                            colors: '#334155',
+                            colors: axisColor,
                             fontSize: '11px',
                             fontWeight: 850
                         },
@@ -886,7 +917,7 @@
                         stops: [0, 90, 100]
                     }
                 },
-                markers: { size: 4, strokeWidth: 3, strokeColors: '#fff' },
+                markers: { size: 4, strokeWidth: 3, strokeColors: strokeColor },
                 legend: { show: false }
             };
         }
@@ -1255,6 +1286,14 @@
             }
         }
 
+        const bucketMap = new Map();
+        buckets.forEach((bucket) => {
+            const key = mode === 'monthly'
+                ? `${bucket.year}-${bucket.month}`
+                : `${bucket.year}-${bucket.month}-${bucket.day}`;
+            bucketMap.set(key, bucket);
+        });
+
         // 3. Count items into buckets
         function getField(obj, path) {
             return path.split('.').reduce((o, k) => o && o[k], obj);
@@ -1265,14 +1304,11 @@
             if (!raw || typeof raw !== 'string') return;
             const d = new Date(raw);
             if (isNaN(d.getTime())) return;
-            
-            const bucket = buckets.find(b => {
-                if (mode === 'monthly') {
-                    return b.year === d.getFullYear() && b.month === d.getMonth();
-                } else {
-                    return b.year === d.getFullYear() && b.month === d.getMonth() && b.day === d.getDate();
-                }
-            });
+
+            const key = mode === 'monthly'
+                ? `${d.getFullYear()}-${d.getMonth()}`
+                : `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            const bucket = bucketMap.get(key);
             if (bucket) bucket.count++;
         });
 
@@ -1282,10 +1318,16 @@
         };
     }
 
+    // ” Fetch all data ”
     /** Build sparkline chart options with month labels in tooltip */
     function buildSparkOptions(color, labels) {
         return {
-            chart: { type: 'area', sparkline: { enabled: true } },
+            chart: {
+                type: 'area',
+                sparkline: { enabled: true },
+                animations: { enabled: false },
+                toolbar: { show: false },
+            },
             stroke: { curve: 'smooth', width: 2 },
             fill: { opacity: 0.3 },
             colors: [getColor(color)],
@@ -1299,7 +1341,6 @@
         };
     }
 
-    // ” Fetch all data ”
     const isLatestDashboardLoad = (token) => token === dashboardLoadSeq;
 
     const initializeDashboardFilter = () => {
@@ -1329,6 +1370,15 @@
         }
     };
 
+    const hasDashboardCache = () => (
+        stakeholdersStore.initialized
+        && csirtStore.initialized
+        && ikasStore.initialized
+        && konversiStore.initialized
+        && sektorList.value.length > 0
+        && subSektorList.value.length > 0
+    );
+
     const openReopenedDrillDown = () => {
         if (!route.query.reopen) return;
 
@@ -1350,6 +1400,20 @@
             return;
         }
 
+        initializeDashboardFilter();
+
+        if (options.preferCache && hasDashboardCache()) {
+            loading.value = false;
+            dashboardDetailsReady.value = true;
+            lowerSectionsReady.value = true;
+            isFirstLoad.value = false;
+            if (!filterStore.summaryData && !filterStore.isLoading) {
+                filterStore.fetchDashboardData();
+            }
+            openReopenedDrillDown();
+            return;
+        }
+
         lastDashboardLoadAt = now;
         dashboardLoadInFlight = true;
         const token = ++dashboardLoadSeq;
@@ -1358,8 +1422,6 @@
         dashboardDetailsReady.value = false;
         lowerSectionsReady.value = false;
         isFirstLoad.value = true;
-
-        initializeDashboardFilter();
 
         const loadStore = (store, refreshMethod = 'refresh') => {
             if (options.refresh && store.initialized && typeof store[refreshMethod] === 'function') return store[refreshMethod]();
@@ -1384,6 +1446,7 @@
             await Promise.allSettled([
                 loadStore(csirtStore),
                 loadStore(ikasStore),
+                loadStore(konversiStore),
                 summaryPromise,
             ]);
 
@@ -1413,11 +1476,23 @@
     };
 
     onMounted(async () => {
+        syncDashboardTheme();
+        dashboardThemeObserver = new MutationObserver(syncDashboardTheme);
+        dashboardThemeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-theme-mode', 'class'],
+        });
+        if (document.body) {
+            dashboardThemeObserver.observe(document.body, {
+                attributes: true,
+                attributeFilter: ['data-theme-mode', 'class'],
+            });
+        }
         await loadDashboardData({ force: true });
     });
 
     onActivated(async () => {
-        await loadDashboardData();
+        await loadDashboardData({ preferCache: true });
     });
 
     // ” Color Palette 
@@ -1485,6 +1560,17 @@
 
         return filtered;
     });
+
+    const hasKonversiApiData = computed(() => konversiStore.initialized && konversiStore.records.length > 0);
+
+    const getStakeholderKonversiRecord = (stakeholder) => {
+        if (!stakeholder?.id) return null;
+        return konversiStore.getByPerusahaanId(stakeholder.id);
+    };
+
+    const countCompleteKonversiStakeholders = (stakeholders) => (
+        stakeholders.filter((stakeholder) => isKonversiComplete(getStakeholderKonversiRecord(stakeholder))).length
+    );
 
     const baseCsirts = computed(() => {
         const fId = filterStore.sektorId;
@@ -1635,8 +1721,12 @@
             if (isCsirtComplete) csirtCount++;
             if (hasIkas) ikasCount++;
             
-            // Data Lengkap = Has both IKAS and Complete CSIRT
-            if (isCsirtComplete && hasIkas) lengkapCount++;
+            // Data Lengkap = API konversi marks it complete; fallback stays aligned with legacy rules.
+            if (hasKonversiApiData.value) {
+                if (isKonversiComplete(getStakeholderKonversiRecord(s))) lengkapCount++;
+            } else if (isCsirtComplete && hasIkas) {
+                lengkapCount++;
+            }
         });
 
         // Compute percentages for the UI bars (rounded integers to match general summary)
@@ -1719,6 +1809,12 @@
     const filteredSdm = computed(() => datedSdm.value.length);
     const filteredIkasCount = computed(() => datedIkasStakeholders.value.length);
     const filteredSe = computed(() => localKseList.value.length);
+    const operationalCardsReady = computed(() => !loading.value && (!!filterStore.summaryData || dashboardDetailsReady.value));
+
+    const fallbackTrendData = (value = 0) => ({
+        data: [0, 0, 0, Number(value) || 0],
+        labels: ['Awal', 'Proses', 'Terkini', dateRangeLabel.value],
+    });
 
     // ” ROW 1 Cards: Sektor-based data 
     const sektorCards = computed(() => {
@@ -1859,16 +1955,25 @@
 
     // ” ROW 2 Cards: CSIRT, SE, IKAS 
     const operationalCards = computed(() => {
-        const csirtTrend = getTrendData(baseCsirts.value, 'perusahaan.created_at');
-        const ikasTrend = getTrendData(baseIkasStakeholders.value, 'updated_at');
-        const seTrend = getTrendData(firstKseByCompany.value);
-        const stakeholderTrend = getTrendData(baseStakeholders.value);
+        const csirtCount = apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || filteredCsirt.value;
+        const ikasCount = apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || filteredIkasCount.value;
+        const seCount = apiKseData.value.total_se || filteredSe.value;
+        const stakeholderCount = apiCsirtStatus.value.total_perusahaan
+            || apiIkasStatus.value.total_perusahaan
+            || apiKseStatus.value.total_perusahaan
+            || filteredStakeholders.value;
+
+        const useDetailedTrends = dashboardDetailsReady.value;
+        const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(csirtCount);
+        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(ikasCount);
+        const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(seCount);
+        const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(stakeholderCount);
 
         return [
             {
                 title: "Total CSIRT",
-                count: String(filteredCsirt.value),
-                percent: String(filteredCsirt.value),
+                count: String(csirtCount),
+                percent: String(csirtCount),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "danger",
                 iconColor: "danger fw-medium",
@@ -1887,8 +1992,8 @@
             },
             {
                 title: "Total IKAS",
-                count: String(filteredIkasCount.value),
-                percent: String(filteredIkasCount.value),
+                count: String(ikasCount),
+                percent: String(ikasCount),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "info",
                 iconColor: "info fw-medium",
@@ -1907,8 +2012,8 @@
             },
             {
                 title: "Sistem Elektronik",
-                count: String(filteredSe.value),
-                percent: String(filteredSe.value),
+                count: String(seCount),
+                percent: String(seCount),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "success",
                 iconColor: "success fw-medium",
@@ -1927,8 +2032,8 @@
             },
             {
                 title: "Stakeholders",
-                count: String(filteredStakeholders.value),
-                percent: String(filteredStakeholders.value),
+                count: String(stakeholderCount),
+                percent: String(stakeholderCount),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "secondary",
                 iconColor: "secondary fw-medium",
@@ -2017,7 +2122,11 @@
     }
 
     // ” Drill-Down Handler ”
-    function handleDrillDown(context) {
+    async function handleDrillDown(context) {
+        if (context?.type === 'Data Lengkap') {
+            await (konversiStore.initialized ? konversiStore.refresh() : konversiStore.initialize());
+        }
+
         const range = filterStore.dateRange;
         // Gunakan baseStakeholders yang sudah difilter Sektor & Sub Sektor
         let all = baseStakeholders.value;
@@ -2199,29 +2308,24 @@
                 };
             });
         } else if (context.type === 'Data Lengkap') {
-            // Show stakeholders with both CSIRT and IKAS completed
-            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'csirt_status', 'ikas_score'];
-            drillDownItems.value = all.filter(s => {
-                // Must have complete CSIRT
-                const hasCsirt = csirtStore.hasCompleteCsirt(s.id);
-                // Must have IKAS data
-                const ikasData = ikasStore.ikasDataMap[s.slug];
-                const hasIkas = ikasData && ikasData.total_rata_rata && ikasData.total_rata_rata !== 'NA' && ikasData.total_rata_rata !== 0;
-                return hasCsirt && hasIkas;
-            }).map(s => {
-                const csirtData = csirtStore.csirts.find(c =>
-                    String(c.id_perusahaan) === String(s.id) || String(c.perusahaan?.id) === String(s.id)
-                );
-                const ikasData = ikasStore.ikasDataMap[s.slug];
-                return {
-                    nama_perusahaan: s.nama_perusahaan || s.nama || '-',
-                    sektor: getStakeholderSektorName(s),
-                    sub_sektor: getStakeholderSubSektorName(s),
-                    csirt_status: csirtData ? 'Lengkap' : 'Belum Lengkap',
-                    ikas_score: ikasData?.total_rata_rata ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
-                    slug: s.slug,
-                };
-            });
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'status_data', 'persentase', 'poin_ikas', 'poin_kse', 'poin_survey', 'poin_csirt', 'total_poin'];
+            drillDownItems.value = all.map((s) => {
+                const konversi = getStakeholderKonversiRecord(s);
+                const progress = getKonversiProgress(konversi);
+                return { stakeholder: s, konversi, progress };
+            }).filter(({ konversi }) => isKonversiComplete(konversi)).map(({ stakeholder: s, konversi, progress }) => ({
+                nama_perusahaan: konversi?.nama_perusahaan || s.nama_perusahaan || s.nama || '-',
+                sektor: getStakeholderSektorName(s),
+                sub_sektor: getStakeholderSubSektorName(s),
+                status_data: progress.isComplete ? 'Lengkap' : 'Belum Lengkap',
+                persentase: `${progress.percent}%`,
+                poin_ikas: konversi?.poin_ikas ?? '-',
+                poin_kse: konversi?.poin_kse ?? '-',
+                poin_survey: konversi?.poin_survey ?? '-',
+                poin_csirt: konversi?.poin_csirt ?? '-',
+                total_poin: konversi?.total_poin ?? '-',
+                slug: s.slug,
+            }));
         } else if (context.type === 'Growth Rate') {
             // Show stakeholders added in the last 30 days (current month & last month for comparison)
             drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'created_at', 'periode'];
@@ -2513,7 +2617,7 @@
             </div>
         </div>
 
-        <div v-if="!showMetabase" id="dashboard-capture">
+        <div v-if="!showMetabase" id="dashboard-capture" class="dashboard-capture" :class="{ 'is-dark': isDashboardDarkMode }">
             <div class="mb-3">
                 <GlobalFilter
                     :sektor-list="sektorList"
@@ -2549,7 +2653,7 @@
             </div>
 
             <template v-else>
-                <!-- ••• SEKTOR / SUB SEKTOR CARDS ••• -->
+                <!--  SEKTOR / SUB SEKTOR CARDS  -->
                 <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.1s' : '0s' }">
                     <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
                         <i class="ri-building-2-line"></i>
@@ -2577,8 +2681,8 @@
                     </div>
                 </div>
 
-                <!-- ••• OPERATIONAL CARDS ••• -->
-                <div v-if="dashboardDetailsReady" class="row g-3 mt-1">
+                <!--  OPERATIONAL CARDS  -->
+                <div v-if="operationalCardsReady" class="row g-3 mt-1">
                     <div class="col-xl-3 col-md-6 animate-show-up"
                         v-for="(card, index) in operationalCards"
                         :key="'ops-' + index"
@@ -2595,27 +2699,10 @@
                 </div>
 
 
-                <!-- ••• KPI CARDS (Meaningful KPIs) ••• -->
-                <div v-if="false" class="row g-3 mt-1">
-                    <div class="col-xl-3 col-md-6" v-for="n in 4" :key="'ops-loading-'+n">
-                        <div class="card custom-card dashboard-main-card border-0 shadow-sm" style="height: 132px;">
-                            <div class="card-body placeholder-glow">
-                                <span class="placeholder col-3 mb-3" style="height: 34px; border-radius: 10px;"></span>
-                                <span class="placeholder col-7 d-block mb-2"></span>
-                                <span class="placeholder col-4 d-block"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.8s' : '0s' }">
-                    <KpiCards :loading="!dashboardDetailsReady" @drill-down="handleDrillDown" />
-                </div>
-
-                <!-- ••• INSIGHT + ACTIVITY ROW ••• -->
+                <!--  INSIGHT + ACTIVITY ROW  -->
                 <div class="row g-3 mb-4">
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.0s' : '0s' }">
-                        <InsightCard :loading="!dashboardDetailsReady" />
+                        <InsightCard :loading="!dashboardDetailsReady"  @drill-down="handleDrillDown" />
                     </div>
                     <div class="col-xl-4 animate-show-up" :style="{ animationDelay: isFirstLoad ? '1.2s' : '0s' }">
                         <ActionCenter :loading="!dashboardDetailsReady" />
@@ -2625,7 +2712,7 @@
                     </div>
                 </div>
 
-                <!-- ••• RINGKASAN DATA (Full Width) ••• -->
+                <!--  RINGKASAN DATA (Full Width)  -->
                 <div v-if="filterStore.isLoading && !filterStore.summaryData" class="row g-3 mb-4">
                     <div class="col-xl-4 col-lg-6 col-md-6" v-for="n in 6" :key="'skel-fs-'+n">
                         <div class="card custom-card">
@@ -3256,7 +3343,11 @@
                 </template>
 
                 <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
-                <SektorAnalytics v-if="lowerSectionsReady" />
+                <SektorAnalytics
+                    v-if="lowerSectionsReady"
+                    :sektor-list="sektorList"
+                    :sub-sektor-list="subSektorList"
+                />
 
                 <!-- RADAR CHARTS -->
                 <div v-if="lowerSectionsReady" class="animate-show-up" :style="{ animationDelay: isFirstLoad ? '3.6s' : '0s' }">
@@ -4222,6 +4313,632 @@
     }
     .ki-export-btn:hover { border-color: #3b82f6; color: #1e40af; background: rgba(30,64,175,0.04); }
     .ki-export-btn i { font-size: 0.9rem; }
+
+    /*  Dark Mode  */
+    :global(html[data-theme-mode="dark"]) .page-header-breadcrumb .page-title,
+    :global(html.dark) .page-header-breadcrumb .page-title {
+        color: #eef4ff;
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .card.custom-card,
+    :global(html.dark) #dashboard-capture .card.custom-card {
+        background: #151a2b;
+        border-color: rgba(148, 163, 184, 0.18);
+        color: #dbeafe;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .dashboard-main-card[style],
+    :global(html.dark) #dashboard-capture .dashboard-main-card[style] {
+        background: #151a2b !important;
+    }
+
+    :global(html[data-theme-mode="dark"]) #dashboard-capture .card-header,
+    :global(html.dark) #dashboard-capture .card-header {
+        background: #171e31;
+        border-bottom-color: rgba(148, 163, 184, 0.16);
+        color: #e5eefb;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dashboard-datepicker-wrapper :deep(.dp__input),
+    :global(html.dark) .dashboard-datepicker-wrapper :deep(.dp__input) {
+        background: #151a2b;
+        border-color: rgba(147, 197, 253, 0.24);
+        color: #e5eefb;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dashboard-datepicker-wrapper :deep(.dp__input)::placeholder,
+    :global(html.dark) .dashboard-datepicker-wrapper :deep(.dp__input)::placeholder {
+        color: #7f8da3;
+    }
+
+    :global(html[data-theme-mode="dark"] .dp__menu),
+    :global(html.dark .dp__menu) {
+        background: #151a2b;
+        border-color: rgba(148, 163, 184, 0.22);
+        color: #e5eefb;
+        box-shadow: 0 22px 54px rgba(0, 0, 0, 0.38);
+    }
+
+    :global(html[data-theme-mode="dark"] .dp__calendar_header),
+    :global(html[data-theme-mode="dark"] .dp__calendar_header_separator),
+    :global(html.dark .dp__calendar_header),
+    :global(html.dark .dp__calendar_header_separator) {
+        color: #cbd5e1;
+        border-color: rgba(148, 163, 184, 0.16);
+    }
+
+    :global(html[data-theme-mode="dark"] .dp__cell_inner),
+    :global(html[data-theme-mode="dark"] .dp__month_year_select),
+    :global(html[data-theme-mode="dark"] .dp__button),
+    :global(html.dark .dp__cell_inner),
+    :global(html.dark .dp__month_year_select),
+    :global(html.dark .dp__button) {
+        color: #dbeafe;
+    }
+
+    :global(html[data-theme-mode="dark"] .dp__cell_inner:hover),
+    :global(html[data-theme-mode="dark"] .dp__month_year_select:hover),
+    :global(html[data-theme-mode="dark"] .dp__button:hover),
+    :global(html.dark .dp__cell_inner:hover),
+    :global(html.dark .dp__month_year_select:hover),
+    :global(html.dark .dp__button:hover) {
+        background: rgba(37, 99, 235, 0.16);
+    }
+
+    :global(html[data-theme-mode="dark"] .dp__range_between),
+    :global(html.dark .dp__range_between) {
+        background: rgba(37, 99, 235, 0.2);
+        border-color: rgba(37, 99, 235, 0.12);
+    }
+
+    :global(html[data-theme-mode="dark"] .dp__today),
+    :global(html.dark .dp__today) {
+        border-color: #60a5fa;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dp-custom-range,
+    :global(html.dark) .dp-custom-range {
+        background: #151a2b;
+        color: #dbeafe;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dp-sidebar-header,
+    :global(html.dark) .dp-sidebar-header {
+        color: #e5eefb;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dp-sidebar-desc,
+    :global(html.dark) .dp-sidebar-desc {
+        color: #8fa3bf;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dp-sidebar-divider,
+    :global(html.dark) .dp-sidebar-divider {
+        background: rgba(148, 163, 184, 0.18);
+    }
+
+    :global(html[data-theme-mode="dark"]) .dp-num-input,
+    :global(html[data-theme-mode="dark"]) .dp-unit-select,
+    :global(html[data-theme-mode="dark"]) .dp-date-input,
+    :global(html.dark) .dp-num-input,
+    :global(html.dark) .dp-unit-select,
+    :global(html.dark) .dp-date-input {
+        background: rgba(15, 23, 42, 0.78);
+        border-color: rgba(147, 197, 253, 0.22);
+        color: #e5eefb;
+    }
+
+    :global(html[data-theme-mode="dark"]) .kse-ikas-analytics,
+    :global(html.dark) .kse-ikas-analytics {
+        --ki-ink: #eef4ff;
+        --ki-muted: #9aaac0;
+        --ki-line: rgba(148, 163, 184, 0.2);
+        --ki-soft: #111827;
+        --ki-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+        color-scheme: dark;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-command-center,
+    :global(html.dark) .ki-command-center,
+    :global(html[data-theme-mode="dark"]) .ki-chart-card,
+    :global(html.dark) .ki-chart-card,
+    :global(html[data-theme-mode="dark"]) .ki-breakdown,
+    :global(html.dark) .ki-breakdown,
+    :global(html[data-theme-mode="dark"]) .ki-insight-box,
+    :global(html.dark) .ki-insight-box,
+    :global(html[data-theme-mode="dark"]) .ki-metric-card,
+    :global(html.dark) .ki-metric-card {
+        background: linear-gradient(180deg, #151a2b 0%, #111827 100%);
+        border-color: rgba(148, 163, 184, 0.2);
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-command-center .ki-hero-banner,
+    :global(html.dark) .ki-command-center .ki-hero-banner,
+    :global(html[data-theme-mode="dark"]) .ki-chart-header,
+    :global(html.dark) .ki-chart-header {
+        border-color: rgba(148, 163, 184, 0.18);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-hero-banner,
+    :global(html.dark) .ki-hero-banner {
+        background:
+            radial-gradient(circle at 10% 18%, rgba(59, 130, 246, 0.18), transparent 30%),
+            radial-gradient(circle at 92% 16%, rgba(6, 182, 212, 0.14), transparent 28%),
+            linear-gradient(135deg, #151a2b 0%, #121827 58%, #0f172a 100%);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-header,
+    :global(html.dark) .ki-chart-header {
+        background: #151a2b;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-body,
+    :global(html.dark) .ki-chart-body {
+        background-color: #111827;
+        background-image: linear-gradient(180deg, #151a2b 0%, rgba(17, 24, 39, 0.92) 100%);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane + .ki-chart-pane,
+    :global(html.dark) .ki-chart-pane + .ki-chart-pane {
+        border-left-color: rgba(148, 163, 184, 0.18);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-ring-svg circle:first-child,
+    :global(html.dark) .ki-ring-svg circle:first-child {
+        stroke: rgba(148, 163, 184, 0.2);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-pill,
+    :global(html.dark) .ki-pill,
+    :global(html[data-theme-mode="dark"]) .ki-visual-pill,
+    :global(html.dark) .ki-visual-pill,
+    :global(html[data-theme-mode="dark"]) .ki-bp-row,
+    :global(html.dark) .ki-bp-row,
+    :global(html[data-theme-mode="dark"]) .ki-domain-item,
+    :global(html.dark) .ki-domain-item {
+        background: rgba(15, 23, 42, 0.72);
+        border-color: rgba(148, 163, 184, 0.18);
+        color: #dbeafe;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-type-toggle,
+    :global(html.dark) .ki-chart-type-toggle,
+    :global(html[data-theme-mode="dark"]) .ki-view-toggle,
+    :global(html.dark) .ki-view-toggle {
+        background: rgba(15, 23, 42, 0.76);
+        border-color: rgba(148, 163, 184, 0.18);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-ct-btn.active,
+    :global(html.dark) .ki-ct-btn.active {
+        background: rgba(37, 99, 235, 0.2);
+        color: #bfdbfe;
+        box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.22);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-hero-cta,
+    :global(html.dark) .ki-hero-cta,
+    :global(html[data-theme-mode="dark"]) .ki-export-btn,
+    :global(html.dark) .ki-export-btn {
+        background: rgba(15, 23, 42, 0.78);
+        border-color: rgba(147, 197, 253, 0.24);
+        color: #dbeafe;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-hero-cta:hover,
+    :global(html.dark) .ki-hero-cta:hover,
+    :global(html[data-theme-mode="dark"]) .ki-export-btn:hover,
+    :global(html.dark) .ki-export-btn:hover {
+        background: rgba(37, 99, 235, 0.16);
+        border-color: rgba(96, 165, 250, 0.5);
+        color: #ffffff;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-bp-badge,
+    :global(html.dark) .ki-bp-badge,
+    :global(html[data-theme-mode="dark"]) .ki-insight-tip,
+    :global(html.dark) .ki-insight-tip {
+        background: rgba(37, 99, 235, 0.14);
+        border-color: rgba(96, 165, 250, 0.2);
+        color: #93c5fd;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-bp-bar,
+    :global(html.dark) .ki-bp-bar,
+    :global(html[data-theme-mode="dark"]) .ki-visual-track,
+    :global(html.dark) .ki-visual-track,
+    :global(html[data-theme-mode="dark"]) .ki-domain-score-bar,
+    :global(html.dark) .ki-domain-score-bar {
+        background: rgba(148, 163, 184, 0.18);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane-title span,
+    :global(html.dark) .ki-chart-pane-title span,
+    :global(html[data-theme-mode="dark"]) .ki-visual-value,
+    :global(html.dark) .ki-visual-value,
+    :global(html[data-theme-mode="dark"]) .ki-bp-label,
+    :global(html.dark) .ki-bp-label,
+    :global(html[data-theme-mode="dark"]) .ki-domain-header,
+    :global(html.dark) .ki-domain-header,
+    :global(html[data-theme-mode="dark"]) .ki-insight-title,
+    :global(html.dark) .ki-insight-title {
+        color: #eef4ff;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane-title small,
+    :global(html.dark) .ki-chart-pane-title small,
+    :global(html[data-theme-mode="dark"]) .ki-visual-label,
+    :global(html.dark) .ki-visual-label,
+    :global(html[data-theme-mode="dark"]) .ki-visual-pill small,
+    :global(html.dark) .ki-visual-pill small,
+    :global(html[data-theme-mode="dark"]) .ki-bp-count,
+    :global(html.dark) .ki-bp-count,
+    :global(html[data-theme-mode="dark"]) .ki-domain-label,
+    :global(html.dark) .ki-domain-label,
+    :global(html[data-theme-mode="dark"]) .ki-insight-text,
+    :global(html.dark) .ki-insight-text {
+        color: #94a3b8;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.apexcharts-datalabel-value),
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.apexcharts-datalabel-label),
+    :global(html.dark) .ki-chart-pane :deep(.apexcharts-datalabel-value),
+    :global(html.dark) .ki-chart-pane :deep(.apexcharts-datalabel-label) {
+        fill: #dbeafe !important;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.apexcharts-legend-series),
+    :global(html.dark) .ki-chart-pane :deep(.apexcharts-legend-series) {
+        background: rgba(15, 23, 42, 0.74);
+        border-color: rgba(148, 163, 184, 0.18);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.apexcharts-legend-text),
+    :global(html.dark) .ki-chart-pane :deep(.apexcharts-legend-text) {
+        color: #dbeafe !important;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.ki-chart-tooltip),
+    :global(html.dark) .ki-chart-pane :deep(.ki-chart-tooltip),
+    :global(html[data-theme-mode="dark"] .ki-chart-tooltip),
+    :global(html.dark .ki-chart-tooltip) {
+        background: #111827;
+        border-color: rgba(148, 163, 184, 0.2);
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.ki-chart-tooltip strong),
+    :global(html.dark) .ki-chart-pane :deep(.ki-chart-tooltip strong),
+    :global(html[data-theme-mode="dark"] .ki-chart-tooltip strong),
+    :global(html.dark .ki-chart-tooltip strong) {
+        color: #eef4ff;
+    }
+
+    :global(html[data-theme-mode="dark"]) .ki-chart-pane :deep(.ki-chart-tooltip small),
+    :global(html.dark) .ki-chart-pane :deep(.ki-chart-tooltip small),
+    :global(html[data-theme-mode="dark"] .ki-chart-tooltip small),
+    :global(html.dark .ki-chart-tooltip small) {
+        color: #94a3b8;
+    }
+
+    /*  Dashboard-root dark layer  */
+    .dashboard-capture.is-dark {
+        color-scheme: dark;
+    }
+
+    .dashboard-capture.is-dark .bg-light {
+        background-color: #111827 !important;
+    }
+
+    .dashboard-capture.is-dark .btn-white,
+    .dashboard-capture.is-dark .summary-mode-switcher-alt,
+    .dashboard-capture.is-dark .fs-filter-pill-alt,
+    .dashboard-capture.is-dark .sa-view-btn.active,
+    .dashboard-capture.is-dark .sm-btn.active {
+        background: rgba(15, 23, 42, 0.86) !important;
+        border-color: rgba(147, 197, 253, 0.24) !important;
+        color: #dbeafe !important;
+    }
+
+    .dashboard-capture.is-dark .btn-white:hover {
+        background: rgba(37, 99, 235, 0.16) !important;
+        border-color: rgba(96, 165, 250, 0.52) !important;
+        color: #ffffff !important;
+    }
+
+    .dashboard-capture.is-dark .fs-filter-pill-alt.active,
+    .dashboard-capture.is-dark .sm-btn.active {
+        background: #2563eb !important;
+        border-color: #60a5fa !important;
+        color: #ffffff !important;
+    }
+
+    .dashboard-capture.is-dark .sa-stat-card {
+        background: linear-gradient(180deg, #151a2b 0%, #111827 100%) !important;
+        border-color: rgba(148, 163, 184, 0.2) !important;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26) !important;
+        color: #dbeafe !important;
+    }
+
+    .dashboard-capture.is-dark .sa-stat-blue,
+    .dashboard-capture.is-dark .sa-stat-emerald,
+    .dashboard-capture.is-dark .sa-stat-teal,
+    .dashboard-capture.is-dark .sa-stat-amber {
+        border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .sa-stat-blue {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+        color: #bfdbfe !important;
+    }
+
+    .dashboard-capture.is-dark .sa-stat-emerald {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+        color: #c7f9e7 !important;
+    }
+
+    .dashboard-capture.is-dark .sa-stat-teal {
+        background: linear-gradient(135deg, rgba(20, 184, 166, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+        color: #b6f7ef !important;
+    }
+
+    .dashboard-capture.is-dark .sa-stat-amber {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+        color: #fde68a !important;
+    }
+
+    .dashboard-capture.is-dark .sa-view-btn.active {
+        color: #eef4ff !important;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.34) !important;
+    }
+
+    .dashboard-capture.is-dark .summary-mode-switcher-alt {
+        background: rgba(15, 23, 42, 0.66) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-seg-btn.active,
+    .dashboard-capture.is-dark .ki-filter-pill.active,
+    .dashboard-capture.is-dark .ki-view-btn.active,
+    .dashboard-capture.is-dark .ki-vt-btn.active {
+        background: rgba(15, 23, 42, 0.88) !important;
+        border-color: rgba(147, 197, 253, 0.3) !important;
+        color: #eef4ff !important;
+        box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.14), 0 10px 24px rgba(0, 0, 0, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-command-center,
+    .dashboard-capture.is-dark .ki-chart-card,
+    .dashboard-capture.is-dark .ki-breakdown,
+    .dashboard-capture.is-dark .ki-insight-box,
+    .dashboard-capture.is-dark .ki-metric-card {
+        background: linear-gradient(180deg, #151a2b 0%, #111827 100%) !important;
+        border-color: rgba(148, 163, 184, 0.22) !important;
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-hero-banner {
+        background:
+            radial-gradient(circle at 10% 18%, rgba(59, 130, 246, 0.18), transparent 30%),
+            radial-gradient(circle at 92% 16%, rgba(34, 211, 238, 0.15), transparent 28%),
+            linear-gradient(135deg, #151a2b 0%, #121827 58%, #0f172a 100%) !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-chart-header,
+    .dashboard-capture.is-dark .ki-chart-body {
+        background: #151a2b !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-chart-body {
+        background-image: linear-gradient(180deg, #151a2b 0%, rgba(17, 24, 39, 0.95) 100%) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-pill,
+    .dashboard-capture.is-dark .ki-visual-pill,
+    .dashboard-capture.is-dark .ki-bp-row,
+    .dashboard-capture.is-dark .ki-domain-item {
+        background: rgba(15, 23, 42, 0.82) !important;
+        border-color: rgba(148, 163, 184, 0.2) !important;
+        color: #dbeafe !important;
+    }
+
+    .dashboard-capture.is-dark .ki-chart-type-toggle,
+    .dashboard-capture.is-dark .ki-view-toggle,
+    .dashboard-capture.is-dark .ki-hero-cta,
+    .dashboard-capture.is-dark .ki-export-btn {
+        background: rgba(15, 23, 42, 0.84) !important;
+        border-color: rgba(147, 197, 253, 0.24) !important;
+        color: #dbeafe !important;
+    }
+
+    .dashboard-capture.is-dark .ki-ct-btn.active,
+    .dashboard-capture.is-dark .ki-hero-cta:hover,
+    .dashboard-capture.is-dark .ki-export-btn:hover {
+        background: rgba(37, 99, 235, 0.22) !important;
+        border-color: rgba(96, 165, 250, 0.5) !important;
+        color: #ffffff !important;
+    }
+
+    .dashboard-capture.is-dark .ki-chart-pane + .ki-chart-pane {
+        border-left-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .ki-chart-pane-title span,
+    .dashboard-capture.is-dark .ki-visual-value,
+    .dashboard-capture.is-dark .ki-bp-label,
+    .dashboard-capture.is-dark .ki-domain-header,
+    .dashboard-capture.is-dark .ki-insight-title,
+    .dashboard-capture.is-dark .ki-ring-value,
+    .dashboard-capture.is-dark .ki-hero-title,
+    .dashboard-capture.is-dark .ki-chart-title,
+    .dashboard-capture.is-dark .ki-metric-value {
+        color: #eef4ff !important;
+    }
+
+    .dashboard-capture.is-dark .ki-chart-pane-title small,
+    .dashboard-capture.is-dark .ki-visual-label,
+    .dashboard-capture.is-dark .ki-visual-pill small,
+    .dashboard-capture.is-dark .ki-bp-count,
+    .dashboard-capture.is-dark .ki-domain-label,
+    .dashboard-capture.is-dark .ki-insight-text,
+    .dashboard-capture.is-dark .ki-ring-sub,
+    .dashboard-capture.is-dark .ki-hero-desc,
+    .dashboard-capture.is-dark .ki-chart-sub,
+    .dashboard-capture.is-dark .ki-metric-label {
+        color: #94a3b8 !important;
+    }
+
+    .dashboard-capture.is-dark .ki-bp-bar,
+    .dashboard-capture.is-dark .ki-visual-track,
+    .dashboard-capture.is-dark .ki-domain-score-bar {
+        background: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.apexcharts-canvas),
+    .dashboard-capture.is-dark :deep(.apexcharts-svg) {
+        background: transparent !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.apexcharts-text),
+    .dashboard-capture.is-dark :deep(.apexcharts-datalabel-label),
+    .dashboard-capture.is-dark :deep(.apexcharts-datalabel-value),
+    .dashboard-capture.is-dark :deep(.apexcharts-legend-text) {
+        fill: #dbeafe !important;
+        color: #dbeafe !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.apexcharts-gridline),
+    .dashboard-capture.is-dark :deep(.apexcharts-xaxis line),
+    .dashboard-capture.is-dark :deep(.apexcharts-yaxis line) {
+        stroke: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-section-header) {
+        border-color: rgba(147, 197, 253, 0.45) !important;
+        box-shadow: 0 16px 36px rgba(37, 99, 235, 0.26) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-filter-bar),
+    .dashboard-capture.is-dark :deep(.sa-level-toggle-bar),
+    .dashboard-capture.is-dark :deep(.sa-chart-card),
+    .dashboard-capture.is-dark :deep(.sa-table-card),
+    .dashboard-capture.is-dark :deep(.sa-substakeholder-panel),
+    .dashboard-capture.is-dark :deep(.sa-sektor-card),
+    .dashboard-capture.is-dark :deep(.sa-empty-cards) {
+        background: #151a2b !important;
+        border-color: rgba(148, 163, 184, 0.22) !important;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-filter-header),
+    .dashboard-capture.is-dark :deep(.sa-chart-header),
+    .dashboard-capture.is-dark :deep(.sa-sektor-card-header) {
+        background: linear-gradient(180deg, rgba(23, 30, 48, 0.98), rgba(21, 26, 43, 0.96)) !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-filter-controls),
+    .dashboard-capture.is-dark :deep(.sa-chart-body),
+    .dashboard-capture.is-dark :deep(.sa-table-body),
+    .dashboard-capture.is-dark :deep(.sa-sektor-card-body),
+    .dashboard-capture.is-dark :deep(.sa-active-filters) {
+        background: #111827 !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-search-input),
+    .dashboard-capture.is-dark :deep(.sa-filter-select),
+    .dashboard-capture.is-dark :deep(.sa-sort-btn),
+    .dashboard-capture.is-dark :deep(.sa-reset-btn),
+    .dashboard-capture.is-dark :deep(.sa-result-count),
+    .dashboard-capture.is-dark :deep(.sa-level-toggle-group),
+    .dashboard-capture.is-dark :deep(.sa-level-btn) {
+        background: rgba(15, 23, 42, 0.88) !important;
+        border-color: rgba(147, 197, 253, 0.24) !important;
+        color: #dbeafe !important;
+        color-scheme: dark;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-search-input::placeholder) {
+        color: #7f8da3 !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-search-input:focus),
+    .dashboard-capture.is-dark :deep(.sa-filter-select:focus) {
+        border-color: #60a5fa !important;
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-level-btn.active),
+    .dashboard-capture.is-dark :deep(.sa-sort-btn:hover) {
+        background: #2563eb !important;
+        border-color: #60a5fa !important;
+        color: #ffffff !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-filter-title-wrap),
+    .dashboard-capture.is-dark :deep(.sa-filter-title),
+    .dashboard-capture.is-dark :deep(.sa-chart-title),
+    .dashboard-capture.is-dark :deep(.sa-level-toggle-label),
+    .dashboard-capture.is-dark :deep(.sa-sektor-name),
+    .dashboard-capture.is-dark :deep(.sa-sektor-card-title),
+    .dashboard-capture.is-dark :deep(.sa-substakeholder-title),
+    .dashboard-capture.is-dark :deep(.sa-stakeholder-name) {
+        color: #eef4ff !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-filter-label),
+    .dashboard-capture.is-dark :deep(.sa-chart-sub),
+    .dashboard-capture.is-dark :deep(.sa-section-subtitle),
+    .dashboard-capture.is-dark :deep(.sa-level-info),
+    .dashboard-capture.is-dark :deep(.sa-active-label),
+    .dashboard-capture.is-dark :deep(.sa-sektor-card-code),
+    .dashboard-capture.is-dark :deep(.sa-substakeholder-sub),
+    .dashboard-capture.is-dark :deep(.sa-stakeholder-meta),
+    .dashboard-capture.is-dark :deep(.sa-empty-chart),
+    .dashboard-capture.is-dark :deep(.sa-empty-cards) {
+        color: #94a3b8 !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-filter-pill),
+    .dashboard-capture.is-dark :deep(.sa-code-badge),
+    .dashboard-capture.is-dark :deep(.sa-table-counter .badge) {
+        background: rgba(37, 99, 235, 0.16) !important;
+        border-color: rgba(96, 165, 250, 0.28) !important;
+        color: #bfdbfe !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-table thead th) {
+        background: rgba(15, 23, 42, 0.94) !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+        color: #94a3b8 !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-sektor-row),
+    .dashboard-capture.is-dark :deep(.sa-sub-row),
+    .dashboard-capture.is-dark :deep(.sa-card-sub-item),
+    .dashboard-capture.is-dark :deep(.sa-stakeholder-item) {
+        background: rgba(15, 23, 42, 0.68) !important;
+        border-color: rgba(148, 163, 184, 0.16) !important;
+        color: #dbeafe !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-sektor-row:hover),
+    .dashboard-capture.is-dark :deep(.sa-sub-row:hover),
+    .dashboard-capture.is-dark :deep(.sa-card-sub-item:hover),
+    .dashboard-capture.is-dark :deep(.sa-stakeholder-item:hover) {
+        background: rgba(37, 99, 235, 0.14) !important;
+    }
+
+    .dashboard-capture.is-dark :deep(.sa-count-bar),
+    .dashboard-capture.is-dark :deep(.sa-sub-table-wrap),
+    .dashboard-capture.is-dark :deep(.sa-stakeholder-list) {
+        background: rgba(148, 163, 184, 0.12) !important;
+        border-color: rgba(148, 163, 184, 0.16) !important;
+    }
 
     /*  Responsive  */
     @media (max-width: 1199px) {

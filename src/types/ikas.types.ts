@@ -37,6 +37,9 @@ export interface IkasPayload {
     jabatan: string;
     responden: string;
     tanggal: string;
+    tahun_pengukuran?: string | number;
+    tanggal_pengukuran?: string;
+    tanggal_pengisian?: string;
     target_nilai: number;
     telepon: string;
 }
@@ -71,6 +74,7 @@ export interface IkasAuditLog {
     action?: string;
     aksi?: string;
     event?: string;
+    changes?: Record<string, unknown> | unknown[] | string | null;
     status?: string;
     title?: string;
     judul?: string;
@@ -79,15 +83,23 @@ export interface IkasAuditLog {
     note?: string;
     catatan?: string;
     actor?: string;
-    user?: string | { name?: string; nama?: string; email?: string };
+    user?: string | { id?: string | number; name?: string; nama?: string; email?: string };
     created_by?: string;
     created_at?: string;
     updated_at?: string;
 }
 
+export interface IkasAuditLogPagination {
+    total: string | number;
+    page: string | number;
+    limit: string | number;
+    total_pages: string | number;
+}
+
 export interface IkasAuditLogListResponse {
     data: IkasAuditLog[];
     message?: string;
+    pagination?: IkasAuditLogPagination;
     status?: string;
     total?: string | number;
 }

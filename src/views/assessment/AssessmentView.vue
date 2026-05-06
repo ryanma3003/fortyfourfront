@@ -36,6 +36,18 @@ const parseTargetNilai = (value: string | number | null | undefined): number => 
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeMeasurementDate = (tanggal: string | null | undefined, tahun: string | number | null | undefined): string => {
+  const normalizedYear = String(tahun || '').match(/\d{4}/)?.[0] || String(new Date().getFullYear());
+  const normalizedDate = String(tanggal || '').trim();
+  if (normalizedDate && normalizedDate.startsWith(`${normalizedYear}-`)) {
+    return normalizedDate;
+  }
+  if (!normalizedDate && normalizedYear === String(new Date().getFullYear())) {
+    return new Date().toISOString().split('T')[0];
+  }
+  return `${normalizedYear}-01-01`;
+};
+
 const handleAnswer = async (questionId: string, index: number) => {
   await assessmentStore.saveAnswer(questionId, index);
 };
@@ -147,7 +159,8 @@ const handleSaveAction = async () => {
       responden: profile.namaResponden || '',
       jabatan: profile.jabatanResponden || '',
       telepon: profile.nomorTelepon || '',
-      tanggal: profile.tanggalPengisian || new Date().toISOString().split('T')[0],
+      tanggal: normalizeMeasurementDate(profile.tanggalPengisian, profile.tahunPengukuran),
+      tahun_pengukuran: profile.tahunPengukuran,
       target_nilai: parseTargetNilai(profile.targetNilai),
     };
 

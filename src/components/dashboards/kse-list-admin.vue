@@ -329,12 +329,13 @@ const getFullStakeholder = (se: SeCsirt) => {
 </script>
 
 <template>
-    <Pageheader :propData="pageData" />
+    <div class="kse-admin-page">
+        <Pageheader :propData="pageData" />
 
-    <div class="row">
-        <div class="col-xl-12">
-            <!-- Premium Shell Card -->
-            <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
+        <div class="row">
+            <div class="col-xl-12">
+                <!-- Premium Shell Card -->
+                <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
                 
                 <!-- ══ PREMIUM HEADER ══════════════════════════════════════════ -->
                 <div class="stakeholder-header stakeholders-premium-header">
@@ -746,7 +747,8 @@ const getFullStakeholder = (se: SeCsirt) => {
                     </div>
 
                 </div><!-- /card-body -->
-            </div><!-- /premium shell card -->
+                </div><!-- /premium shell card -->
+            </div>
         </div>
     </div>
 
@@ -1511,6 +1513,179 @@ const getFullStakeholder = (se: SeCsirt) => {
 </style>
 
 <style>
+[data-theme-mode="dark"] .kse-admin-page .header-search-input,
+html.dark .kse-admin-page .header-search-input {
+    background: #0b1220 !important;
+    border-color: rgba(148, 163, 184, 0.32) !important;
+    color: #e2e8f0 !important;
+    box-shadow: none !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .header-search-input::placeholder,
+html.dark .kse-admin-page .header-search-input::placeholder {
+    color: #64748b !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .header-search-icon,
+[data-theme-mode="dark"] .kse-admin-page .clear-btn,
+html.dark .kse-admin-page .header-search-icon,
+html.dark .kse-admin-page .clear-btn {
+    color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-toolbar,
+html.dark .kse-admin-page .stakeholders-toolbar,
+[data-theme-mode="dark"] .kse-admin-page .card.custom-card.shadow-sm,
+html.dark .kse-admin-page .card.custom-card.shadow-sm,
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-premium-body,
+html.dark .kse-admin-page .stakeholders-premium-body {
+    background: #08111f !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .entries-select,
+html.dark .kse-admin-page .entries-select {
+    background-color: #0b1220 !important;
+    border-color: rgba(148, 163, 184, 0.32) !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .entries-select option,
+html.dark .kse-admin-page .entries-select option {
+    background: #0b1220 !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .bg-warning-transparent.border-bottom,
+html.dark .kse-admin-page .bg-warning-transparent.border-bottom {
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.11) 0%, #0b1220 100%) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .bg-warning-transparent.border-bottom h6,
+html.dark .kse-admin-page .bg-warning-transparent.border-bottom h6 {
+    color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table-wrap.bg-white,
+[data-theme-mode="dark"] .kse-admin-page .table-responsive,
+html.dark .kse-admin-page .stakeholder-table-wrap.bg-white,
+html.dark .kse-admin-page .table-responsive {
+    background: #08111f !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table,
+html.dark .kse-admin-page .lms-style-table {
+    --bs-table-bg: #08111f !important;
+    --bs-table-color: #dbeafe !important;
+    --bs-table-hover-bg: rgba(37, 99, 235, 0.12) !important;
+    --bs-table-hover-color: #f8fafc !important;
+    background: #08111f !important;
+    color: #dbeafe !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table thead,
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table thead tr,
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table thead th,
+html.dark .kse-admin-page .lms-style-table thead,
+html.dark .kse-admin-page .lms-style-table thead tr,
+html.dark .kse-admin-page .lms-style-table thead th {
+    background: #111c2e !important;
+    background-color: #111c2e !important;
+    border-color: rgba(148, 163, 184, 0.22) !important;
+    color: #a9bad2 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table tbody,
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table tbody tr,
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table tbody td,
+html.dark .kse-admin-page .lms-style-table tbody,
+html.dark .kse-admin-page .lms-style-table tbody tr,
+html.dark .kse-admin-page .lms-style-table tbody td {
+    background: #08111f !important;
+    background-color: #08111f !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+    color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .lms-style-table tbody tr:hover,
+html.dark .kse-admin-page .lms-style-table tbody tr:hover {
+    background: rgba(37, 99, 235, 0.12) !important;
+    background-color: rgba(37, 99, 235, 0.12) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .text-dark,
+html.dark .kse-admin-page .text-dark {
+    color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .text-muted,
+html.dark .kse-admin-page .text-muted {
+    color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .expansion-toggle-lms,
+html.dark .kse-admin-page .expansion-toggle-lms {
+    background: #0f172a !important;
+    border-color: rgba(148, 163, 184, 0.28) !important;
+    color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .expansion-row > td,
+html.dark .kse-admin-page .expansion-row > td {
+    background: #07111f !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .expansion-row .custom-card,
+html.dark .kse-admin-page .expansion-row .custom-card {
+    background: #0b1220 !important;
+    border-color: rgba(59, 130, 246, 0.38) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .expansion-row .bg-white,
+[data-theme-mode="dark"] .kse-admin-page .expansion-row .bg-light,
+html.dark .kse-admin-page .expansion-row .bg-white,
+html.dark .kse-admin-page .expansion-row .bg-light {
+    background: #111c2e !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .expansion-row .badge.bg-light,
+html.dark .kse-admin-page .expansion-row .badge.bg-light {
+    background: rgba(148, 163, 184, 0.14) !important;
+    color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .review-modal-content,
+[data-theme-mode="dark"] .review-modal-body,
+html.dark .review-modal-content,
+html.dark .review-modal-body,
+html.dark .review-modal-footer,
+[data-theme-mode="dark"] .review-modal-footer {
+    background: #08111f !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .review-comparison-container,
+[data-theme-mode="dark"] .review-comparison-row,
+[data-theme-mode="dark"] .review-feedback-card,
+html.dark .review-comparison-container,
+html.dark .review-comparison-row,
+html.dark .review-feedback-card {
+    background: #0b1220 !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+[data-theme-mode="dark"] .review-feedback-input,
+html.dark .review-feedback-input {
+    background: #111c2e !important;
+    border-color: rgba(148, 163, 184, 0.24) !important;
+    color: #e2e8f0 !important;
+}
+
 .custom-modal-size {
     max-width: 860px !important;
     width: min(84vw, 860px) !important;

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 
 import * as radarData from '../../../../data/apexcharts/apexchart-radar.ts';
 import { useIkasStore } from '../../../../stores/ikas';
@@ -12,6 +12,38 @@ const props = defineProps({
 })
 const store = useIkasStore();
 store.initialize();
+const isDarkMode = ref(false);
+let themeObserver;
+
+function syncThemeMode() {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const body = document.body;
+    isDarkMode.value =
+        root.getAttribute("data-theme-mode") === "dark" ||
+        body?.getAttribute("data-theme-mode") === "dark" ||
+        root.classList.contains("dark") ||
+        body?.classList.contains("dark");
+}
+
+onMounted(() => {
+    syncThemeMode();
+    themeObserver = new MutationObserver(syncThemeMode);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme-mode", "class"],
+    });
+    if (document.body) {
+        themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["data-theme-mode", "class"],
+        });
+    }
+});
+
+onUnmounted(() => {
+    themeObserver?.disconnect();
+});
 
 // Helper to convert null values to 0 for chart display
 const toChartValue = (val) => {
@@ -161,6 +193,89 @@ const calculatedSeriesDomain = computed(() => {
     ];
 });
 
+const withRadarTheme = (baseOptions) => {
+    const isDark = isDarkMode.value;
+    const axisColor = isDark ? "#cbd5e1" : "#475569";
+    const mutedColor = isDark ? "#94a3b8" : "#8c9097";
+    const titleColor = isDark ? "#eef4ff" : (baseOptions.title?.style?.color || "#0f172a");
+    const polygonColor = isDark ? "rgba(148, 163, 184, 0.24)" : "#e5e7eb";
+    const connectorColor = isDark ? "rgba(148, 163, 184, 0.22)" : "#e5e7eb";
+
+    return {
+        ...baseOptions,
+        theme: { mode: isDark ? "dark" : "light" },
+        chart: {
+            ...baseOptions.chart,
+            background: "transparent",
+            foreColor: axisColor,
+            dropShadow: {
+                ...(baseOptions.chart?.dropShadow || {}),
+                color: isDark ? "#000000" : undefined,
+            },
+        },
+        title: {
+            ...(baseOptions.title || {}),
+            style: {
+                ...(baseOptions.title?.style || {}),
+                color: titleColor,
+            },
+        },
+        xaxis: {
+            ...(baseOptions.xaxis || {}),
+            labels: {
+                ...(baseOptions.xaxis?.labels || {}),
+                style: {
+                    ...(baseOptions.xaxis?.labels?.style || {}),
+                    colors: axisColor,
+                    color: axisColor,
+                },
+            },
+        },
+        yaxis: {
+            ...(baseOptions.yaxis || {}),
+            labels: {
+                ...(baseOptions.yaxis?.labels || {}),
+                style: {
+                    ...(baseOptions.yaxis?.labels?.style || {}),
+                    colors: mutedColor,
+                    color: mutedColor,
+                },
+            },
+        },
+        legend: {
+            ...(baseOptions.legend || {}),
+            labels: {
+                ...(baseOptions.legend?.labels || {}),
+                colors: isDark ? "#dbeafe" : undefined,
+            },
+        },
+        tooltip: {
+            ...(baseOptions.tooltip || {}),
+            theme: isDark ? "dark" : "light",
+        },
+        plotOptions: {
+            ...(baseOptions.plotOptions || {}),
+            radar: {
+                ...(baseOptions.plotOptions?.radar || {}),
+                polygons: {
+                    ...(baseOptions.plotOptions?.radar?.polygons || {}),
+                    strokeColors: polygonColor,
+                    connectorColors: connectorColor,
+                    fill: {
+                        ...(baseOptions.plotOptions?.radar?.polygons?.fill || {}),
+                        colors: isDark
+                            ? ["rgba(96, 165, 250, 0.06)", "rgba(15, 23, 42, 0.04)"]
+                            : ["#f8fafc", "#ffffff"],
+                    },
+                },
+            },
+        },
+    };
+};
+
+const kategoriRadarOptions = computed(() => withRadarTheme(radarData.Multioptions2));
+const domainRadarOptions = computed(() => withRadarTheme(radarData.Multioptions));
+
 const ApexRadarChart = computed(() => [
     {
         id: 1,
@@ -169,7 +284,7 @@ const ApexRadarChart = computed(() => [
         height: "500",
         width: "500",
         chart: {
-            options: radarData.Multioptions2,
+            options: kategoriRadarOptions.value,
             series: calculatedSeries.value
         },
     },
@@ -180,7 +295,7 @@ const ApexRadarChart = computed(() => [
         height: "500",
         width: "500",
         chart: {
-            options: radarData.Multioptions,
+            options: domainRadarOptions.value,
             series: calculatedSeriesDomain.value
         },
     }
@@ -189,7 +304,7 @@ const ApexRadarChart = computed(() => [
 </script>
 
 <template>
-    <div class="ikas-charts-container mt-4">
+    <div class="ikas-charts-container mt-4" :class="{ 'is-dark': isDarkMode }">
         <div class="row g-4">
             <div class="col-xl-6" v-for="card in ApexRadarChart" :key="card.id">
             <div class="radar-chart-card">
@@ -268,5 +383,61 @@ const ApexRadarChart = computed(() => [
 .radar-chart-body {
     padding: 1rem 0.5rem;
     background: #fff;
+}
+
+.ikas-charts-container.is-dark .radar-chart-card {
+    background: #151a2b;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow:
+        0 18px 44px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.ikas-charts-container.is-dark .radar-chart-header {
+    background: linear-gradient(135deg, #132f99 0%, #1d4ed8 54%, #3b82f6 100%);
+}
+
+.ikas-charts-container.is-dark .radar-chart-body {
+    background:
+        radial-gradient(circle at 50% 40%, rgba(59, 130, 246, 0.08), transparent 38%),
+        linear-gradient(180deg, #151a2b 0%, #111827 100%);
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-canvas),
+.ikas-charts-container.is-dark :deep(.apexcharts-svg) {
+    background: transparent !important;
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-title-text),
+.ikas-charts-container.is-dark :deep(.apexcharts-text),
+.ikas-charts-container.is-dark :deep(.apexcharts-yaxis-label),
+.ikas-charts-container.is-dark :deep(.apexcharts-xaxis-label),
+.ikas-charts-container.is-dark :deep(.apexcharts-legend-text) {
+    fill: #dbeafe !important;
+    color: #dbeafe !important;
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-radar-series polygon),
+.ikas-charts-container.is-dark :deep(.apexcharts-radar-series line),
+.ikas-charts-container.is-dark :deep(.apexcharts-gridline) {
+    stroke: rgba(148, 163, 184, 0.24) !important;
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-toolbar svg) {
+    fill: #cbd5e1 !important;
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-menu) {
+    background: #111827 !important;
+    border: 1px solid rgba(148, 163, 184, 0.22) !important;
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.36) !important;
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-menu-item) {
+    color: #dbeafe !important;
+}
+
+.ikas-charts-container.is-dark :deep(.apexcharts-menu-item:hover) {
+    background: rgba(37, 99, 235, 0.18) !important;
 }
 </style>

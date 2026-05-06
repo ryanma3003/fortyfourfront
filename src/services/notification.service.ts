@@ -151,9 +151,11 @@ class NotificationService {
     private openConnection(): void {
         const url = this.buildUrl('/api/events');
         try {
+            console.info('[NotifService] opening SSE:', url);
             this.eventSource = new EventSource(url, { withCredentials: true });
 
             this.eventSource.onopen = () => {
+                console.info('[NotifService] SSE connected');
                 this.reconnectAttempt = 0;
                 this.setConnected(true);
             };

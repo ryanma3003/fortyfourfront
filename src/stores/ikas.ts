@@ -171,6 +171,50 @@ const normalizeValidatedStatus = (record: any, fallback = false): boolean => {
   return Boolean(fallback);
 };
 
+const parseIkasDate = (value: string | Date | null | undefined): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  let raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}/.test(raw)) {
+    raw = raw.replace(' ', 'T');
+  }
+  raw = raw.replace(/Z$/i, '');
+  raw = raw.replace(/[+-]00:00$/, '');
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getIkasRecordDateValue = (record: any): string => (
+  record?.tanggal ||
+  record?.tanggal_pengisian ||
+  record?.tanggalPengisian ||
+  record?.tanggal_pengukuran ||
+  record?.tanggalPengukuran ||
+  ''
+);
+
+const getIkasRecordMeasurementYear = (record: any): string => {
+  const explicitYear = String(
+    record?.tahun_pengukuran ||
+    record?.tahunPengukuran ||
+    record?.tahun ||
+    record?.year ||
+    '',
+  ).match(/\d{4}/)?.[0];
+
+  if (explicitYear) return explicitYear;
+
+  const dateValue = getIkasRecordDateValue(record) || record?.created_at || record?.updated_at || '';
+  const date = parseIkasDate(dateValue);
+  return date ? String(date.getFullYear()) : '';
+};
+
+const getIkasRecordSortTime = (record: any): number => (
+  parseIkasDate(record?.updated_at || getIkasRecordDateValue(record) || record?.created_at || '')?.getTime() || 0
+);
+
 const unwrapIkasResponse = (response: any): any => response?.data || response?.record || response?.ikas || response || {};
 
 // Helper function untuk label maturity
@@ -387,8 +431,11 @@ export const useIkasStore = defineStore('ikas', {
 
     recordMatchesIkasIdentity(record: any, slug: string, ikasId: string | null, perusahaanId = ''): boolean {
       const company = record?.perusahaan || {};
+      if (ikasId) {
+        return String(record?.id || '') === String(ikasId);
+      }
+
       return (
-        (!!ikasId && String(record?.id || '') === String(ikasId)) ||
         (!!slug && String(record?.slug || '') === String(slug)) ||
         (!!slug && String(company?.slug || '') === String(slug)) ||
         (!!perusahaanId && String(record?.id_perusahaan || company?.id || '') === String(perusahaanId))
@@ -439,18 +486,18 @@ export const useIkasStore = defineStore('ikas', {
       ));
     },
 
-    findLatestIkasRecord(records: any[], perusahaanId: string): any | null {
+    findLatestIkasRecord(records: any[], perusahaanId: string, targetYear = ''): any | null {
       const matching = records.filter((record: any) =>
-        String(record?.perusahaan?.id || '') === String(perusahaanId) ||
-        String(record?.id_perusahaan || '') === String(perusahaanId)
+        (
+          String(record?.perusahaan?.id || '') === String(perusahaanId) ||
+          String(record?.id_perusahaan || '') === String(perusahaanId)
+        ) &&
+        (!targetYear || getIkasRecordMeasurementYear(record) === String(targetYear))
       );
 
       if (matching.length === 0) return null;
 
-      matching.sort((a: any, b: any) =>
-        new Date(b.updated_at || b.created_at || 0).getTime() -
-        new Date(a.updated_at || a.created_at || 0).getTime()
-      );
+      matching.sort((a: any, b: any) => getIkasRecordSortTime(b) - getIkasRecordSortTime(a));
 
       return matching[0] || null;
     },
@@ -482,6 +529,15 @@ export const useIkasStore = defineStore('ikas', {
       const idPerusahaan = String(record?.id_perusahaan || record?.perusahaan?.id || '');
       const score = this.numberValue(record?.nilai_kematangan ?? record?.total_rata_rata ?? record?.score ?? 0);
       const category = getMaturityLabel(score);
+      const existingSummary = this.ikasSummaryMap[slug];
+      if (existingSummary?.id && id && existingSummary.id !== id) {
+        const existingTime = getIkasRecordSortTime(existingSummary.raw) || parseIkasDate(existingSummary.updated_at)?.getTime() || 0;
+        const incomingTime = getIkasRecordSortTime(record);
+        if (incomingTime < existingTime) {
+          return existingSummary;
+        }
+      }
+
       const previousEditRequestStatus = this.ikasDataMap[slug]?.edit_request_status || 'none';
       const editRequestStatus = hasEditRequestStatus(record)
         ? normalizeEditRequestStatus(record, 'none')
@@ -542,24 +598,55 @@ export const useIkasStore = defineStore('ikas', {
     async deleteFromBackend(id: string) {
       this.apiLoading = true;
       try {
+        const deletedRecord = this.ikasRawRecords.find((record: any) => String(record?.id || '') === String(id));
         await ikasService.deleteIkas(id);
         
         // Find slug associated with this ID to clear local state
-        let slugToClear = '';
+        let slugToClear = deletedRecord ? this.resolveIkasSlug(deletedRecord) : '';
         for (const [slug, ikasId] of Object.entries(this.backendIkasIds)) {
           if (ikasId === id) {
             slugToClear = slug;
             break;
           }
         }
+
+        const deletedCompanyId = String(
+          deletedRecord?.id_perusahaan ||
+          deletedRecord?.perusahaan?.id ||
+          this.ikasSummaryMap[slugToClear]?.id_perusahaan ||
+          '',
+        );
+
+        this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => String(record?.id || '') !== String(id));
         
         if (slugToClear) {
           delete this.backendIkasIds[slugToClear];
           delete this.backendSyncedMap[slugToClear];
-          delete this.ikasDataMap[slugToClear];
+          delete this.ikasSummaryMap[slugToClear];
+
+          const remainingForStakeholder = this.ikasRawRecords.filter((record: any) => {
+            const company = record?.perusahaan || {};
+            return (
+              (!!deletedCompanyId && String(record?.id_perusahaan || company?.id || '') === deletedCompanyId) ||
+              (!!slugToClear && (String(record?.slug || '') === slugToClear || String(company?.slug || '') === slugToClear))
+            );
+          });
+
+          const nextRecord = this.findLatestIkasRecord(remainingForStakeholder, deletedCompanyId) ||
+            [...remainingForStakeholder].sort((a, b) => getIkasRecordSortTime(b) - getIkasRecordSortTime(a))[0];
+
+          if (nextRecord) {
+            this.ikasDataMap[slugToClear] = createDefaultIkasData();
+            this.upsertSummaryRecord(nextRecord);
+          } else {
+            this.ikasDataMap[slugToClear] = createDefaultIkasData();
+            this.backendIkasIds[slugToClear] = null;
+            this.backendSyncedMap[slugToClear] = false;
+          }
         }
         
         this.ikasVersion++;
+        window.dispatchEvent(new Event('ikas-requests-updated'));
         return true;
       } catch (error) {
         console.error('[IKAS Store] deleteFromBackend failed:', error);
@@ -583,6 +670,8 @@ export const useIkasStore = defineStore('ikas', {
           const records = this.normalizeIkasRecords(response);
           this.ikasRawRecords = records;
           this.ikasSummaryMap = {};
+          this.backendIkasIds = {};
+          this.backendSyncedMap = {};
           
           records.forEach((rec: any) => {
             this.upsertSummaryRecord(rec);
@@ -639,12 +728,21 @@ export const useIkasStore = defineStore('ikas', {
     buildRespondentPayload(slug: string, respondentData?: Partial<IkasPayload>): IkasPayload | null {
       const stakeholdersStore = useStakeholdersStore();
       const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+      const measurementYear = String(
+        respondentData?.tahun_pengukuran ||
+        String(respondentData?.tanggal || '').match(/\d{4}/)?.[0] ||
+        new Date().getFullYear()
+      );
+      const measurementDate = respondentData?.tanggal || `${measurementYear}-01-01`;
 
       const payload: IkasPayload = {
         id_perusahaan: respondentData?.id_perusahaan || stakeholder?.id || '',
         jabatan: respondentData?.jabatan || '',
         responden: respondentData?.responden || '',
-        tanggal: respondentData?.tanggal || new Date().toISOString().split('T')[0],
+        tanggal: measurementDate,
+        tanggal_pengisian: measurementDate,
+        tanggal_pengukuran: measurementDate,
+        tahun_pengukuran: measurementYear,
         target_nilai: Number(respondentData?.target_nilai || 0),
         telepon: respondentData?.telepon || '',
       };
@@ -889,6 +987,7 @@ export const useIkasStore = defineStore('ikas', {
         jabatan: string;
         telepon: string;
         tanggal: string;
+        tahun_pengukuran?: string | number;
         target_nilai: number;
       }
     ): Promise<{ success: boolean; error?: string }> {
@@ -936,7 +1035,8 @@ export const useIkasStore = defineStore('ikas', {
      */
     async fetchFromBackend(
       slug: string,
-      perusahaanId: string
+      perusahaanId: string,
+      targetYear = ''
     ): Promise<{ success: boolean; exists: boolean; error?: string; respondentData?: any; ikasRecord?: any }> {
       this.apiLoading = true;
       this.apiError = null;
@@ -947,7 +1047,8 @@ export const useIkasStore = defineStore('ikas', {
         const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
         const matchedRecord = this.findLatestIkasRecord(
           this.normalizeIkasRecords(listResponse),
-          perusahaanId
+          perusahaanId,
+          targetYear
         );
 
         if (!matchedRecord) {
@@ -1022,7 +1123,8 @@ export const useIkasStore = defineStore('ikas', {
             responden: matchedRecord.responden || '',
             jabatan: matchedRecord.jabatan || '',
             telepon: matchedRecord.telepon || '',
-            tanggal: matchedRecord.tanggal || '',
+            tanggal: getIkasRecordDateValue(matchedRecord) || '',
+            tahun_pengukuran: getIkasRecordMeasurementYear(matchedRecord),
             target_nilai: matchedRecord.target_nilai || 3,
             nilai_kematangan: matchedRecord.nilai_kematangan || 0,
           },
@@ -1306,6 +1408,7 @@ export const useIkasStore = defineStore('ikas', {
           edit_request_reason: normalizeEditRequestReason(updated),
         });
         this.ikasVersion++;
+        window.dispatchEvent(new Event('ikas-requests-updated'));
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] validateIkas failed:', error);
@@ -1333,6 +1436,7 @@ export const useIkasStore = defineStore('ikas', {
           edit_request_reason: normalizeEditRequestReason(updated),
         });
         this.ikasVersion++;
+        window.dispatchEvent(new Event('ikas-requests-updated'));
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] approveEditIkas failed:', error);
@@ -1360,6 +1464,7 @@ export const useIkasStore = defineStore('ikas', {
           edit_request_reason: normalizeEditRequestReason(updated, reason || ''),
         });
         this.ikasVersion++;
+        window.dispatchEvent(new Event('ikas-requests-updated'));
         return { success: true };
       } catch (error: any) {
         console.error('[IKAS Store] requestEditIkas failed:', error);

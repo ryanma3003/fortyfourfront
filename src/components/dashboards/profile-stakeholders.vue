@@ -4,7 +4,7 @@ import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder } from "../../types/stakeholders.types";
-import { computed, ref, onMounted, onActivated, watch } from "vue";
+import { computed, ref, onMounted, onActivated, onUnmounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import { picService } from "../../services/pic.service";
@@ -62,7 +62,11 @@ const isLoadingAktivitas = ref(false);
 const isLoadingIkasAuditLogs = ref(false);
 const isSavingAktivitas = ref(false);
 const isActivityFormVisible = ref(false);
+const isProfileDarkMode = ref(false);
 const editingAktivitasId = ref<number | null>(null);
+const auditLogPage = ref(1);
+const auditLogPageSize = ref(5);
+const ikasAuditRecordMap = ref<Record<string, any>>({});
 const aktivitasForm = ref<AktivitasPayload>({
   judul: "",
   deskripsi: "",
@@ -80,6 +84,18 @@ let lastProfileLoadAt = 0;
 let jenisAktivitasLoaded = false;
 let profileDependenciesPromise: Promise<void> | null = null;
 let profileLoadInFlightSlug = "";
+let profileThemeObserver: MutationObserver | null = null;
+
+const syncProfileTheme = () => {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const body = document.body;
+  isProfileDarkMode.value =
+    root.getAttribute("data-theme-mode") === "dark" ||
+    body?.getAttribute("data-theme-mode") === "dark" ||
+    root.classList.contains("dark") ||
+    body?.classList.contains("dark");
+};
 
 const isLatestProfileLoad = (token: number, slug: string) => (
   token === profileLoadSeq && slug === stakeholderSlug.value
@@ -200,12 +216,45 @@ const displayedIkasAuditLogs = computed(() => {
   });
 });
 
+const auditLogTotalPages = computed(() => {
+  return Math.max(1, Math.ceil(displayedIkasAuditLogs.value.length / auditLogPageSize.value));
+});
+
+const paginatedIkasAuditLogs = computed(() => {
+  const page = Math.min(auditLogPage.value, auditLogTotalPages.value);
+  const start = (page - 1) * auditLogPageSize.value;
+  return displayedIkasAuditLogs.value.slice(start, start + auditLogPageSize.value);
+});
+
+const auditLogPageStart = computed(() => {
+  if (!displayedIkasAuditLogs.value.length) return 0;
+  return (Math.min(auditLogPage.value, auditLogTotalPages.value) - 1) * auditLogPageSize.value + 1;
+});
+
+const auditLogPageEnd = computed(() => {
+  return Math.min(auditLogPageStart.value + auditLogPageSize.value - 1, displayedIkasAuditLogs.value.length);
+});
+
+const changeAuditLogPage = (page: number) => {
+  auditLogPage.value = Math.min(Math.max(1, page), auditLogTotalPages.value);
+};
+
+const auditLogPageNumbers = computed(() => {
+  const total = auditLogTotalPages.value;
+  const current = Math.min(auditLogPage.value, total);
+  const start = Math.max(1, current - 1);
+  const end = Math.min(total, start + 2);
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+});
+
 const getAuditLogTitle = (item: IkasAuditLog): string => {
-  return item.title || item.judul || item.action || item.aksi || item.event || "Aktivitas IKAS";
+  return item.title || item.judul || `IKAS ${getAuditLogActionLabel(item)}`;
 };
 
 const getAuditLogDescription = (item: IkasAuditLog): string => {
-  return item.description || item.deskripsi || item.note || item.catatan || "Tidak ada keterangan tambahan.";
+  const description = item.description || item.deskripsi || item.note || item.catatan;
+  if (description) return description;
+  return "Log perubahan IKAS berhasil dicatat.";
 };
 
 const getAuditLogActor = (item: IkasAuditLog): string => {
@@ -216,6 +265,144 @@ const getAuditLogActor = (item: IkasAuditLog): string => {
   return item.actor || item.created_by || "Sistem";
 };
 
+const getAuditLogActionLabel = (item: IkasAuditLog): string => {
+  const action = String(item.action || item.aksi || item.event || item.status || "log").trim();
+  const labels: Record<string, string> = {
+    create: "Dibuat",
+    created: "Dibuat",
+    insert: "Dibuat",
+    update: "Diupdate",
+    updated: "Diupdate",
+    put: "Diupdate",
+    delete: "Dihapus",
+    deleted: "Dihapus",
+    validate: "Divalidasi",
+    approved: "Disetujui",
+    rejected: "Ditolak",
+    "request-edit": "Request Edit",
+    request_edit: "Request Edit",
+  };
+  return labels[action.toLowerCase()] || prettifyAuditKey(action);
+};
+
+const getAuditLogRespondent = (item: IkasAuditLog): string => {
+  const direct = (item as any).responden || (item as any).respondent || (item as any).nama_responden;
+  if (direct) return String(direct);
+
+  const ikas = (item as any).ikas || (item as any).assessment || {};
+  if (ikas?.responden || ikas?.respondent || ikas?.nama_responden) {
+    return String(ikas.responden || ikas.respondent || ikas.nama_responden);
+  }
+
+  const record = ikasAuditRecordMap.value[getAuditLogIkasId(item)] || {};
+  return String(record.responden || record.respondent || record.nama_responden || "Responden belum tersedia");
+};
+
+const prettifyAuditKey = (key: string): string => {
+  const normalized = String(key || "")
+    .replace(/^pertanyaan_/, "pertanyaan ")
+    .replace(/^jawaban_/, "jawaban ")
+    .replace(/_id$/i, "")
+    .replace(/_/g, " ")
+    .trim();
+
+  const labels: Record<string, string> = {
+    action: "Aksi",
+    changes: "Perubahan",
+    jawaban: "Jawaban",
+    pertanyaan: "Pertanyaan",
+    created_at: "Tanggal dibuat",
+    updated_at: "Tanggal update",
+    responden: "Responden",
+    user: "User",
+    status: "Status",
+    pertanyaan_identifikasi_id: "Pertanyaan Identifikasi",
+    pertanyaan_proteksi_id: "Pertanyaan Proteksi",
+    pertanyaan_deteksi_id: "Pertanyaan Deteksi",
+    pertanyaan_gulih_id: "Pertanyaan Gulih",
+    jawaban_identifikasi: "Jawaban Identifikasi",
+    jawaban_proteksi: "Jawaban Proteksi",
+    jawaban_deteksi: "Jawaban Deteksi",
+    jawaban_gulih: "Jawaban Gulih",
+  };
+
+  return labels[key] || normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatAuditValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Ya" : "Tidak";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    const parsedDate = parseActivityDate(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(value) && parsedDate) {
+      return formatAuditLogDate(value);
+    }
+    return value;
+  }
+  return JSON.stringify(value);
+};
+
+const formatAuditChangeLine = (key: string, oldValue: unknown, newValue: unknown): string => {
+  const lowerKey = key.toLowerCase();
+  const label = prettifyAuditKey(key);
+  const isQuestionPointer = lowerKey.startsWith("pertanyaan_") && lowerKey.endsWith("_id");
+  const isSingleValue = oldValue === undefined && newValue !== undefined;
+
+  if (isQuestionPointer) {
+    return `${label}: index ${formatAuditValue(newValue ?? oldValue)}`;
+  }
+
+  if (isSingleValue) {
+    return `${label}: ${formatAuditValue(newValue)}`;
+  }
+
+  return `${label}: ${formatAuditValue(oldValue)} -> ${formatAuditValue(newValue)}`;
+};
+
+const getAuditLogChangeLines = (item: IkasAuditLog): string[] => {
+  const rawChanges = item.changes;
+  if (!rawChanges) return [];
+
+  let changes: any = rawChanges;
+  if (typeof rawChanges === "string") {
+    try {
+      changes = JSON.parse(rawChanges);
+    } catch {
+      return [rawChanges];
+    }
+  }
+
+  if (Array.isArray(changes)) {
+    return changes.map((change, index) => {
+      if (typeof change !== "object" || change === null) {
+        return formatAuditValue(change);
+      }
+      const key = change.field || change.key || change.column || `Perubahan ${index + 1}`;
+      const oldValue = change.old ?? change.before ?? change.from;
+      const newValue = change.new ?? change.after ?? change.to ?? change.value;
+      return formatAuditChangeLine(String(key), oldValue, newValue);
+    });
+  }
+
+  if (typeof changes === "object") {
+    return Object.entries(changes)
+      .filter(([key]) => !["id", "ikas_id", "id_ikas", "user_id", "created_by"].includes(key))
+      .map(([key, value]: [string, any]) => {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          const oldValue = value.old ?? value.before ?? value.from;
+          const newValue = value.new ?? value.after ?? value.to ?? value.value;
+          if (oldValue !== undefined || newValue !== undefined) {
+            return formatAuditChangeLine(key, oldValue, newValue);
+          }
+        }
+        return formatAuditChangeLine(key, undefined, value);
+      });
+  }
+
+  return [formatAuditValue(changes)];
+};
+
 const normalizeIkasAuditLogs = (response: any): IkasAuditLog[] => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.data)) return response.data;
@@ -224,28 +411,81 @@ const normalizeIkasAuditLogs = (response: any): IkasAuditLog[] => {
   return [];
 };
 
-const resolveCurrentIkasId = async (
+const getAuditLogTotalPages = (response: any): number => {
+  const raw = response?.pagination?.total_pages || response?.data?.pagination?.total_pages || 1;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
+
+const fetchAllIkasAuditLogs = async (ikasId: string): Promise<IkasAuditLog[]> => {
+  const limit = 100;
+  const firstResponse = await ikasService.getIkasAuditLogs(ikasId, { page: 1, limit });
+  const totalPages = getAuditLogTotalPages(firstResponse);
+  const restResponses = totalPages > 1
+    ? await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        ikasService.getIkasAuditLogs(ikasId, { page: index + 2, limit }).catch(() => null)
+      )
+    )
+    : [];
+
+  return [firstResponse, ...restResponses].flatMap((response) => normalizeIkasAuditLogs(response));
+};
+
+const getAuditLogIkasId = (item: IkasAuditLog): string => {
+  return String(item.ikas_id || item.id_ikas || "");
+};
+
+const getAuditLogPerusahaanId = (item: IkasAuditLog): string => {
+  return String(item.perusahaan_id || item.id_perusahaan || "");
+};
+
+const dedupeIkasAuditLogs = (logs: IkasAuditLog[]): IkasAuditLog[] => {
+  const seen = new Set<string>();
+  return logs.filter((item, index) => {
+    const key = String(item.id || `${getAuditLogIkasId(item)}-${item.action || item.aksi || item.event || "log"}-${item.created_at || item.updated_at || index}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const recordBelongsToStakeholder = (record: any, stakeholder: Stakeholder): boolean => {
+  const company = record?.perusahaan || {};
+  return (
+    String(record?.id_perusahaan || company?.id || "") === String(stakeholder.id) ||
+    String(record?.perusahaan_id || "") === String(stakeholder.id) ||
+    String(record?.slug || "") === String(stakeholder.slug || "") ||
+    String(company?.slug || "") === String(stakeholder.slug || "")
+  );
+};
+
+const resolveCurrentIkasRecords = async (
   stakeholder = currentStakeholder.value,
   slug = stakeholderSlug.value
-): Promise<string | null> => {
-  if (!stakeholder?.id || !slug) return null;
-
-  const cachedId =
-    ikasStore.getIkasSummary(slug)?.id ||
-    ikasStore.backendIkasIds[slug] ||
-    ikasStore.findLatestIkasRecord(ikasStore.ikasRawRecords, String(stakeholder.id))?.id;
-
-  if (cachedId) return String(cachedId);
-
+): Promise<any[]> => {
+  if (!stakeholder?.id || !slug) return [];
   const response = await ikasService.getIkasByPerusahaan(String(stakeholder.id));
-  const matchedRecord = ikasStore.findLatestIkasRecord(
-    ikasStore.normalizeIkasRecords(response),
-    String(stakeholder.id)
-  );
+  const freshRecords = ikasStore.normalizeIkasRecords(response)
+    .filter((record) => recordBelongsToStakeholder(record, stakeholder));
+  const cachedRecords = ikasStore.ikasRawRecords
+    .filter((record) => recordBelongsToStakeholder(record, stakeholder));
+  const recordsById = new Map<string, any>();
 
-  if (!matchedRecord?.id) return null;
-  ikasStore.upsertSummaryRecord(matchedRecord);
-  return String(matchedRecord.id);
+  [...freshRecords, ...cachedRecords].forEach((record) => {
+    const id = String(record?.id || "");
+    if (id) recordsById.set(id, record);
+  });
+
+  const records = Array.from(recordsById.values())
+    .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
+
+  ikasAuditRecordMap.value = records.reduce((result, record) => {
+    if (record?.id) result[String(record.id)] = record;
+    return result;
+  }, {} as Record<string, any>);
+  records.forEach((record) => ikasStore.upsertSummaryRecord(record));
+  return records;
 };
 
 const resetAktivitasForm = () => {
@@ -305,14 +545,32 @@ const loadIkasAuditLogs = async (
   }
   if (manageLoading) isLoadingIkasAuditLogs.value = true;
   try {
-    const ikasId = await resolveCurrentIkasId(stakeholder, requestSlug);
-    if (!ikasId) {
+    auditLogPage.value = 1;
+    const ikasRecords = await resolveCurrentIkasRecords(stakeholder, requestSlug);
+    const ikasIds = ikasRecords.map((record) => String(record?.id || "")).filter(Boolean);
+
+    if (!ikasIds.length) {
       if (isLatestProfileLoad(token, requestSlug)) ikasAuditLogs.value = [];
       return;
     }
-    const response = await ikasService.getIkasAuditLogs(ikasId);
+
+    const perRecordLogs = (await Promise.all(
+      ikasIds.map((ikasId) => fetchAllIkasAuditLogs(ikasId).catch(() => []))
+    )).flat();
+    const logs = dedupeIkasAuditLogs(
+      perRecordLogs.filter((log) => {
+        const logIkasId = getAuditLogIkasId(log);
+        const logPerusahaanId = getAuditLogPerusahaanId(log);
+        return (
+          !logIkasId ||
+          ikasIds.includes(logIkasId) ||
+          (!!logPerusahaanId && String(logPerusahaanId) === String(stakeholder.id))
+        );
+      })
+    );
+
     if (isLatestProfileLoad(token, requestSlug)) {
-      ikasAuditLogs.value = normalizeIkasAuditLogs(response);
+      ikasAuditLogs.value = logs;
     }
   } catch {
     if (isLatestProfileLoad(token, requestSlug)) ikasAuditLogs.value = [];
@@ -510,6 +768,18 @@ const currentStakeholder = computed<Stakeholder | undefined>(() => {
 });
 
 onMounted(async () => {
+    syncProfileTheme();
+    profileThemeObserver = new MutationObserver(syncProfileTheme);
+    profileThemeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme-mode', 'class'],
+    });
+    if (document.body) {
+        profileThemeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['data-theme-mode', 'class'],
+        });
+    }
     await loadProfileData({ force: true });
 });
 
@@ -523,6 +793,10 @@ watch(stakeholderSlug, async (newSlug, oldSlug) => {
     if (newSlug && newSlug !== oldSlug) {
         await loadProfileData({ force: true, resetUi: true });
     }
+});
+
+onUnmounted(() => {
+    profileThemeObserver?.disconnect?.();
 });
 
 // Dynamic penilaian from IKAS and KSE stores
@@ -1435,28 +1709,11 @@ const profileCompletion = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  max-height: calc((96px * 5) + (0.85rem * 4));
-  overflow-y: auto;
-  padding-right: 0.25rem;
-}
-.ikas-audit-log-list::-webkit-scrollbar {
-  width: 6px;
-}
-.ikas-audit-log-list::-webkit-scrollbar-track {
-  background: #eef4fb;
-  border-radius: 999px;
-}
-.ikas-audit-log-list::-webkit-scrollbar-thumb {
-  background: #b8c7da;
-  border-radius: 999px;
-}
-.ikas-audit-log-list::-webkit-scrollbar-thumb:hover {
-  background: #94a8c1;
 }
 .ikas-audit-log-item {
   display: flex;
   gap: 0.8rem;
-  min-height: 96px;
+  min-height: 112px;
   padding: 0.9rem;
   border: 1px solid #e5edf7;
   border-radius: 12px;
@@ -1516,10 +1773,28 @@ const profileCompletion = computed(() => {
   color: #64748b;
   font-size: 12.5px;
   line-height: 1.6;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.ikas-audit-log-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+.ikas-audit-log-changes span {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 0.25rem 0.55rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+  word-break: break-word;
 }
 .ikas-audit-log-meta {
   display: flex;
@@ -1535,6 +1810,33 @@ const profileCompletion = computed(() => {
   align-items: center;
   gap: 0.3rem;
   min-width: 0;
+}
+.ikas-audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid #edf2f7;
+}
+.ikas-audit-pagination-info {
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.ikas-audit-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ikas-audit-pagination-controls .btn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 850;
+  padding: 0.25rem 0.55rem;
 }
 
 .pic-count-badge {
@@ -1573,89 +1875,6 @@ const profileCompletion = computed(() => {
 /* ─────────────────────────────────────────────
    DARK MODE
    ───────────────────────────────────────────── */
-html[data-theme-mode="dark"] .contact-bar-item,
-html.dark .contact-bar-item {
-  background: linear-gradient(135deg, rgba(37,99,235,0.10) 0%, rgba(124,58,237,0.06) 100%);
-  border-color: rgba(255,255,255,0.08);
-  color: #c7d9f5;
-}
-html[data-theme-mode="dark"] .contact-bar-item:hover,
-html.dark .contact-bar-item:hover {
-  border-color: rgba(37,99,235,0.3);
-  box-shadow: 0 6px 20px rgba(37,99,235,0.15), 0 2px 8px rgba(0,0,0,0.3);
-  color: #dbeafe;
-}
-html[data-theme-mode="dark"] .contact-bar-sep,
-html.dark .contact-bar-sep {
-  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.12), transparent);
-}
-
-html[data-theme-mode="dark"] .info-grid-item,
-html.dark .info-grid-item {
-  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%);
-  border-color: rgba(255,255,255,0.08);
-}
-html[data-theme-mode="dark"] .info-grid-item:hover,
-html.dark .info-grid-item:hover {
-  border-color: rgba(37,99,235,0.25);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.3);
-}
-html[data-theme-mode="dark"] .info-grid-value,
-html.dark .info-grid-value { color: #dde8f5; }
-html[data-theme-mode="dark"] .info-grid-label,
-html.dark .info-grid-label { color: #4a6580; }
-
-html[data-theme-mode="dark"] .sp-section-title,
-html.dark .sp-section-title { color: #4a6580; }
-html[data-theme-mode="dark"] .sp-section-title::after,
-html.dark .sp-section-title::after { background: linear-gradient(to right, rgba(37,99,235,0.15), transparent); }
-
-html[data-theme-mode="dark"] .hero-card-shell,
-html.dark .hero-card-shell {
-  box-shadow: 0 16px 56px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.2);
-}
-
-html[data-theme-mode="dark"] .activity-form-panel,
-html.dark .activity-form-panel,
-html[data-theme-mode="dark"] .activity-timeline-content,
-html.dark .activity-timeline-content {
-  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%);
-  border-color: rgba(255,255,255,0.08);
-}
-html[data-theme-mode="dark"] .activity-modal,
-html.dark .activity-modal,
-html[data-theme-mode="dark"] .activity-modal-header,
-html.dark .activity-modal-header,
-html[data-theme-mode="dark"] .activity-modal-footer,
-html.dark .activity-modal-footer {
-  background: #162131;
-  border-color: rgba(255,255,255,0.08);
-}
-html[data-theme-mode="dark"] .activity-modal h6,
-html.dark .activity-modal h6 {
-  color: #dde8f5 !important;
-}
-html[data-theme-mode="dark"] .profile-side-card,
-html.dark .profile-side-card {
-  background: #162131;
-}
-html[data-theme-mode="dark"] .activity-title,
-html.dark .activity-title {
-  color: #dde8f5;
-}
-html[data-theme-mode="dark"] .activity-kind-check,
-html.dark .activity-kind-check {
-  background: #1a2535;
-  border-color: rgba(255,255,255,0.08);
-  color: #dde8f5;
-}
-html[data-theme-mode="dark"] .activity-year-chip,
-html.dark .activity-year-chip {
-  background: rgba(37,99,235,0.14);
-  border-color: rgba(147,197,253,0.2);
-  color: #93c5fd;
-}
-
 /* ─────────────────────────────────────────────
    PIC TABLE UTILITIES
    ───────────────────────────────────────────── */
@@ -1997,6 +2216,11 @@ html.dark .activity-year-chip {
 .profile-side-card > .card-header,
 .custom-card:not(.gradient-header-card):not(.hero-card-shell) > .card-header {
   padding: 1rem 1.1rem !important;
+  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+}
+
+.profile-section-header {
   background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
 }
@@ -2696,6 +2920,347 @@ html.dark .activity-year-chip {
   background: #fff !important;
 }
 
+/* Dark mode: keep this below the light profile refresh styles. */
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page,
+:global(html.dark) .profile-stakeholder-page {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-shell,
+:global(html.dark) .profile-stakeholder-shell {
+  background: #0f172a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .gradient-header-card,
+:global(html.dark) .profile-stakeholder-page .gradient-header-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-side-card,
+:global(html.dark) .profile-stakeholder-page .profile-side-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-audit-log-card,
+:global(html.dark) .profile-stakeholder-page .profile-audit-log-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-about-rail,
+:global(html.dark) .profile-stakeholder-page .profile-about-rail,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card,
+:global(html.dark) .profile-stakeholder-page .activity-timeline-card,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card,
+:global(html.dark) .profile-stakeholder-page .profile-action-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-header:not(.stakeholder-header),
+:global(html.dark) .profile-stakeholder-page .card-header:not(.stakeholder-header),
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-section-header,
+:global(html.dark) .profile-stakeholder-page .profile-section-header,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-body,
+:global(html.dark) .profile-stakeholder-page .card-body,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-body1,
+:global(html.dark) .profile-stakeholder-page .card-body1,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .bg-white,
+:global(html.dark) .profile-stakeholder-page .bg-white {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(html.dark) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .pic-card-list,
+:global(html.dark) .profile-stakeholder-page .pic-card-list {
+  background: #111827 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter,
+:global(html.dark) .profile-stakeholder-page .activity-year-filter {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(17, 24, 39, 0.88) 72%, rgba(17, 24, 39, 0)) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .contact-bar-item,
+:global(html.dark) .contact-bar-item,
+:global(html[data-theme-mode="dark"]) .info-grid-item,
+:global(html.dark) .info-grid-item,
+:global(html[data-theme-mode="dark"]) .activity-form-panel,
+:global(html.dark) .activity-form-panel,
+:global(html[data-theme-mode="dark"]) .activity-timeline-content,
+:global(html.dark) .activity-timeline-content,
+:global(html[data-theme-mode="dark"]) .pic-contact-card,
+:global(html.dark) .pic-contact-card,
+:global(html[data-theme-mode="dark"]) .ikas-audit-log-item,
+:global(html.dark) .ikas-audit-log-item {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #c7d9f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .contact-bar-item:hover,
+:global(html.dark) .contact-bar-item:hover,
+:global(html[data-theme-mode="dark"]) .info-grid-item:hover,
+:global(html.dark) .info-grid-item:hover,
+:global(html[data-theme-mode="dark"]) .activity-timeline-content:hover,
+:global(html.dark) .activity-timeline-content:hover,
+:global(html[data-theme-mode="dark"]) .pic-contact-card:hover,
+:global(html.dark) .pic-contact-card:hover {
+  border-color: rgba(37, 99, 235, 0.3) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .text-dark,
+:global(html.dark) .profile-stakeholder-page .text-dark,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .company-name,
+:global(html.dark) .profile-stakeholder-page .company-name,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-title,
+:global(html.dark) .profile-stakeholder-page .activity-title,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .info-grid-value,
+:global(html.dark) .profile-stakeholder-page .info-grid-value,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-top h6,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-top h6,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card strong,
+:global(html.dark) .profile-stakeholder-page .profile-action-card strong {
+  color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .text-muted,
+:global(html.dark) .profile-stakeholder-page .text-muted,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .info-grid-label,
+:global(html.dark) .profile-stakeholder-page .info-grid-label,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description,
+:global(html.dark) .profile-stakeholder-page .activity-description,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-date,
+:global(html.dark) .profile-stakeholder-page .activity-date,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-meta,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-meta,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-content p,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-content p,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-pagination-info,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-pagination-info,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card small,
+:global(html.dark) .profile-stakeholder-page .profile-action-card small {
+  color: #94a3b8 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-changes span,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-changes span,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-pagination,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-pagination {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .contact-bar-sep,
+:global(html.dark) .contact-bar-sep {
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.12), transparent) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .sp-section-title,
+:global(html.dark) .sp-section-title {
+  color: #4a6580 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .sp-section-title::after,
+:global(html.dark) .sp-section-title::after {
+  background: linear-gradient(to right, rgba(37, 99, 235, 0.15), transparent) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .hero-card-shell,
+:global(html.dark) .hero-card-shell {
+  box-shadow: 0 16px 56px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-chip,
+:global(html.dark) .activity-year-chip,
+:global(html[data-theme-mode="dark"]) .activity-tags span,
+:global(html.dark) .activity-tags span,
+:global(html[data-theme-mode="dark"]) .pic-count-badge,
+:global(html.dark) .pic-count-badge,
+:global(html[data-theme-mode="dark"]) .pic-index,
+:global(html.dark) .pic-index {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .pic-meta-pill,
+:global(html.dark) .pic-meta-pill,
+:global(html[data-theme-mode="dark"]) .activity-year-filter-chip,
+:global(html.dark) .activity-year-filter-chip,
+:global(html[data-theme-mode="dark"]) .activity-year-filter-reset,
+:global(html.dark) .activity-year-filter-reset {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-chip.active,
+:global(html.dark) .activity-year-filter-chip.active {
+  background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-modal,
+:global(html.dark) .activity-modal,
+:global(html[data-theme-mode="dark"]) .activity-modal-header,
+:global(html.dark) .activity-modal-header,
+:global(html[data-theme-mode="dark"]) .activity-modal-body,
+:global(html.dark) .activity-modal-body,
+:global(html[data-theme-mode="dark"]) .activity-modal-footer,
+:global(html.dark) .activity-modal-footer {
+  background: #162131 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-modal h6,
+:global(html.dark) .activity-modal h6 {
+  color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-kind-check,
+:global(html.dark) .activity-kind-check,
+:global(html[data-theme-mode="dark"]) .activity-modal .form-control,
+:global(html.dark) .activity-modal .form-control,
+:global(html[data-theme-mode="dark"]) .activity-modal .form-select,
+:global(html.dark) .activity-modal .form-select {
+  background: #1a2535 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .skeleton-block,
+:global(html.dark) .profile-stakeholder-page .skeleton-block {
+  background: linear-gradient(90deg, #1e293b 0%, #263449 50%, #1e293b 100%) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .skeleton-block::after,
+:global(html.dark) .profile-stakeholder-page .skeleton-block::after {
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-skeleton-item,
+:global(html.dark) .profile-stakeholder-page .activity-skeleton-item,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .audit-skeleton-item,
+:global(html.dark) .profile-stakeholder-page .audit-skeleton-item,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .pic-skeleton-card,
+:global(html.dark) .profile-stakeholder-page .pic-skeleton-card {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+}
+
+/* Local dark fallback, same idea as Dashboard.vue's .is-dark wrapper. */
+.profile-stakeholder-page.is-dark,
+.profile-stakeholder-page.is-dark .profile-stakeholder-shell {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+
+.profile-stakeholder-page.is-dark .gradient-header-card,
+.profile-stakeholder-page.is-dark .profile-side-card,
+.profile-stakeholder-page.is-dark .profile-audit-log-card,
+.profile-stakeholder-page.is-dark .profile-about-rail,
+.profile-stakeholder-page.is-dark .activity-timeline-card,
+.profile-stakeholder-page.is-dark .profile-action-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+}
+
+.profile-stakeholder-page.is-dark .card-header:not(.stakeholder-header),
+.profile-stakeholder-page.is-dark .profile-section-header,
+.profile-stakeholder-page.is-dark .card-body,
+.profile-stakeholder-page.is-dark .card-body1,
+.profile-stakeholder-page.is-dark .bg-white {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-timeline-card > .card-body,
+.profile-stakeholder-page.is-dark .pic-card-list {
+  background: #111827 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-year-filter {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(17, 24, 39, 0.88) 72%, rgba(17, 24, 39, 0)) !important;
+}
+
+.profile-stakeholder-page.is-dark .contact-bar-item,
+.profile-stakeholder-page.is-dark .info-grid-item,
+.profile-stakeholder-page.is-dark .activity-form-panel,
+.profile-stakeholder-page.is-dark .activity-timeline-content,
+.profile-stakeholder-page.is-dark .pic-contact-card,
+.profile-stakeholder-page.is-dark .ikas-audit-log-item {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #c7d9f5 !important;
+}
+
+.profile-stakeholder-page.is-dark .text-dark,
+.profile-stakeholder-page.is-dark .company-name,
+.profile-stakeholder-page.is-dark .activity-title,
+.profile-stakeholder-page.is-dark .info-grid-value,
+.profile-stakeholder-page.is-dark .ikas-audit-log-top h6,
+.profile-stakeholder-page.is-dark .profile-action-card strong {
+  color: #dde8f5 !important;
+}
+
+.profile-stakeholder-page.is-dark .text-muted,
+.profile-stakeholder-page.is-dark .info-grid-label,
+.profile-stakeholder-page.is-dark .activity-description,
+.profile-stakeholder-page.is-dark .activity-date,
+.profile-stakeholder-page.is-dark .ikas-audit-log-meta,
+.profile-stakeholder-page.is-dark .ikas-audit-log-content p,
+.profile-stakeholder-page.is-dark .ikas-audit-pagination-info,
+.profile-stakeholder-page.is-dark .profile-action-card small {
+  color: #94a3b8 !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-audit-log-changes span,
+.profile-stakeholder-page.is-dark .ikas-audit-pagination {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-year-chip,
+.profile-stakeholder-page.is-dark .activity-tags span,
+.profile-stakeholder-page.is-dark .pic-count-badge,
+.profile-stakeholder-page.is-dark .pic-index {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  color: #93c5fd !important;
+}
+
+.profile-stakeholder-page.is-dark .pic-meta-pill,
+.profile-stakeholder-page.is-dark .activity-year-filter-chip,
+.profile-stakeholder-page.is-dark .activity-year-filter-reset {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #e2e8f0 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-year-filter-chip.active {
+  background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
+  border-color: #2563eb !important;
+  color: #fff !important;
+}
+
+.profile-stakeholder-page.is-dark .skeleton-block {
+  background: linear-gradient(90deg, #1e293b 0%, #263449 50%, #1e293b 100%) !important;
+}
+
+.profile-stakeholder-page.is-dark .skeleton-block::after {
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent) !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-skeleton-item,
+.profile-stakeholder-page.is-dark .audit-skeleton-item,
+.profile-stakeholder-page.is-dark .pic-skeleton-card {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
+}
+
 @media (max-width: 767px) {
   .gradient-header-card > .card-body {
     padding: 1rem !important;
@@ -2791,7 +3356,7 @@ html.dark .activity-year-chip {
   <Pageheader :propData="dataToPass" />
 
   <!-- Main container -->
-  <div class="row">
+  <div class="row profile-stakeholder-page" :class="{ 'is-dark': isProfileDarkMode }">
     <div class="col-xl-12">
       <div class="card custom-card gradient-header-card">
         <!-- Page Header -->
@@ -2817,7 +3382,7 @@ html.dark .activity-year-chip {
           </router-link>
         </div>
 
-        <div class="card-body p-4">
+        <div class="card-body p-4 profile-stakeholder-shell">
           <!-- Empty state -->
           <div v-if="!currentStakeholder" class="text-center py-5">
             <div class="empty-state">
@@ -2936,7 +3501,7 @@ html.dark .activity-year-chip {
 
                       <div class="col-xl-7 col-12 mb-3 profile-activity-column">
                         <div class="card custom-card activity-timeline-card profile-side-card overflow-hidden">
-                          <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 bg-white border-bottom">
+                          <div class="card-header profile-section-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 border-bottom">
                             <div class="d-flex align-items-center gap-2">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-timeline-view text-primary fs-16"></i>
@@ -3054,7 +3619,7 @@ html.dark .activity-year-chip {
                         </div>
 
                         <div class="card custom-card profile-audit-log-card overflow-hidden shadow-sm">
-                          <div class="card-header d-flex align-items-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
+                          <div class="card-header profile-section-header d-flex align-items-center justify-content-between gap-3 py-3 border-bottom border-light">
                             <div class="d-flex align-items-center gap-2 min-w-0">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-history-line text-primary fs-16"></i>
@@ -3087,10 +3652,11 @@ html.dark .activity-year-chip {
                               <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 340px;">Belum ada riwayat perubahan IKAS untuk stakeholder ini.</p>
                             </div>
 
-                            <div v-else class="ikas-audit-log-list">
+                            <div v-else>
+                              <div class="ikas-audit-log-list">
                               <div
-                                v-for="log in displayedIkasAuditLogs"
-                                :key="log.id"
+                                v-for="log in paginatedIkasAuditLogs"
+                                :key="log.id || `${getAuditLogIkasId(log)}-${log.created_at || log.updated_at}`"
                                 class="ikas-audit-log-item"
                               >
                                 <div class="ikas-audit-log-icon">
@@ -3099,13 +3665,57 @@ html.dark .activity-year-chip {
                                 <div class="ikas-audit-log-content">
                                   <div class="ikas-audit-log-top">
                                     <h6>{{ getAuditLogTitle(log) }}</h6>
-                                    <span class="ikas-audit-log-status">{{ log.status || log.action || log.aksi || 'Log' }}</span>
+                                    <span class="ikas-audit-log-status">{{ getAuditLogActionLabel(log) }}</span>
                                   </div>
                                   <p>{{ getAuditLogDescription(log) }}</p>
+                                  <div v-if="getAuditLogChangeLines(log).length" class="ikas-audit-log-changes">
+                                    <span
+                                      v-for="line in getAuditLogChangeLines(log)"
+                                      :key="`${log.id || getAuditLogIkasId(log)}-${line}`"
+                                    >
+                                      {{ line }}
+                                    </span>
+                                  </div>
                                   <div class="ikas-audit-log-meta">
+                                    <span><i class="ri-file-user-line"></i>{{ getAuditLogRespondent(log) }}</span>
                                     <span><i class="ri-user-line"></i>{{ getAuditLogActor(log) }}</span>
                                     <span><i class="ri-time-line"></i>{{ formatAuditLogDate(log.created_at || log.updated_at) }}</span>
                                   </div>
+                                </div>
+                              </div>
+                              </div>
+
+                              <div v-if="auditLogTotalPages > 1" class="ikas-audit-pagination">
+                                <div class="ikas-audit-pagination-info">
+                                  {{ auditLogPageStart }}-{{ auditLogPageEnd }} dari {{ displayedIkasAuditLogs.length }} log
+                                </div>
+                                <div class="ikas-audit-pagination-controls">
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-icon btn-light"
+                                    :disabled="auditLogPage <= 1"
+                                    @click="changeAuditLogPage(auditLogPage - 1)"
+                                  >
+                                    <i class="ri-arrow-left-s-line"></i>
+                                  </button>
+                                  <button
+                                    v-for="page in auditLogPageNumbers"
+                                    :key="`audit-page-${page}`"
+                                    type="button"
+                                    class="btn btn-sm"
+                                    :class="page === auditLogPage ? 'btn-primary' : 'btn-light'"
+                                    @click="changeAuditLogPage(page)"
+                                  >
+                                    {{ page }}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-icon btn-light"
+                                    :disabled="auditLogPage >= auditLogTotalPages"
+                                    @click="changeAuditLogPage(auditLogPage + 1)"
+                                  >
+                                    <i class="ri-arrow-right-s-line"></i>
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -3115,7 +3725,7 @@ html.dark .activity-year-chip {
      
                       <div class="col-xl-5 col-12 mb-4 profile-side-stack">
                         <div class="card custom-card profile-side-card overflow-hidden shadow-sm">
-                          <div class="card-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 bg-white border-bottom border-light">
+                          <div class="card-header profile-section-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 py-3 border-bottom border-light">
                             <div class="d-flex align-items-center gap-2">
                               <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
                                 <i class="ri-contacts-line text-primary fs-16"></i>
@@ -3197,7 +3807,7 @@ html.dark .activity-year-chip {
 
                       <!-- ═══════════  TENTANG PERUSAHAAN  ═══════════ -->
                         <div class="card custom-card profile-about-rail">
-                          <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom">
+                          <div class="card-header profile-section-header d-flex align-items-center gap-3 border-bottom">
                             <div>
                               <div class="card-title mb-0 fw-semibold text-dark">Tentang Perusahaan</div>
                               <div class="text-muted fs-13 mt-1">{{ currentStakeholder.sub_sektor?.nama_sub_sektor || currentStakeholder.sektor }}</div>
@@ -3320,3 +3930,4 @@ html.dark .activity-year-chip {
   </div>
 
 </template>
+

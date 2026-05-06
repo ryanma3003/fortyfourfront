@@ -20,6 +20,25 @@ const stakeholdersStore = useStakeholdersStore();
 const authStore = useAuthStore();
 const notifStore = useNotificationStore();
 const currentYear = new Date().getFullYear();
+const currentMeasurementYear = String(currentYear);
+const activeMeasurementYear = ref(String(route.query.year || currentMeasurementYear));
+const tableMeasurementYear = computed(() => activeMeasurementYear.value || currentMeasurementYear);
+
+const getRecordMeasurementYear = (record) => {
+    const explicitYear = String(
+        record?.tahun_pengukuran ||
+        record?.tahunPengukuran ||
+        record?.tahun ||
+        record?.year ||
+        '',
+    ).match(/\d{4}/)?.[0];
+
+    if (explicitYear) return explicitYear;
+
+    const rawDate = record?.tanggal || record?.tanggal_pengisian || record?.tanggal_pengukuran || record?.created_at || record?.updated_at || '';
+    const date = rawDate ? new Date(rawDate) : null;
+    return date && !Number.isNaN(date.getTime()) ? String(date.getFullYear()) : '';
+};
 
 const hydrateCurrentStakeholderIkas = async () => {
     await ikasStore.initialize();
@@ -36,8 +55,19 @@ const hydrateCurrentStakeholderIkas = async () => {
     assessmentStore.setCurrentStakeholder(slug);
 
     if (stakeholder?.id) {
-        await ikasStore.fetchFromBackend(slug, stakeholder.id);
-        await assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id);
+        const requestedYear = String(route.query.year || '');
+        const result = await ikasStore.fetchFromBackend(slug, stakeholder.id, requestedYear);
+        activeMeasurementYear.value =
+            result.respondentData?.tahun_pengukuran ||
+            getRecordMeasurementYear(result.ikasRecord) ||
+            requestedYear ||
+            currentMeasurementYear;
+
+        if (result.exists) {
+            await assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id);
+        } else {
+            assessmentStore.resetStakeholderData(slug);
+        }
     }
 
     assessmentStore.syncToIkas(slug);
@@ -50,9 +80,10 @@ onMounted(async () => {
 });
 
 watch(
-    () => route.query.slug,
-    async (newSlug, oldSlug) => {
-        if (!newSlug || newSlug === oldSlug) return;
+    () => [route.query.slug, route.query.year],
+    async ([newSlug], [oldSlug, oldYear]) => {
+        if (!newSlug) return;
+        if (newSlug === oldSlug && route.query.year === oldYear) return;
         await hydrateCurrentStakeholderIkas();
     }
 );
@@ -62,6 +93,20 @@ const currentSlug = computed(() => String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
 const currentIkasId = computed(() => ikasStore.getBackendIkasId(currentSlug.value));
 const canRequestEdit = computed(() => authStore.isFullAdmin);
+
+const handleComparisonYearSelected = (year) => {
+    const normalizedYear = String(year || '').match(/\d{4}/)?.[0];
+    if (!normalizedYear || normalizedYear === activeMeasurementYear.value) return;
+
+    activeMeasurementYear.value = normalizedYear;
+    router.replace({
+        path: route.path,
+        query: {
+            ...route.query,
+            year: normalizedYear,
+        },
+    });
+};
 
 // Get IKAS data for current stakeholder
 const ikasDataDynamic = computed(() => {
@@ -147,7 +192,7 @@ const goToIkasCrud = () => {
         return;
     }
 
-    const query = { slug: currentSlug.value };
+    const query = { slug: currentSlug.value, year: tableMeasurementYear.value };
     if (currentSource.value) {
         query.source = currentSource.value;
     }
@@ -855,6 +900,8 @@ const exportToPdf = async () => {
       <IkasComparison
         :stakeholder-slug="currentSlug"
         :perusahaan-id="currentStakeholder?.id || ''"
+        :active-year="tableMeasurementYear"
+        @year-selected="handleComparisonYearSelected"
       />
     </div>
   </div>
@@ -973,7 +1020,7 @@ const exportToPdf = async () => {
                   <th rowspan="2" colspan="2" class="left-title fs-14">
                     Tingkat Kematangan<br />Keamanan Siber
                   </th>
-                  <th colspan="5" class="year-title">{{ currentYear }}</th>
+                  <th colspan="5" class="year-title">{{ tableMeasurementYear }}</th>
                 </tr>
                 <tr class="center">
                   <th>Target Nilai Kematangan</th>

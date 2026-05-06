@@ -1,5 +1,6 @@
 <script lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
+import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useLmsStore } from "../../stores/lms";
 import { lmsService } from "../../services/lms.service";
@@ -24,6 +25,11 @@ export default {
     const searchQuery = ref("");
     const currentPage = ref(1);
     const itemsPerPage = ref(10);
+    const sortKey = ref<"nama_kelas" | "status" | null>(null);
+    const sortDirection = ref<"asc" | "desc">("asc");
+    const isDarkMode = ref(false);
+    let gsapCtx: gsap.Context | null = null;
+    let themeObserver: MutationObserver | undefined;
     
     // Toast
     const showToast = ref(false);
@@ -34,6 +40,50 @@ export default {
       toastType.value = type;
       showToast.value = true;
       setTimeout(() => (showToast.value = false), 3000);
+    };
+
+    const syncThemeMode = () => {
+      if (typeof document === "undefined") return;
+      const root = document.documentElement;
+      isDarkMode.value = root.getAttribute("data-theme-mode") === "dark" || root.classList.contains("dark");
+    };
+
+    const runEntranceAnimations = () => {
+      nextTick(() => {
+        gsapCtx = gsap.context(() => {
+          const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+          tl.from(".ev-breadcrumb", { y: -10, opacity: 0, duration: 0.45 })
+            .from(".ev-hero-title", { y: 22, opacity: 0, duration: 0.58 }, "-=0.2")
+            .from(".ev-hero-desc", { y: 16, opacity: 0, duration: 0.5 }, "-=0.32")
+            .from(".ev-hero-tile", { opacity: 0, duration: 0.62, stagger: 0.05, ease: "power3.out" }, "-=0.34")
+            .from(".ev-stat-card", { y: 18, opacity: 0, scale: 0.94, duration: 0.42, stagger: 0.08, ease: "back.out(1.4)" }, "-=0.2")
+            .from(".ev-content-card", { y: 26, opacity: 0, duration: 0.55 }, "-=0.18");
+        });
+      });
+    };
+
+    const animateRows = (quick = false) => {
+      nextTick(() => {
+        const rows = Array.from(document.querySelectorAll<HTMLElement>(".ev-table-row"));
+        if (!rows.length) return;
+        gsap.killTweensOf(rows);
+
+        rows.forEach((row, index) => {
+          gsap.fromTo(
+            row,
+            { y: quick ? 12 : 18, opacity: 0, scale: quick ? 0.992 : 0.985, force3D: true },
+            {
+              y: 0,
+              opacity: 1,
+              scale: 1,
+              duration: quick ? 0.32 : 0.38,
+              delay: index * (quick ? 0.05 : 0.055),
+              ease: "power2.out",
+              clearProps: "transform,opacity",
+            }
+          );
+        });
+      });
     };
 
     // Stats — derived from cache instead of separate API calls
@@ -102,6 +152,12 @@ export default {
     };
 
     onMounted(() => {
+      syncThemeMode();
+      if (typeof document !== "undefined") {
+        themeObserver = new MutationObserver(syncThemeMode);
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode", "class"] });
+      }
+      runEntranceAnimations();
       // 1. If we have data in store, use it immediately (Instant UI)
       if (lmsStore.kelasList.length > 0) {
         initStatsFromCache();
@@ -114,12 +170,23 @@ export default {
         isInitialLoading.value = false;
         initStatsFromCache();
         loadGlobalStats(); 
+        animateRows();
       }).catch((e: any) => {
         isInitialLoading.value = false;
         if (lmsStore.kelasList.length === 0) {
           showNotification(e.message || "Gagal memuat data kelas", "error");
         }
       });
+    });
+
+    watch(currentPage, () => animateRows(true));
+    watch([searchQuery, itemsPerPage], () => {
+      currentPage.value = 1;
+      animateRows(true);
+    });
+    onBeforeUnmount(() => {
+      gsapCtx?.revert();
+      themeObserver?.disconnect();
     });
 
     const filteredData = computed(() => {
@@ -133,10 +200,49 @@ export default {
       );
     });
 
-    const totalPages = computed(() => Math.max(1, Math.ceil(filteredData.value.length / itemsPerPage.value)));
+    const sortedData = computed(() => {
+      if (!sortKey.value) return filteredData.value;
+
+      const direction = sortDirection.value === "asc" ? 1 : -1;
+
+      return [...filteredData.value].sort((a, b) => {
+        const aValue = sortKey.value === "status"
+          ? (a.status === "published" ? "Publish" : "Draft")
+          : (a.nama_kelas || "");
+        const bValue = sortKey.value === "status"
+          ? (b.status === "published" ? "Publish" : "Draft")
+          : (b.nama_kelas || "");
+        const result = String(aValue).localeCompare(String(bValue), "id", { sensitivity: "base" });
+        if (result !== 0) return result * direction;
+        return String(a.nama_kelas || "").localeCompare(String(b.nama_kelas || ""), "id", { sensitivity: "base" });
+      });
+    });
+
+    const toggleSort = (key: "nama_kelas" | "status") => {
+      if (sortKey.value === key) {
+        if (sortDirection.value === "asc") {
+          sortDirection.value = "desc";
+        } else {
+          sortKey.value = null;
+          sortDirection.value = "asc";
+        }
+      } else {
+        sortKey.value = key;
+        sortDirection.value = "asc";
+      }
+      currentPage.value = 1;
+      animateRows(true);
+    };
+
+    const getSortIcon = (key: "nama_kelas" | "status") => {
+      if (sortKey.value !== key) return "ri-arrow-up-down-line";
+      return sortDirection.value === "asc" ? "ri-sort-asc" : "ri-sort-desc";
+    };
+
+    const totalPages = computed(() => Math.max(1, Math.ceil(sortedData.value.length / itemsPerPage.value)));
     const displayData = computed(() => {
       const start = (currentPage.value - 1) * itemsPerPage.value;
-      return filteredData.value.slice(start, start + itemsPerPage.value);
+      return sortedData.value.slice(start, start + itemsPerPage.value);
     });
 
     // Expand logic — uses cached data when available
@@ -307,7 +413,9 @@ export default {
     // UI Expand / Collapse Soal state
     return {
       isInitialLoading,
-      router, lmsStore, searchQuery, currentPage, itemsPerPage, filteredData, totalPages, displayData,
+      isDarkMode,
+      router, lmsStore, searchQuery, currentPage, itemsPerPage, filteredData, sortedData, totalPages, displayData,
+      sortKey, sortDirection, toggleSort, getSortIcon,
       showToast, toastMessage, toastType, 
       computedTotalMateri, computedTotalKuis, materiCounts, kuisCounts,
       expandedKelasId, classMateriList, classKuisList, toggleExpand, isLoadingDetail,
@@ -323,86 +431,117 @@ export default {
 </script>
 
 <template>
-  <Pageheader :propData="dataToPass" />
+  <div :class="['lms-kelas-page', { 'is-dark': isDarkMode }]">
+    <Pageheader :propData="dataToPass" />
 
-  <transition name="toast-slide">
-    <div v-if="showToast" class="toast-wrapper position-fixed">
-      <div class="toast-modern" :class="toastType === 'success' ? 'toast-success' : 'toast-error'" role="alert">
-        <div class="toast-icon-wrap">
-          <i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
-        </div>
-        <div class="toast-content">
-          <span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span>
-          <span class="toast-msg">{{ toastMessage }}</span>
+    <transition name="toast-slide">
+      <div v-if="showToast" class="toast-wrapper position-fixed">
+        <div class="toast-modern" :class="toastType === 'success' ? 'toast-success' : 'toast-error'" role="alert">
+          <div class="toast-icon-wrap">
+            <i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
+          </div>
+          <div class="toast-content">
+            <span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span>
+            <span class="toast-msg">{{ toastMessage }}</span>
+          </div>
         </div>
       </div>
-    </div>
-  </transition>
+    </transition>
 
-  <div class="row">
-    <div class="col-xl-12">
-      <!-- Premium UI like Stakeholders -->
-      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header">
-          <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
-              <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> LMS <span>/</span> Kelas</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">LMS Kelas</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Kelola kelas, materi, dan soal kuis dalam satu halaman</div>
-              </div>
-              <div class="stakeholders-meta-stack">
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Kelas</span>
-                  <strong><i class="ri-graduation-cap-line"></i> {{ lmsStore.totalKelas }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Materi</span>
-                  <strong><i class="ri-book-open-line"></i> {{ computedTotalMateri }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Kuis</span>
-                  <strong><i class="ri-questionnaire-line"></i> {{ computedTotalKuis }}</strong>
-                </div>
-              </div>
+    <div class="row">
+      <div class="col-xl-12">
+        <header class="ikas-hero-header ev-hero mb-4">
+          <div class="ev-hero-grid"></div>
+          <div class="ev-hero-tiles" aria-hidden="true">
+            <span class="ev-hero-tile tile-a"></span>
+            <span class="ev-hero-tile tile-b"></span>
+            <span class="ev-hero-tile tile-c"></span>
+            <span class="ev-hero-tile tile-d"></span>
+            <span class="ev-hero-tile tile-e"></span>
+            <span class="ev-hero-tile tile-f"></span>
+          </div>
+          <div class="ikas-hero-content ev-hero-body">
+            <div class="ikas-hero-copy ev-hero-text">
+              <div class="ikas-inline-breadcrumb ev-breadcrumb">Dashboard <span>/</span> LMS <span>/</span> Kelas</div>
+              <h1 class="ev-hero-title">LMS Kelas</h1>
+              <p class="ev-hero-desc">Kelola kelas, materi, dan soal kuis dalam satu halaman</p>
             </div>
-            <div class="stakeholders-hero-tools">
-              <div class="stakeholders-search position-relative">
-                <i class="ri-search-line lms-search-icon"></i>
-                <input v-model="searchQuery" type="text" class="form-control form-control-sm lms-search-input" placeholder="Cari nama kelas..." />
-                <button v-if="searchQuery" @click="searchQuery = ''" class="lms-clear-btn" title="Clear search">
-                  <i class="ri-close-circle-fill"></i>
+          </div>
+
+          <div class="ikas-hero-tools ikas-stakeholder-summary ev-hero-stats" aria-label="Ringkasan LMS kelas">
+            <div class="ikas-hero-stat-card ev-stat-card stat-total">
+              <div class="ikas-stat-top ev-stat-head">
+                <span>Total Kelas</span>
+                <i class="ri-graduation-cap-line"></i>
+              </div>
+              <strong>{{ lmsStore.totalKelas }}</strong>
+            </div>
+            <div class="ikas-hero-stat-card ev-stat-card stat-materi">
+              <div class="ikas-stat-top ev-stat-head">
+                <span>Materi</span>
+                <i class="ri-book-open-line"></i>
+              </div>
+              <strong>{{ computedTotalMateri }}</strong>
+            </div>
+            <div class="ikas-hero-stat-card ev-stat-card stat-kuis">
+              <div class="ikas-stat-top ev-stat-head">
+                <span>Kuis</span>
+                <i class="ri-questionnaire-line"></i>
+              </div>
+              <strong>{{ computedTotalKuis }}</strong>
+            </div>
+          </div>
+        </header>
+
+        <div class="card custom-card lms-kelas-card ev-content-card" style="overflow: visible !important;">
+          <div class="card-body p-4 stakeholders-premium-body">
+            <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar lms-kelas-toolbar-wrap ev-toolbar mb-4">
+              <div class="stakeholders-toolbar-right lms-kelas-toolbar">
+                <div class="stakeholders-per-page ev-per-page">
+                  <span>Rows</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select ev-select" @change="currentPage = 1">
+                    <option v-for="n in [5, 10, 15, 20]" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </div>
+                <div class="ikas-header-search kelas-toolbar-search ev-search">
+                  <i class="ri-search-line"></i>
+                  <input v-model="searchQuery" type="text" placeholder="Cari nama, kategori, penyelenggara..." @input="currentPage = 1" />
+                  <button v-if="searchQuery" @click="searchQuery = ''; currentPage = 1" class="ikas-clear-btn ev-search-clear" title="Clear search">
+                    <i class="ri-close-circle-fill"></i>
+                  </button>
+                </div>
+                <button @click="openKelasModal()" class="btn stakeholders-add-btn ev-btn-add ms-auto d-flex align-items-center gap-2">
+                  <i class="ri-add-circle-line fs-13"></i>
+                  <span class="btn-text">Tambah Kelas</span>
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="card-body p-4 stakeholders-premium-body">
-          <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar mb-4">
-            <div class="stakeholders-toolbar-right">
-              <div class="stakeholders-per-page">
-                <span>Rows</span>
-                <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                  <option v-for="n in [5, 10, 15, 20]" :key="n" :value="n">{{ n }}</option>
-                </select>
-              </div>
-              <button @click="openKelasModal()" class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2">
-                <i class="ri-add-circle-line fs-13"></i>
-                <span class="btn-text">Tambah Kelas</span>
-              </button>
-            </div>
-          </div>
 
           <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
             <table class="table stakeholder-table mb-0">
-              <thead class="stakeholder-thead">
+              <thead class="stakeholder-thead lms-table-head">
                 <tr>
-                  <th class="th-no" style="width: 50px;">No</th>
-                  <th>Kelas</th>
-                  <th>Deskripsi</th>
-                  <th class="text-center">Status</th>
-                  <th class="text-center">Aksi</th>
+                  <th class="th-no lms-th-no" style="width: 56px;">
+                    <span class="lms-th-label">No</span>
+                  </th>
+                  <th class="lms-th-sortable" :aria-sort="sortKey === 'nama_kelas' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'">
+                    <button type="button" class="lms-sort-btn" :class="{ active: sortKey === 'nama_kelas' }" @click="toggleSort('nama_kelas')" title="Urutkan nama kelas">
+                      <span>Kelas</span>
+                      <i :class="getSortIcon('nama_kelas')"></i>
+                    </button>
+                  </th>
+                  <th class="lms-th-description">
+                    <span class="lms-th-label">Deskripsi</span>
+                  </th>
+                  <th class="text-center lms-th-sortable" :aria-sort="sortKey === 'status' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'">
+                    <button type="button" class="lms-sort-btn lms-sort-btn-center" :class="{ active: sortKey === 'status' }" @click="toggleSort('status')" title="Urutkan status">
+                      <span>Status</span>
+                      <i :class="getSortIcon('status')"></i>
+                    </button>
+                  </th>
+                  <th class="text-center lms-th-action">
+                    <span class="lms-th-label justify-content-center">Aksi</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -431,7 +570,7 @@ export default {
                   </td>
                 </tr>
                 <template v-for="(item, i) in displayData" :key="item.id">
-                  <tr class="stakeholder-row" :class="{ 'stakeholder-row-expanded': expandedKelasId === item.id }" @click="toggleExpand(item)" style="cursor: pointer;">
+                  <tr class="stakeholder-row ev-table-row" :class="{ 'stakeholder-row-expanded': expandedKelasId === item.id }" @click="toggleExpand(item)" style="cursor: pointer;">
                     <td class="align-middle text-center">
                       <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
@@ -592,29 +731,28 @@ export default {
       </div>
     </div>
   </div>
+  </div>
 
   <!-- ===================== MODALS ===================== -->
   
   <!-- KELAS MODAL -->
-  <div v-if="activeModal === 'kelas'" class="modal-overlay" @click.self="activeModal = null">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="card custom-card gradient-header-card w-100 mb-0 custom-modal">
-          <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header">
+  <div v-if="activeModal === 'kelas'" :class="['modal-overlay', 'kelas-modal-overlay', { 'is-dark': isDarkMode }]" @click.self="activeModal = null">
+    <div
+      class="modal-dialog modal-dialog-centered lms-kelas-modal-size kelas-modal-dialog"
+      style="width: min(90vw, 900px); max-width: 900px; margin: 1rem auto;"
+    >
+      <div class="modal-content border-0 bg-transparent kelas-modal-content" style="width: 100%; max-width: none;">
+        <div class="card custom-card gradient-header-card w-100 mb-0 custom-modal kelas-modal-card">
+          <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header kelas-modal-header">
             <div class="d-flex align-items-center gap-3"><div class="header-icon-box"><i class="ri-graduation-cap-line"></i></div><div><div class="card-title mb-0 text-white fw-bold header-card-title">{{ isEdit ? 'Edit Kelas' : 'Tambah Kelas Baru' }}</div></div></div>
             <button type="button" class="btn-close btn-close-white" @click="activeModal = null"></button>
           </div>
-          <div class="card-body p-4 bg-white">
-            <div class="row g-3">
+          <div class="card-body p-4 bg-white kelas-modal-body">
+            <div class="row g-4 kelas-form-grid">
               <div class="col-12">
                 <label class="form-label fw-semibold">Nama Kelas <span class="text-danger">*</span></label>
                 <input v-model="formKelas.nama_kelas" type="text" class="form-control kse-modal-input" :class="{'is-invalid': formErrors.nama_kelas}" placeholder="Masukkan nama kelas...">
                 <div class="invalid-feedback">{{ formErrors.nama_kelas }}</div>
-              </div>
-              <div class="col-12">
-                <label class="form-label fw-semibold">Deskripsi <span class="text-danger">*</span></label>
-                <textarea v-model="formKelas.deskripsi" class="form-control kse-modal-input" :class="{'is-invalid': formErrors.deskripsi}" rows="3" placeholder="Deskripsi..."></textarea>
-                <div class="invalid-feedback">{{ formErrors.deskripsi }}</div>
               </div>
               <div class="col-md-6">
                 <label class="form-label fw-semibold">Kategori <span class="text-danger">*</span></label>
@@ -631,6 +769,18 @@ export default {
                 <div v-if="formErrors.kategori" class="text-danger fs-12 mt-1">{{ formErrors.kategori }}</div>
               </div>
               <div class="col-md-6">
+                <label class="form-label fw-semibold">Status</label>
+                <select v-model="formKelas.status" class="form-select kse-modal-input">
+                  <option value="published">Publish</option>
+                  <option value="draft">Draft</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Deskripsi <span class="text-danger">*</span></label>
+                <textarea v-model="formKelas.deskripsi" class="form-control kse-modal-input kelas-modal-textarea" :class="{'is-invalid': formErrors.deskripsi}" rows="3" placeholder="Deskripsi..."></textarea>
+                <div class="invalid-feedback">{{ formErrors.deskripsi }}</div>
+              </div>
+              <div class="col-md-4">
                 <label class="form-label fw-semibold">Penyelenggara</label>
                 <input v-model="formKelas.penyelenggara" type="text" class="form-control kse-modal-input" placeholder="Nama penyelenggara">
               </div>
@@ -639,22 +789,22 @@ export default {
                 <input v-model.number="formKelas.durasi_jp" type="number" min="0" class="form-control kse-modal-input" :class="{'is-invalid': formErrors.durasi_jp}" placeholder="0">
                 <div class="invalid-feedback">{{ formErrors.durasi_jp }}</div>
               </div>
-              <div class="col-md-8">
+              <div class="col-md-4">
                 <label class="form-label fw-semibold">Target Peserta</label>
                 <input v-model="formKelas.target_peserta" type="text" class="form-control kse-modal-input" placeholder="Contoh: ASN, admin sistem, pengelola layanan">
               </div>
               <div class="col-12">
                 <label class="form-label fw-semibold">Informasi Umum</label>
-                <textarea v-model="formKelas.informasi_umum" class="form-control kse-modal-input" rows="3" placeholder="Informasi umum kelas..."></textarea>
+                <textarea v-model="formKelas.informasi_umum" class="form-control kse-modal-input kelas-modal-textarea" rows="3" placeholder="Informasi umum kelas..."></textarea>
               </div>
               <div class="col-12">
                 <label class="form-label fw-semibold">Syarat Pendaftaran</label>
-                <textarea v-model="formKelas.syarat_pendaftaran" class="form-control kse-modal-input" rows="3" placeholder="Syarat pendaftaran peserta..."></textarea>
+                <textarea v-model="formKelas.syarat_pendaftaran" class="form-control kse-modal-input kelas-modal-textarea" rows="3" placeholder="Syarat pendaftaran peserta..."></textarea>
               </div>
-              <div class="col-12">
+              <div class="col-12 kelas-thumbnail-section">
                 <label class="form-label fw-semibold">Thumbnail URL</label>
                 
-                <div class="d-flex flex-column gap-3">
+                <div class="d-flex flex-column gap-3 kelas-thumbnail-field">
                   <input
                     v-model="formKelas.thumbnail"
                     type="text"
@@ -662,28 +812,21 @@ export default {
                     placeholder="Masukkan URL Gambar (Misal: https://example.com/foto.jpg)"
                   />
 
-                  <div v-if="thumbnailPreview" class="thumbnail-preview-box rounded-4 border p-2 bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative" style="height: 160px;">
+                  <div v-if="thumbnailPreview" class="thumbnail-preview-box kelas-thumbnail-preview rounded-4 border p-2 bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative">
                     <img :src="thumbnailPreview" class="w-100 h-100 object-fit-cover rounded-3" alt="Preview" @error="formKelas.thumbnail = ''" />
                     <button @click="formKelas.thumbnail = ''" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width: 28px; height: 28px; padding: 0;">
                       <i class="ri-close-line"></i>
                     </button>
                   </div>
-                  <div v-else class="thumbnail-placeholder rounded-4 border-dashed p-4 text-center bg-light">
+                  <div v-else class="thumbnail-placeholder kelas-thumbnail-preview rounded-4 border-dashed p-4 text-center bg-light">
                     <i class="ri-image-line fs-1 text-muted opacity-50"></i>
                     <p class="text-muted fs-12 mb-0">Belum ada URL gambar</p>
                   </div>
                 </div>
               </div>
-              <div class="col-12">
-                <label class="form-label fw-semibold">Status</label>
-                <select v-model="formKelas.status" class="form-select kse-modal-input">
-                  <option value="published">Publish</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </div>
             </div>
           </div>
-          <div class="card-footer bg-light d-flex justify-content-end gap-2">
+          <div class="card-footer bg-light d-flex justify-content-end gap-2 kelas-modal-footer">
             <button class="btn btn-outline-danger" @click="activeModal = null">Batal</button>
             <button class="btn btn-primary" @click="saveKelas" :disabled="isSaving"><span v-if="isSaving" class="spinner-border spinner-border-sm me-1"></span>Simpan</button>
           </div>
@@ -695,7 +838,7 @@ export default {
   <!-- KELAS MODAL (Materi & Kuis Modals removed, replaced by routing) -->
 
   <!-- DELETE MODAL -->
-  <div v-if="activeModal === 'delete'" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="activeModal = null">
+  <div v-if="activeModal === 'delete'" :class="['modal', 'fade', 'show', 'd-block', 'modal-overlay', { 'is-dark': isDarkMode }]" tabindex="-1" @click.self="activeModal = null">
     <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
       <div class="modal-content border-0 bg-transparent">
         <div class="kse-modal-box kse-modal-sm w-100">
@@ -721,36 +864,1251 @@ export default {
 </template>
 
 <style>
-/* Vue-Multiselect Dark Mode Fixes */
-[data-theme-mode="dark"] .multiselect__tags,
-[data-theme-mode="dark"] .multiselect__input,
-[data-theme-mode="dark"] .multiselect__single {
-  background-color: var(--custom-white) !important;
-  color: var(--default-text-color) !important;
-  border-color: var(--default-border) !important;
+[data-theme-mode="dark"] .lms-kelas-page .lms-kelas-card,
+html.dark .lms-kelas-page .lms-kelas-card {
+  background: linear-gradient(180deg, #0b1220 0%, #111827 100%) !important;
+  border-color: #22314a !important;
+  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.34) !important;
 }
 
-[data-theme-mode="dark"] .multiselect__content-wrapper {
-  background-color: var(--custom-white) !important;
-  border-color: var(--default-border) !important;
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-premium-body,
+html.dark .lms-kelas-page .stakeholders-premium-body {
+  background: transparent !important;
 }
 
-[data-theme-mode="dark"] .multiselect__option {
-  color: var(--default-text-color) !important;
+[data-theme-mode="dark"] .lms-kelas-page .ikas-hero-header,
+html.dark .lms-kelas-page .ikas-hero-header {
+  background: linear-gradient(135deg, #081225 0%, #11294d 52%, #164e77 100%) !important;
+  border-color: rgba(71, 85, 105, 0.5) !important;
+  box-shadow: 0 22px 58px rgba(2, 6, 23, 0.42) !important;
 }
 
-[data-theme-mode="dark"] .multiselect__option--highlight {
-  background-color: var(--primary-color) !important;
-  color: #fff !important;
+[data-theme-mode="dark"] .lms-kelas-page .ikas-hero-stat-card,
+html.dark .lms-kelas-page .ikas-hero-stat-card {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.28) !important;
 }
 
-[data-theme-mode="dark"] .multiselect__option--selected {
-  background-color: rgba(var(--primary-rgb), 0.1) !important;
-  color: var(--default-text-color) !important;
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-toolbar,
+html.dark .lms-kelas-page .stakeholders-toolbar {
+  background: rgba(15, 23, 42, 0.78) !important;
+  border-color: rgba(51, 65, 85, 0.85) !important;
+  box-shadow: none !important;
 }
 
-[data-theme-mode="dark"] .multiselect__option--selected.multiselect__option--highlight {
-  background-color: var(--primary-color) !important;
-  color: #fff !important;
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-per-page,
+html.dark .lms-kelas-page .stakeholders-per-page {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .entries-select,
+html.dark .lms-kelas-page .entries-select {
+  background-color: #0b1220 !important;
+  border-color: #22314a !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .entries-select option,
+html.dark .lms-kelas-page .entries-select option {
+  background: #111c2e !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .ikas-header-search,
+html.dark .lms-kelas-page .ikas-header-search {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+  color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .ikas-header-search:focus-within,
+html.dark .lms-kelas-page .ikas-header-search:focus-within {
+  border-color: #0ea5e9 !important;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.16) !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .ikas-header-search input,
+html.dark .lms-kelas-page .ikas-header-search input {
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .ikas-header-search input::placeholder,
+html.dark .lms-kelas-page .ikas-header-search input::placeholder {
+  color: #64748b !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table-wrap,
+html.dark .lms-kelas-page .stakeholder-table-wrap {
+  background: linear-gradient(180deg, #0b1220 0%, #0f1a2d 100%) !important;
+  border-color: #22314a !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table,
+html.dark .lms-kelas-page .stakeholder-table {
+  --bs-table-bg: transparent !important;
+  --bs-table-color: #e2e8f0 !important;
+  --bs-table-hover-bg: rgba(37, 99, 235, 0.12) !important;
+  color: #e2e8f0 !important;
+  border-color: transparent !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead tr,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead th,
+html.dark .lms-kelas-page .stakeholder-table thead,
+html.dark .lms-kelas-page .stakeholder-table thead tr,
+html.dark .lms-kelas-page .stakeholder-table thead th {
+  background: linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%) !important;
+  background-color: #1d4ed8 !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead th:first-child,
+html.dark .lms-kelas-page .stakeholder-table thead th:first-child {
+  border-left-color: transparent !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead th:last-child,
+html.dark .lms-kelas-page .stakeholder-table thead th:last-child {
+  border-right-color: transparent !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn,
+[data-theme-mode="dark"] .lms-kelas-page .lms-th-label,
+html.dark .lms-kelas-page .lms-sort-btn,
+html.dark .lms-kelas-page .lms-th-label {
+  color: #ffffff !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn,
+html.dark .lms-kelas-page .lms-sort-btn {
+  background: transparent !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn:hover,
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn.active,
+html.dark .lms-kelas-page .lms-sort-btn:hover,
+html.dark .lms-kelas-page .lms-sort-btn.active {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22) !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn i,
+html.dark .lms-kelas-page .lms-sort-btn i {
+  color: #bfdbfe !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn.active i,
+html.dark .lms-kelas-page .lms-sort-btn.active i {
+  color: #ffffff !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table tbody,
+html.dark .lms-kelas-page .stakeholder-table tbody {
+  background: transparent !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table tbody tr,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table tbody td,
+html.dark .lms-kelas-page .stakeholder-table tbody tr,
+html.dark .lms-kelas-page .stakeholder-table tbody td {
+  background: #0f172a !important;
+  background-color: #0f172a !important;
+  border-color: #22314a !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:first-child,
+html.dark .lms-kelas-page .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:first-child {
+  border-left-color: #2563eb !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:last-child,
+html.dark .lms-kelas-page .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:last-child {
+  border-right-color: #22314a !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-row:hover td,
+html.dark .lms-kelas-page .stakeholder-row:hover td,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-row-expanded td,
+html.dark .lms-kelas-page .stakeholder-row-expanded td {
+  background: #13213a !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .company-name,
+[data-theme-mode="dark"] .lms-kelas-page .text-dark,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-detail-card-title,
+html.dark .lms-kelas-page .company-name,
+html.dark .lms-kelas-page .text-dark,
+html.dark .lms-kelas-page .stakeholder-detail-card-title {
+  color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .text-muted,
+html.dark .lms-kelas-page .text-muted {
+  color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-expand-btn,
+html.dark .lms-kelas-page .stakeholder-expand-btn {
+  background: #111c2e !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-expanded-wrapper,
+html.dark .lms-kelas-page .stakeholder-expanded-wrapper {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-inner-card,
+html.dark .lms-kelas-page .stakeholder-inner-card {
+  background: #0f172a !important;
+  border: 1px solid #22314a !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-detail-list-item,
+[data-theme-mode="dark"] .lms-kelas-page .list-group .bg-light,
+html.dark .lms-kelas-page .stakeholder-detail-list-item,
+html.dark .lms-kelas-page .list-group .bg-light {
+  background: #111c2e !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .skeleton-table-body,
+[data-theme-mode="dark"] .lms-kelas-page .skeleton-row,
+html.dark .lms-kelas-page .skeleton-table-body,
+html.dark .lms-kelas-page .skeleton-row {
+  background: #0f172a !important;
+  border-color: #22314a !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .skel,
+html.dark .lms-kelas-page .skel {
+  background: linear-gradient(90deg, #111c2e 25%, #1d2b42 50%, #111c2e 75%) !important;
+  background-size: 1000px 100% !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-pagination-copy,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-page-pill,
+html.dark .lms-kelas-page .stakeholders-pagination-copy,
+html.dark .lms-kelas-page .stakeholders-page-pill {
+  color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .empty-state-title,
+[data-theme-mode="dark"] .lms-kelas-page .row-number,
+html.dark .lms-kelas-page .empty-state-title,
+html.dark .lms-kelas-page .row-number {
+  color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .empty-icon-ring,
+html.dark .lms-kelas-page .empty-icon-ring {
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .pagination .page-link,
+html.dark .lms-kelas-page .pagination .page-link {
+  background: #0b1628 !important;
+  border-color: rgba(96, 165, 250, 0.22) !important;
+  color: #bfdbfe !important;
+}
+
+[data-theme-mode="dark"] .lms-kelas-page .pagination .page-item.active .page-link,
+html.dark .lms-kelas-page .pagination .page-item.active .page-link {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body,
+[data-theme-mode="dark"] .kelas-modal-footer,
+html.dark .kelas-modal-body,
+html.dark .kelas-modal-footer {
+  background: #050b16 !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .form-label,
+html.dark .kelas-modal-body .form-label {
+  color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .form-control,
+[data-theme-mode="dark"] .kelas-modal-body .form-select,
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__tags,
+html.dark .kelas-modal-body .form-control,
+html.dark .kelas-modal-body .form-select,
+html.dark .kelas-modal-body .multiselect__tags {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .form-control::placeholder,
+html.dark .kelas-modal-body .form-control::placeholder {
+  color: #64748b !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__input,
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__single,
+html.dark .kelas-modal-body .multiselect__input,
+html.dark .kelas-modal-body .multiselect__single {
+  background: #0b1220 !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__content-wrapper,
+html.dark .kelas-modal-body .multiselect__content-wrapper {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__option,
+html.dark .kelas-modal-body .multiselect__option {
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__option--highlight,
+html.dark .kelas-modal-body .multiselect__option--highlight {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+[data-theme-mode="dark"] .kelas-modal-body .multiselect__option--selected,
+html.dark .kelas-modal-body .multiselect__option--selected {
+  background: rgba(37, 99, 235, 0.2) !important;
+  color: #bfdbfe !important;
+}
+
+[data-theme-mode="dark"] .kelas-thumbnail-preview,
+html.dark .kelas-thumbnail-preview {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.lms-kelas-modal-size {
+  max-width: 860px !important;
+  width: min(84vw, 860px) !important;
+  margin: 1rem auto !important;
+}
+
+.lms-kelas-modal-size .modal-content {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+@media (max-width: 1200px) {
+  .lms-kelas-modal-size {
+    max-width: 96% !important;
+    width: 96% !important;
+    margin: 0.75rem auto !important;
+  }
+}
+</style>
+
+<style scoped>
+.lms-kelas-page {
+  padding: 2px;
+}
+
+.kelas-modal-overlay {
+  align-items: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.kelas-modal-dialog {
+  max-width: 860px !important;
+  width: min(84vw, 860px) !important;
+  margin: 1rem auto;
+}
+
+.kelas-modal-content {
+  height: calc(100vh - 1rem);
+  max-height: calc(100vh - 1rem);
+  width: 100%;
+}
+
+.kelas-modal-card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 1rem);
+  max-height: calc(100vh - 1rem);
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.kelas-modal-header,
+.kelas-modal-footer {
+  flex: 0 0 auto;
+}
+
+.kelas-modal-header.users-header {
+  align-items: center !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+}
+
+.kelas-modal-header > .d-flex {
+  min-width: 0;
+}
+
+.kelas-modal-header .header-card-title {
+  overflow-wrap: anywhere;
+}
+
+.kelas-modal-header .btn-close {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.kelas-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.5rem !important;
+}
+
+.kelas-form-grid {
+  width: 100%;
+}
+
+.kelas-modal-textarea {
+  min-height: 124px;
+  resize: vertical;
+}
+
+.kelas-thumbnail-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.kelas-thumbnail-field {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.kelas-thumbnail-preview {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 132px;
+}
+
+@media (max-width: 767.98px) {
+  .kelas-modal-overlay {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .kelas-modal-dialog {
+    max-width: calc(100vw - 24px) !important;
+    width: calc(100vw - 24px) !important;
+    margin: 0.5rem auto;
+  }
+
+  .kelas-modal-content,
+  .kelas-modal-card {
+    height: calc(100vh - 0.75rem);
+    max-height: calc(100vh - 0.75rem);
+  }
+
+  .kelas-modal-body {
+    padding: 1rem !important;
+  }
+
+  .kelas-form-grid {
+    --bs-gutter-y: 1rem;
+  }
+
+  .kelas-modal-textarea {
+    min-height: 96px;
+  }
+
+  .kelas-thumbnail-preview {
+    min-height: 150px;
+  }
+
+  .kelas-modal-header {
+    gap: 0.75rem !important;
+    padding: 1rem !important;
+  }
+
+  .kelas-modal-header .header-icon-box {
+    flex: 0 0 40px;
+    height: 40px !important;
+    width: 40px !important;
+  }
+
+  .kelas-modal-footer {
+    flex-wrap: wrap;
+    justify-content: stretch !important;
+  }
+
+  .kelas-modal-footer .btn {
+    flex: 1 1 140px;
+  }
+}
+
+.ikas-hero-header {
+  align-items: center;
+  background:
+    radial-gradient(ellipse 390px 210px at 38% 112%, rgba(255, 255, 255, 0.14), transparent 62%),
+    radial-gradient(circle at 78% 8%, rgba(255, 255, 255, 0.16), transparent 24%),
+    linear-gradient(135deg, #0f1f57 0%, #2454d8 52%, #0ea5e9 100%);
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 22px 58px rgba(37, 84, 216, 0.24);
+  color: #ffffff;
+  display: flex;
+  gap: 28px;
+  justify-content: space-between;
+  min-height: 154px;
+  overflow: hidden;
+  padding: 30px 34px;
+  position: relative;
+  isolation: isolate;
+}
+
+.ikas-hero-header::before {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.26), transparent 64%);
+  border-radius: 999px;
+  content: "";
+  height: 360px;
+  inset: auto -80px -120px auto;
+  pointer-events: none;
+  position: absolute;
+  width: 360px;
+  z-index: 0;
+}
+
+.ikas-hero-header::after {
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.22), transparent 62%);
+  border-radius: 999px;
+  content: "";
+  height: 310px;
+  left: -110px;
+  pointer-events: none;
+  position: absolute;
+  top: -140px;
+  width: 310px;
+  z-index: 0;
+}
+
+.ikas-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.ikas-hero-copy {
+  max-width: 820px;
+}
+
+.ikas-inline-breadcrumb {
+  color: #bae6fd;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ikas-inline-breadcrumb span {
+  color: rgba(255, 255, 255, 0.58);
+  margin: 0 5px;
+}
+
+.ikas-hero-copy h1 {
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1.08;
+  margin: 0;
+  text-shadow: 0 10px 28px rgba(15, 23, 42, 0.2);
+}
+
+.ikas-hero-copy p {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 10px 0 0;
+}
+
+.ikas-hero-tools {
+  align-items: stretch;
+  display: flex;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  gap: 10px;
+  position: relative;
+  z-index: 2;
+}
+
+.ikas-hero-tools.ikas-stakeholder-summary {
+  align-self: center;
+}
+
+.ikas-hero-stat-card {
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  justify-content: center;
+  min-height: 92px;
+  overflow: hidden;
+  padding: 14px;
+  position: relative;
+  width: 140px;
+  flex: 0 0 140px;
+}
+
+.ikas-hero-stat-card::before {
+  background: radial-gradient(circle at 18% 0%, rgba(191, 219, 254, 0.32), transparent 44%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.ikas-stat-top {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.ikas-stat-top span {
+  color: #ffffff;
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ikas-stat-top i {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 22px;
+  height: auto;
+  justify-content: center;
+  width: auto;
+}
+
+.ikas-hero-stat-card strong {
+  color: #ffffff;
+  display: block;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.ikas-hero-stat-card.is-spotlight {
+  background:
+    linear-gradient(145deg, rgba(34, 211, 238, 0.3), rgba(59, 130, 246, 0.12)),
+    rgba(7, 26, 78, 0.28);
+  border-color: rgba(125, 211, 252, 0.42);
+}
+
+.ikas-hero-stat-card.is-spotlight::after {
+  background: radial-gradient(circle, rgba(125, 211, 252, 0.32), transparent 62%);
+  content: "";
+  height: 74px;
+  pointer-events: none;
+  position: absolute;
+  right: -24px;
+  top: -26px;
+  width: 74px;
+}
+
+.ikas-header-search {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid #cbdcf8;
+  border-radius: 10px;
+  color: #94a3b8;
+  display: flex;
+  gap: 9px;
+  min-height: 40px;
+  max-width: 460px;
+  padding: 0 12px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+  width: 100%;
+}
+
+.lms-kelas-card {
+  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+  border: 1px solid #cfe0ff;
+  border-radius: 14px;
+  box-shadow: 0 22px 54px rgba(30, 64, 175, 0.11);
+}
+
+.lms-kelas-card .stakeholders-premium-body {
+  background: transparent;
+}
+
+.lms-kelas-toolbar-wrap {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(30, 64, 175, 0.08);
+  padding: 12px;
+}
+
+.lms-kelas-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  width: 100%;
+}
+
+.lms-kelas-toolbar .stakeholders-per-page {
+  flex: 0 0 auto;
+}
+
+.kelas-toolbar-search {
+  flex: 1 1 360px;
+  max-width: 520px;
+  min-width: 260px;
+}
+
+.ikas-header-search:focus-within {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.11);
+}
+
+.ikas-header-search input {
+  background: transparent;
+  border: 0;
+  color: #0f172a;
+  font-size: 13px;
+  min-width: 0;
+  outline: 0;
+  width: 100%;
+}
+
+.ikas-clear-btn {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.ikas-clear-btn:hover {
+  color: #475569;
+}
+
+.lms-kelas-page .stakeholders-per-page {
+  background: transparent;
+  border-color: transparent;
+  margin: 0;
+}
+
+.lms-kelas-page .stakeholders-per-page span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lms-kelas-page .entries-select {
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.lms-kelas-page .stakeholders-add-btn {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb 55%, #0ea5e9) !important;
+  border: none !important;
+  border-radius: 10px;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+  color: #ffffff !important;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 16px;
+}
+
+.lms-kelas-page .stakeholders-add-btn:hover {
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
+  transform: translateY(-2px);
+}
+
+.lms-kelas-page .stakeholder-table-wrap {
+  background: linear-gradient(180deg, #eaf3ff 0%, #f5f9ff 100%);
+  border: 1px solid #d7e7ff;
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  padding: 12px;
+}
+
+.lms-kelas-page .stakeholder-table {
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+.lms-kelas-page .stakeholder-table thead th {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%) !important;
+  border: 0;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px;
+  vertical-align: middle;
+}
+
+.lms-kelas-page .stakeholder-table thead th:first-child {
+  border-radius: 12px 0 0 12px;
+}
+
+.lms-kelas-page .stakeholder-table thead th:last-child {
+  border-radius: 0 12px 12px 0;
+}
+
+.lms-th-label,
+.lms-sort-btn {
+  align-items: center;
+  color: #ffffff;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.lms-th-label {
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: flex-start;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.lms-sort-btn {
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  justify-content: space-between;
+  padding: 0 12px;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  width: 100%;
+}
+
+.lms-sort-btn i {
+  color: #bfdbfe;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.lms-sort-btn:hover,
+.lms-sort-btn.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.lms-sort-btn.active {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.26), 0 8px 18px rgba(15, 23, 42, 0.14);
+}
+
+.lms-sort-btn:hover {
+  transform: translateY(-1px);
+}
+
+.lms-sort-btn.active i {
+  color: #ffffff;
+}
+
+.lms-sort-btn-center {
+  justify-content: center;
+  margin-inline: auto;
+}
+
+.lms-th-no .lms-th-label,
+.lms-th-action .lms-th-label {
+  justify-content: center;
+}
+
+.lms-th-sortable {
+  min-width: 150px;
+}
+
+.lms-th-description {
+  min-width: 240px;
+}
+
+.lms-kelas-page .stakeholder-table tbody td {
+  background: #f8fbff !important;
+  border-bottom: 1px solid #dce8fb;
+  border-top: 1px solid #dce8fb;
+  padding-bottom: 16px;
+  padding-top: 16px;
+}
+
+.lms-kelas-page .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:first-child {
+  border-left: 5px solid #2563eb;
+  border-radius: 14px 0 0 14px;
+}
+
+.lms-kelas-page .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:last-child {
+  border-radius: 0 14px 14px 0;
+  border-right: 1px solid #dce8fb;
+}
+
+.lms-kelas-page .stakeholder-row:hover td {
+  background: #eff6ff !important;
+  box-shadow: 0 18px 36px rgba(30, 64, 175, 0.12);
+}
+
+.lms-kelas-page .ev-hero {
+  background: linear-gradient(135deg, #0f1f57 0%, #2454d8 52%, #0ea5e9 100%);
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 22px 58px rgba(37, 84, 216, 0.24);
+  color: #fff;
+  overflow: hidden;
+  position: relative;
+}
+
+.lms-kelas-page .ev-hero::before {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.26), transparent 64%);
+  border-radius: 999px;
+  content: "";
+  height: 360px;
+  inset: auto -80px -120px auto;
+  pointer-events: none;
+  position: absolute;
+  width: 360px;
+}
+
+.lms-kelas-page .ev-hero::after {
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.22), transparent 62%);
+  border-radius: 999px;
+  content: "";
+  height: 310px;
+  left: -110px;
+  pointer-events: none;
+  position: absolute;
+  top: -140px;
+  width: 310px;
+}
+
+.lms-kelas-page .ev-hero-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  inset: 0;
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.44) 62%, transparent 100%);
+  opacity: 0.34;
+  pointer-events: none;
+  position: absolute;
+}
+
+.lms-kelas-page .ev-hero-tiles {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+}
+
+.lms-kelas-page .ev-hero-tile {
+  animation: none;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.1) 38%, rgba(96, 165, 250, 0.13) 58%, transparent 76%);
+  border: 0;
+  border-radius: 999px;
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  position: absolute;
+}
+
+.lms-kelas-page .ev-hero-tile.tile-a {
+  height: 200px;
+  right: -78px;
+  top: -40px;
+  transform: rotate(-8deg);
+  width: 390px;
+}
+
+.lms-kelas-page .ev-hero-tile.tile-b {
+  height: 270px;
+  left: 10%;
+  top: -118px;
+  width: 270px;
+}
+
+.lms-kelas-page .ev-hero-tile.tile-c {
+  height: 240px;
+  right: 25%;
+  top: -88px;
+  width: 240px;
+}
+
+.lms-kelas-page .ev-hero-tile.tile-d {
+  bottom: -112px;
+  height: 205px;
+  left: 32%;
+  width: 205px;
+}
+
+.lms-kelas-page .ev-hero-tile.tile-e {
+  bottom: -130px;
+  height: 220px;
+  right: 8%;
+  width: 220px;
+}
+
+.lms-kelas-page .ev-hero-tile.tile-f {
+  bottom: -64px;
+  height: 165px;
+  left: -20px;
+  width: 165px;
+}
+
+.lms-kelas-page .ev-breadcrumb {
+  color: #bae6fd;
+}
+
+.lms-kelas-page .ev-breadcrumb span {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.lms-kelas-page .ev-hero-title {
+  color: #fff;
+  text-shadow: 0 10px 28px rgba(15, 23, 42, 0.2);
+}
+
+.lms-kelas-page .ev-hero-desc {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.lms-kelas-page .ev-stat-card {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+}
+
+.lms-kelas-page .ev-stat-head span,
+.lms-kelas-page .ev-stat-card strong {
+  color: #fff;
+}
+
+.lms-kelas-page .ev-stat-head i {
+  color: #fde68a;
+}
+
+.lms-kelas-page .ev-content-card {
+  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+  border-color: #cfe0ff;
+  box-shadow: 0 22px 54px rgba(30, 64, 175, 0.11);
+}
+
+.lms-kelas-page .ev-toolbar {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(30, 64, 175, 0.08);
+  padding: 12px;
+}
+
+.lms-kelas-page .ev-search {
+  background: #f8fbff;
+  border-color: #cbdcf8;
+}
+
+.lms-kelas-page .ev-btn-add {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb 55%, #0ea5e9) !important;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+}
+
+@media (max-width: 768px) {
+  .ikas-hero-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+  }
+
+  .ikas-hero-tools {
+    max-width: none;
+  }
+
+  .ikas-hero-stat-card {
+    min-height: 84px;
+  }
+
+  .lms-kelas-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kelas-toolbar-search {
+    max-width: none;
+    min-width: 0;
+  }
+
+  .lms-kelas-toolbar .stakeholders-add-btn {
+    margin-left: 0 !important;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (max-width: 1100px) {
+  .ikas-hero-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ikas-hero-tools {
+    min-width: 100%;
+    width: 100%;
+    flex: auto;
+  }
+}
+
+.ikas-hero-stat-card.stat-total i {
+  color: #fde68a;
+  text-shadow: 0 2px 10px rgba(253, 230, 138, 0.3);
+}
+.ikas-hero-stat-card.stat-materi i {
+  color: #fde68a;
+  text-shadow: 0 2px 10px rgba(253, 230, 138, 0.3);
+}
+.ikas-hero-stat-card.stat-kuis i {
+  color: #fde68a;
+  text-shadow: 0 2px 10px rgba(253, 230, 138, 0.3);
+}
+
+.lms-kelas-page.is-dark .lms-kelas-card,
+.lms-kelas-page.is-dark .ev-content-card {
+  background: linear-gradient(180deg, #0b1220 0%, #111827 100%) !important;
+  border-color: #22314a !important;
+  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.34) !important;
+}
+
+.lms-kelas-page.is-dark .ev-toolbar {
+  background: rgba(15, 23, 42, 0.78) !important;
+  border-color: rgba(51, 65, 85, 0.85) !important;
+  box-shadow: none !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table-wrap {
+  background: linear-gradient(180deg, #0b1220 0%, #0f1a2d 100%) !important;
+  border-color: #22314a !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table {
+  --bs-table-bg: transparent !important;
+  --bs-table-color: #e2e8f0 !important;
+  --bs-table-hover-bg: rgba(37, 99, 235, 0.14) !important;
+  color: #e2e8f0 !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table tbody,
+.lms-kelas-page.is-dark .stakeholder-table tbody tr,
+.lms-kelas-page.is-dark .stakeholder-table tbody td,
+.lms-kelas-page.is-dark .stakeholder-table > :not(caption) > * > * {
+  background: #0f172a !important;
+  background-color: #0f172a !important;
+  border-color: #22314a !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:first-child {
+  border-left-color: #2563eb !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table tbody tr:not(.stakeholder-detail-row) td:last-child {
+  border-right-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-row:hover td,
+.lms-kelas-page.is-dark .stakeholder-row-expanded td {
+  background: #13213a !important;
+  background-color: #13213a !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+}
+
+.lms-kelas-page.is-dark .company-name,
+.lms-kelas-page.is-dark .text-dark,
+.lms-kelas-page.is-dark .row-number,
+.lms-kelas-page.is-dark .empty-state-title,
+.lms-kelas-page.is-dark .stakeholder-detail-card-title {
+  color: #f8fafc !important;
+}
+
+.lms-kelas-page.is-dark .text-muted {
+  color: #94a3b8 !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-expanded-wrapper {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-inner-card,
+.lms-kelas-page.is-dark .stakeholder-detail-list-item,
+.lms-kelas-page.is-dark .list-group .bg-light {
+  background: #111c2e !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: #dbeafe !important;
+}
+
+.lms-kelas-page.is-dark .lms-sort-btn:hover,
+.lms-kelas-page.is-dark .lms-sort-btn.active,
+.lms-kelas-page.is-dark .lms-sort-btn.active:hover {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.34), rgba(37, 99, 235, 0.46)) !important;
+  border: 1px solid rgba(147, 197, 253, 0.42) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 18px rgba(37, 99, 235, 0.22) !important;
+  color: #ffffff !important;
+}
+
+.lms-kelas-page.is-dark .lms-sort-btn i,
+.lms-kelas-page.is-dark .lms-sort-btn.active i,
+.lms-kelas-page.is-dark .lms-sort-btn:hover i {
+  color: #dbeafe !important;
 }
 </style>

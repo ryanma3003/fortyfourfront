@@ -337,6 +337,7 @@ function buildKelasPayload(payload: CreateKelasPayload | UpdateKelasPayload) {
         syarat_pendaftaran: payload.syarat_pendaftaran ?? '',
         target_peserta: payload.target_peserta ?? '',
         thumbnail: payload.thumbnail ?? '',
+        status: normalizeKelasStatus(payload.status),
     };
 }
 
@@ -377,8 +378,14 @@ function normalizeKelas(item: any): LmsKelas {
         syarat_pendaftaran: String(item?.syarat_pendaftaran ?? ''),
         target_peserta: String(item?.target_peserta ?? ''),
         thumbnail: item?.thumbnail ?? item?.thumnail ?? '',
-        status: String(item?.status ?? 'published'),
+        status: normalizeKelasStatus(item?.status),
     };
+}
+
+function normalizeKelasStatus(status: any): 'published' | 'draft' {
+    const normalized = String(status ?? 'published').trim().toLowerCase();
+    if (['draft', 'draf'].includes(normalized)) return 'draft';
+    return 'published';
 }
 
 function normalizeMateri(item: any): LmsMateri {

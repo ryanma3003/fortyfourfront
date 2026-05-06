@@ -25,10 +25,12 @@ export const seEditService = {
      * @param proposedChanges The new data values.
      */
     async createRequest(seId: string | number, proposedChanges: any): Promise<SeEditRequest> {
-        return api.post<SeEditRequest>('/api/se/edit-requests', {
+        const response = await api.post<SeEditRequest>('/api/se/edit-requests', {
             id_se: seId,
             proposed_changes: proposedChanges
         });
+        window.dispatchEvent(new Event('se-requests-updated'));
+        return response;
     },
 
     /**
@@ -38,7 +40,9 @@ export const seEditService = {
      */
     async reviewRequest(requestId: string | number, payload: ReviewSeEditRequestPayload): Promise<SeEditRequest> {
         useNotificationStore().trackSelfAction('se_edit_request', String(requestId));
-        return api.put<SeEditRequest>(`/api/se/edit-requests/${requestId}/review`, payload);
+        const response = await api.put<SeEditRequest>(`/api/se/edit-requests/${requestId}/review`, payload);
+        window.dispatchEvent(new Event('se-requests-updated'));
+        return response;
     },
 
     /**

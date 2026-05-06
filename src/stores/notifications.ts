@@ -5,6 +5,7 @@ import type { ServerEvent, NotificationStats } from '@/types/notification.types'
 
 import { useAuthStore } from './auth';
 import { useUsersStore } from './users';
+import { useStakeholdersStore } from './stakeholders';
 import { formatImageUrl } from '@/utils/media';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -28,6 +29,82 @@ function getBackendNotificationId(event?: Pick<ServerEvent, 'id' | 'api_id'> | n
     if (!event) return '';
     const candidate = String(event.api_id || event.id || '');
     return isRealDbId(candidate) ? candidate : '';
+}
+
+function normalizeNotificationText(value?: string): string {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+}
+
+function isGenericIkasRequestEvent(event: Pick<ServerEvent, 'entity' | 'message' | 'entity_name'>): boolean {
+    const entity = normalizeEntityKey(event.entity);
+    const text = normalizeNotificationText(`${event.message || ''} ${event.entity_name || ''}`);
+    return entity === 'ikas' && /ikas_request\s+baru.*berhasil\s+ditambahkan/i.test(text);
+}
+
+function isDetailedIkasRequestEvent(event: Pick<ServerEvent, 'entity' | 'message' | 'entity_name'>): boolean {
+    const entity = normalizeEntityKey(event.entity);
+    const text = normalizeNotificationText(`${event.message || ''} ${event.entity_name || ''}`);
+    return entity === 'ikas' && /mengajukan\s+permintaan\s+edit\s+data\s+ikas|request\s*edit\s+data\s+ikas/i.test(text);
+}
+
+function getIkasRequestContextKey(event: Pick<ServerEvent, 'entity' | 'message' | 'entity_name'>): string {
+    const entityName = normalizeNotificationText(
+        inferRequestEditTarget(event.message)?.name
+        || event.entity_name
+        || getCompanyNameFromText(event.message)
+    );
+    return entityName;
+}
+
+function getEventSignature(event: ServerEvent): string {
+    const requestTarget = inferRequestEditTarget(event.message);
+    const entity = requestTarget?.entity || normalizeEntityKey(event.entity);
+    const name = normalizeNotificationText(requestTarget?.name || event.entity_name);
+    const message = normalizeNotificationText(event.message);
+    const actor = normalizeNotificationText(event.user?.id || event.user?.name);
+    const action = isRequestEditEvent(event) ? 'request-edit' : event.type;
+
+    return [action, entity, name, message, actor].join('|');
+}
+
+function areSameNotification(a: ServerEvent, b: ServerEvent, windowMs = 120_000): boolean {
+    if (a.id && b.id && a.id === b.id) return true;
+    if (isGenericIkasRequestEvent(a) && isDetailedIkasRequestEvent(b) && getIkasRequestContextKey(a) === getIkasRequestContextKey(b)) return true;
+    if (isDetailedIkasRequestEvent(a) && isGenericIkasRequestEvent(b) && getIkasRequestContextKey(a) === getIkasRequestContextKey(b)) return true;
+    if (getEventSignature(a) !== getEventSignature(b)) return false;
+
+    const at = new Date(a.timestamp).getTime();
+    const bt = new Date(b.timestamp).getTime();
+    if (Number.isNaN(at) || Number.isNaN(bt)) return true;
+
+    return Math.abs(at - bt) <= windowMs;
+}
+
+function dedupeEvents(events: ServerEvent[]): ServerEvent[] {
+    const result: ServerEvent[] = [];
+
+    for (const event of events) {
+        const existing = result.find(item => areSameNotification(item, event));
+        if (!existing) {
+            result.push(event);
+            continue;
+        }
+
+        if (isGenericIkasRequestEvent(existing) && isDetailedIkasRequestEvent(event)) {
+            Object.assign(existing, event);
+        } else if (isTemporarySseId(existing.id) && !isTemporarySseId(event.id) && !isDetailedIkasRequestEvent(existing)) {
+            Object.assign(existing, event);
+        } else if (isPlaceholderName(existing.user?.name) && !isPlaceholderName(event.user?.name)) {
+            existing.user = event.user;
+        }
+
+        existing.is_read = !!(existing.is_read && event.is_read);
+    }
+
+    return result;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -169,6 +246,390 @@ function isPlaceholderRole(role?: string): boolean {
     return !normalized || normalized === 'system' || normalized === 'sistem' || normalized === 'unknown';
 }
 
+function normalizeRoleKey(role?: string): string {
+    const normalized = String(role || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/-/g, '_');
+
+    if (!normalized) return '';
+
+    const aliases: Record<string, string> = {
+        pic: 'user_pic',
+        userpic: 'user_pic',
+        'user_pic': 'user_pic',
+        'user-pic': 'user_pic',
+        staff: 'staff',
+        administrator: 'admin',
+        system: 'system',
+        sistem: 'system',
+    };
+
+    return aliases[normalized] || normalized;
+}
+
+function normalizeIdentityToken(value?: string): string {
+    return String(value || '').trim().toLowerCase();
+}
+
+function getRoleDisplayLabel(role?: string): string {
+    const key = normalizeRoleKey(role);
+    if (!key || key === 'system') return '';
+
+    const labels: Record<string, string> = {
+        admin: 'Admin',
+        staff: 'Staff',
+        user: 'User',
+        user_pic: 'User PIC',
+        pic: 'PIC',
+    };
+
+    return labels[key] || String(role || '').trim();
+}
+
+function getBestUserDisplayName(user: any, fallback = 'User'): string {
+    return user?.display_name || user?.displayName || user?.nama_lengkap || user?.full_name || user?.name || user?.username || fallback;
+}
+
+function getUserCompanyToken(user: any): string {
+    return normalizeIdentityToken(
+        user?.id_perusahaan
+        || user?.perusahaan?.id
+        || user?.perusahaan_id
+        || user?.company_id
+        || ''
+    );
+}
+
+function getCompanyNameFromText(text: string): string {
+    const match = String(text || '').match(/\(Perusahaan\s*:\s*(.+?)\s*\)/i);
+    return match?.[1]?.trim() || '';
+}
+
+function getRespondentNameFromText(text: string): string {
+    const match = String(text || '').match(/^User\s+(.+?)\s*\(Perusahaan\s*:/i);
+    return match?.[1]?.trim() || '';
+}
+
+function isPlaceholderName(name?: string): boolean {
+    const normalized = normalizeIdentityToken(name);
+    return !normalized || normalized === 'system' || normalized === 'sistem' || normalized === 'unknown';
+}
+
+function inferFallbackActor(event: Pick<ServerEvent, 'entity' | 'message' | 'user'>): { name: string; role: string } {
+    const entity = normalizeEntityKey(event.entity);
+    const message = String(event.message || '').toLowerCase();
+    const currentUser = getCurrentUser();
+    const currentRole = normalizeRoleKey(currentUser?.role || '');
+
+    if (currentRole && currentRole !== 'admin' && currentRole !== 'system') {
+        return {
+            name: currentUser?.name || getRoleDisplayLabel(currentRole) || 'User',
+            role: currentRole,
+        };
+    }
+
+    if (
+        entity === 'ikas'
+        || entity === 'kse'
+        || entity === 'se_edit_request'
+        || /request|permintaan|mengajukan|diajukan|penilaian ikas|penilaian kse|ikas_request|kse_request/i.test(message)
+    ) {
+        return { name: 'User PIC', role: 'user_pic' };
+    }
+
+    if (entity === 'user' || /user\s+.+perusahaan|pengguna/i.test(message)) {
+        return { name: 'User', role: 'user' };
+    }
+
+    return { name: 'Staff', role: 'staff' };
+}
+
+function ensureReadableActor(event: ServerEvent): ServerEvent {
+    if (!isPlaceholderName(event.user?.name)) {
+        event.user.role = normalizeRoleKey(event.user.role);
+        return event;
+    }
+
+    const fallback = inferFallbackActor(event);
+    event.user = {
+        ...event.user,
+        name: fallback.name,
+        role: normalizeRoleKey(event.user?.role || fallback.role),
+    };
+
+    return event;
+}
+
+function extractActorFromMessage(message: string): { name: string; role: string } | null {
+    const text = String(message || '').trim();
+    if (!text) return null;
+
+    const submittedByMatch = text.match(/diajukan\s+oleh\s+(.+?)(?:\.|,|$|Catatan\s*:|Alasan\s*:)/i);
+    if (submittedByMatch?.[1]) {
+        return {
+            name: submittedByMatch[1].trim(),
+            role: 'user_pic',
+        };
+    }
+
+    const requestUserMatch = text.match(/^User\s+(.+?)\s*\(Perusahaan\s*:/i);
+    if (requestUserMatch?.[1]) {
+        const companyName = getCompanyNameFromText(text);
+        const isIkasMessage = /\bIKAS\b|ikas_request/i.test(text);
+        const resolved = isIkasMessage
+            ? resolveUserByCompanyName(companyName) || resolveUserByName(requestUserMatch[1].trim(), { preferRequesterRoles: true, companyName })
+            : resolveUserByName(requestUserMatch[1].trim(), { preferRequesterRoles: true, companyName }) || resolveUserByCompanyName(companyName);
+
+        if (!resolved) return null;
+
+        return {
+            name: resolved.name,
+            role: resolved.role,
+        };
+    }
+
+    const requestActorMatch = text.match(/^(.+?)\s+(?:mengajukan|melakukan\s+request|request)\s+(?:permintaan\s+)?(?:edit|ubah)/i);
+    if (requestActorMatch?.[1]) {
+        const name = requestActorMatch[1].replace(/^User\s+/i, '').trim();
+        return {
+            name,
+            role: /perusahaan/i.test(text) ? 'user_pic' : 'user',
+        };
+    }
+
+    const actionActorMatch = text.match(/^(.+?)\s+(memperbarui|menambahkan|menghapus|mengubah|updated|created|deleted)\s+/i);
+    if (actionActorMatch?.[1] && !/^(ikas_request|kse_request|sdm_csirt|se_csirt)\b/i.test(actionActorMatch[1])) {
+        return {
+            name: actionActorMatch[1].replace(/^User\s+/i, '').trim(),
+            role: '',
+        };
+    }
+
+    return null;
+}
+
+function isRequesterRole(role?: string): boolean {
+    const normalized = normalizeRoleKey(role);
+    return normalized === 'user' || normalized === 'user_pic' || normalized === 'pic' || normalized === 'staff';
+}
+
+function isAdminActor(actor?: { role?: string } | null): boolean {
+    return normalizeRoleKey(actor?.role) === 'admin';
+}
+
+function isKnownAdminName(name?: string): boolean {
+    const lookup = normalizeIdentityToken(name).replace(/^user\s+/i, '').trim();
+    if (!lookup) return false;
+
+    try {
+        const usersStore = useUsersStore();
+        return usersStore.allUsers.some((u: any) => {
+            if (normalizeRoleKey(u.role || u.role_name || '') !== 'admin') return false;
+
+            return normalizeIdentityToken(u.name) === lookup
+                || normalizeIdentityToken(u.display_name) === lookup
+                || normalizeIdentityToken(u.username) === lookup
+                || normalizeIdentityToken(u.name) === normalizeIdentityToken(name)
+                || normalizeIdentityToken(u.display_name) === normalizeIdentityToken(name)
+                || normalizeIdentityToken(u.username) === normalizeIdentityToken(name);
+        });
+    } catch {
+        return false;
+    }
+}
+
+function extractRequestEditActorFromObject(source: any): { id: string; name: string; role: string; avatar?: string } | null {
+    if (!source || typeof source !== 'object') return null;
+
+    const requesterObject = source.requester
+        || source.requested_by_user
+        || source.requestedByUser
+        || source.requested_by
+        || source.requestedBy
+        || source.submitted_by_user
+        || source.submittedByUser
+        || source.pemohon
+        || source.pengaju;
+
+    if (requesterObject && typeof requesterObject === 'object') {
+        const av = requesterObject.avatar || requesterObject.photo || requesterObject.foto_profile;
+        return {
+            id: String(requesterObject.id || requesterObject.user_id || requesterObject.userId || requesterObject.uuid || ''),
+            name: getBestUserDisplayName(requesterObject, ''),
+            role: normalizeRoleKey(requesterObject.role || requesterObject.role_name || requesterObject.jabatan || 'user_pic'),
+            avatar: av ? formatImageUrl(av) : undefined,
+        };
+    }
+
+    const id = source.requester_id || source.requesterId
+        || source.requested_by_id || source.requestedById
+        || source.requested_by_user_id || source.requestedByUserId
+        || source.submitted_by || source.submittedBy
+        || source.submitted_by_id || source.submittedById
+        || source.created_by_user_id || source.createdByUserId;
+
+    const name = source.requester_display_name || source.requesterDisplayName
+        || source.requester_name || source.requesterName
+        || source.requested_by_display_name || source.requestedByDisplayName
+        || source.requested_by_name || source.requestedByName
+        || source.submitted_by_display_name || source.submittedByDisplayName
+        || source.submitted_by_name || source.submittedByName
+        || source.pemohon_name || source.pengaju_name;
+
+    if (!id && !name) return null;
+
+    return {
+        id: String(id || ''),
+        name: String(name || ''),
+        role: normalizeRoleKey(source.requester_role || source.requesterRole || source.requested_by_role || source.requestedByRole || source.submitted_by_role || source.submittedByRole || 'user_pic'),
+        avatar: source.requester_avatar || source.requested_by_avatar || source.submitted_by_avatar
+            ? formatImageUrl(source.requester_avatar || source.requested_by_avatar || source.submitted_by_avatar)
+            : undefined,
+    };
+}
+
+function extractActorFromObject(source: any): { id: string; name: string; role: string; avatar?: string } | null {
+    if (!source || typeof source !== 'object') return null;
+
+    const actorObject = source.actor
+        || source.causer
+        || source.requester
+        || source.requested_by_user
+        || source.requestedByUser
+        || source.created_by_user
+        || source.updated_by_user
+        || source.user;
+
+    if (actorObject && typeof actorObject === 'object') {
+        const av = actorObject.avatar || actorObject.photo || actorObject.foto_profile;
+        return {
+            id: String(actorObject.id || actorObject.user_id || actorObject.userId || actorObject.uuid || ''),
+            name: getBestUserDisplayName(actorObject, ''),
+            role: normalizeRoleKey(actorObject.role || actorObject.role_name || actorObject.jabatan || ''),
+            avatar: av ? formatImageUrl(av) : undefined,
+        };
+    }
+
+    const id = source.actor_id || source.actorId
+        || source.causer_id || source.causerId
+        || source.requested_by || source.requestedBy
+        || source.requester_id || source.requesterId
+        || source.user_id || source.userId
+        || source.created_by || source.updated_by;
+
+    const name = source.actor_display_name || source.display_name || source.displayName
+        || source.nama_user || source.user_display_name || source.user_name || source.username
+        || source.requester_name || source.requested_by_name || source.causer_name
+        || source.created_by_name || source.updated_by_name;
+
+    if (!id && !name) return null;
+
+    return {
+        id: String(id || ''),
+        name: String(name || ''),
+        role: normalizeRoleKey(source.actor_role || source.user_role || source.requester_role || source.role || source.role_name || ''),
+        avatar: source.avatar || source.photo || source.actor_avatar ? formatImageUrl(source.avatar || source.photo || source.actor_avatar) : undefined,
+    };
+}
+
+function inferRequestEditTarget(message: string): { entity: string; name: string } | null {
+    const text = String(message || '').trim();
+    if (!text || !/request\s*edit|permintaan\s*edit|mengajukan.*edit|diajukan\s+oleh|ikas_request|kse_request/i.test(text)) {
+        return null;
+    }
+
+    const ikasUserCompanyMatch = text.match(/^User\s+.+?\s*\(Perusahaan\s*:\s*(.+?)\s*\)\s+mengajukan\s+permintaan\s+edit\s+data\s+IKAS/i);
+    if (ikasUserCompanyMatch?.[1]) {
+        return { entity: 'ikas', name: ikasUserCompanyMatch[1].trim() };
+    }
+
+    const ikasCreatedMatch = text.match(/ikas_request\s+baru\s+(.+?)\s+berhasil\s+ditambahkan/i);
+    if (ikasCreatedMatch?.[1]) {
+        return { entity: 'ikas', name: ikasCreatedMatch[1].trim() };
+    }
+
+    const seMatch = text.match(/request\s*edit\s+data\s+SE\s+(.+?)\s+diajukan\s+oleh/i);
+    if (seMatch?.[1]) {
+        return { entity: 'se_csirt', name: seMatch[1].trim() };
+    }
+
+    const ikasMatch = text.match(/(?:request\s*edit|permintaan\s*edit)\s+(?:data\s+)?IKAS\s+(.+?)\s+(?:diajukan\s+oleh|berhasil|$)/i);
+    if (ikasMatch?.[1]) {
+        return { entity: 'ikas', name: ikasMatch[1].trim() };
+    }
+
+    const kseMatch = text.match(/(?:request\s*edit|permintaan\s*edit)\s+(?:data\s+)?KSE\s+(.+?)\s+(?:diajukan\s+oleh|berhasil|$)/i);
+    if (kseMatch?.[1]) {
+        return { entity: 'kse', name: kseMatch[1].trim() };
+    }
+
+    if (/\bSE\b|sistem elektronik/i.test(text)) return { entity: 'se_csirt', name: '' };
+    if (/\bIKAS\b/i.test(text)) return { entity: 'ikas', name: '' };
+    if (/\bKSE\b/i.test(text)) return { entity: 'kse', name: '' };
+
+    return null;
+}
+
+function isRequestEditEvent(event: Pick<ServerEvent, 'entity' | 'message' | 'entity_name'>): boolean {
+    const entity = normalizeEntityKey(event.entity);
+    const text = `${event.message || ''} ${event.entity_name || ''}`.toLowerCase();
+
+    return entity === 'se_edit_request'
+        || /request\s*edit|permintaan\s*edit|mengajukan.*edit|diajukan.*edit/i.test(text);
+}
+
+function getActionVerbForEvent(event: ServerEvent): string {
+    if (isRequestEditEvent(event)) return 'melakukan request edit';
+    return ACTION_VERBS[event.type] || event.type;
+}
+
+function collectExplicitAudience(value: any, userIds: Set<string>, roles: Set<string>, mode: 'id' | 'role' = 'id'): void {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+        value.forEach(item => collectExplicitAudience(item, userIds, roles, mode));
+        return;
+    }
+
+    if (typeof value === 'object') {
+        const id = value.id || value.user_id || value.userId || value.recipient_id || value.target_user_id;
+        if (id && mode !== 'role') userIds.add(String(id));
+
+        const role = value.role || value.role_name || value.recipient_role || value.target_role;
+        const normalizedRole = normalizeRoleKey(role);
+        if (normalizedRole && mode !== 'id') roles.add(normalizedRole);
+        return;
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+        if (mode === 'role') roles.add(normalizeRoleKey(String(value)));
+        else userIds.add(String(value));
+    }
+}
+
+function extractAudienceHints(raw: any, parsedData: any): { userIds: Set<string>; roles: Set<string> } {
+    const userIds = new Set<string>();
+    const roles = new Set<string>();
+
+    const idFields = [
+        raw.recipient_id, raw.recipient_user_id, raw.target_user_id, raw.to_user_id, raw.for_user_id,
+        raw.recipient_ids, raw.user_ids, raw.recipients,
+        parsedData?.recipient_id, parsedData?.recipient_user_id, parsedData?.target_user_id, parsedData?.to_user_id, parsedData?.for_user_id,
+        parsedData?.recipient_ids, parsedData?.user_ids, parsedData?.recipients,
+    ];
+    const roleFields = [
+        raw.recipient_role, raw.target_role, raw.audience_role, raw.recipient_roles, raw.target_roles, raw.audience_roles,
+        parsedData?.recipient_role, parsedData?.target_role, parsedData?.audience_role, parsedData?.recipient_roles, parsedData?.target_roles, parsedData?.audience_roles,
+    ];
+
+    idFields.forEach(value => collectExplicitAudience(value, userIds, roles, 'id'));
+    roleFields.forEach(value => collectExplicitAudience(value, userIds, roles, 'role'));
+
+    return { userIds, roles };
+}
+
 function buildNotificationTarget(entity: string, entityName?: string): string {
     const label = getEntityDisplayLabel(entity);
     const name = String(entityName || '').trim();
@@ -224,8 +685,8 @@ function resolveUser(userId: string): { id: string; name: string; role: string; 
         if (found) {
             return {
                 id: String(found.id),
-                name: found.name || found.username || 'User',
-                role: found.role || 'user',
+                name: getBestUserDisplayName(found, 'User'),
+                role: normalizeRoleKey(found.role || found.role_name || 'user'),
                 avatar: formatImageUrl(found.photo || (found as any).foto_profile) || undefined,
             };
         }
@@ -236,14 +697,124 @@ function resolveUser(userId: string): { id: string; name: string; role: string; 
         if (authStore.currentUser && String(authStore.currentUser.id) === String(userId)) {
             return {
                 id: String(authStore.currentUser.id),
-                name: authStore.currentUser.name || authStore.currentUser.username || 'Saya',
-                role: authStore.currentUser.role || 'user',
+                name: getBestUserDisplayName(authStore.currentUser, 'Saya'),
+                role: normalizeRoleKey(authStore.currentUser.role || 'user'),
                 avatar: authStore.currentUser.foto_profile ? formatImageUrl(authStore.currentUser.foto_profile) : undefined,
             };
         }
     } catch { /* store not ready */ }
 
     return null;
+}
+
+function resolveUserByName(name: string, options: { preferRequesterRoles?: boolean; companyName?: string } = {}): { id: string; name: string; role: string; avatar?: string } | null {
+    const rawLookup = normalizeIdentityToken(name);
+    const lookup = rawLookup.replace(/^user\s+/i, '').trim();
+    if (!lookup) return null;
+
+    try {
+        const usersStore = useUsersStore();
+        const isAllowedRole = (u: any): boolean => {
+            if (!options.preferRequesterRoles) return true;
+            return isRequesterRole(u.role || u.role_name || '');
+        };
+        let candidates = usersStore.allUsers.filter(isAllowedRole);
+        const companyLookup = normalizeIdentityToken(options.companyName);
+        if (companyLookup) {
+            try {
+                const stakeholdersStore = useStakeholdersStore();
+                const company = stakeholdersStore.allStakeholders.find((s: any) =>
+                    normalizeIdentityToken(s.nama_perusahaan || s.nama || s.name) === companyLookup
+                );
+                const companyId = normalizeIdentityToken(company?.id);
+                if (companyId) {
+                    const sameCompany = candidates.filter((u: any) => getUserCompanyToken(u) === companyId);
+                    if (sameCompany.length > 0) candidates = sameCompany;
+                }
+            } catch { /* stakeholder store not ready */ }
+        }
+        const found = candidates.find((u: any) =>
+            normalizeIdentityToken(u.name) === lookup
+            || normalizeIdentityToken(u.display_name) === lookup
+            || normalizeIdentityToken(u.username) === lookup
+            || normalizeIdentityToken(u.name) === rawLookup
+            || normalizeIdentityToken(u.display_name) === rawLookup
+            || normalizeIdentityToken(u.username) === rawLookup
+        );
+
+        if (found) {
+            return {
+                id: String(found.id),
+                name: getBestUserDisplayName(found, 'User'),
+                role: normalizeRoleKey(found.role || found.role_name || 'user'),
+                avatar: formatImageUrl(found.photo || (found as any).foto_profile) || undefined,
+            };
+        }
+
+        if (lookup.length === 1) {
+            const initialMatches = candidates.filter((u: any) => {
+                const role = normalizeRoleKey(u.role || u.role_name || '');
+                if (role === 'admin') return false;
+
+                return [u.display_name, u.name, u.username]
+                    .map(normalizeIdentityToken)
+                    .some(value => value.startsWith(lookup));
+            });
+
+            if (initialMatches.length === 1) {
+                const match = initialMatches[0] as any;
+                return {
+                    id: String(match.id),
+                    name: getBestUserDisplayName(match, 'User'),
+                    role: normalizeRoleKey(match.role || match.role_name || 'user'),
+                    avatar: formatImageUrl(match.photo || match.foto_profile) || undefined,
+                };
+            }
+        }
+    } catch { /* store not ready */ }
+
+    return null;
+}
+
+function resolveUserByCompanyName(companyName: string): { id: string; name: string; role: string; avatar?: string } | null {
+    const companyLookup = normalizeIdentityToken(companyName);
+    if (!companyLookup) return null;
+
+    try {
+        const stakeholdersStore = useStakeholdersStore();
+        const usersStore = useUsersStore();
+        const company = stakeholdersStore.allStakeholders.find((s: any) =>
+            normalizeIdentityToken(s.nama_perusahaan || s.nama || s.name) === companyLookup
+        );
+        const companyId = normalizeIdentityToken(company?.id);
+        if (!companyId) return null;
+
+        const candidates = usersStore.allUsers
+            .filter((u: any) => getUserCompanyToken(u) === companyId)
+            .sort((a: any, b: any) => {
+                const rank = (role?: string) => {
+                    const normalized = normalizeRoleKey(role);
+                    if (normalized === 'user_pic' || normalized === 'pic') return 0;
+                    if (normalized === 'user') return 1;
+                    if (normalized === 'staff') return 2;
+                    if (normalized === 'admin') return 3;
+                    return 4;
+                };
+                return rank(a.role || a.role_name) - rank(b.role || b.role_name);
+            });
+
+        const found = candidates[0] as any;
+        if (!found) return null;
+
+        return {
+            id: String(found.id),
+            name: getBestUserDisplayName(found, 'User'),
+            role: normalizeRoleKey(found.role || found.role_name || 'user'),
+            avatar: formatImageUrl(found.photo || found.foto_profile) || undefined,
+        };
+    } catch {
+        return null;
+    }
 }
 
 /** Get the current user's info from authStore */
@@ -253,13 +824,54 @@ function getCurrentUser(): { id: string; name: string; role: string; avatar?: st
         if (authStore.currentUser) {
             return {
                 id: String(authStore.currentUser.id),
-                name: authStore.currentUser.name || authStore.currentUser.username || 'Saya',
-                role: authStore.currentUser.role || 'user',
+                name: getBestUserDisplayName(authStore.currentUser, 'Saya'),
+                role: normalizeRoleKey(authStore.currentUser.role || 'user'),
                 avatar: authStore.currentUser.foto_profile ? formatImageUrl(authStore.currentUser.foto_profile) : undefined,
             };
         }
     } catch { /* ignore */ }
     return null;
+}
+
+function isNotificationVisibleForCurrentUser(event: ServerEvent, raw: any): boolean {
+    try {
+        const currentUser = getCurrentUser();
+        if (!currentUser) return true;
+
+        const currentUserId = String(currentUser.id || '').trim();
+        const currentUserName = normalizeIdentityToken(currentUser.name);
+        const currentUserRole = normalizeRoleKey(currentUser.role);
+        const currentUsername = normalizeIdentityToken(
+            useAuthStore().currentUser?.username || useAuthStore().currentUser?.slug || ''
+        );
+
+        const actorId = String(event.user?.id || '').trim();
+        const actorName = normalizeIdentityToken(event.user?.name);
+        const actorRole = normalizeRoleKey(event.user?.role);
+        const actorIsOtherAdmin = actorRole === 'admin';
+
+        if (currentUserId && actorId && actorId === currentUserId) return true;
+        if (currentUserName && actorName && (actorName === currentUserName || actorName === currentUsername)) return true;
+
+        const audience = extractAudienceHints(raw, raw?.data && typeof raw.data === 'object' ? raw.data : raw);
+        if (audience.userIds.size > 0 || audience.roles.size > 0) {
+            if (currentUserId && audience.userIds.has(currentUserId)) return true;
+            if (currentUserRole && audience.roles.has(currentUserRole)) return true;
+            return false;
+        }
+
+        if ((currentUserRole === 'admin' || currentUserRole === 'staff')) {
+            return !actorIsOtherAdmin;
+        }
+
+        if (currentUserRole === 'user' || currentUserRole === 'user_pic' || currentUserRole === 'pic') {
+            return !actorIsOtherAdmin;
+        }
+
+        return true;
+    } catch {
+        return true;
+    }
 }
 
 // ─── Normalizer ──────────────────────────────────────────────────────
@@ -324,18 +936,36 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
     else if (/updat|edit|modif|ubah|perbarui/i.test(hint)) type = 'updated';
 
     // ── User extraction ──
+    const requestTargetForActor = inferRequestEditTarget(rawMsg);
     let user = { id: '', name: '', role: '' } as { id: string; name: string; role: string; avatar?: string };
+    const isRequestEdit = isRequestEditEvent({
+        entity: raw.entity || parsedData?.entity || '',
+        message: rawMsg,
+        entity_name: raw.entity_name || parsedData?.entity_name || '',
+    });
+    const requestEditActorFromObject = isRequestEdit
+        ? extractRequestEditActorFromObject(raw) || extractRequestEditActorFromObject(parsedData)
+        : null;
 
-    if (raw.user && typeof raw.user === 'object') {
-        user.id = String(raw.user.id || raw.user.user_id || '');
-        user.name = raw.user.name || raw.user.username || raw.user.nama || '';
-        user.role = raw.user.role || raw.user.role_name || '';
+    const actorFromRaw = requestEditActorFromObject || extractActorFromObject(raw) || extractActorFromObject(parsedData);
+
+    if (actorFromRaw) {
+        user = actorFromRaw;
+    } else if (raw.user && typeof raw.user === 'object') {
+        user.id = String(raw.user.id || raw.user.user_id || raw.user.userId || raw.user.uuid || '');
+        user.name = getBestUserDisplayName(raw.user, '');
+        user.role = normalizeRoleKey(raw.user.role || raw.user.role_name || raw.user.jabatan || '');
         const av = raw.user.avatar || raw.user.photo || raw.user.foto_profile;
         if (av) user.avatar = formatImageUrl(av);
-    } else if (raw.actor_name || raw.user_name || raw.username) {
-        user.id = String(raw.user_id || raw.actor_id || '');
-        user.name = raw.actor_name || raw.user_name || raw.username || '';
-        user.role = raw.user_role || raw.actor_type || raw.role || '';
+    } else if (
+        raw.actor_name || raw.user_name || raw.username || raw.display_name || raw.causer_name ||
+        raw.created_by_name || raw.updated_by_name || raw.deleted_by_name || parsedData?.actor_name || parsedData?.user_name
+    ) {
+        user.id = String(raw.user_id || raw.actor_id || raw.causer_id || parsedData?.user_id || parsedData?.actor_id || parsedData?.causer_id || '');
+        user.name = raw.actor_display_name || raw.display_name || raw.actor_name || raw.user_display_name || raw.user_name || raw.username || raw.causer_name
+            || raw.created_by_name || raw.updated_by_name || raw.deleted_by_name
+            || parsedData?.actor_display_name || parsedData?.display_name || parsedData?.actor_name || parsedData?.user_display_name || parsedData?.user_name || parsedData?.username || '';
+        user.role = normalizeRoleKey(raw.user_role || raw.actor_role || raw.actor_type || raw.role || parsedData?.user_role || parsedData?.actor_role || parsedData?.role || '');
         const av = raw.avatar || raw.photo || raw.actor_avatar;
         if (av) user.avatar = formatImageUrl(av);
     }
@@ -345,27 +975,93 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
         const uid = raw.user_id || raw.userId || raw.userID
             || raw.actor_id || raw.actorId || raw.actorID
             || raw.causer_id || raw.causerId 
+            || raw.performed_by || raw.performedBy || raw.initiator_id || raw.initiatorId
             || raw.created_by || raw.updated_by || raw.deleted_by
             || parsedData?.user_id || parsedData?.userId || parsedData?.actor_id || parsedData?.causer_id
+            || parsedData?.performed_by || parsedData?.initiator_id
             || raw.by;
             
         if (uid) user.id = String(uid);
     }
 
     // Resolve user name from usersStore if we have an ID but no name
-    if (user.id && (!user.name || user.name === 'system' || user.name === 'System' || user.name === 'Sistem')) {
+    if (user.id && isPlaceholderName(user.name)) {
         const resolved = resolveUser(user.id);
         if (resolved) user = resolved;
     }
 
+    if (requestEditActorFromObject && isAdminActor(user)) {
+        user = {
+            ...user,
+            ...requestEditActorFromObject,
+            role: isRequesterRole(requestEditActorFromObject.role) ? requestEditActorFromObject.role : 'user_pic',
+        };
+    }
+
+    if (user.name && isPlaceholderRole(user.role)) {
+        const resolved = resolveUserByName(user.name);
+        if (resolved) user = resolved;
+    }
+
+    if (isPlaceholderName(user.name)) {
+        const actorFromMessage = extractActorFromMessage(rawMsg);
+        if (actorFromMessage) {
+            user.name = actorFromMessage.name;
+            user.role = actorFromMessage.role;
+        }
+    }
+
+    const requestActorFromMessage = extractActorFromMessage(rawMsg);
+    if (requestActorFromMessage && isRequestEdit) {
+        if (!isKnownAdminName(requestActorFromMessage.name)) {
+            const resolvedRequester = resolveUserByName(requestActorFromMessage.name, {
+                preferRequesterRoles: true,
+                companyName: getCompanyNameFromText(rawMsg) || requestTargetForActor?.name,
+            });
+            user.id = resolvedRequester?.id || '';
+            user.name = resolvedRequester?.name || requestActorFromMessage.name;
+            user.role = normalizeRoleKey(resolvedRequester?.role || requestActorFromMessage.role || 'user_pic');
+            if (resolvedRequester?.avatar) user.avatar = resolvedRequester.avatar;
+        }
+    }
+
+    if (isRequestEdit && (isAdminActor(user) || isKnownAdminName(user.name))) {
+        user = { id: '', name: '', role: 'user_pic' };
+    }
+
+    const respondentName = getRespondentNameFromText(rawMsg);
+    if (requestTargetForActor?.entity === 'ikas' || /\bIKAS\b|ikas_request/i.test(rawMsg)) {
+        if (
+            respondentName
+            && (
+                normalizeIdentityToken(user.name) === normalizeIdentityToken(respondentName)
+                || normalizeIdentityToken(user.name) === normalizeIdentityToken(`User ${respondentName}`)
+            )
+        ) {
+            const resolvedByCompany = resolveUserByCompanyName(getCompanyNameFromText(rawMsg) || requestTargetForActor?.name || '');
+            if (resolvedByCompany) {
+                user = resolvedByCompany;
+            } else {
+                user = { id: '', name: '', role: 'user_pic' };
+            }
+        } else if (isPlaceholderName(user.name)) {
+            const resolvedByCompany = resolveUserByCompanyName(getCompanyNameFromText(rawMsg) || requestTargetForActor?.name || '');
+            if (resolvedByCompany) user = resolvedByCompany;
+        }
+    }
+
     // Final fallback
-    if (!user.name || user.name === 'system' || user.name === 'System') {
+    if (isPlaceholderName(user.name) && !isRequestEdit) {
         const nameMatch = rawMsg.match(/^([A-Z][a-zA-Z\s]+?)\s+(memperbarui|menambahkan|menghapus|updated|created|deleted|mengubah)/);
         if (nameMatch) {
             user.name = nameMatch[1].trim();
         }
         // NOTE: Don't force "Sistem" here — the store will handle attribution for SSE events
     }
+
+    user.role = normalizeRoleKey(user.role);
+
+    const requestTarget = inferRequestEditTarget(rawMsg);
 
     // ── Entity ──
     let entity = normalizeEntityKey(
@@ -380,6 +1076,10 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
         || parsedData?.table
         || parsedData?.target
     );
+
+    if (requestTarget?.entity) {
+        entity = requestTarget.entity;
+    }
 
     if (entity === 'unknown' && rawMsg) {
         const entityMatch = rawMsg.match(/(pic|stakeholders?|users?|roles?|jabatan|csirts?|csirt|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)/i);
@@ -397,6 +1097,10 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
         || parsedData?.nama
         || ''
     );
+
+    if (requestTarget?.name) {
+        entityName = requestTarget.name;
+    }
 
     if (!entityName && rawMsg) {
         const nameExtracted = rawMsg.match(/(?:pic|stakeholders?|users?|roles?|jabatan|csirts?|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)\s+(?:baru\s+)?([a-zA-Z0-9_.\-\s]+?)\s+berhasil/i);
@@ -467,9 +1171,10 @@ function showBrowserNotification(event: ServerEvent): void {
     if (document.hasFocus()) return;
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
-        const verb = ACTION_VERBS[event.type] || event.type;
+        const verb = getActionVerbForEvent(event);
         const label = getEntityDisplayLabel(event.entity);
-        new Notification(`${event.user?.name || 'Sistem'} ${verb} ${label}`, {
+        const actor = isPlaceholderName(event.user?.name) ? inferFallbackActor(event).name : event.user.name;
+        new Notification(`${actor} ${verb} ${label}`, {
             body: event.entity_name ? `${event.entity_name} — ${event.message}` : event.message,
             icon: '/images/brand-logos/logoD4.svg',
             tag: event.id,
@@ -531,7 +1236,7 @@ export const useNotificationStore = defineStore('notifications', {
                 timeAgoStr: timeAgo(e.timestamp, state.currentTime),
                 isRead: !!e.is_read,
                 entityLabel: getEntityDisplayLabel(e.entity),
-                actionVerb: ACTION_VERBS[e.type] || e.type,
+                actionVerb: getActionVerbForEvent(e),
                 details: e.field_changes ? buildFieldChangeDetail(e.field_changes) : e.message,
                 avatarInitials: (e.user?.name || 'S')
                     .split(' ')
@@ -539,8 +1244,8 @@ export const useNotificationStore = defineStore('notifications', {
                     .join('')
                     .substring(0, 2)
                     .toUpperCase(),
-                actorName: e.user?.name || 'Sistem',
-                actorRole: isPlaceholderRole(e.user?.role) ? '' : (e.user?.role || ''),
+                actorName: isPlaceholderName(e.user?.name) ? inferFallbackActor(e).name : e.user.name,
+                actorRole: isPlaceholderRole(e.user?.role) ? '' : getRoleDisplayLabel(e.user?.role),
                 targetLabel: buildNotificationTarget(e.entity, e.entity_name),
             }));
         },
@@ -562,7 +1267,7 @@ export const useNotificationStore = defineStore('notifications', {
                 timeAgoStr: timeAgo(e.timestamp, now),
                 isRead: !!e.is_read,
                 entityLabel: getEntityDisplayLabel(e.entity),
-                actionVerb: ACTION_VERBS[e.type] || e.type,
+                actionVerb: getActionVerbForEvent(e),
                 details: e.field_changes ? buildFieldChangeDetail(e.field_changes) : e.message,
                 avatarInitials: (e.user?.name || 'S')
                     .split(' ')
@@ -570,8 +1275,8 @@ export const useNotificationStore = defineStore('notifications', {
                     .join('')
                     .substring(0, 2)
                     .toUpperCase(),
-                actorName: e.user?.name || 'Sistem',
-                actorRole: isPlaceholderRole(e.user?.role) ? '' : (e.user?.role || ''),
+                actorName: isPlaceholderName(e.user?.name) ? inferFallbackActor(e).name : e.user.name,
+                actorRole: isPlaceholderRole(e.user?.role) ? '' : getRoleDisplayLabel(e.user?.role),
                 targetLabel: buildNotificationTarget(e.entity, e.entity_name),
             }));
         },
@@ -602,6 +1307,19 @@ export const useNotificationStore = defineStore('notifications', {
 
             this.initialized = true;
             this.loading = true;
+
+            try {
+                const usersStore = useUsersStore();
+                if (!usersStore.initialized && !usersStore.loading) {
+                    await usersStore.initialize();
+                }
+                const stakeholdersStore = useStakeholdersStore();
+                if (!stakeholdersStore.initialized && !stakeholdersStore.loading) {
+                    await stakeholdersStore.initialize();
+                }
+            } catch {
+                // Best-effort only; notifications still load if identity caches are unavailable.
+            }
 
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
@@ -669,24 +1387,29 @@ export const useNotificationStore = defineStore('notifications', {
                 }
 
                 const normalized = notifications
-                    .map(raw => normalizeToServerEvent(raw))
+                    .map(raw => {
+                        const event = normalizeToServerEvent(raw);
+                        return event && isNotificationVisibleForCurrentUser(event, raw) ? event : null;
+                    })
                     .filter((e): e is ServerEvent => e !== null);
+                const deduped = dedupeEvents(normalized);
 
                 // Ensure all DB notifications have proper user attribution
-                for (const evt of normalized) {
-                    if (!evt.user.name || evt.user.name === 'Sistem') {
+                for (const evt of deduped) {
+                    if (isPlaceholderName(evt.user.name)) {
                         if (evt.user.id) {
                             const resolved = resolveUser(evt.user.id);
                             if (resolved) evt.user = resolved;
                         }
                     }
+                    ensureReadableActor(evt);
                 }
 
-                normalized.sort((a, b) =>
+                deduped.sort((a, b) =>
                     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
                 );
 
-                this.events = normalized.slice(0, MAX_EVENTS);
+                this.events = deduped.slice(0, MAX_EVENTS);
                 this.backendUnreadCount = unread_count;
                 this.pendingSSEIds.clear();
                 return true;
@@ -715,32 +1438,37 @@ export const useNotificationStore = defineStore('notifications', {
                 }
 
                 const normalized = notifications
-                    .map(raw => normalizeToServerEvent(raw))
+                    .map(raw => {
+                        const event = normalizeToServerEvent(raw);
+                        return event && isNotificationVisibleForCurrentUser(event, raw) ? event : null;
+                    })
                     .filter((e): e is ServerEvent => e !== null);
+                const deduped = dedupeEvents(normalized);
 
                 // Resolve user names for DB records
-                for (const evt of normalized) {
-                    if (!evt.user.name || evt.user.name === 'Test') {
+                for (const evt of deduped) {
+                    if (isPlaceholderName(evt.user.name) || evt.user.name === 'Test') {
                         if (evt.user.id) {
                             const resolved = resolveUser(evt.user.id);
                             if (resolved) evt.user = resolved;
                         }
                     }
+                    ensureReadableActor(evt);
                 }
 
-                const dbIdSet = new Set(normalized.map(n => n.id));
+                const dbIdSet = new Set(deduped.map(n => n.id));
                 const localIdSet = new Set(this.events.map(e => e.id));
 
                 // ADD new DB items
                 const newFromDb: ServerEvent[] = [];
-                for (const dbEvt of normalized) {
-                    if (!localIdSet.has(dbEvt.id)) {
+                for (const dbEvt of deduped) {
+                    if (!localIdSet.has(dbEvt.id) && !this.events.some(local => areSameNotification(local, dbEvt))) {
                         newFromDb.push(dbEvt);
                     }
                 }
 
                 // UPDATE read states + user info of existing items
-                for (const dbEvt of normalized) {
+                for (const dbEvt of deduped) {
                     const local = this.events.find(e => e.id === dbEvt.id);
                     if (local) {
                         // Optimistic UI: If locally marked as read, keep it read 
@@ -751,9 +1479,9 @@ export const useNotificationStore = defineStore('notifications', {
                             local.is_read = dbEvt.is_read;
                         }
                         
-                        if (local.user.name === 'Sistem' && dbEvt.user.name !== 'Sistem') {
-                            local.user = dbEvt.user;
-                        }
+                if (isPlaceholderName(local.user.name) && !isPlaceholderName(dbEvt.user.name)) {
+                    local.user = dbEvt.user;
+                }
                     }
                 }
 
@@ -763,12 +1491,7 @@ export const useNotificationStore = defineStore('notifications', {
                     const sseEvt = this.events.find(e => e.id === sseId);
                     if (!sseEvt) continue;
 
-                    const dbMatch = normalized.find(db =>
-                        db.entity === sseEvt.entity &&
-                        db.entity_id === sseEvt.entity_id &&
-                        db.type === sseEvt.type &&
-                        Math.abs(new Date(db.timestamp).getTime() - new Date(sseEvt.timestamp).getTime()) < 30000
-                    );
+                    const dbMatch = deduped.find(db => areSameNotification(db, sseEvt));
 
                     if (dbMatch && !localIdSet.has(dbMatch.id)) {
                         // Replace SSE event with the DB version (has real UUID)
@@ -807,6 +1530,7 @@ export const useNotificationStore = defineStore('notifications', {
                 }
 
                 // Re-sort and trim
+                this.events = dedupeEvents(this.events);
                 this.events.sort((a, b) =>
                     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
                 );
@@ -832,10 +1556,21 @@ export const useNotificationStore = defineStore('notifications', {
         handleSSEEvent(raw: any) {
             const event = normalizeToServerEvent(raw);
             if (!event) return;
+            const actorFromMessage = extractActorFromMessage(event.message);
+            if (actorFromMessage) {
+                const resolvedRequester = resolveUserByName(actorFromMessage.name, { preferRequesterRoles: true });
+                event.user = {
+                    ...event.user,
+                    id: resolvedRequester?.id || '',
+                    name: resolvedRequester?.name || actorFromMessage.name,
+                    role: normalizeRoleKey(resolvedRequester?.role || actorFromMessage.role || 'user_pic'),
+                    avatar: resolvedRequester?.avatar,
+                };
+            }
 
             // ── USER ATTRIBUTION ──
             // If SSE arrived without user info, try to attribute it
-            if (!event.user.name || event.user.name === 'Sistem' || event.user.name === 'system') {
+            if (isPlaceholderName(event.user.name) && !extractActorFromMessage(event.message)) {
                 const now = Date.now();
 
                 // 1. Check tracked actions — did the current user just do this?
@@ -873,25 +1608,18 @@ export const useNotificationStore = defineStore('notifications', {
             }
 
             // If still no name, set fallback
-            if (!event.user.name) {
-                event.user.name = 'Sistem';
-                event.user.role = event.user.role || 'system';
-            }
+            ensureReadableActor(event);
 
+            if (!isNotificationVisibleForCurrentUser(event, raw)) return;
 
             // ── DEDUPLICATION ──
-            const isDup = this.events.some(e =>
-                e.id === event.id ||
-                (e.entity === event.entity && e.entity_id === event.entity_id &&
-                 e.type === event.type && Math.abs(new Date(e.timestamp).getTime() - new Date(event.timestamp).getTime()) < 5000)
-            );
+            const isDup = this.events.some(e => areSameNotification(e, event));
 
             if (isDup) {
-                const existing = this.events.find(e =>
-                    e.id === event.id ||
-                    (e.entity === event.entity && e.entity_id === event.entity_id && e.type === event.type)
-                );
-                if (existing && existing.user.name === 'Sistem' && event.user.name !== 'Sistem') {
+                const existing = this.events.find(e => areSameNotification(e, event));
+                if (existing && isGenericIkasRequestEvent(existing) && isDetailedIkasRequestEvent(event)) {
+                    Object.assign(existing, event);
+                } else if (existing && isPlaceholderName(existing.user.name) && !isPlaceholderName(event.user.name)) {
                     existing.user = event.user;
                 }
                 return;
