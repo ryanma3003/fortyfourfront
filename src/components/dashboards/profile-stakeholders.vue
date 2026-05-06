@@ -64,6 +64,9 @@ const isSavingAktivitas = ref(false);
 const isActivityFormVisible = ref(false);
 const isProfileDarkMode = ref(false);
 const editingAktivitasId = ref<number | null>(null);
+const auditLogPage = ref(1);
+const auditLogPageSize = ref(5);
+const ikasAuditRecordMap = ref<Record<string, any>>({});
 const aktivitasForm = ref<AktivitasPayload>({
   judul: "",
   deskripsi: "",
@@ -213,12 +216,45 @@ const displayedIkasAuditLogs = computed(() => {
   });
 });
 
+const auditLogTotalPages = computed(() => {
+  return Math.max(1, Math.ceil(displayedIkasAuditLogs.value.length / auditLogPageSize.value));
+});
+
+const paginatedIkasAuditLogs = computed(() => {
+  const page = Math.min(auditLogPage.value, auditLogTotalPages.value);
+  const start = (page - 1) * auditLogPageSize.value;
+  return displayedIkasAuditLogs.value.slice(start, start + auditLogPageSize.value);
+});
+
+const auditLogPageStart = computed(() => {
+  if (!displayedIkasAuditLogs.value.length) return 0;
+  return (Math.min(auditLogPage.value, auditLogTotalPages.value) - 1) * auditLogPageSize.value + 1;
+});
+
+const auditLogPageEnd = computed(() => {
+  return Math.min(auditLogPageStart.value + auditLogPageSize.value - 1, displayedIkasAuditLogs.value.length);
+});
+
+const changeAuditLogPage = (page: number) => {
+  auditLogPage.value = Math.min(Math.max(1, page), auditLogTotalPages.value);
+};
+
+const auditLogPageNumbers = computed(() => {
+  const total = auditLogTotalPages.value;
+  const current = Math.min(auditLogPage.value, total);
+  const start = Math.max(1, current - 1);
+  const end = Math.min(total, start + 2);
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+});
+
 const getAuditLogTitle = (item: IkasAuditLog): string => {
-  return item.title || item.judul || item.action || item.aksi || item.event || "Aktivitas IKAS";
+  return item.title || item.judul || `IKAS ${getAuditLogActionLabel(item)}`;
 };
 
 const getAuditLogDescription = (item: IkasAuditLog): string => {
-  return item.description || item.deskripsi || item.note || item.catatan || "Tidak ada keterangan tambahan.";
+  const description = item.description || item.deskripsi || item.note || item.catatan;
+  if (description) return description;
+  return "Log perubahan IKAS berhasil dicatat.";
 };
 
 const getAuditLogActor = (item: IkasAuditLog): string => {
@@ -229,6 +265,144 @@ const getAuditLogActor = (item: IkasAuditLog): string => {
   return item.actor || item.created_by || "Sistem";
 };
 
+const getAuditLogActionLabel = (item: IkasAuditLog): string => {
+  const action = String(item.action || item.aksi || item.event || item.status || "log").trim();
+  const labels: Record<string, string> = {
+    create: "Dibuat",
+    created: "Dibuat",
+    insert: "Dibuat",
+    update: "Diupdate",
+    updated: "Diupdate",
+    put: "Diupdate",
+    delete: "Dihapus",
+    deleted: "Dihapus",
+    validate: "Divalidasi",
+    approved: "Disetujui",
+    rejected: "Ditolak",
+    "request-edit": "Request Edit",
+    request_edit: "Request Edit",
+  };
+  return labels[action.toLowerCase()] || prettifyAuditKey(action);
+};
+
+const getAuditLogRespondent = (item: IkasAuditLog): string => {
+  const direct = (item as any).responden || (item as any).respondent || (item as any).nama_responden;
+  if (direct) return String(direct);
+
+  const ikas = (item as any).ikas || (item as any).assessment || {};
+  if (ikas?.responden || ikas?.respondent || ikas?.nama_responden) {
+    return String(ikas.responden || ikas.respondent || ikas.nama_responden);
+  }
+
+  const record = ikasAuditRecordMap.value[getAuditLogIkasId(item)] || {};
+  return String(record.responden || record.respondent || record.nama_responden || "Responden belum tersedia");
+};
+
+const prettifyAuditKey = (key: string): string => {
+  const normalized = String(key || "")
+    .replace(/^pertanyaan_/, "pertanyaan ")
+    .replace(/^jawaban_/, "jawaban ")
+    .replace(/_id$/i, "")
+    .replace(/_/g, " ")
+    .trim();
+
+  const labels: Record<string, string> = {
+    action: "Aksi",
+    changes: "Perubahan",
+    jawaban: "Jawaban",
+    pertanyaan: "Pertanyaan",
+    created_at: "Tanggal dibuat",
+    updated_at: "Tanggal update",
+    responden: "Responden",
+    user: "User",
+    status: "Status",
+    pertanyaan_identifikasi_id: "Pertanyaan Identifikasi",
+    pertanyaan_proteksi_id: "Pertanyaan Proteksi",
+    pertanyaan_deteksi_id: "Pertanyaan Deteksi",
+    pertanyaan_gulih_id: "Pertanyaan Gulih",
+    jawaban_identifikasi: "Jawaban Identifikasi",
+    jawaban_proteksi: "Jawaban Proteksi",
+    jawaban_deteksi: "Jawaban Deteksi",
+    jawaban_gulih: "Jawaban Gulih",
+  };
+
+  return labels[key] || normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatAuditValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Ya" : "Tidak";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    const parsedDate = parseActivityDate(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(value) && parsedDate) {
+      return formatAuditLogDate(value);
+    }
+    return value;
+  }
+  return JSON.stringify(value);
+};
+
+const formatAuditChangeLine = (key: string, oldValue: unknown, newValue: unknown): string => {
+  const lowerKey = key.toLowerCase();
+  const label = prettifyAuditKey(key);
+  const isQuestionPointer = lowerKey.startsWith("pertanyaan_") && lowerKey.endsWith("_id");
+  const isSingleValue = oldValue === undefined && newValue !== undefined;
+
+  if (isQuestionPointer) {
+    return `${label}: index ${formatAuditValue(newValue ?? oldValue)}`;
+  }
+
+  if (isSingleValue) {
+    return `${label}: ${formatAuditValue(newValue)}`;
+  }
+
+  return `${label}: ${formatAuditValue(oldValue)} -> ${formatAuditValue(newValue)}`;
+};
+
+const getAuditLogChangeLines = (item: IkasAuditLog): string[] => {
+  const rawChanges = item.changes;
+  if (!rawChanges) return [];
+
+  let changes: any = rawChanges;
+  if (typeof rawChanges === "string") {
+    try {
+      changes = JSON.parse(rawChanges);
+    } catch {
+      return [rawChanges];
+    }
+  }
+
+  if (Array.isArray(changes)) {
+    return changes.map((change, index) => {
+      if (typeof change !== "object" || change === null) {
+        return formatAuditValue(change);
+      }
+      const key = change.field || change.key || change.column || `Perubahan ${index + 1}`;
+      const oldValue = change.old ?? change.before ?? change.from;
+      const newValue = change.new ?? change.after ?? change.to ?? change.value;
+      return formatAuditChangeLine(String(key), oldValue, newValue);
+    });
+  }
+
+  if (typeof changes === "object") {
+    return Object.entries(changes)
+      .filter(([key]) => !["id", "ikas_id", "id_ikas", "user_id", "created_by"].includes(key))
+      .map(([key, value]: [string, any]) => {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          const oldValue = value.old ?? value.before ?? value.from;
+          const newValue = value.new ?? value.after ?? value.to ?? value.value;
+          if (oldValue !== undefined || newValue !== undefined) {
+            return formatAuditChangeLine(key, oldValue, newValue);
+          }
+        }
+        return formatAuditChangeLine(key, undefined, value);
+      });
+  }
+
+  return [formatAuditValue(changes)];
+};
+
 const normalizeIkasAuditLogs = (response: any): IkasAuditLog[] => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.data)) return response.data;
@@ -237,28 +411,81 @@ const normalizeIkasAuditLogs = (response: any): IkasAuditLog[] => {
   return [];
 };
 
-const resolveCurrentIkasId = async (
+const getAuditLogTotalPages = (response: any): number => {
+  const raw = response?.pagination?.total_pages || response?.data?.pagination?.total_pages || 1;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
+
+const fetchAllIkasAuditLogs = async (ikasId: string): Promise<IkasAuditLog[]> => {
+  const limit = 100;
+  const firstResponse = await ikasService.getIkasAuditLogs(ikasId, { page: 1, limit });
+  const totalPages = getAuditLogTotalPages(firstResponse);
+  const restResponses = totalPages > 1
+    ? await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        ikasService.getIkasAuditLogs(ikasId, { page: index + 2, limit }).catch(() => null)
+      )
+    )
+    : [];
+
+  return [firstResponse, ...restResponses].flatMap((response) => normalizeIkasAuditLogs(response));
+};
+
+const getAuditLogIkasId = (item: IkasAuditLog): string => {
+  return String(item.ikas_id || item.id_ikas || "");
+};
+
+const getAuditLogPerusahaanId = (item: IkasAuditLog): string => {
+  return String(item.perusahaan_id || item.id_perusahaan || "");
+};
+
+const dedupeIkasAuditLogs = (logs: IkasAuditLog[]): IkasAuditLog[] => {
+  const seen = new Set<string>();
+  return logs.filter((item, index) => {
+    const key = String(item.id || `${getAuditLogIkasId(item)}-${item.action || item.aksi || item.event || "log"}-${item.created_at || item.updated_at || index}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const recordBelongsToStakeholder = (record: any, stakeholder: Stakeholder): boolean => {
+  const company = record?.perusahaan || {};
+  return (
+    String(record?.id_perusahaan || company?.id || "") === String(stakeholder.id) ||
+    String(record?.perusahaan_id || "") === String(stakeholder.id) ||
+    String(record?.slug || "") === String(stakeholder.slug || "") ||
+    String(company?.slug || "") === String(stakeholder.slug || "")
+  );
+};
+
+const resolveCurrentIkasRecords = async (
   stakeholder = currentStakeholder.value,
   slug = stakeholderSlug.value
-): Promise<string | null> => {
-  if (!stakeholder?.id || !slug) return null;
-
-  const cachedId =
-    ikasStore.getIkasSummary(slug)?.id ||
-    ikasStore.backendIkasIds[slug] ||
-    ikasStore.findLatestIkasRecord(ikasStore.ikasRawRecords, String(stakeholder.id))?.id;
-
-  if (cachedId) return String(cachedId);
-
+): Promise<any[]> => {
+  if (!stakeholder?.id || !slug) return [];
   const response = await ikasService.getIkasByPerusahaan(String(stakeholder.id));
-  const matchedRecord = ikasStore.findLatestIkasRecord(
-    ikasStore.normalizeIkasRecords(response),
-    String(stakeholder.id)
-  );
+  const freshRecords = ikasStore.normalizeIkasRecords(response)
+    .filter((record) => recordBelongsToStakeholder(record, stakeholder));
+  const cachedRecords = ikasStore.ikasRawRecords
+    .filter((record) => recordBelongsToStakeholder(record, stakeholder));
+  const recordsById = new Map<string, any>();
 
-  if (!matchedRecord?.id) return null;
-  ikasStore.upsertSummaryRecord(matchedRecord);
-  return String(matchedRecord.id);
+  [...freshRecords, ...cachedRecords].forEach((record) => {
+    const id = String(record?.id || "");
+    if (id) recordsById.set(id, record);
+  });
+
+  const records = Array.from(recordsById.values())
+    .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
+
+  ikasAuditRecordMap.value = records.reduce((result, record) => {
+    if (record?.id) result[String(record.id)] = record;
+    return result;
+  }, {} as Record<string, any>);
+  records.forEach((record) => ikasStore.upsertSummaryRecord(record));
+  return records;
 };
 
 const resetAktivitasForm = () => {
@@ -318,14 +545,32 @@ const loadIkasAuditLogs = async (
   }
   if (manageLoading) isLoadingIkasAuditLogs.value = true;
   try {
-    const ikasId = await resolveCurrentIkasId(stakeholder, requestSlug);
-    if (!ikasId) {
+    auditLogPage.value = 1;
+    const ikasRecords = await resolveCurrentIkasRecords(stakeholder, requestSlug);
+    const ikasIds = ikasRecords.map((record) => String(record?.id || "")).filter(Boolean);
+
+    if (!ikasIds.length) {
       if (isLatestProfileLoad(token, requestSlug)) ikasAuditLogs.value = [];
       return;
     }
-    const response = await ikasService.getIkasAuditLogs(ikasId);
+
+    const perRecordLogs = (await Promise.all(
+      ikasIds.map((ikasId) => fetchAllIkasAuditLogs(ikasId).catch(() => []))
+    )).flat();
+    const logs = dedupeIkasAuditLogs(
+      perRecordLogs.filter((log) => {
+        const logIkasId = getAuditLogIkasId(log);
+        const logPerusahaanId = getAuditLogPerusahaanId(log);
+        return (
+          !logIkasId ||
+          ikasIds.includes(logIkasId) ||
+          (!!logPerusahaanId && String(logPerusahaanId) === String(stakeholder.id))
+        );
+      })
+    );
+
     if (isLatestProfileLoad(token, requestSlug)) {
-      ikasAuditLogs.value = normalizeIkasAuditLogs(response);
+      ikasAuditLogs.value = logs;
     }
   } catch {
     if (isLatestProfileLoad(token, requestSlug)) ikasAuditLogs.value = [];
@@ -1464,28 +1709,11 @@ const profileCompletion = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  max-height: calc((96px * 5) + (0.85rem * 4));
-  overflow-y: auto;
-  padding-right: 0.25rem;
-}
-.ikas-audit-log-list::-webkit-scrollbar {
-  width: 6px;
-}
-.ikas-audit-log-list::-webkit-scrollbar-track {
-  background: #eef4fb;
-  border-radius: 999px;
-}
-.ikas-audit-log-list::-webkit-scrollbar-thumb {
-  background: #b8c7da;
-  border-radius: 999px;
-}
-.ikas-audit-log-list::-webkit-scrollbar-thumb:hover {
-  background: #94a8c1;
 }
 .ikas-audit-log-item {
   display: flex;
   gap: 0.8rem;
-  min-height: 96px;
+  min-height: 112px;
   padding: 0.9rem;
   border: 1px solid #e5edf7;
   border-radius: 12px;
@@ -1545,10 +1773,28 @@ const profileCompletion = computed(() => {
   color: #64748b;
   font-size: 12.5px;
   line-height: 1.6;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.ikas-audit-log-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+.ikas-audit-log-changes span {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 0.25rem 0.55rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+  word-break: break-word;
 }
 .ikas-audit-log-meta {
   display: flex;
@@ -1564,6 +1810,33 @@ const profileCompletion = computed(() => {
   align-items: center;
   gap: 0.3rem;
   min-width: 0;
+}
+.ikas-audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid #edf2f7;
+}
+.ikas-audit-pagination-info {
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.ikas-audit-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ikas-audit-pagination-controls .btn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 850;
+  padding: 0.25rem 0.55rem;
 }
 
 .pic-count-badge {
@@ -2758,9 +3031,20 @@ const profileCompletion = computed(() => {
 :global(html.dark) .profile-stakeholder-page .ikas-audit-log-meta,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-content p,
 :global(html.dark) .profile-stakeholder-page .ikas-audit-log-content p,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-pagination-info,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-pagination-info,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card small,
 :global(html.dark) .profile-stakeholder-page .profile-action-card small {
   color: #94a3b8 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-changes span,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-log-changes span,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-pagination,
+:global(html.dark) .profile-stakeholder-page .ikas-audit-pagination {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
 }
 
 :global(html[data-theme-mode="dark"]) .contact-bar-sep,
@@ -2926,8 +3210,16 @@ const profileCompletion = computed(() => {
 .profile-stakeholder-page.is-dark .activity-date,
 .profile-stakeholder-page.is-dark .ikas-audit-log-meta,
 .profile-stakeholder-page.is-dark .ikas-audit-log-content p,
+.profile-stakeholder-page.is-dark .ikas-audit-pagination-info,
 .profile-stakeholder-page.is-dark .profile-action-card small {
   color: #94a3b8 !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-audit-log-changes span,
+.profile-stakeholder-page.is-dark .ikas-audit-pagination {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
 }
 
 .profile-stakeholder-page.is-dark .activity-year-chip,
@@ -3360,10 +3652,11 @@ const profileCompletion = computed(() => {
                               <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 340px;">Belum ada riwayat perubahan IKAS untuk stakeholder ini.</p>
                             </div>
 
-                            <div v-else class="ikas-audit-log-list">
+                            <div v-else>
+                              <div class="ikas-audit-log-list">
                               <div
-                                v-for="log in displayedIkasAuditLogs"
-                                :key="log.id"
+                                v-for="log in paginatedIkasAuditLogs"
+                                :key="log.id || `${getAuditLogIkasId(log)}-${log.created_at || log.updated_at}`"
                                 class="ikas-audit-log-item"
                               >
                                 <div class="ikas-audit-log-icon">
@@ -3372,13 +3665,57 @@ const profileCompletion = computed(() => {
                                 <div class="ikas-audit-log-content">
                                   <div class="ikas-audit-log-top">
                                     <h6>{{ getAuditLogTitle(log) }}</h6>
-                                    <span class="ikas-audit-log-status">{{ log.status || log.action || log.aksi || 'Log' }}</span>
+                                    <span class="ikas-audit-log-status">{{ getAuditLogActionLabel(log) }}</span>
                                   </div>
                                   <p>{{ getAuditLogDescription(log) }}</p>
+                                  <div v-if="getAuditLogChangeLines(log).length" class="ikas-audit-log-changes">
+                                    <span
+                                      v-for="line in getAuditLogChangeLines(log)"
+                                      :key="`${log.id || getAuditLogIkasId(log)}-${line}`"
+                                    >
+                                      {{ line }}
+                                    </span>
+                                  </div>
                                   <div class="ikas-audit-log-meta">
+                                    <span><i class="ri-file-user-line"></i>{{ getAuditLogRespondent(log) }}</span>
                                     <span><i class="ri-user-line"></i>{{ getAuditLogActor(log) }}</span>
                                     <span><i class="ri-time-line"></i>{{ formatAuditLogDate(log.created_at || log.updated_at) }}</span>
                                   </div>
+                                </div>
+                              </div>
+                              </div>
+
+                              <div v-if="auditLogTotalPages > 1" class="ikas-audit-pagination">
+                                <div class="ikas-audit-pagination-info">
+                                  {{ auditLogPageStart }}-{{ auditLogPageEnd }} dari {{ displayedIkasAuditLogs.length }} log
+                                </div>
+                                <div class="ikas-audit-pagination-controls">
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-icon btn-light"
+                                    :disabled="auditLogPage <= 1"
+                                    @click="changeAuditLogPage(auditLogPage - 1)"
+                                  >
+                                    <i class="ri-arrow-left-s-line"></i>
+                                  </button>
+                                  <button
+                                    v-for="page in auditLogPageNumbers"
+                                    :key="`audit-page-${page}`"
+                                    type="button"
+                                    class="btn btn-sm"
+                                    :class="page === auditLogPage ? 'btn-primary' : 'btn-light'"
+                                    @click="changeAuditLogPage(page)"
+                                  >
+                                    {{ page }}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-icon btn-light"
+                                    :disabled="auditLogPage >= auditLogTotalPages"
+                                    @click="changeAuditLogPage(auditLogPage + 1)"
+                                  >
+                                    <i class="ri-arrow-right-s-line"></i>
+                                  </button>
                                 </div>
                               </div>
                             </div>
