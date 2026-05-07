@@ -7,6 +7,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useUsersStore } from "../../stores/users";
 import { useRouter } from "vue-router";
 import type { Berita } from "../../types/berita.types";
+import { richTextToPlainText } from "../../utils/richText";
 
 export default {
   components: { Pageheader },
@@ -53,24 +54,8 @@ export default {
       setTimeout(() => (showToast.value = false), 3000);
     };
 
-    const decodeHtmlEntities = (value: string) => {
-      if (typeof document === "undefined") return value;
-      let decoded = value;
-      for (let i = 0; i < 2; i += 1) {
-        const textarea = document.createElement("textarea");
-        textarea.innerHTML = decoded;
-        const next = textarea.value;
-        if (next === decoded) break;
-        decoded = next;
-      }
-      return decoded;
-    };
-
     const stripHtml = (value: string) => {
-      return decodeHtmlEntities(value)
-        .replace(/<[^>]*>/g, "")
-        .replace(/&nbsp;/g, " ")
-        .trim();
+      return richTextToPlainText(value);
     };
 
     const runEntranceAnimations = () => {

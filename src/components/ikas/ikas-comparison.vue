@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
+import gsap from 'gsap';
 import { ikasService } from '../../services/ikas.service';
 
 const props = defineProps({
@@ -27,6 +28,47 @@ const comparisonPickerOpen = ref(false);
 const allIkasRecords = ref([]);
 const loading = ref(false);
 const error = ref('');
+const comparisonRoot = ref(null);
+let comparisonAnimationCtx = null;
+
+const animateComparison = async (quick = false) => {
+  await nextTick();
+  const root = comparisonRoot.value;
+  if (!root || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  comparisonAnimationCtx?.revert();
+  comparisonAnimationCtx = gsap.context(() => {
+    const elements = gsap.utils.toArray('.comparison-animate, .total-bar-row, .domain-comparison-card');
+    const fills = gsap.utils.toArray('.total-bar-fill, .domain-bar-fill');
+
+    gsap.fromTo(
+      elements,
+      { y: quick ? 8 : 14, opacity: 0, scale: 0.99 },
+      {
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        duration: quick ? 0.34 : 0.52,
+        stagger: quick ? 0.025 : 0.045,
+        ease: 'power3.out',
+        overwrite: 'auto',
+      },
+    );
+
+    gsap.fromTo(
+      fills,
+      { scaleX: 0, transformOrigin: 'left center' },
+      {
+        scaleX: 1,
+        duration: quick ? 0.45 : 0.68,
+        stagger: 0.018,
+        ease: 'power3.out',
+        overwrite: 'auto',
+        delay: quick ? 0.06 : 0.12,
+      },
+    );
+  }, root);
+};
 
 // Color palette for year bars
 const yearColors = [
@@ -381,16 +423,18 @@ const fetchAllRecords = async () => {
     selectedYears.value = [];
   } finally {
     loading.value = false;
+    await animateComparison(true);
   }
 };
 
-onMounted(() => {
-  fetchAllRecords();
+onMounted(async () => {
+  await fetchAllRecords();
   window.addEventListener('ikas-requests-updated', fetchAllRecords);
 });
 
 onUnmounted(() => {
   window.removeEventListener('ikas-requests-updated', fetchAllRecords);
+  comparisonAnimationCtx?.revert();
 });
 
 watch(() => props.perusahaanId, () => {
@@ -421,9 +465,9 @@ watch(availableYears, (years) => {
 </script>
 
 <template>
-  <div class="ikas-comparison-section">
+  <div ref="comparisonRoot" class="ikas-comparison-section">
     <!-- Year Selector Pill Bar -->
-    <div class="year-selector-bar">
+    <div class="year-selector-bar comparison-animate">
       <div class="year-selector-label">
         <i class="ri-calendar-line"></i>
         <span>TAHUN DATA</span>
@@ -444,7 +488,7 @@ watch(availableYears, (years) => {
     </div>
 
     <!-- Comparison Card -->
-    <div class="comparison-card">
+    <div class="comparison-card comparison-animate">
       <!-- Header -->
       <div class="comparison-header">
         <div class="comparison-header-inner">
@@ -665,11 +709,12 @@ watch(availableYears, (years) => {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: linear-gradient(135deg, #f0f4ff 0%, #f8faff 50%, #f0f7ff 100%);
-  border: 1px solid #dbeafe;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+  border: 1px solid #d7e6f7;
   border-radius: 16px;
-  padding: 12px 20px;
-  margin-bottom: 20px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+  padding: 12px 16px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
@@ -702,8 +747,8 @@ watch(availableYears, (years) => {
   gap: 6px;
   padding: 8px 18px;
   border-radius: 50px;
-  border: 1.5px solid #cbd5e1;
-  background: #fff;
+  border: 1px solid #d8e2ef;
+  background: rgba(255, 255, 255, 0.92);
   color: #475569;
   font-size: 14px;
   font-weight: 700;
@@ -756,16 +801,16 @@ watch(availableYears, (years) => {
 
 /* ── Comparison Card ───────────────────────────────────── */
 .comparison-card {
-  border-radius: 16px;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 12px 50px rgba(99, 51, 228, 0.08), 0 4px 16px rgba(37, 99, 235, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.07), 0 4px 16px rgba(37, 99, 235, 0.05);
   background: #fff;
-  border: 1px solid #e8eef6;
+  border: 1px solid #e1eaf5;
 }
 
 /* ── Header ────────────────────────────────────────────── */
 .comparison-header {
-  background: #fff;
+  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
   padding: 1.25rem 1.5rem;
   display: flex;
   align-items: center;
@@ -784,8 +829,8 @@ watch(availableYears, (years) => {
 .comparison-header-icon {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
-  background: #3b82f6; /* blue avatar */
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25), 0 2px 4px rgba(59, 130, 246, 0.15);
   display: flex;
   align-items: center;
@@ -800,7 +845,7 @@ watch(availableYears, (years) => {
 
 .comparison-header-title {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 850;
   color: #1e293b;
   line-height: 1.2;
 }
@@ -810,6 +855,53 @@ watch(availableYears, (years) => {
   font-weight: 500;
   color: #94a3b8;
   margin-top: 4px;
+}
+
+[data-theme-mode="dark"] .year-selector-bar,
+[data-theme-mode="dark"] .comparison-card {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme-mode="dark"] .comparison-header,
+[data-theme-mode="dark"] .comparison-picker-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.96));
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+[data-theme-mode="dark"] .comparison-header-title,
+[data-theme-mode="dark"] .comparison-picker-copy strong,
+[data-theme-mode="dark"] .total-comparison-label,
+[data-theme-mode="dark"] .domain-comp-name,
+[data-theme-mode="dark"] .trend-chart-title,
+[data-theme-mode="dark"] .comparison-table th,
+[data-theme-mode="dark"] .comparison-table td {
+  color: #e5edf7;
+}
+
+[data-theme-mode="dark"] .comparison-header-sub,
+[data-theme-mode="dark"] .year-selector-label,
+[data-theme-mode="dark"] .comparison-picker-copy span,
+[data-theme-mode="dark"] .total-bar-label,
+[data-theme-mode="dark"] .domain-bar-year {
+  color: #9fb0c5;
+}
+
+[data-theme-mode="dark"] .year-pill,
+[data-theme-mode="dark"] .comparison-year-btn,
+[data-theme-mode="dark"] .domain-comparison-card,
+[data-theme-mode="dark"] .total-comparison-strip,
+[data-theme-mode="dark"] .trend-chart-wrapper,
+[data-theme-mode="dark"] .comparison-table-wrapper {
+  background: rgba(17, 24, 39, 0.82);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #dbe7f3;
+}
+
+[data-theme-mode="dark"] .total-bar-track,
+[data-theme-mode="dark"] .domain-bar-track {
+  background: rgba(148, 163, 184, 0.18);
 }
 
 .comparison-header-actions {

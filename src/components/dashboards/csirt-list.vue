@@ -927,9 +927,9 @@ export default {
 
   <!-- Create Modal -->
   <div v-if="showCreateModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="card custom-card gradient-header-card w-100 mb-0">
+    <div class="modal-dialog modal-dialog-centered custom-modal csirt-form-dialog">
+      <div class="modal-content csirt-form-modal-content">
+        <div class="card custom-card gradient-header-card csirt-form-modal-card w-100 mb-0">
           <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
             <div class="d-flex align-items-center">
               <i class="ri-add-circle-line text-white me-2 fs-18"></i>
@@ -1141,9 +1141,9 @@ export default {
 
   <!-- Edit Modal -->
   <div v-if="showEditModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="card custom-card gradient-header-card w-100 mb-0">
+    <div class="modal-dialog modal-dialog-centered custom-modal csirt-form-dialog">
+      <div class="modal-content csirt-form-modal-content">
+        <div class="card custom-card gradient-header-card csirt-form-modal-card w-100 mb-0">
           <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
             <div class="d-flex align-items-center">
               <i class="ri-edit-2-line text-white me-2 fs-18"></i>
@@ -1406,6 +1406,36 @@ export default {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
   border-radius: 16px !important;
   overflow: hidden;
+}
+
+.modal.fade.show.d-block .modal-dialog.csirt-form-dialog {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  height: auto !important;
+  min-height: auto !important;
+  overflow: visible !important;
+}
+
+.csirt-form-modal-content {
+  background: #ffffff !important;
+  border: 0 !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
+}
+
+.csirt-form-modal-card {
+  background: #ffffff !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.csirt-form-modal-card .card-header,
+.csirt-form-modal-card .card-footer {
+  border-color: #e5e7eb !important;
 }
 
 /* Skeleton Loading */

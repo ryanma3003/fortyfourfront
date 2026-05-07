@@ -5,6 +5,7 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useEventStore } from "../../stores/event";
 import { useRouter, useRoute } from "vue-router";
 import type { Kegiatan } from "../../types/kegiatan.types";
+import { sanitizeRichText } from "../../utils/richText";
 
 export default {
   components: { Pageheader },
@@ -142,46 +143,9 @@ export default {
       }
     };
 
-    const decodeHtmlEntities = (value: string): string => {
-      if (typeof document === 'undefined') return value;
-
-      let decoded = value;
-      for (let i = 0; i < 2; i += 1) {
-        const textarea = document.createElement('textarea');
-        textarea.innerHTML = decoded;
-        const next = textarea.value;
-        if (next === decoded) break;
-        decoded = next;
-      }
-
-      return decoded;
-    };
-
-    const sanitizeRichText = (value: string): string => {
-      if (typeof document === 'undefined') return value;
-
-      const template = document.createElement('template');
-      template.innerHTML = value;
-
-      template.content.querySelectorAll('script, iframe, object, embed').forEach((node) => node.remove());
-      template.content.querySelectorAll('*').forEach((node) => {
-        [...node.attributes].forEach((attr) => {
-          const name = attr.name.toLowerCase();
-          const value = attr.value.trim().toLowerCase();
-          const isUnsafeUrl = ['href', 'src'].includes(name) && value.startsWith('javascript:');
-
-          if (name.startsWith('on') || isUnsafeUrl) {
-            node.removeAttribute(attr.name);
-          }
-        });
-      });
-
-      return template.innerHTML;
-    };
-
     const htmlOrFallback = (value: string) => {
       if (!value?.trim()) return 'Tidak ada deskripsi tersedia.';
-      return sanitizeRichText(decodeHtmlEntities(value));
+      return sanitizeRichText(value);
     };
 
     return {

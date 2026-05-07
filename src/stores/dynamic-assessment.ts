@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ikasService } from '@/services/ikas.service';
 import type { 
-  DynamicDomain, DynamicCategory, DynamicQuestion 
+  DynamicDomain, DynamicCategory, DynamicQuestion, DynamicSubCategory
 } from '@/types/dynamic-assessment.types';
 import type { 
   AnswerMap, Answer, AssessmentProgress, RespondentProfile 
@@ -97,28 +97,29 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         currentQuestion(): DynamicQuestion | undefined {
-            // Note: in dynamic, sub-category = question
+            return this.currentSubCategory?.questions[0];
+        },
+
+        currentSubCategory(): DynamicSubCategory | undefined {
             const category = this.currentCategory;
-            return category?.questions.find(q => q.id === this.progress.currentSubCategoryId);
+            if (!category) return undefined;
+            return category.subCategories.find(sc => sc.id === this.progress.currentSubCategoryId) || category.subCategories[0];
         },
 
         currentPageQuestions(): DynamicQuestion[] {
-            // Because each sub-kategori is 1 question, we paginate one "category" 
-            // but let's show all questions for a category on one page, or paginate questions.
-            // Let's paginate questions: 5 per page.
-            if (!this.currentCategory) return [];
+            const questions = this.currentSubCategory?.questions || this.currentCategory?.questions || [];
             
             const questionsPerPage = 5;
             const startIndex = (this.progress.currentPage - 1) * questionsPerPage;
             const endIndex = startIndex + questionsPerPage;
             
-            return this.currentCategory.questions.slice(startIndex, endIndex);
+            return questions.slice(startIndex, endIndex);
         },
         
         totalPagesInCategory(): number {
-             if (!this.currentCategory) return 0;
+             const questions = this.currentSubCategory?.questions || this.currentCategory?.questions || [];
              const questionsPerPage = 5;
-             return Math.ceil(this.currentCategory.questions.length / questionsPerPage);
+             return Math.ceil(questions.length / questionsPerPage);
         },
 
         getAnswer() {
@@ -130,9 +131,11 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         breadcrumbPath(): string[] {
             const domain = this.currentDomain;
             const category = this.currentCategory;
+            const subCategory = this.currentSubCategory;
             const path: string[] = [];
             if (domain) path.push(domain.name);
             if (category) path.push(category.name);
+            if (subCategory) path.push(subCategory.name);
             return path;
         },
 
@@ -176,10 +179,11 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             if (!this.progressMap[slug]) {
                 const firstDomain = this.domains[0];
                 const firstCategory = firstDomain?.categories?.[0];
+                const firstSubCategory = firstCategory?.subCategories?.[0];
                 this.progressMap[slug] = createDefaultProgress(
                     firstDomain?.id || '',
                     firstCategory?.id || '',
-                    ''
+                    firstSubCategory?.id || ''
                 );
             }
         },
@@ -258,6 +262,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                                     id: kId,
                                     name: k.nama_kategori || k.NamaKategori || 'Unknown Kategori',
                                     domainId: dId,
+                                    subCategories: new Map<string, any>(),
                                     questions: []
                                 });
                             }
@@ -279,6 +284,17 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                                         id: kategoriId,
                                         name: sk.kategori?.nama_kategori || sk.nama_kategori || 'Unknown Kategori',
                                         domainId: domainId,
+                                        subCategories: new Map<string, any>(),
+                                        questions: []
+                                    });
+                                }
+                                const category = catMap.get(kategoriId);
+                                const subKategoriId = String(sk.id || sk.ID || '');
+                                if (subKategoriId && !category.subCategories.has(subKategoriId)) {
+                                    category.subCategories.set(subKategoriId, {
+                                        id: subKategoriId,
+                                        name: sk.nama_sub_kategori || sk.NamaSubKategori || 'Unknown Sub Kategori',
+                                        categoryId: kategoriId,
                                         questions: []
                                     });
                                 }
@@ -362,11 +378,25 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                                 id: kId,
                                 name: k.nama_kategori || k.NamaKategori || 'Unknown Kategori',
                                 domainId: dId,
+                                subCategories: new Map<string, any>(),
                                 questions: [] // will hold questions (pertanyaan)
                             });
                         }
                         
-                        const qList = catMap.get(kId).questions;
+                        const category = catMap.get(kId);
+                        if (!category.subCategories) {
+                            category.subCategories = new Map<string, any>();
+                        }
+
+                        const skId = String(sk.id || sk.ID || q.sub_kategori_id || q.SubKategoriID || '');
+                        if (skId && !category.subCategories.has(skId)) {
+                            category.subCategories.set(skId, {
+                                id: skId,
+                                name: skName || 'Unknown Sub Kategori',
+                                categoryId: kId,
+                                questions: []
+                            });
+                        }
                         
                         const idxDesc: Record<number, string> = {
                             0: q.index0 || q.Index0 || 'Belum ada implementasi',
@@ -389,15 +419,22 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                         // (e.g. pertanyaan-identifikasi id=1 vs pertanyaan-proteksi id=1)
                         const compositeId = `${sourceType}_${numericId}`;
 
-                        qList.push({
+                        const question: DynamicQuestion = {
                             id: compositeId,
                             originalId: numericId,
                             text: skName + (qIdent ? ` - ${qIdent}` : ''),
                             kategoriId: kId,
+                            subCategoryId: skId,
+                            subCategoryName: skName || 'Unknown Sub Kategori',
                             domainKey: sourceType as any,
                             scope: pName,
                             indexDescriptions: idxDesc
-                        });
+                        };
+
+                        category.questions.push(question);
+                        if (skId && category.subCategories.has(skId)) {
+                            category.subCategories.get(skId).questions.push(question);
+                        }
                     } catch (err) {
                         console.error(`[DynamicAssessment] Error parsing question ${index}:`, err);
                     }
@@ -410,7 +447,12 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                         d.color = domainColors[domainIndex % domainColors.length];
                         domainIndex++;
                         d.categories = Array.from(d.categories.values())
-                            .sort((c1: any, c2: any) => Number(c1.id) - Number(c2.id));
+                            .sort((c1: any, c2: any) => Number(c1.id) - Number(c2.id))
+                            .map((category: any) => ({
+                                ...category,
+                                subCategories: Array.from((category.subCategories || new Map()).values())
+                                    .sort((sc1: any, sc2: any) => Number(sc1.id) - Number(sc2.id))
+                            }));
                             
                         return d;
                     });
@@ -420,10 +462,11 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 // Sync current progress if there is no progress for this user
                 if (this.currentStakeholderSlug && !this.progressMap[this.currentStakeholderSlug]) {
                     if (this.domains.length > 0 && this.domains[0].categories.length > 0) {
+                        const firstSubCategory = this.domains[0].categories[0].subCategories?.[0];
                         this.progressMap[this.currentStakeholderSlug] = createDefaultProgress(
                             this.domains[0].id, 
                             this.domains[0].categories[0].id, 
-                            '' // Subcategory ID not used directly for pagination if we paginate by category
+                            firstSubCategory?.id || ''
                         );
                     } else if (this.domains.length > 0) {
                         this.progressMap[this.currentStakeholderSlug] = createDefaultProgress(

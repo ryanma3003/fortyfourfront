@@ -7,6 +7,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useUsersStore } from "../../stores/users";
 import { useRouter, useRoute } from "vue-router";
 import type { CreateBeritaPayload } from "../../types/berita.types";
+import { isRichTextEmpty } from "../../utils/richText";
 
 export default {
   components: { Pageheader, LmsEditor },
@@ -60,14 +61,6 @@ export default {
         "Admin"
       );
     });
-
-    const isRichTextEmpty = (value: string): boolean => {
-      const plainText = value
-        .replace(/<[^>]*>/g, "")
-        .replace(/&nbsp;/g, " ")
-        .trim();
-      return !plainText || value.trim() === "<p><br></p>";
-    };
 
     onMounted(async () => {
       await usersStore.initialize().catch(() => undefined);

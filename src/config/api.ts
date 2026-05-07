@@ -3,6 +3,7 @@ import type { HttpMethod } from '@/types/api.types';
 
 type RequestOptions = {
     skipQueue?: boolean;
+    suppressErrorStatuses?: number[];
 };
 
 /**
@@ -344,7 +345,9 @@ class ApiClient {
                 try {
                     // Try to parse error response
                     const errorJson = await response.json();
-                    console.error('API Error Response:', errorJson); // Log full error for debugging
+                    if (!requestOptions.suppressErrorStatuses?.includes(response.status)) {
+                        console.error('API Error Response:', errorJson); // Log full error for debugging
+                    }
 
                     if (errorJson.message) {
                         errorMessage = errorJson.message;

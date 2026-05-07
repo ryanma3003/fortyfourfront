@@ -5,6 +5,7 @@ import LmsEditor from "../lms/LmsEditor.vue";
 import { useEventStore } from "../../stores/event";
 import { useRouter, useRoute } from "vue-router";
 import type { CreateKegiatanPayload } from "../../types/kegiatan.types";
+import { isRichTextEmpty } from "../../utils/richText";
 
 export default {
   components: { Pageheader, LmsEditor },
@@ -33,14 +34,6 @@ export default {
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
     const isLoading = ref(isEdit.value);
-
-    const isRichTextEmpty = (value: string): boolean => {
-      const plainText = value
-        .replace(/<[^>]*>/g, "")
-        .replace(/&nbsp;/g, " ")
-        .trim();
-      return !plainText || value.trim() === "<p><br></p>";
-    };
 
     // Toast
     const showToast = ref(false);

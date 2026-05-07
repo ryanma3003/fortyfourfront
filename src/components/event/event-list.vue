@@ -5,6 +5,7 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useEventStore } from "../../stores/event";
 import { useRouter } from "vue-router";
 import type { Kegiatan } from "../../types/kegiatan.types";
+import { richTextToPlainText } from "../../utils/richText";
 
 export default {
   components: { Pageheader },
@@ -244,24 +245,8 @@ export default {
       }
     };
 
-    const decodeHtmlEntities = (value: string) => {
-      if (typeof document === "undefined") return value;
-      let decoded = value;
-      for (let i = 0; i < 2; i += 1) {
-        const textarea = document.createElement("textarea");
-        textarea.innerHTML = decoded;
-        const next = textarea.value;
-        if (next === decoded) break;
-        decoded = next;
-      }
-      return decoded;
-    };
-
     const stripHtml = (value: string) => {
-      return decodeHtmlEntities(value)
-        .replace(/<[^>]*>/g, "")
-        .replace(/&nbsp;/g, " ")
-        .trim();
+      return richTextToPlainText(value);
     };
 
     return {
@@ -507,7 +492,7 @@ export default {
 .ev-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap;border:1px solid transparent}
 .ev-badge-upcoming{background:#fff7ed;color:#b45309;border-color:#fed7aa}
 .ev-badge-ongoing{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
-.ev-badge-completed{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+.ev-badge-completed{background:#e0f2fe;color:#075985;border-color:#38bdf8}
 .ev-badge-active{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
 .ev-badge-default{background:#f8fafc;color:#64748b;border-color:#e2e8f0}
 .ev-actions{display:flex;gap:6px;justify-content:center}
