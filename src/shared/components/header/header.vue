@@ -145,84 +145,88 @@
 
         <li class="header-element sb-action-item theme-toggle-item">
           <button
+            ref="themeToggleButton"
             type="button"
             class="header-link sb-action-link theme-toggle-btn"
             :class="{ 'is-dark': isDarkTheme }"
             aria-label="Toggle theme"
             @click="toggleTheme"
           >
-            <!-- Sky background layers -->
+                        <!-- Sky background layers -->
             <span class="theme-toggle-track"></span>
+            
             <span class="theme-toggle-stars-layer" aria-hidden="true">
-              <svg viewBox="0 0 110 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="stars-svg">
-                <!-- Sparkle stars (4-point) -->
-                <path d="M22 9l1.2 3 3 1.2-3 1.2L22 17.4l-1.2-3-3-1.2 3-1.2z" fill="rgba(255,255,255,0.95)"/>
-                <path d="M38 7l0.8 2 2 0.8-2 0.8L38 12.6l-0.8-2-2-0.8 2-0.8z" fill="rgba(255,255,255,0.8)"/>
-                <path d="M55 15l0.6 1.5 1.5 0.6-1.5 0.6L55 19.2l-0.6-1.5-1.5-0.6 1.5-0.6z" fill="rgba(255,255,255,0.7)"/>
-                <path d="M30 24l0.5 1.2 1.2 0.5-1.2 0.5L30 27.4l-0.5-1.2-1.2-0.5 1.2-0.5z" fill="rgba(255,255,255,0.6)"/>
-                <path d="M48 28l0.4 1 1 0.4-1 0.4L48 30.8l-0.4-1-1-0.4 1-0.4z" fill="rgba(255,255,255,0.55)"/>
-                <!-- Tiny dots -->
-                <circle cx="18" cy="18" r="0.7" fill="rgba(255,255,255,0.55)"/>
-                <circle cx="42" cy="22" r="0.6" fill="rgba(255,255,255,0.45)"/>
-                <circle cx="34" cy="12" r="0.5" fill="rgba(255,255,255,0.5)"/>
-                <circle cx="50" cy="10" r="0.4" fill="rgba(255,255,255,0.4)"/>
-                <circle cx="26" cy="30" r="0.5" fill="rgba(255,255,255,0.35)"/>
+              <svg viewBox="0 0 110 40" preserveAspectRatio="xMidYMax slice" fill="none" xmlns="http://www.w3.org/2000/svg" class="stars-svg">
+                <g fill="rgba(255,255,255,0.05)">
+                  <circle cx="15" cy="35" r="12" />
+                  <circle cx="35" cy="32" r="15" />
+                  <circle cx="55" cy="36" r="10" />
+                  <circle cx="75" cy="30" r="16" />
+                  <circle cx="95" cy="35" r="12" />
+                </g>
+                <g fill="rgba(255,255,255,0.08)">
+                  <circle cx="10" cy="40" r="10" />
+                  <circle cx="30" cy="38" r="12" />
+                  <circle cx="50" cy="35" r="14" />
+                  <circle cx="70" cy="38" r="11" />
+                  <circle cx="90" cy="36" r="13" />
+                  <circle cx="110" cy="40" r="10" />
+                </g>
+                <g fill="rgba(255,255,255,0.12)">
+                  <circle cx="0" cy="42" r="10" />
+                  <circle cx="25" cy="42" r="12" />
+                  <circle cx="45" cy="40" r="11" />
+                  <circle cx="65" cy="42" r="10" />
+                  <circle cx="85" cy="40" r="12" />
+                  <circle cx="105" cy="42" r="10" />
+                  <rect x="0" y="38" width="110" height="10" />
+                </g>
+                <path d="M15 8l1 2.5 2.5 1-2.5 1L15 15l-1-2.5-2.5-1 2.5-1z" fill="#fff"/>
+                <path d="M45 5l0.8 2 2 0.8-2 0.8L45 10.6l-0.8-2-2-0.8 2-0.8z" fill="#fff"/>
+                <path d="M75 12l0.6 1.5 1.5 0.6-1.5 0.6L75 16.2l-0.6-1.5-1.5-0.6 1.5-0.6z" fill="#fff"/>
+                <path d="M95 6l1.2 3 3 1.2-3 1.2L95 14.4l-1.2-3-3-1.2 3-1.2z" fill="#fff"/>
               </svg>
             </span>
 
-            <!-- Thumb: Sun / Moon -->
-            <span class="theme-toggle-thumb" aria-hidden="true">
-              <!-- Sun face -->
-              <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" class="thumb-sun-svg">
-                <defs>
-                  <radialGradient id="sunGrad" cx="45%" cy="42%" r="50%">
-                    <stop offset="0%" stop-color="#FFF176"/>
-                    <stop offset="40%" stop-color="#FFE066"/>
-                    <stop offset="75%" stop-color="#FFD600"/>
-                    <stop offset="100%" stop-color="#F5A623"/>
-                  </radialGradient>
-                </defs>
-                <circle cx="18" cy="18" r="14" fill="url(#sunGrad)"/>
-                <circle cx="18" cy="18" r="13.2" fill="none" stroke="rgba(245,166,35,0.25)" stroke-width="0.5"/>
-                <!-- Sun highlight -->
-                <ellipse cx="14" cy="13" rx="4" ry="3" fill="rgba(255,255,255,0.18)" transform="rotate(-20 14 13)"/>
-              </svg>
-              <!-- Moon face -->
-              <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" class="thumb-moon-svg">
-                <defs>
-                  <radialGradient id="moonGrad" cx="38%" cy="38%" r="55%">
-                    <stop offset="0%" stop-color="#F0E8D4"/>
-                    <stop offset="40%" stop-color="#DDD5BB"/>
-                    <stop offset="100%" stop-color="#B8B098"/>
-                  </radialGradient>
-                </defs>
-                <circle cx="18" cy="18" r="14" fill="url(#moonGrad)"/>
-                <!-- Craters -->
-                <circle cx="13" cy="13" r="3" fill="rgba(155,147,125,0.3)"/>
-                <circle cx="21" cy="11" r="1.8" fill="rgba(155,147,125,0.22)"/>
-                <circle cx="15" cy="22" r="2.4" fill="rgba(155,147,125,0.25)"/>
-                <circle cx="23" cy="19" r="1.4" fill="rgba(155,147,125,0.18)"/>
-                <circle cx="10" cy="18" r="1.1" fill="rgba(155,147,125,0.18)"/>
-                <circle cx="19" cy="26" r="1" fill="rgba(155,147,125,0.15)"/>
-                <!-- Rim highlight -->
-                <circle cx="18" cy="18" r="13.2" fill="none" stroke="rgba(200,192,168,0.2)" stroke-width="0.5"/>
-                <ellipse cx="13" cy="12" rx="5" ry="3.5" fill="rgba(255,255,255,0.08)" transform="rotate(-15 13 12)"/>
-              </svg>
-            </span>
-
-            <!-- Clouds -->
             <span class="theme-toggle-clouds" aria-hidden="true">
-              <svg viewBox="0 0 110 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="clouds-svg">
-                <!-- Far cloud (softer) -->
-                <ellipse cx="62" cy="22" rx="10" ry="6" fill="rgba(255,255,255,0.35)"/>
-                <ellipse cx="70" cy="18" rx="7" ry="5" fill="rgba(255,255,255,0.3)"/>
-                <!-- Main cloud cluster -->
-                <ellipse cx="68" cy="28" rx="16" ry="9" fill="rgba(255,255,255,0.75)"/>
-                <ellipse cx="76" cy="22" rx="12" ry="8" fill="rgba(255,255,255,0.85)"/>
-                <ellipse cx="82" cy="26" rx="10" ry="7" fill="rgba(255,255,255,0.9)"/>
-                <ellipse cx="72" cy="30" rx="14" ry="8" fill="rgba(255,255,255,0.92)"/>
-                <!-- Front highlight -->
-                <ellipse cx="78" cy="28" rx="11" ry="7" fill="rgba(255,255,255,0.95)"/>
+              <svg viewBox="0 0 110 40" preserveAspectRatio="xMidYMax slice" fill="none" xmlns="http://www.w3.org/2000/svg" class="clouds-svg">
+                <g fill="rgba(255,255,255,0.4)">
+                  <circle cx="15" cy="35" r="12" />
+                  <circle cx="35" cy="32" r="15" />
+                  <circle cx="55" cy="36" r="10" />
+                  <circle cx="75" cy="30" r="16" />
+                  <circle cx="95" cy="35" r="12" />
+                </g>
+                <g fill="rgba(255,255,255,0.7)">
+                  <circle cx="10" cy="40" r="10" />
+                  <circle cx="30" cy="38" r="12" />
+                  <circle cx="50" cy="35" r="14" />
+                  <circle cx="70" cy="38" r="11" />
+                  <circle cx="90" cy="36" r="13" />
+                  <circle cx="110" cy="40" r="10" />
+                </g>
+                <g fill="#ffffff">
+                  <circle cx="0" cy="42" r="10" />
+                  <circle cx="25" cy="42" r="12" />
+                  <circle cx="45" cy="40" r="11" />
+                  <circle cx="65" cy="42" r="10" />
+                  <circle cx="85" cy="40" r="12" />
+                  <circle cx="105" cy="42" r="10" />
+                  <rect x="0" y="38" width="110" height="10" />
+                </g>
+              </svg>
+            </span>
+            
+            <span class="theme-toggle-thumb" aria-hidden="true">
+              <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" class="thumb-sun-svg">
+                <circle cx="18" cy="18" r="18" fill="#FFD600"/>
+              </svg>
+              <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" class="thumb-moon-svg">
+                <circle cx="18" cy="18" r="18" fill="#9CA3AF"/>
+                <circle cx="12" cy="14" r="3.5" fill="#4B5563"/>
+                <circle cx="23" cy="12" r="2.5" fill="#4B5563"/>
+                <circle cx="25" cy="22" r="3" fill="#4B5563"/>
+                <circle cx="16" cy="24" r="2" fill="#4B5563"/>
               </svg>
             </span>
           </button>
@@ -586,7 +590,9 @@ const requestDropdownMenu = ref<HTMLElement | null>(null);
 const notifDropdownRoot = ref<HTMLElement | null>(null);
 const profileDropdownRoot = ref<HTMLElement | null>(null);
 const headerRoot = ref<HTMLElement | null>(null);
+const themeToggleButton = ref<HTMLButtonElement | null>(null);
 let headerGsapContext: gsap.Context | null = null;
+let themeTransitionCleanupTimeout: number | null = null;
 
 const ensureNotificationsLoaded = () => {
   if (authStore.authenticated && authStore.isAdmin) {
@@ -731,6 +737,11 @@ onUnmounted(() => {
   profileDropdownRoot.value?.removeEventListener("shown.bs.dropdown", animateDropdown);
   headerGsapContext?.revert();
   headerGsapContext = null;
+  if (themeTransitionCleanupTimeout) {
+    window.clearTimeout(themeTransitionCleanupTimeout);
+    themeTransitionCleanupTimeout = null;
+  }
+  document.documentElement.classList.remove("theme-transitioning");
 });
 
 // Disconnect notifications on logout. Loading is lazy, triggered when the dropdown opens.
@@ -783,8 +794,36 @@ const colorthemeFn = (value: string) => {
   switcher.colorthemeFn(value);
 };
 
+const animateThemeButton = (nextTheme: string) => {
+  // We no longer use GSAP for the toggle button because it conflicts with the View Transitions API
+  // and makes the animation feel heavy ("berak"). The button now uses native, hardware-accelerated 
+  // CSS transitions driven by the `:class="{ 'is-dark': isDarkTheme }"` binding.
+};
+
+
+const animateThemeTransition = (nextTheme: string) => {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    colorthemeFn(nextTheme);
+    return;
+  }
+
+  animateThemeButton(nextTheme);
+
+  // Use View Transitions API if available (Lightweight, 0 lag, hardware accelerated)
+  const viewTransition = (document as Document & {
+    startViewTransition?: (callback: () => void) => { finished: Promise<void> };
+  }).startViewTransition;
+
+  if (viewTransition) {
+    viewTransition.call(document, () => colorthemeFn(nextTheme));
+  } else {
+    // Instant fallback for older browsers to avoid lag
+    colorthemeFn(nextTheme);
+  }
+};
+
 const toggleTheme = () => {
-  colorthemeFn(isDarkTheme.value ? "light" : "dark");
+  animateThemeTransition(isDarkTheme.value ? "light" : "dark");
 };
 
 const handleLogout = async () => {
@@ -908,6 +947,13 @@ let pop: Tooltip | null = null;
 
 <style scoped>
 
+:global(::view-transition-old(root)),
+:global(::view-transition-new(root)) {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  mix-blend-mode: normal;
+}
+
 
 .sb-header .main-header-container {
   position: relative;
@@ -915,8 +961,6 @@ let pop: Tooltip | null = null;
   gap: 1rem;
   padding-inline: 1.35rem;
 }
-
-
 
 .sb-header .header-content-right {
   min-width: 0;
@@ -963,64 +1007,65 @@ let pop: Tooltip | null = null;
 .theme-toggle-track {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg,
-    #5DADE2 0%,
-    #74B9E8 25%,
-    #87CEEB 50%,
-    #A8D8EA 75%,
-    #C5E4F3 100%
-  );
+  background: linear-gradient(180deg, #5DADE2 0%, #74B9E8 25%, #87CEEB 50%, #A8D8EA 75%, #C5E4F3 100%);
+  border-radius: 999px;
+  opacity: 1;
+}
+
+/* ─── Track (light sky background) ─── */
+.theme-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #5DADE2 0%, #74B9E8 25%, #87CEEB 50%, #A8D8EA 75%, #C5E4F3 100%);
   border-radius: 999px;
   opacity: 1;
   transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1);
 }
+.theme-toggle-btn.is-dark .theme-toggle-track { opacity: 0; }
 
 /* ─── Stars layer (dark mode only) ─── */
 .theme-toggle-stars-layer {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
   z-index: 1;
+  transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-.theme-toggle-stars-layer .stars-svg {
-  width: 100%;
-  height: 100%;
-}
+.theme-toggle-btn.is-dark .theme-toggle-stars-layer { opacity: 1; }
 
 /* ─── Clouds layer (light mode) ─── */
 .theme-toggle-clouds {
   position: absolute;
   inset: 0;
-  opacity: 1;
-  transition: opacity 0.4s ease 0.12s, transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
-  transform: translateX(0);
   z-index: 2;
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.theme-toggle-btn.is-dark .theme-toggle-clouds { transform: translateX(-18px); opacity: 0; }
+
+.theme-toggle-stars-layer .stars-svg,
+.theme-toggle-clouds .clouds-svg { 
+  width: 100%; 
+  height: 100%; 
+  display: block;
 }
 
-.theme-toggle-clouds .clouds-svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* ─── Thumb (circular knob) ─── */
+/* ─── Thumb ─── */
 .theme-toggle-thumb {
   position: absolute;
-  width: 1.72rem;
-  height: 1.72rem;
+  width: 1.55rem;
+  height: 1.55rem;
   top: 50%;
-  left: 0.25rem;
-  transform: translateY(-50%) translateX(0);
+  left: 0.35rem;
+  transform: translateY(-50%);
   border-radius: 50%;
   z-index: 4;
-  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    0 2px 8px rgba(245, 166, 35, 0.35),
-    0 4px 14px rgba(255, 214, 0, 0.18);
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 0 5px rgba(255,255,255,0.25), 0 0 0 11px rgba(255,255,255,0.12), 0 0 0 17px rgba(255,255,255,0.05);
+}
+.theme-toggle-btn.is-dark .theme-toggle-thumb { 
+  transform: translate(2.75rem, -50%); 
 }
 
 .theme-toggle-thumb .thumb-sun-svg,
@@ -1030,35 +1075,22 @@ let pop: Tooltip | null = null;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  transition: opacity 0.4s ease, transform 0.4s ease;
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1);
 }
+.theme-toggle-thumb .thumb-sun-svg { opacity: 1; transform: scale(1) rotate(0deg); }
+.theme-toggle-btn.is-dark .theme-toggle-thumb .thumb-sun-svg { opacity: 0; transform: scale(0.5) rotate(60deg); }
 
-/* Sun visible, moon hidden (light mode) */
-.theme-toggle-thumb .thumb-sun-svg {
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
-}
-.theme-toggle-thumb .thumb-moon-svg {
-  opacity: 0;
-  transform: scale(0.5) rotate(-60deg);
-}
+.theme-toggle-thumb .thumb-moon-svg { opacity: 0; transform: scale(0.5) rotate(-60deg); }
+.theme-toggle-btn.is-dark .theme-toggle-thumb .thumb-moon-svg { opacity: 1; transform: scale(1) rotate(0deg); }
 
 /* ─── Hover / Active ─── */
 .theme-toggle-btn:hover {
   border-color: rgba(59, 130, 246, 0.32);
-  box-shadow:
-    inset 0 -2px 4px rgba(0, 0, 0, 0.1),
-    inset 0 2px 4px rgba(255, 255, 255, 0.22),
-    0 6px 18px rgba(15, 23, 42, 0.14);
 }
-
-.theme-toggle-btn:active .theme-toggle-thumb {
-  transform: translateY(-50%) translateX(var(--thumb-x, 0px)) scale(0.9);
-}
+.theme-toggle-btn:active .theme-toggle-thumb { filter: brightness(0.95); }
 
 /* ─── ★ DARK MODE ─── */
 .theme-toggle-btn.is-dark {
-  --thumb-x: 2.75rem;
   background: linear-gradient(160deg, #0A1628 0%, #0F2240 35%, #152D4F 70%, #1A3460 100%);
   border-color: rgba(100, 160, 240, 0.15);
   box-shadow:
@@ -1066,39 +1098,9 @@ let pop: Tooltip | null = null;
     inset 0 2px 4px rgba(255, 255, 255, 0.03),
     0 4px 12px rgba(0, 0, 0, 0.22);
 }
-
-.theme-toggle-btn.is-dark .theme-toggle-track {
-  opacity: 0;
-}
-
-.theme-toggle-btn.is-dark .theme-toggle-stars-layer {
-  opacity: 1;
-}
-
-.theme-toggle-btn.is-dark .theme-toggle-clouds {
-  opacity: 0;
-  transform: translateX(-18px);
-  transition: opacity 0.3s ease, transform 0.45s ease;
-}
-
 .theme-toggle-btn.is-dark .theme-toggle-thumb {
-  transform: translateY(-50%) translateX(2.75rem);
-  box-shadow:
-    0 2px 8px rgba(200, 190, 160, 0.25),
-    0 4px 14px rgba(180, 170, 140, 0.15),
-    0 0 10px rgba(230, 220, 190, 0.08);
+  box-shadow: 0 0 0 5px rgba(255,255,255,0.08), 0 0 0 11px rgba(255,255,255,0.04), 0 0 0 17px rgba(255,255,255,0.015);
 }
-
-/* Moon visible, sun hidden (dark mode) */
-.theme-toggle-btn.is-dark .thumb-sun-svg {
-  opacity: 0;
-  transform: scale(0.5) rotate(60deg);
-}
-.theme-toggle-btn.is-dark .thumb-moon-svg {
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
-}
-
 .theme-toggle-btn.is-dark:hover {
   border-color: rgba(100, 160, 240, 0.28);
   box-shadow:
@@ -1106,23 +1108,19 @@ let pop: Tooltip | null = null;
     inset 0 2px 4px rgba(255, 255, 255, 0.04),
     0 6px 18px rgba(0, 0, 0, 0.28);
 }
+.theme-toggle-btn.is-dark:active .theme-toggle-thumb { filter: brightness(0.92); }
 
-.theme-toggle-btn.is-dark:active .theme-toggle-thumb {
-  transform: translateY(-50%) translateX(2.75rem) scale(0.9);
-}
-
-/* ─── Stars twinkle animation ─── */
-@keyframes twinkle {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
+/* ─── Stars twinkle ─── */
+@keyframes twinkle { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 .theme-toggle-btn.is-dark .stars-svg path:nth-child(1) { animation: twinkle 3s ease-in-out infinite; }
 .theme-toggle-btn.is-dark .stars-svg path:nth-child(2) { animation: twinkle 2.5s ease-in-out 0.5s infinite; }
 .theme-toggle-btn.is-dark .stars-svg path:nth-child(3) { animation: twinkle 4s ease-in-out 1s infinite; }
 .theme-toggle-btn.is-dark .stars-svg path:nth-child(4) { animation: twinkle 3.5s ease-in-out 0.8s infinite; }
 .theme-toggle-btn.is-dark .stars-svg path:nth-child(5) { animation: twinkle 2.8s ease-in-out 1.2s infinite; }
 
+/* ═══════════════════════════════════════════════════════════
+   HEADER LAYOUT
+   ═══════════════════════════════════════════════════════════ */
 
 .sb-header .main-header-dropdown {
   top: calc(100% + 0.6rem) !important;
@@ -1147,9 +1145,7 @@ let pop: Tooltip | null = null;
   overflow: hidden;
 }
 
-.sb-header .header-element {
-  align-items: center !important;
-}
+.sb-header .header-element { align-items: center !important; }
 
 .sb-menu-element .header-link {
   width: 38px;
@@ -1159,10 +1155,7 @@ let pop: Tooltip | null = null;
   justify-content: center;
   color: #475569;
 }
-
-.sb-menu-element .header-link:hover {
-  background: rgba(15, 23, 42, 0.04);
-}
+.sb-menu-element .header-link:hover { background: rgba(15, 23, 42, 0.04); }
 
 .header-search {
   position: static;
@@ -1172,12 +1165,7 @@ let pop: Tooltip | null = null;
   align-items: center;
   transform: none;
 }
-
-.header-search .autoComplete_wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
+.header-search .autoComplete_wrapper { position: relative; display: flex; align-items: center; }
 
 .header-search-bar {
   width: clamp(15rem, 24vw, 20rem) !important;
@@ -1191,10 +1179,7 @@ let pop: Tooltip | null = null;
   padding-inline: 0.85rem 2.45rem;
   margin-block: auto;
 }
-
-.header-search-bar::placeholder {
-  color: #94a3b8;
-}
+.header-search-bar::placeholder { color: #94a3b8; }
 
 .header-search-icon {
   top: 50% !important;
@@ -1207,14 +1192,11 @@ let pop: Tooltip | null = null;
   box-shadow: none !important;
 }
 
-.sb-action-link {
-  padding: 0 !important;
-}
+.sb-action-link { padding: 0 !important; }
 
 .header-action-icon-wrap {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 10px;
   justify-content: center;
@@ -1224,48 +1206,29 @@ let pop: Tooltip | null = null;
   will-change: transform;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
-
-.header-action-icon-wrap i {
-  font-size: 1.2rem;
-}
-
+.header-action-icon-wrap i { font-size: 1.2rem; }
 .header-action-icon-wrap .header-link-icon {
-  width: 1.9rem;
-  height: 1.9rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  width: 1.9rem; height: 1.9rem;
+  border: 0; border-radius: 0;
+  background: transparent; box-shadow: none;
 }
 
-.request-link {
-  padding-inline: 0;
-}
+.request-link { padding-inline: 0; }
 
 .header-count-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
+  position: absolute; top: -4px; right: -4px;
+  min-width: 17px; height: 17px; padding: 0 4px;
   border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #f43f5e;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #f43f5e; color: #fff;
+  font-size: 10px; font-weight: 800; line-height: 1;
   border: 1.5px solid #fff;
   box-shadow: 0 2px 6px rgba(244, 63, 94, 0.3);
 }
 
 .request-trigger {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 10px;
   justify-content: center;
@@ -1283,7 +1246,6 @@ let pop: Tooltip | null = null;
   color: #2563eb;
   box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
 }
-
 .request-notifications-dropdown .header-link:hover .request-trigger,
 .request-notifications-dropdown .header-link.show .request-trigger {
   background: #ffffff;
@@ -1293,14 +1255,10 @@ let pop: Tooltip | null = null;
 }
 
 .notifications-dropdown .header-link:hover .header-action-icon-wrap .header-link-icon,
-.request-notifications-dropdown .header-link:hover .request-trigger i {
-  transform: scale(1.05);
-}
+.request-notifications-dropdown .header-link:hover .request-trigger i { transform: scale(1.05); }
 
 .header-action-icon-wrap .header-link-icon,
-.request-trigger i {
-  transition: transform 0.18s ease, color 0.18s ease;
-}
+.request-trigger i { transition: transform 0.18s ease, color 0.18s ease; }
 
 .header-profile-trigger {
   min-height: 36px;
@@ -1311,7 +1269,6 @@ let pop: Tooltip | null = null;
   will-change: transform;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
-
 .header-profile-trigger:hover,
 .header-profile-trigger.show {
   background: rgba(255, 255, 255, 0.82);
@@ -1320,90 +1277,47 @@ let pop: Tooltip | null = null;
 }
 
 .header-profile-trigger-inner {
-  gap: 0.5rem;
-  height: 36px;
-  min-width: 0;
-  margin-top: 0 !important;
-  overflow: visible;
+  gap: 0.5rem; height: 36px; min-width: 0;
+  margin-top: 0 !important; overflow: visible;
 }
-
-.header-profile-avatar {
-  flex: 0 0 auto;
-  overflow: visible;
-}
-
+.header-profile-avatar { flex: 0 0 auto; overflow: visible; }
 .header-profile-avatar .avatar {
-  width: 2rem;
-  height: 2rem;
+  width: 2rem; height: 2rem;
   border: 2px solid rgba(255, 255, 255, 0.95);
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.1);
-  object-fit: cover;
-  overflow: hidden;
+  object-fit: cover; overflow: hidden;
 }
-
-.header-profile-avatar .avatar img {
-  display: block;
-  object-fit: cover;
-}
+.header-profile-avatar .avatar img { display: block; object-fit: cover; }
 
 .header-profile-meta {
-  min-width: 0;
-  max-width: 12rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.18rem;
+  min-width: 0; max-width: 12rem;
+  display: flex; flex-direction: column;
+  justify-content: center; gap: 0.18rem;
 }
-
-.header-profile-name,
-.header-profile-email {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.header-profile-name, .header-profile-email {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.header-profile-name { color: #0f172a; font-size: 0.78rem; font-weight: 700; line-height: 1.2 !important; }
+.header-profile-email { max-width: 100%; color: #64748b !important; font-size: 0.65rem !important; line-height: 1.2 !important; }
 
-.header-profile-name {
-  color: #0f172a;
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.2 !important;
-}
+/* ═══════════════════════════════════════════════════════════
+   DARK HEADER
+   ═══════════════════════════════════════════════════════════ */
 
-.header-profile-email {
-  max-width: 100%;
-  color: #64748b !important;
-  font-size: 0.65rem !important;
-  line-height: 1.2 !important;
-}
-
-.sb-header.is-dark-header .header-profile-trigger {
-  background: rgba(15, 23, 42, 0.16);
-  border-color: transparent;
-}
-
+.sb-header.is-dark-header .header-profile-trigger { background: rgba(15, 23, 42, 0.16); border-color: transparent; }
 .sb-header.is-dark-header .header-profile-trigger:hover,
 .sb-header.is-dark-header .header-profile-trigger.show {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(148, 163, 184, 0.16);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
 }
-
 .sb-header.is-dark-header .header-profile-avatar .avatar {
   border-color: rgba(96, 165, 250, 0.42);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12), 0 10px 22px rgba(0, 0, 0, 0.28);
 }
-
-.sb-header.is-dark-header .header-profile-name {
-  color: #e5edf8;
-}
-
-.sb-header.is-dark-header .header-profile-email {
-  color: #9fb0c7 !important;
-}
-
-.sb-header.is-dark-header .header-profile-trigger .ri-arrow-down-s-line {
-  color: #9fb0c7 !important;
-}
+.sb-header.is-dark-header .header-profile-name { color: #e5edf8; }
+.sb-header.is-dark-header .header-profile-email { color: #9fb0c7 !important; }
+.sb-header.is-dark-header .header-profile-trigger .ri-arrow-down-s-line { color: #9fb0c7 !important; }
 
 .sb-header.is-dark-header .header-action-icon-wrap,
 .sb-header.is-dark-header .request-trigger {
@@ -1412,7 +1326,6 @@ let pop: Tooltip | null = null;
   color: #dbeafe;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
-
 .sb-header.is-dark-header .notifications-dropdown .header-link:hover .header-action-icon-wrap,
 .sb-header.is-dark-header .notifications-dropdown .header-link.show .header-action-icon-wrap,
 .sb-header.is-dark-header .request-notifications-dropdown .header-link:hover .request-trigger,
@@ -1422,243 +1335,82 @@ let pop: Tooltip | null = null;
   color: #eff6ff;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12), 0 14px 30px rgba(0, 0, 0, 0.28);
 }
-
 .sb-header.is-dark-header .notifications-dropdown .header-link:hover .header-action-icon-wrap .header-link-icon,
-.sb-header.is-dark-header .request-notifications-dropdown .header-link:hover .request-trigger i {
-  color: #eff6ff;
-}
+.sb-header.is-dark-header .request-notifications-dropdown .header-link:hover .request-trigger i { color: #eff6ff; }
 
-.notifications-dropdown,
-.request-notifications-dropdown {
-  display: flex !important;
-  align-items: center;
-}
-
-.notifications-dropdown .header-link,
-.request-notifications-dropdown .header-link {
-  height: 36px;
-  padding-inline: 0;
-  align-items: center !important;
-}
-
-.notifications-dropdown .header-action-icon-wrap,
-.request-notifications-dropdown .request-trigger {
-  margin-top: 0 !important;
-}
-
-.request-trigger i {
-  font-size: 1.2rem;
-}
+.notifications-dropdown, .request-notifications-dropdown { display: flex !important; align-items: center; }
+.notifications-dropdown .header-link, .request-notifications-dropdown .header-link { height: 36px; padding-inline: 0; align-items: center !important; }
+.notifications-dropdown .header-action-icon-wrap, .request-notifications-dropdown .request-trigger { margin-top: 0 !important; }
+.request-trigger i { font-size: 1.2rem; }
 
 .request-total-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
+  position: absolute; top: -4px; right: -4px;
+  min-width: 17px; height: 17px; padding: 0 4px;
   border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #f43f5e;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #f43f5e; color: #fff;
+  font-size: 10px; font-weight: 800; line-height: 1;
   border: 1.5px solid #fff;
   box-shadow: 0 2px 6px rgba(244, 63, 94, 0.3);
 }
 
 .request-dropdown-menu {
-  min-width: 320px;
-  max-width: 360px;
-  padding: 0;
-  overflow: hidden;
+  min-width: 320px; max-width: 360px; padding: 0; overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.18);
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
   transform-origin: top right;
-  right: -56px !important;
-  left: auto !important;
+  right: -56px !important; left: auto !important;
   inset-block-start: calc(100% + 8px) !important;
-  transform: none !important;
-  margin-top: 0 !important;
+  transform: none !important; margin-top: 0 !important;
 }
-
-.request-dropdown-menu .border-top {
-  border-color: rgba(148, 163, 184, 0.16) !important;
-}
-
-.request-list {
-  padding: 8px;
-  display: grid;
-  gap: 8px;
-}
-
+.request-dropdown-menu .border-top { border-color: rgba(148, 163, 184, 0.16) !important; }
+.request-list { padding: 8px; display: grid; gap: 8px; }
 .request-list-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 10px;
-  border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 10px; border-radius: 12px;
+  background: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.16);
   color: #0f172a !important;
   transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
-
 .request-list-item:hover {
-  background: #fff;
-  border-color: rgba(59, 130, 246, 0.22);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
+  background: #fff; border-color: rgba(59, 130, 246, 0.22);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08); transform: translateY(-1px);
 }
+.request-list-item .fw-semibold { color: #0f172a; }
+.request-list-item .text-muted { color: #64748b !important; }
+.request-menu-subtitle { margin-top: 6px; font-size: 11px; color: rgba(255, 255, 255, 0.72); }
 
-.request-list-item .fw-semibold {
-  color: #0f172a;
-}
-
-.request-list-item .text-muted {
-  color: #64748b !important;
-}
-
-.request-menu-subtitle {
-  margin-top: 6px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.sb-header.is-dark-header .request-dropdown-menu {
-  background: #101322;
-  border-color: rgba(148, 163, 184, 0.14);
-  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.36);
-}
-
-.sb-header.is-dark-header .request-dropdown-menu .dropdown-divider {
-  border-color: rgba(148, 163, 184, 0.12);
-}
-
-.sb-header.is-dark-header .request-dropdown-menu .border-top {
-  border-color: rgba(148, 163, 184, 0.12) !important;
-}
-
-.sb-header.is-dark-header .request-list {
-  background: #101322;
-}
-
-.sb-header.is-dark-header .request-list-item {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(148, 163, 184, 0.12);
-  color: #e5edf8 !important;
-}
-
-.sb-header.is-dark-header .request-list-item:hover {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(96, 165, 250, 0.34);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
-}
-
-.sb-header.is-dark-header .request-list-item .fw-semibold {
-  color: #f8fafc;
-}
-
-.sb-header.is-dark-header .request-list-item .text-muted {
-  color: #9fb0c7 !important;
-}
-
-.sb-header.is-dark-header .request-dropdown-menu .text-primary {
-  color: #60a5fa !important;
-}
+/* Dark mode request dropdown */
+.sb-header.is-dark-header .request-dropdown-menu { background: #101322; border-color: rgba(148, 163, 184, 0.14); box-shadow: 0 22px 46px rgba(0, 0, 0, 0.36); }
+.sb-header.is-dark-header .request-dropdown-menu .dropdown-divider { border-color: rgba(148, 163, 184, 0.12); }
+.sb-header.is-dark-header .request-dropdown-menu .border-top { border-color: rgba(148, 163, 184, 0.12) !important; }
+.sb-header.is-dark-header .request-list { background: #101322; }
+.sb-header.is-dark-header .request-list-item { background: rgba(255, 255, 255, 0.06); border-color: rgba(148, 163, 184, 0.12); color: #e5edf8 !important; }
+.sb-header.is-dark-header .request-list-item:hover { background: rgba(59, 130, 246, 0.12); border-color: rgba(96, 165, 250, 0.34); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22); }
+.sb-header.is-dark-header .request-list-item .fw-semibold { color: #f8fafc; }
+.sb-header.is-dark-header .request-list-item .text-muted { color: #9fb0c7 !important; }
+.sb-header.is-dark-header .request-dropdown-menu .text-primary { color: #60a5fa !important; }
 
 /* ═══════════════════════════════════════════════════════════
    DARK MODE — Notification Dropdown
    ═══════════════════════════════════════════════════════════ */
-
-/* Dropdown container */
-.sb-header.is-dark-header .notifications-dropdown > .main-header-dropdown {
-  background: #0f1729;
-  border-color: rgba(148, 163, 184, 0.14);
-  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.4);
-}
-
-/* Dividers */
-.sb-header.is-dark-header .notifications-dropdown .dropdown-divider {
-  border-color: rgba(148, 163, 184, 0.1);
-}
-
-/* Notification items — base (read) */
-.sb-header.is-dark-header .notifications-dropdown .dropdown-item {
-  color: #cbd5e1;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-}
-
-.sb-header.is-dark-header .notifications-dropdown .dropdown-item:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-/* Notification items — UNREAD */
-.sb-header.is-dark-header .notifications-dropdown .dropdown-item.bg-primary-transparent {
-  background: rgba(59, 130, 246, 0.1) !important;
-  border-left: 3px solid rgba(96, 165, 250, 0.6);
-}
-
-.sb-header.is-dark-header .notifications-dropdown .dropdown-item.bg-primary-transparent:hover {
-  background: rgba(59, 130, 246, 0.16) !important;
-}
-
-/* Text inside notifications */
-.sb-header.is-dark-header .notifications-dropdown .dropdown-item .fw-semibold {
-  color: #e8edf5;
-}
-
-.sb-header.is-dark-header .notifications-dropdown .dropdown-item .text-muted {
-  color: #8899af !important;
-}
-
-/* Avatars inside notifications */
-.sb-header.is-dark-header .notifications-dropdown .bg-success-transparent {
-  background: rgba(34, 197, 94, 0.15) !important;
-  color: #4ade80 !important;
-}
-
-.sb-header.is-dark-header .notifications-dropdown .bg-info-transparent {
-  background: rgba(14, 165, 233, 0.15) !important;
-  color: #38bdf8 !important;
-}
-
-.sb-header.is-dark-header .notifications-dropdown .bg-danger-transparent {
-  background: rgba(239, 68, 68, 0.15) !important;
-  color: #f87171 !important;
-}
-
-/* Mark as read check button */
-.sb-header.is-dark-header .notifications-dropdown .btn-link.text-primary {
-  color: #60a5fa !important;
-}
-
-/* Empty state */
-.sb-header.is-dark-header .notifications-dropdown .bg-secondary-transparent {
-  background: rgba(148, 163, 184, 0.1) !important;
-  color: #94a3b8 !important;
-}
-
-.sb-header.is-dark-header .notifications-dropdown h6 {
-  color: #cbd5e1;
-}
-
-/* Footer link */
-.sb-header.is-dark-header .notifications-dropdown .border-top {
-  border-color: rgba(148, 163, 184, 0.1) !important;
-}
-
-.sb-header.is-dark-header .notifications-dropdown .text-primary {
-  color: #60a5fa !important;
-}
-
-/* Badge count in header */
+.sb-header.is-dark-header .notifications-dropdown > .main-header-dropdown { background: #0f1729; border-color: rgba(148, 163, 184, 0.14); box-shadow: 0 22px 46px rgba(0, 0, 0, 0.4); }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-divider { border-color: rgba(148, 163, 184, 0.1); }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-item { color: #cbd5e1; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-item:hover { background: rgba(255, 255, 255, 0.04); }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-item.bg-primary-transparent { background: rgba(59, 130, 246, 0.1) !important; border-left: 3px solid rgba(96, 165, 250, 0.6); }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-item.bg-primary-transparent:hover { background: rgba(59, 130, 246, 0.16) !important; }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-item .fw-semibold { color: #e8edf5; }
+.sb-header.is-dark-header .notifications-dropdown .dropdown-item .text-muted { color: #8899af !important; }
+.sb-header.is-dark-header .notifications-dropdown .bg-success-transparent { background: rgba(34, 197, 94, 0.15) !important; color: #4ade80 !important; }
+.sb-header.is-dark-header .notifications-dropdown .bg-info-transparent { background: rgba(14, 165, 233, 0.15) !important; color: #38bdf8 !important; }
+.sb-header.is-dark-header .notifications-dropdown .bg-danger-transparent { background: rgba(239, 68, 68, 0.15) !important; color: #f87171 !important; }
+.sb-header.is-dark-header .notifications-dropdown .btn-link.text-primary { color: #60a5fa !important; }
+.sb-header.is-dark-header .notifications-dropdown .bg-secondary-transparent { background: rgba(148, 163, 184, 0.1) !important; color: #94a3b8 !important; }
+.sb-header.is-dark-header .notifications-dropdown h6 { color: #cbd5e1; }
+.sb-header.is-dark-header .notifications-dropdown .border-top { border-color: rgba(148, 163, 184, 0.1) !important; }
+.sb-header.is-dark-header .notifications-dropdown .text-primary { color: #60a5fa !important; }
 .sb-header.is-dark-header .header-count-badge,
-.sb-header.is-dark-header .request-total-badge {
-  border-color: #0f1729;
-}
+.sb-header.is-dark-header .request-total-badge { border-color: #0f1729; }
 
 </style>

@@ -45,6 +45,7 @@ export interface UpdateUserPayload {
     jabatan?: string;
     id_jabatan?: string;
     role?: string;
+    role_id?: number;
     phone?: string;
     location?: string;
     photo?: string;

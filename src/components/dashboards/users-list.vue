@@ -11,7 +11,6 @@ import { roleService, type Role } from "../../services/role.service";
 import { useListPage } from "../../composables/useListPage";
 import { formatImageUrl } from "../../utils/media";
 import type { User } from "../../types/user.types";
-import type { Stakeholder } from "../../types/stakeholders.types";
 
 export default {
   data() {
@@ -53,14 +52,66 @@ export default {
     const showEditRoleModal = ref(false);
     const currentEditItem = ref<User | null>(null);
     const selectedRole = ref('');
+    const selectedStatus = ref('Aktif');
 
-    // Computed items from API data
-    const items = computed(() => {
-      // Get current logged-in user info
+    const getUserStatusText = (status?: string) => {
+      const s = String(status || '').toLowerCase().trim();
+      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
+      return 'Aktif';
+    };
+
+    const getRoleBadgeClass = (role: string) => {
+      const r = String(role || '').toLowerCase();
+      if (r === 'admin') return 'badge-sektor-red';
+      if (r === 'staff') return 'badge-sektor-green';
+      if (r === 'user_pic') return 'badge-sektor-orange';
+      return 'badge-sektor-sky';
+    };
+
+    const getRoleIcon = (role: string) => {
+      const r = String(role || '').toLowerCase();
+      if (r === 'admin') return 'ri-shield-star-line';
+      if (r === 'staff') return 'ri-shield-user-line';
+      return 'ri-user-line';
+    };
+
+    const companyNameMap = computed(() => {
+      const map = new Map<string, string>();
+      stakeholdersData.value.forEach((stakeholder) => {
+        if (stakeholder.id) map.set(String(stakeholder.id), stakeholder.nama_perusahaan || '-');
+      });
+      return map;
+    });
+
+    const makeSearchText = (user: User, companyName: string) => [
+      user.name,
+      user.display_name,
+      user.username,
+      user.email,
+      user.jabatan,
+      user.role,
+      companyName,
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    type UserListItem = User & {
+      companyName: string;
+      displayName: string;
+      statusText: string;
+      statusBadgeClass: string;
+      roleBadgeClass: string;
+      roleIcon: string;
+      avatarLetter: string;
+      avatarClass: string;
+      searchText: string;
+    };
+
+    // Computed items from API data. Keep row-ready fields here so the table
+    // doesn't repeatedly normalize status, role, avatar, and company lookup.
+    const items = computed<UserListItem[]>(() => {
       const currentUser = authStore.currentUser;
-      
-      // Map users from API
-      return usersData.value.map(u => {
+      const companies = companyNameMap.value;
+
+      return usersData.value.map((u) => {
         const userObj: User = {
           id: (u as any).id?.toString() || '',
           slug: (u as any).slug || (u as any).username || (u as any).id?.toString() || '',
@@ -86,16 +137,32 @@ export default {
           foto_profile: (u as any).foto_profile || undefined
         };
 
-        // If this is the current logged-in user, use profile store data
-        if (currentUser && userObj.id === currentUser.id) {
-          return {
+        const mergedUser = currentUser && userObj.id === currentUser.id
+          ? {
             ...userObj,
             jabatan: profileStore.jabatan || userObj.jabatan,
             name: profileStore.name || userObj.name,
             photo: profileStore.fotoProfileUrl || userObj.photo,
-          };
-        }
-        return userObj;
+          }
+          : userObj;
+
+        const displayName = mergedUser.display_name || mergedUser.name || mergedUser.username || 'User';
+        const avatarLetter = displayName.charAt(0).toUpperCase() || 'U';
+        const companyName = mergedUser.id_perusahaan ? (companies.get(String(mergedUser.id_perusahaan)) || '-') : '-';
+        const statusText = getUserStatusText(mergedUser.status);
+
+        return {
+          ...mergedUser,
+          companyName,
+          displayName,
+          statusText,
+          statusBadgeClass: statusText === 'Aktif' ? 'badge-sektor-teal' : 'badge-sektor-amber',
+          roleBadgeClass: getRoleBadgeClass(mergedUser.role),
+          roleIcon: getRoleIcon(mergedUser.role),
+          avatarLetter,
+          avatarClass: getAvatarColorClass(avatarLetter),
+          searchText: makeSearchText(mergedUser, companyName),
+        };
       });
     });
 
@@ -128,14 +195,7 @@ export default {
       let data = items.value;
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
-        data = data.filter(
-          (i) =>
-            i.name.toLowerCase().includes(q) ||
-            (i.display_name || '').toLowerCase().includes(q) ||
-            i.username.toLowerCase().includes(q) ||
-            i.jabatan.toLowerCase().includes(q) ||
-            i.role.toLowerCase().includes(q)
-        );
+        data = data.filter((i) => i.searchText.includes(q));
       }
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
@@ -147,17 +207,36 @@ export default {
 
     const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
 
-    // Helper function to get company name by ID
-    const getCompanyName = (companyId: string | undefined): string => {
-      if (!companyId) return '-';
-      const company = stakeholdersData.value.find(s => s.id === companyId);
-      return company?.nama_perusahaan || '-';
+    const paginationCopy = computed(() => {
+      const total = filteredData.value.length;
+      const start = displayData.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0;
+      const end = Math.min(currentPage.value * itemsPerPage.value, total);
+      return `Showing ${start}-${end} of ${total} users`;
+    });
+
+    const fallbackRoles = ['admin', 'staff', 'user_pic', 'user'];
+    const roleOptions = computed(() => rolesData.value.length ? rolesData.value : fallbackRoles.map((name, index) => ({ id: -(index + 1), name })));
+
+    const getStatusPayload = (status: string) => {
+      const isAktif = status === 'Aktif';
+      const statusVal = isAktif ? 'Aktif' : 'Suspend';
+      return {
+        status: isAktif ? 'Aktif' : 'Nonaktif',
+        status_akun: isAktif ? '1' : '0',
+        aktif: isAktif ? 1 : 0,
+        is_active: isAktif ? 1 : 0,
+        is_suspended: isAktif ? 0 : 1,
+        dedicatedStatus: statusVal,
+      };
     };
 
-    // EDIT ROLE
+    const getDisplayName = (item: User | null) => item?.display_name || item?.name || item?.username || 'User';
+
+    // EDIT ACCESS
     const openEditRoleModal = (item: User) => {
       currentEditItem.value = item;
       selectedRole.value = item.role || 'user';
+      selectedStatus.value = getUserStatusText(item.status);
       showEditRoleModal.value = true;
     };
 
@@ -165,22 +244,68 @@ export default {
       if (!currentEditItem.value) return;
       loading.value = true;
       try {
-        await usersService.update(currentEditItem.value.id, {
-          role: selectedRole.value
-        });
+        const current = currentEditItem.value;
+        const roleObj = rolesData.value.find(r => r.name.toLowerCase() === selectedRole.value.toLowerCase());
+        if (!roleObj) {
+          showNotification("Data role belum tersedia, coba refresh halaman.", "error");
+          return;
+        }
+
+        const statusPayload = getStatusPayload(selectedStatus.value);
+        const updatePayload: any = {
+          id: current.id,
+          username: current.username || current.email || '',
+          name: current.name || current.display_name || current.username || '',
+          email: current.email || current.username || '',
+          status: statusPayload.status,
+          status_akun: statusPayload.status_akun,
+          aktif: statusPayload.aktif,
+          is_active: statusPayload.is_active,
+          is_suspended: statusPayload.is_suspended,
+          role_id: roleObj.id,
+        };
+
+        if (current.display_name) updatePayload.display_name = current.display_name;
+        if (current.phone) {
+          updatePayload.phone = current.phone;
+          updatePayload.telepon = current.phone;
+        }
+        if (current.location) {
+          updatePayload.location = current.location;
+          updatePayload.alamat = current.location;
+        }
+        updatePayload.id_jabatan = current.id_jabatan || null;
+
+        await usersService.update(current.id, updatePayload);
+        try {
+          await usersService.updateStatus(current.id, {
+            id: current.id,
+            status: statusPayload.dedicatedStatus,
+            status_akun: statusPayload.dedicatedStatus,
+            aktif: statusPayload.aktif,
+            is_active: statusPayload.is_active,
+          });
+        } catch (statusErr) {
+          console.warn("Dedicated status endpoint failed:", statusErr);
+        }
         
         // Update local data
-        const index = usersData.value.findIndex((u: any) => u.id?.toString() === currentEditItem.value?.id);
+        const index = usersData.value.findIndex((u: any) => u.id?.toString() === current.id);
         if (index !== -1) {
           (usersData.value[index] as any).role = selectedRole.value;
           (usersData.value[index] as any).role_name = selectedRole.value;
+          (usersData.value[index] as any).status = statusPayload.status;
+          (usersData.value[index] as any).status_akun = statusPayload.status_akun;
+          (usersData.value[index] as any).aktif = statusPayload.aktif;
+          (usersData.value[index] as any).is_active = statusPayload.is_active;
+          (usersData.value[index] as any).is_suspended = statusPayload.is_suspended;
         }
         
         showEditRoleModal.value = false;
-        showNotification("Role berhasil diupdate!", "success");
+        showNotification("Akses user berhasil diupdate!", "success");
       } catch (error) {
-        console.error('Failed to update role:', error);
-        showNotification("Gagal mengupdate role!", "error");
+        console.error('Failed to update user access:', error);
+        showNotification("Gagal mengupdate akses user!", "error");
       } finally {
         loading.value = false;
       }
@@ -213,7 +338,7 @@ export default {
         }
         
         // Remove from local data
-        usersData.value = usersData.value.filter((u: any) => 
+        usersStore.users = usersData.value.filter((u: any) => 
           u.id?.toString() !== currentDeleteItem.value?.id
         );
         
@@ -228,25 +353,17 @@ export default {
       }
     };
 
-    // User status badges
-    const getUserStatusText = (status?: string) => {
-      const s = String(status || '').toLowerCase();
-      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
-      return 'Aktif';
-    };
-
-    const countAdmin   = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'admin').length);
-    const countStaff   = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'staff').length);
-    const countUserPic = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'user_pic' || u.role?.toLowerCase() === 'pic').length);
-    const countUser    = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'user').length);
-
-    const getRoleBadgeClass = (role: string) => {
-      const r = String(role || '').toLowerCase();
-      if (r === 'admin') return 'badge-sektor-red';
-      if (r === 'staff') return 'badge-sektor-green';
-      if (r === 'user_pic') return 'badge-sektor-orange';
-      return 'badge-sektor-sky';
-    };
+    const userStats = computed(() => items.value.reduce(
+      (stats, user) => {
+        const role = user.role?.toLowerCase();
+        if (role === 'admin') stats.admin += 1;
+        else if (role === 'staff') stats.staff += 1;
+        else if (role === 'user_pic' || role === 'pic') stats.userPic += 1;
+        else if (role === 'user') stats.user += 1;
+        return stats;
+      },
+      { admin: 0, staff: 0, userPic: 0, user: 0 },
+    ));
 
     onMounted(() => {
       loadUsers();
@@ -258,13 +375,13 @@ export default {
     return {
       authStore, items, loading, isInitialLoading, searchInput,
       searchQuery, sortField, sortOrder, currentPage, itemsPerPage,
-      totalPages, displayData, paginationInfo, filteredData,
+      totalPages, displayData, paginationInfo, paginationCopy, filteredData,
       showDeleteModal, currentDeleteItem,
-      showEditRoleModal, currentEditItem, selectedRole,
+      showEditRoleModal, currentEditItem, selectedRole, selectedStatus,
       showToast, toastMessage, toastType,
-      rolesData, countAdmin, countStaff, countUserPic, countUser,
+      rolesData, roleOptions, userStats,
       openDeleteModal, deleteUser, openEditRoleModal, updateRole,
-      getUserStatusText, getRoleBadgeClass, clearSearch, toggleSort, getAvatarColorClass, getCompanyName,
+      getUserStatusText, getRoleBadgeClass, getDisplayName, clearSearch, toggleSort, getAvatarColorClass,
     };
   },
 };
@@ -307,19 +424,19 @@ export default {
                 </div>
                 <div class="stakeholders-meta-card">
                   <span class="stakeholders-meta-label">Admin</span>
-                  <strong><i class="ri-shield-star-line text-danger"></i> {{ countAdmin }}</strong>
+                  <strong><i class="ri-shield-star-line text-danger"></i> {{ userStats.admin }}</strong>
                 </div>
                 <div class="stakeholders-meta-card">
                   <span class="stakeholders-meta-label">Staff</span>
-                  <strong><i class="ri-shield-user-line text-success"></i> {{ countStaff }}</strong>
+                  <strong><i class="ri-shield-user-line text-success"></i> {{ userStats.staff }}</strong>
                 </div>
                 <div class="stakeholders-meta-card">
                   <span class="stakeholders-meta-label">User PIC</span>
-                  <strong><i class="ri-user-settings-line text-warning"></i> {{ countUserPic }}</strong>
+                  <strong><i class="ri-user-settings-line text-warning"></i> {{ userStats.userPic }}</strong>
                 </div>
                 <div class="stakeholders-meta-card">
                   <span class="stakeholders-meta-label">User</span>
-                  <strong><i class="ri-user-line text-info"></i> {{ countUser }}</strong>
+                  <strong><i class="ri-user-line text-info"></i> {{ userStats.user }}</strong>
                 </div>
               </div>
             </div>
@@ -406,12 +523,12 @@ export default {
                   </td>
                   <td class="align-middle">
                     <div class="stakeholder-company-cell">
-                      <div class="company-avatar" :class="getAvatarColorClass(item.name.charAt(0))">
-                        <img v-if="item.photo" :src="item.photo" :alt="item.name" class="company-avatar-img" />
-                        <span v-else class="company-avatar-letter">{{ item.name.charAt(0).toUpperCase() }}</span>
+                      <div class="company-avatar" :class="item.avatarClass">
+                        <img v-if="item.photo" :src="item.photo" :alt="item.displayName" class="company-avatar-img" />
+                        <span v-else class="company-avatar-letter">{{ item.avatarLetter }}</span>
                       </div>
                       <div class="company-name-wrap">
-                        <span class="company-name d-block fw-bold">{{ item.display_name || item.name }}</span>
+                        <span class="company-name d-block fw-bold">{{ item.displayName }}</span>
                         <span class="text-muted fs-12">@{{ item.username }}</span>
                       </div>
                     </div>
@@ -425,17 +542,17 @@ export default {
                     </span>
                   </td>
                   <td class="align-middle">
-                    <span class="text-muted fs-13">{{ getCompanyName(item.id_perusahaan) }}</span>
+                    <span class="text-muted fs-13">{{ item.companyName }}</span>
                   </td>
                   <td class="align-middle text-center">
-                    <span class="badge-sektor" :class="getUserStatusText(item.status) === 'Aktif' ? 'badge-sektor-teal' : 'badge-sektor-amber'">
-                      <i :class="getUserStatusText(item.status) === 'Aktif' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
-                      {{ getUserStatusText(item.status) }}
+                    <span class="badge-sektor" :class="item.statusBadgeClass">
+                      <i :class="item.statusText === 'Aktif' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
+                      {{ item.statusText }}
                     </span>
                   </td>
                   <td class="align-middle text-center">
-                    <span class="badge-sektor" :class="getRoleBadgeClass(item.role)">
-                      <i :class="item.role === 'admin' ? 'ri-shield-star-line me-1' : (item.role === 'staff' ? 'ri-shield-user-line me-1' : 'ri-user-line me-1')"></i>
+                    <span class="badge-sektor" :class="item.roleBadgeClass">
+                      <i :class="`${item.roleIcon} me-1`"></i>
                       {{ item.role }}
                     </span>
                   </td>
@@ -466,7 +583,7 @@ export default {
           <!-- Pagination -->
           <div class="pagination-container stakeholders-pagination mt-4">
             <div class="stakeholders-pagination-copy">
-              Showing {{ displayData.length ? (currentPage - 1) * itemsPerPage + 1 : 0 }}-{{ Math.min(currentPage * itemsPerPage, filteredData.length) }} of {{ filteredData.length }} users
+              {{ paginationCopy }}
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
               <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages || 1 }}</span>
@@ -539,42 +656,93 @@ export default {
     </div>
   </Teleport>
 
-  <!-- Edit Role Modal -->
+  <!-- Edit Access Modal -->
   <Teleport to="body">
     <div v-if="showEditRoleModal" class="modal-overlay" @click.self="showEditRoleModal = false">
-      <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
+      <div class="modal-dialog modal-dialog-centered user-access-modal-dialog">
         <div class="modal-content border-0 bg-transparent">
-          <div class="kse-modal-box kse-modal-sm w-100">
-            <div class="kse-modal-header pb-3 mb-2" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-              <div class="d-flex align-items-center gap-3">
-                <div class="kse-modal-icon-wrap" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+          <div class="user-access-modal w-100">
+            <div class="user-access-header">
+              <div class="d-flex align-items-center gap-3 min-w-0">
+                <div class="user-access-header-icon">
                   <i class="ri-shield-user-line"></i>
                 </div>
-                <div>
-                  <div class="kse-modal-title">Ubah Role User</div>
+                <div class="min-w-0">
+                  <div class="user-access-title">Edit Akses User</div>
+                  <div class="user-access-subtitle">Role dan status akun pengguna</div>
+                </div>
+              </div>
+              <button type="button" class="user-access-close" @click="showEditRoleModal = false" title="Tutup">
+                <i class="ri-close-line"></i>
+              </button>
+            </div>
+
+            <div class="user-access-body" v-if="currentEditItem">
+              <div class="user-access-summary">
+                <div class="user-access-avatar" :class="getAvatarColorClass(getDisplayName(currentEditItem).charAt(0))">
+                  <img v-if="currentEditItem.photo" :src="currentEditItem.photo" :alt="getDisplayName(currentEditItem)" />
+                  <span v-else>{{ getDisplayName(currentEditItem).charAt(0).toUpperCase() }}</span>
+                </div>
+                <div class="min-w-0 flex-grow-1">
+                  <div class="user-access-name">{{ getDisplayName(currentEditItem) }}</div>
+                  <div class="user-access-meta">
+                    <span>@{{ currentEditItem.username }}</span>
+                    <span v-if="currentEditItem.email">{{ currentEditItem.email }}</span>
+                  </div>
+                </div>
+                <div class="user-access-current">
+                  <span class="badge-sektor" :class="getRoleBadgeClass(currentEditItem.role)">{{ currentEditItem.role }}</span>
+                  <span class="badge-sektor" :class="getUserStatusText(currentEditItem.status) === 'Aktif' ? 'badge-sektor-teal' : 'badge-sektor-amber'">
+                    {{ getUserStatusText(currentEditItem.status) }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="user-access-form-grid">
+                <div class="user-access-field">
+                  <label class="user-access-label">
+                    <i class="ri-shield-keyhole-line"></i>
+                    Role Akses
+                  </label>
+                  <select v-model="selectedRole" class="form-select user-access-select">
+                    <option v-for="role in roleOptions" :key="role.id" :value="role.name">{{ role.name }}</option>
+                  </select>
+                </div>
+
+                <div class="user-access-field">
+                  <label class="user-access-label">
+                    <i class="ri-toggle-line"></i>
+                    Status Akun
+                  </label>
+                  <div class="user-status-segment" role="group" aria-label="Status akun">
+                    <button
+                      type="button"
+                      class="user-status-option"
+                      :class="{ active: selectedStatus === 'Aktif' }"
+                      @click="selectedStatus = 'Aktif'"
+                    >
+                      <i class="ri-checkbox-circle-line"></i>
+                      <span>Aktif</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="user-status-option"
+                      :class="{ active: selectedStatus === 'Nonaktif' }"
+                      @click="selectedStatus = 'Nonaktif'"
+                    >
+                      <i class="ri-close-circle-line"></i>
+                      <span>Nonaktif</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="kse-modal-body text-start" v-if="currentEditItem">
-              <div class="mb-3">
-                <label class="form-label fs-13 text-muted">User</label>
-                <div class="fw-semibold">{{ currentEditItem.name }}</div>
-              </div>
-              <div class="mb-3">
-                <label class="form-label fs-13 text-muted">Role Akses</label>
-                <select v-model="selectedRole" class="form-select">
-                  <option v-for="role in rolesData" :key="role.id" :value="role.name">{{ role.name }}</option>
-                  <option v-if="!rolesData.length" value="admin">admin</option>
-                  <option v-if="!rolesData.length" value="staff">staff</option>
-                  <option v-if="!rolesData.length" value="user_pic">user_pic</option>
-                  <option v-if="!rolesData.length" value="user">user</option>
-                </select>
-              </div>
-            </div>
-            <div class="kse-modal-footer">
-              <button class="btn btn-light kse-modal-cancel" @click="showEditRoleModal = false">Batal</button>
-              <button class="btn btn-primary" @click="updateRole" :disabled="loading">
-                <span v-if="loading" class="spinner-border spinner-border-sm me-1"></span>Simpan
+            <div class="user-access-footer">
+              <button class="btn btn-light user-access-cancel" @click="showEditRoleModal = false">Batal</button>
+              <button class="btn btn-primary user-access-save" @click="updateRole" :disabled="loading">
+                <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
+                <i v-else class="ri-save-3-line me-1"></i>
+                Simpan Akses
               </button>
             </div>
           </div>
@@ -603,6 +771,293 @@ export default {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
   border-radius: 16px !important;
   overflow: hidden;
+}
+
+.user-access-modal-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow: visible !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.user-access-modal-dialog .modal-content {
+  width: 100%;
+  overflow: visible;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.user-access-modal {
+  overflow: hidden;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.34);
+}
+
+.user-access-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.45rem 1.75rem;
+  background: linear-gradient(135deg, #0f3d91 0%, #2563eb 56%, #14b8a6 100%);
+  color: #ffffff;
+}
+
+.user-access-header-icon {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 1.35rem;
+}
+
+.user-access-title {
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.user-access-subtitle {
+  margin-top: 0.15rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.user-access-close {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  transition: all 0.2s ease;
+}
+
+.user-access-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.user-access-body {
+  padding: 1.55rem 1.75rem 1.45rem;
+}
+
+.user-access-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.15rem;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.user-access-avatar {
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 16px;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.user-access-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-access-name {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-access-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.user-access-current {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  max-width: 190px;
+}
+
+.user-access-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.2rem;
+  margin-top: 1.2rem;
+}
+
+.user-access-field {
+  min-width: 0;
+}
+
+.user-access-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.user-access-label i {
+  color: #2563eb;
+  font-size: 0.95rem;
+}
+
+.user-access-select {
+  min-height: 48px;
+  border-radius: 12px !important;
+  border-color: #dbeafe !important;
+  background-color: #f8fbff !important;
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+.user-access-select:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12) !important;
+}
+
+.user-status-segment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.35rem;
+  min-height: 48px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.user-status-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+  transition: all 0.2s ease;
+}
+
+.user-status-option.active {
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.user-status-option:not(.active):hover {
+  color: #1e293b;
+}
+
+.user-status-option:last-child.active {
+  color: #b45309;
+}
+
+.user-access-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  padding: 1.15rem 1.75rem 1.45rem;
+  border-top: 1px solid #e2e8f0;
+  background: #fbfdff;
+}
+
+.user-access-cancel,
+.user-access-save {
+  min-height: 44px;
+  border-radius: 10px !important;
+  font-weight: 800 !important;
+}
+
+.user-access-save {
+  min-width: 160px;
+}
+
+@media (max-width: 576px) {
+  .user-access-modal-dialog {
+    width: calc(100vw - 1rem);
+  }
+
+  .user-access-header,
+  .user-access-body,
+  .user-access-footer {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .user-access-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .user-access-current {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+    padding-left: 62px;
+  }
+
+  .user-access-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-access-footer {
+    flex-direction: column-reverse;
+  }
+
+  .user-access-cancel,
+  .user-access-save {
+    width: 100%;
+  }
 }
 
 /* Skeleton Loading */
@@ -942,6 +1397,17 @@ export default {
   color: #1e293b !important; /* Elegant black/dark navy */
 }
 
+.stakeholder-table .th-no,
+.stakeholder-table .stakeholder-row td:first-child,
+.stakeholder-table .stakeholder-row:hover td:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.stakeholder-table .row-number {
+  background: transparent !important;
+}
+
 /* --- DARK MODE SUPPORT --- */
 [data-theme-mode='dark'] .header-search-input {
   background-color: rgba(255, 255, 255, 0.1) !important;
@@ -1094,6 +1560,57 @@ html[data-theme-mode="dark"] .form-select:focus {
 }
 html[data-theme-mode="dark"] .kse-modal-header {
   border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+html[data-theme-mode="dark"] .user-access-modal {
+  background: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45) !important;
+}
+
+html[data-theme-mode="dark"] .user-access-summary {
+  background: rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme-mode="dark"] .user-access-name,
+html[data-theme-mode="dark"] .user-status-option:not(.active):hover {
+  color: #f8fafc !important;
+}
+
+html[data-theme-mode="dark"] .user-access-meta,
+html[data-theme-mode="dark"] .user-access-label {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .user-access-select {
+  background-color: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .user-status-segment {
+  background: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-theme-mode="dark"] .user-status-option {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .user-status-option.active {
+  background: #1e293b !important;
+  color: #2dd4bf !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24) !important;
+}
+
+html[data-theme-mode="dark"] .user-status-option:last-child.active {
+  color: #fbbf24 !important;
+}
+
+html[data-theme-mode="dark"] .user-access-footer {
+  background: #172033 !important;
+  border-top-color: rgba(255, 255, 255, 0.1) !important;
 }
 </style>
 

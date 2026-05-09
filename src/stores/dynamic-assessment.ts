@@ -18,6 +18,8 @@ const genericIndexDescriptions: Record<number, string> = {
   5: 'Optimalisasi berkelanjutan'
 };
 
+const QUESTIONS_PER_PAGE = 5;
+
 // Default progress state
 const createDefaultProgress = (domainId: string, categoryId: string, subCategoryId: string): AssessmentProgress => ({
     currentDomainId: domainId,
@@ -27,6 +29,31 @@ const createDefaultProgress = (domainId: string, categoryId: string, subCategory
     status: 'IN_PROGRESS',
     lastUpdated: Date.now()
 });
+
+const getCategoryQuestions = (category?: DynamicCategory): DynamicQuestion[] => {
+    if (!category) return [];
+    const directQuestions = category.questions || [];
+    const subCategoryQuestions = category.subCategories?.flatMap((subCategory) => subCategory.questions || []) || [];
+    return [...directQuestions, ...subCategoryQuestions];
+};
+
+const getSubCategoryQuestions = (subCategory?: DynamicSubCategory): DynamicQuestion[] => {
+    return subCategory?.questions || [];
+};
+
+const getFirstSubCategory = (category?: DynamicCategory): DynamicSubCategory | undefined => {
+    if (!category) return undefined;
+    return category.subCategories?.[0];
+};
+
+const getLastSubCategory = (category?: DynamicCategory): DynamicSubCategory | undefined => {
+    if (!category || !category.subCategories?.length) return undefined;
+    return category.subCategories[category.subCategories.length - 1];
+};
+
+const getLastPageForQuestions = (questions: DynamicQuestion[]): number => {
+    return Math.ceil((questions || []).length / QUESTIONS_PER_PAGE) || 1;
+};
 
 export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
     state: () => ({
@@ -68,13 +95,12 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         totalQuestions(): number {
-            let count = 0;
-            this.domains.forEach(d => {
-                d.categories.forEach(c => {
-                    count += c.questions.length;
-                });
-            });
-            return count;
+            return this.domains.reduce((count, domain) => {
+                return count + domain.categories.reduce((domainCount, category) => {
+                    const categoryQuestions = getCategoryQuestions(category);
+                    return domainCount + categoryQuestions.length;
+                }, 0);
+            }, 0);
         },
 
         answeredQuestions(): number {
@@ -107,19 +133,24 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         currentPageQuestions(): DynamicQuestion[] {
-            const questions = this.currentSubCategory?.questions || this.currentCategory?.questions || [];
-            
-            const questionsPerPage = 5;
-            const startIndex = (this.progress.currentPage - 1) * questionsPerPage;
-            const endIndex = startIndex + questionsPerPage;
+            const questions = this.currentSubCategory && getSubCategoryQuestions(this.currentSubCategory).length > 0
+                ? getSubCategoryQuestions(this.currentSubCategory)
+                : getCategoryQuestions(this.currentCategory);
+            const startIndex = (this.progress.currentPage - 1) * QUESTIONS_PER_PAGE;
+            const endIndex = startIndex + QUESTIONS_PER_PAGE;
             
             return questions.slice(startIndex, endIndex);
         },
         
+        totalPagesInSubCategory(): number {
+             const questions = this.currentSubCategory && getSubCategoryQuestions(this.currentSubCategory).length > 0
+                ? getSubCategoryQuestions(this.currentSubCategory)
+                : getCategoryQuestions(this.currentCategory);
+             return getLastPageForQuestions(questions);
+        },
+
         totalPagesInCategory(): number {
-             const questions = this.currentSubCategory?.questions || this.currentCategory?.questions || [];
-             const questionsPerPage = 5;
-             return Math.ceil(questions.length / questionsPerPage);
+             return this.totalPagesInSubCategory;
         },
 
         getAnswer() {
@@ -179,7 +210,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             if (!this.progressMap[slug]) {
                 const firstDomain = this.domains[0];
                 const firstCategory = firstDomain?.categories?.[0];
-                const firstSubCategory = firstCategory?.subCategories?.[0];
+                const firstSubCategory = getFirstSubCategory(firstCategory);
                 this.progressMap[slug] = createDefaultProgress(
                     firstDomain?.id || '',
                     firstCategory?.id || '',
@@ -422,7 +453,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                         const question: DynamicQuestion = {
                             id: compositeId,
                             originalId: numericId,
-                            text: skName + (qIdent ? ` - ${qIdent}` : ''),
+                            text: qIdent || skName || 'Pertanyaan',
                             kategoriId: kId,
                             subCategoryId: skId,
                             subCategoryName: skName || 'Unknown Sub Kategori',
@@ -431,9 +462,14 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                             indexDescriptions: idxDesc
                         };
 
-                        category.questions.push(question);
-                        if (skId && category.subCategories.has(skId)) {
-                            category.subCategories.get(skId).questions.push(question);
+                        const targetSubCategory = skId && category.subCategories.has(skId)
+                            ? category.subCategories.get(skId)
+                            : null;
+
+                        if (targetSubCategory) {
+                            targetSubCategory.questions.push(question);
+                        } else {
+                            category.questions.push(question);
                         }
                     } catch (err) {
                         console.error(`[DynamicAssessment] Error parsing question ${index}:`, err);
@@ -462,7 +498,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 // Sync current progress if there is no progress for this user
                 if (this.currentStakeholderSlug && !this.progressMap[this.currentStakeholderSlug]) {
                     if (this.domains.length > 0 && this.domains[0].categories.length > 0) {
-                        const firstSubCategory = this.domains[0].categories[0].subCategories?.[0];
+                        const firstSubCategory = getFirstSubCategory(this.domains[0].categories[0]);
                         this.progressMap[this.currentStakeholderSlug] = createDefaultProgress(
                             this.domains[0].id, 
                             this.domains[0].categories[0].id, 
@@ -537,8 +573,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 }
 
                 const question = this.domains
-                    .flatMap(domain => domain.categories)
-                    .flatMap(category => category.questions)
+                    .flatMap(domain => domain.categories.flatMap(category => getCategoryQuestions(category)))
                     .find(item => item.id === questionId);
 
                 if (!question) return false;
@@ -619,6 +654,31 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             } finally {
                 this.syncingAnswersCount = Math.max(0, this.syncingAnswersCount - 1);
             }
+        },
+
+        async syncCurrentPageAnswersToBackend(stakeholderSlug: string): Promise<{ success: boolean; errors: string[] }> {
+            const answers = this.answersMap[stakeholderSlug] || {};
+            const questions = this.currentPageQuestions;
+            const pendingQuestionIds = questions
+                .map((question) => question.id)
+                .filter((questionId) => {
+                    const answer = answers[questionId];
+                    return !!answer && (!answer.backendSyncedAt || !!answer.backendSyncError || (answer.updatedAt && answer.backendSyncedAt && answer.updatedAt > answer.backendSyncedAt));
+                });
+
+            if (!pendingQuestionIds.length) {
+                return { success: true, errors: [] };
+            }
+
+            const errors: string[] = [];
+            for (const questionId of pendingQuestionIds) {
+                const answer = answers[questionId];
+                if (!answer) continue;
+                const ok = await this.syncAnswerToBackend(stakeholderSlug, questionId, answer.index);
+                if (!ok) errors.push(questionId);
+            }
+
+            return { success: errors.length === 0, errors };
         },
 
         async hydrateAnswersFromBackend(stakeholderSlug: string, _perusahaanId: string) {
@@ -737,8 +797,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
 
             const questionById = new Map(
                 this.domains
-                    .flatMap(domain => domain.categories)
-                    .flatMap(category => category.questions)
+                    .flatMap(domain => domain.categories.flatMap(category => getCategoryQuestions(category)))
                     .map(question => [question.id, question])
             );
 
@@ -861,7 +920,7 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     let catSum = 0;
                     let catCount = 0;
 
-                    category.questions.forEach(q => {
+                    getCategoryQuestions(category).forEach(q => {
                         const ans = answers[q.id];
                         if (ans && typeof ans.index === 'number') {
                             catSum += ans.index;
@@ -886,13 +945,14 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             }
         },
 
-        updateProgress(domainId: string, categoryId: string, page: number) {
+        updateProgress(domainId: string, categoryId: string, subCategoryId: string, page: number) {
             if (!this.currentStakeholderSlug) return;
 
             this.progressMap[this.currentStakeholderSlug] = {
                 ...this.progressMap[this.currentStakeholderSlug],
                 currentDomainId: domainId,
                 currentCategoryId: categoryId,
+                currentSubCategoryId: subCategoryId,
                 currentPage: page,
                 lastUpdated: Date.now()
             };
@@ -925,13 +985,14 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             if (this.currentStakeholderSlug === slug) {
                 const firstDomain = this.domains[0];
                 const firstCategory = firstDomain?.categories?.[0];
+                const firstSubCategory = getFirstSubCategory(firstCategory);
                 this.answersMap[slug] = {};
                 this.syncedBackendAnswersMap[slug] = {};
                 this.backendAnswerIdsMap[slug] = {};
                 this.progressMap[slug] = createDefaultProgress(
                     firstDomain?.id || '',
                     firstCategory?.id || '',
-                    ''
+                    firstSubCategory?.id || ''
                 );
             }
         },
@@ -945,16 +1006,17 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         goToNextPage() {
-            const totalPages = this.totalPagesInCategory;
+            const totalPages = this.totalPagesInSubCategory;
 
             if (this.progress.currentPage < totalPages) {
                 this.updateProgress(
                     this.progress.currentDomainId,
                     this.progress.currentCategoryId,
+                    this.progress.currentSubCategoryId,
                     this.progress.currentPage + 1
                 );
             } else {
-                this.goToNextCategory();
+                this.goToNextSubCategory();
             }
         },
 
@@ -963,55 +1025,89 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 this.updateProgress(
                     this.progress.currentDomainId,
                     this.progress.currentCategoryId,
+                    this.progress.currentSubCategoryId,
                     this.progress.currentPage - 1
                 );
             } else {
-                this.goToPreviousCategory();
+                this.goToPreviousSubCategory();
             }
         },
 
-        goToNextCategory() {
+        goToNextSubCategory() {
             const domain = this.currentDomain;
             const category = this.currentCategory;
+            const currentSubCategory = this.currentSubCategory;
             if (!domain || !category) return;
 
-            const categoryIndex = domain.categories.findIndex(c => c.id === category.id);
+            const subCategories = category.subCategories || [];
+            const currentSubCategoryIndex = currentSubCategory
+                ? subCategories.findIndex(sc => sc.id === currentSubCategory.id)
+                : -1;
 
+            if (currentSubCategoryIndex >= 0 && currentSubCategoryIndex < subCategories.length - 1) {
+                const nextSubCategory = subCategories[currentSubCategoryIndex + 1];
+                this.updateProgress(domain.id, category.id, nextSubCategory.id, 1);
+                return;
+            }
+
+            const categoryIndex = domain.categories.findIndex(c => c.id === category.id);
             if (categoryIndex < domain.categories.length - 1) {
                 const nextCategory = domain.categories[categoryIndex + 1];
-                this.updateProgress(domain.id, nextCategory.id, 1);
-            } else {
-                const domainIndex = this.domains.findIndex(d => d.id === domain.id);
-                if (domainIndex < this.domains.length - 1) {
-                    const nextDomain = this.domains[domainIndex + 1];
-                    const firstCategory = nextDomain.categories[0];
-                    if (firstCategory) {
-                        this.updateProgress(nextDomain.id, firstCategory.id, 1);
-                    }
+                const firstSubCategory = getFirstSubCategory(nextCategory);
+                this.updateProgress(domain.id, nextCategory.id, firstSubCategory?.id || '', 1);
+                return;
+            }
+
+            const domainIndex = this.domains.findIndex(d => d.id === domain.id);
+            if (domainIndex < this.domains.length - 1) {
+                const nextDomain = this.domains[domainIndex + 1];
+                const firstCategory = nextDomain.categories[0];
+                const firstSubCategory = getFirstSubCategory(firstCategory);
+                if (firstCategory) {
+                    this.updateProgress(nextDomain.id, firstCategory.id, firstSubCategory?.id || '', 1);
                 }
             }
         },
 
-        goToPreviousCategory() {
+        goToPreviousSubCategory() {
             const domain = this.currentDomain;
             const category = this.currentCategory;
+            const currentSubCategory = this.currentSubCategory;
             if (!domain || !category) return;
 
-            const categoryIndex = domain.categories.findIndex(c => c.id === category.id);
+            const subCategories = category.subCategories || [];
+            const currentSubCategoryIndex = currentSubCategory
+                ? subCategories.findIndex(sc => sc.id === currentSubCategory.id)
+                : -1;
 
+            if (currentSubCategoryIndex > 0) {
+                const prevSubCategory = subCategories[currentSubCategoryIndex - 1];
+                this.updateProgress(domain.id, category.id, prevSubCategory.id, getLastPageForQuestions(prevSubCategory.questions));
+                return;
+            }
+
+            const categoryIndex = domain.categories.findIndex(c => c.id === category.id);
             if (categoryIndex > 0) {
                 const prevCategory = domain.categories[categoryIndex - 1];
-                const lastPage = Math.ceil(prevCategory.questions.length / 5) || 1;
-                this.updateProgress(domain.id, prevCategory.id, lastPage);
-            } else {
-                const domainIndex = this.domains.findIndex(d => d.id === domain.id);
-                if (domainIndex > 0) {
-                    const prevDomain = this.domains[domainIndex - 1];
-                    const lastCategory = prevDomain.categories[prevDomain.categories.length - 1];
-                    if (lastCategory) {
-                        const lastPage = Math.ceil(lastCategory.questions.length / 5) || 1;
-                        this.updateProgress(prevDomain.id, lastCategory.id, lastPage);
-                    }
+                const lastSubCategory = getLastSubCategory(prevCategory);
+                if (lastSubCategory) {
+                    this.updateProgress(domain.id, prevCategory.id, lastSubCategory.id, getLastPageForQuestions(lastSubCategory.questions));
+                } else {
+                    this.updateProgress(domain.id, prevCategory.id, '', getLastPageForQuestions(getCategoryQuestions(prevCategory)));
+                }
+                return;
+            }
+
+            const domainIndex = this.domains.findIndex(d => d.id === domain.id);
+            if (domainIndex > 0) {
+                const prevDomain = this.domains[domainIndex - 1];
+                const lastCategory = prevDomain.categories[prevDomain.categories.length - 1];
+                if (!lastCategory) return;
+                const lastSubCategory = getLastSubCategory(lastCategory);
+                if (lastSubCategory) {
+                    this.updateProgress(prevDomain.id, lastCategory.id, lastSubCategory.id, getLastPageForQuestions(lastSubCategory.questions));
+                } else {
+                    this.updateProgress(prevDomain.id, lastCategory.id, '', getLastPageForQuestions(getCategoryQuestions(lastCategory)));
                 }
             }
         }

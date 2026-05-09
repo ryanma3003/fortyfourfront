@@ -34,18 +34,28 @@ export interface BackendRuangLingkup {
 export interface DynamicQuestion {
   id: string;              // composite ID: e.g. "identifikasi_1", "proteksi_3"
   originalId: string;      // original numeric ID from backend for API payloads
-  text: string;            // sub-kategori nama
+  text: string;            // pertanyaan text
   kategoriId: string;      // parent kategori ID
+  subCategoryId?: string;
+  subCategoryName?: string;
   domainKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih';
   scopeId?: string;        // The ID from backend (optional depending on how we join)
   scope: string;           // ruang lingkup text (default: 'Tata Kelola' or empty if not tied directly)
   indexDescriptions: Record<number, string>; // We supply generic descriptions here
 }
 
+export interface DynamicSubCategory {
+  id: string;
+  name: string;
+  categoryId: string;
+  questions: DynamicQuestion[];
+}
+
 export interface DynamicCategory {
   id: string;              // kategori ID
   name: string;            // kategori nama
   domainId: string;
+  subCategories: DynamicSubCategory[];
   questions: DynamicQuestion[];
 }
 

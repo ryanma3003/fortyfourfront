@@ -281,8 +281,8 @@ const ApexRadarChart = computed(() => [
         id: 1,
         title: "Perkategori",
         type: "radar",
-        height: "500",
-        width: "500",
+        height: "650",
+        width: "100%",
         chart: {
             options: kategoriRadarOptions.value,
             series: calculatedSeries.value
@@ -292,8 +292,8 @@ const ApexRadarChart = computed(() => [
         id: 2,
         title: "Perdomain",
         type: "radar",
-        height: "500",
-        width: "500",
+        height: "650",
+        width: "100%",
         chart: {
             options: domainRadarOptions.value,
             series: calculatedSeriesDomain.value
