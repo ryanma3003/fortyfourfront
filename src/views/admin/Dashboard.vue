@@ -14,6 +14,7 @@
     import { useIkasStore } from "@/stores/ikas";
     import { useCsirtStore } from "@/stores/csirt";
     import { useKonversiStore } from "@/stores/konversi";
+    import { useResikoStore } from "@/stores/resiko";
     import { useDashboardFilterStore } from "@/stores/dashboardFilter";
     import { useNotificationStore } from "@/stores/notifications";
     import { getKonversiProgress, isKonversiComplete } from "@/services/konversi.service";
@@ -35,7 +36,7 @@
     const showMetabase = ref(false);
     const isFirstLoad = ref(true);
     const loading = ref(true);
-    const showDashboardLoader = ref(true);
+    const showDashboardLoader = ref(false);
     const dashboardLoaderRef = ref(null);
     const dashboardLoaderExiting = ref(false);
     const dashboardDetailsReady = ref(false);
@@ -56,6 +57,7 @@
     const ikasStore = useIkasStore();
     const csirtStore = useCsirtStore();
     const konversiStore = useKonversiStore();
+    const resikoStore = useResikoStore();
     const filterStore = useDashboardFilterStore();
     const notifStore = useNotificationStore();
     
@@ -204,7 +206,6 @@
             .to(shell, {
                 autoAlpha: 0,
                 y: -8,
-                filter: 'blur(8px)',
                 duration: 0.24,
                 ease: 'power2.in',
             }, '<')
@@ -228,7 +229,7 @@
             dashboardLoaderTimeline?.kill();
             dashboardLoaderTimeline = null;
             dashboardLoaderExiting.value = false;
-            showDashboardLoader.value = true;
+            showDashboardLoader.value = false;
             nextTick(() => {
                 const root = dashboardLoaderRef.value;
                 root?.classList.remove('is-breaking');
@@ -297,6 +298,76 @@
         end.setHours(23, 59, 59, 999);
         date.value = [start, end];
         if (datepickerRef.value) datepickerRef.value.closeMenu();
+    };
+
+    const extractYearFromDate = (value) => {
+        if (!value) return null;
+        const parsed = new Date(value);
+        const year = parsed.getFullYear();
+        return Number.isFinite(year) ? year : null;
+    };
+
+    const availableYearOptions = computed(() => {
+        const currentYear = new Date().getFullYear();
+        const yearSet = new Set([currentYear]);
+
+        const pushYear = (value) => {
+            const year = extractYearFromDate(value);
+            if (year && year > 0 && year <= currentYear) {
+                yearSet.add(year);
+            }
+        };
+
+        baseStakeholders.value.forEach((item) => pushYear(item?.created_at));
+        baseCsirts.value.forEach((item) => pushYear(item?.perusahaan?.created_at || item?.created_at));
+        baseSdm.value.forEach((item) => pushYear(item?.created_at));
+        baseIkasStakeholders.value.forEach((item) => pushYear(item?.updated_at || item?.created_at));
+        baseSeList.value.forEach((item) => pushYear(getSeFirstDate(item)));
+
+        const years = Array.from(yearSet).sort((a, b) => b - a);
+        const minYear = years.length ? years[years.length - 1] : currentYear;
+        const maxYear = currentYear;
+        const generatedYears = [];
+
+        for (let year = maxYear; year >= minYear; year -= 1) {
+            generatedYears.push(year);
+        }
+
+        return generatedYears;
+    });
+
+    const selectedFullYear = computed(() => {
+        if (!Array.isArray(date.value) || date.value.length < 2 || !date.value[0] || !date.value[1]) return null;
+
+        const start = new Date(date.value[0]);
+        const end = new Date(date.value[1]);
+
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+        if (start.getFullYear() !== end.getFullYear()) return null;
+
+        const isStartOfYear = start.getMonth() === 0 && start.getDate() === 1;
+        const isEndOfYear = end.getMonth() === 11 && end.getDate() === 31;
+
+        return isStartOfYear && isEndOfYear ? start.getFullYear() : null;
+    });
+
+    const applyYearRange = (year) => {
+        const numericYear = Number(year);
+        if (!Number.isFinite(numericYear)) return;
+
+        const start = new Date(numericYear, 0, 1);
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date(numericYear, 11, 31);
+        end.setHours(23, 59, 59, 999);
+
+        date.value = [start, end];
+        if (datepickerRef.value) datepickerRef.value.closeMenu();
+    };
+
+    const handleYearSelect = (value) => {
+        if (!value) return;
+        applyYearRange(value);
     };
 
     // Alert Indicators Visibility Logic
@@ -495,19 +566,47 @@
         if (hasUsableApiKseData.value) return apiKseData.value;
         return localKseData.value;
     });
+
+    const resolveSektorNameById = (id) => {
+        if (!id) return '';
+        const sektor = sektorList.value.find((item) => String(item.id) === String(id));
+        return sektor ? getSektorName(sektor) : '';
+    };
+
+    const resolveSubSektorNameById = (id) => {
+        if (!id) return '';
+        const subSektor = subSektorList.value.find((item) => String(item.id) === String(id));
+        return subSektor ? getSubSektorName(subSektor) : '';
+    };
+
     const apiSektorCounts = computed(() => {
         const counts = filterStore.summaryData?.sektor_counts;
         if (!Array.isArray(counts)) return [];
 
         return counts
-            .map((item) => ({
-                id: String(item?.id ?? item?.sektor_id ?? item?.sub_sektor_id ?? item?.nama_sektor ?? ''),
-                nama_sektor: String(item?.nama_sektor ?? item?.nama_sub_sektor ?? item?.nama ?? 'Tidak diketahui'),
-                total: Number(item?.total ?? item?.count ?? item?.jumlah ?? 0) || 0,
-                this_month: Number(item?.this_month ?? item?.bulan_ini ?? 0) || 0,
-                countYear: Number(item?.countYear ?? item?.count_year ?? item?.tahun_ini ?? 0) || 0,
-                countQuarter: Number(item?.countQuarter ?? item?.count_quarter ?? item?.kuartal_ini ?? 0) || 0,
-            }))
+            .map((item) => {
+                const id = String(item?.id ?? item?.sektor_id ?? item?.sub_sektor_id ?? item?.nama_sektor ?? '');
+                const sektorId = item?.sektor_id ?? item?.id_sektor ?? '';
+                const subSektorId = item?.sub_sektor_id ?? '';
+                const rawName = String(item?.nama_sektor ?? item?.nama_sub_sektor ?? item?.nama ?? item?.label ?? '').trim();
+                const isUnknown = !rawName || rawName.toLowerCase() === 'tidak diketahui';
+
+                let resolvedName = rawName;
+                if (isUnknown) {
+                    resolvedName = filterStore.sektorId
+                        ? (resolveSubSektorNameById(subSektorId || id) || rawName)
+                        : (resolveSektorNameById(sektorId || id) || rawName);
+                }
+
+                return {
+                    id,
+                    nama_sektor: resolvedName || 'Tidak diketahui',
+                    total: Number(item?.total ?? item?.count ?? item?.jumlah ?? 0) || 0,
+                    this_month: Number(item?.this_month ?? item?.bulan_ini ?? 0) || 0,
+                    countYear: Number(item?.countYear ?? item?.count_year ?? item?.tahun_ini ?? 0) || 0,
+                    countQuarter: Number(item?.countQuarter ?? item?.count_quarter ?? item?.kuartal_ini ?? 0) || 0,
+                };
+            })
             .filter((item) => item.total > 0 || item.this_month > 0 || item.countYear > 0 || item.countQuarter > 0)
             .sort((a, b) => b.total - a.total);
     });
@@ -557,6 +656,11 @@
         };
     });
 
+    
+    const globalCsirtStatus = computed(() => filterStore.globalSummaryData?.csirt_status || {});
+    const globalIkasStatus = computed(() => filterStore.globalSummaryData?.ikas_status || {});
+    const globalKseData = computed(() => filterStore.globalSummaryData?.kse_summary || {});
+    
     const apiCsirtStatus = computed(() => {
         const status = filterStore.summaryData?.csirt_status || {};
         return {
@@ -671,6 +775,29 @@
         return Math.round((status.sudah_membentuk_csirt / status.total_perusahaan) * 100);
     });
 
+    const manrisStatus = computed(() => {
+        const completedCompanyIds = new Set(resikoStore.completedCompanyIds || []);
+        Object.entries(resikoStore.progressMap || {}).forEach(([slug, progress]) => {
+            if (progress?.status !== 'COMPLETED') return;
+            const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+            if (stakeholder?.id) completedCompanyIds.add(String(stakeholder.id));
+        });
+
+        const total = totalStakeholders.value;
+        const completed = Math.min(completedCompanyIds.size, total);
+        return {
+            total_perusahaan: total,
+            sudah_mengisi_manris: completed,
+            belum_mengisi_manris: Math.max(0, total - completed),
+        };
+    });
+
+    const manrisCompletionRate = computed(() => {
+        const status = manrisStatus.value;
+        if (!status.total_perusahaan) return 0;
+        return Math.round((status.sudah_mengisi_manris / status.total_perusahaan) * 100);
+    });
+
     const ikasSummaryData = computed(() => {
         const stakeholders = baseIkasStakeholders.value;
         const range = filterStore.dateRange;
@@ -746,7 +873,7 @@
                 return {
                     labels: ['Lengkap', 'Belum Lengkap', 'Punya SDM', 'Punya SE'],
                     series: [data.lengkap, data.belum_lengkap, data.punya_sdm, data.punya_se],
-                    colors: ['#26bf94', '#f5b849', '#0ea5e9', '#6366f1']
+                    colors: ['#26bf94', '#f5b849', '#0ea5e9', '#3b82f6']
                 };
             } else {
                 const status = csirtStatus.value;
@@ -756,6 +883,28 @@
                     colors: ['#26bf94', '#e6533c']
                 };
             }
+        } else if (summaryMode.value === 'MANRIS') {
+            const status = manrisStatus.value;
+            const localInProgress = Object.entries(resikoStore.answersMap || {})
+                .filter(([, answers]) => answers && Object.keys(answers).length > 0).length;
+
+            if (view === 'distribution') {
+                return {
+                    labels: ['Sudah Diisi', 'Dalam Proses', 'Belum Diisi'],
+                    series: [
+                        status.sudah_mengisi_manris,
+                        localInProgress,
+                        Math.max(0, status.belum_mengisi_manris - localInProgress),
+                    ],
+                    colors: ['#26bf94', '#f5b849', '#e6533c']
+                };
+            }
+
+            return {
+                labels: ['Sudah Mengisi', 'Belum Mengisi'],
+                series: [status.sudah_mengisi_manris, status.belum_mengisi_manris],
+                colors: ['#26bf94', '#e6533c']
+            };
         } else {
             // IKAS Mode
             if (view === 'distribution') {
@@ -770,7 +919,7 @@
                 return {
                     labels: ['Nilai Kematangan', 'Target Nilai'],
                     series: [Number(s.avgNilaiKematangan), Number(s.avgTargetNilai)],
-                    colors: ['#23b7e5', '#6366f1']
+                    colors: ['#23b7e5', '#3b82f6']
                 };
             }
         }
@@ -929,10 +1078,9 @@
                         colors: ['#ffffff']
                     },
                     dropShadow: {
-                        enabled: true,
+                        enabled: false,
                         top: 1,
                         left: 1,
-                        blur: 2,
                         opacity: 0.6,
                         color: '#000000'
                     }
@@ -984,7 +1132,7 @@
                                 },
                                 total: {
                                     show: true,
-                                    label: view === 'completion' ? 'Total Status' : (summaryMode.value === 'KSE' ? 'Total KSE' : (summaryMode.value === 'CSIRT' ? 'Total CSIRT' : 'Total IKAS')),
+                                    label: view === 'completion' ? 'Total Status' : (summaryMode.value === 'KSE' ? 'Total KSE' : (summaryMode.value === 'CSIRT' ? 'Total CSIRT' : (summaryMode.value === 'MANRIS' ? 'Total Manris' : 'Total IKAS'))),
                                     fontSize: "12px",
                                     fontWeight: 850,
                                     color: mutedColor,
@@ -1016,10 +1164,9 @@
                         enabled: false
                     },
                     dropShadow: {
-                        enabled: true,
+                        enabled: false,
                         top: 0,
                         left: 0,
-                        blur: 3,
                         color: isDark ? '#0f172a' : '#ffffff',
                         opacity: isDark ? 0.65 : 1
                     }
@@ -1111,42 +1258,49 @@
     const activeProgressRate = computed(() => {
         if (summaryMode.value === 'KSE') return kseFillRate.value;
         if (summaryMode.value === 'CSIRT') return csirtCompletionRateAnalytics.value;
+        if (summaryMode.value === 'MANRIS') return manrisCompletionRate.value;
         return ikasCompletionRate.value;
     });
 
     const activeFilledCount = computed(() => {
         if (summaryMode.value === 'KSE') return kseStatus.value?.sudah_mengisi_kse ?? 0;
         if (summaryMode.value === 'CSIRT') return csirtStatus.value?.sudah_membentuk_csirt ?? 0;
+        if (summaryMode.value === 'MANRIS') return manrisStatus.value.sudah_mengisi_manris;
         return ikasFilledCount.value;
     });
 
     const activeUnfilledCount = computed(() => {
         if (summaryMode.value === 'KSE') return kseStatus.value?.belum_mengisi_kse ?? 0;
         if (summaryMode.value === 'CSIRT') return csirtStatus.value?.belum_membentuk_csirt ?? 0;
+        if (summaryMode.value === 'MANRIS') return manrisStatus.value.belum_mengisi_manris;
         return ikasUnfilledCount.value;
     });
 
     const activeStatusTotal = computed(() => {
         if (summaryMode.value === 'KSE') return kseStatus.value?.total_perusahaan ?? 0;
         if (summaryMode.value === 'CSIRT') return csirtStatus.value?.total_perusahaan ?? 0;
+        if (summaryMode.value === 'MANRIS') return manrisStatus.value.total_perusahaan;
         return ikasStatusTotal.value;
     });
 
     const activeDetailRoute = computed(() => {
         if (summaryMode.value === 'KSE') return '/kse-list-admin';
         if (summaryMode.value === 'CSIRT') return '/csirt-list';
+        if (summaryMode.value === 'MANRIS') return '/stakeholders';
         return '/ikas-list';
     });
 
     const analyticsPrimaryLabel = computed(() => {
         if (summaryMode.value === 'KSE') return 'Distribusi';
         if (summaryMode.value === 'CSIRT') return 'Kelengkapan';
+        if (summaryMode.value === 'MANRIS') return 'Status';
         return 'Level';
     });
 
     const analyticsSecondaryLabel = computed(() => {
         if (summaryMode.value === 'KSE') return 'Status';
         if (summaryMode.value === 'CSIRT') return 'Pembentukan';
+        if (summaryMode.value === 'MANRIS') return 'Pengisian';
         return 'Domain';
     });
 
@@ -1154,11 +1308,13 @@
         if (analyticsView.value === 'distribution') {
             if (summaryMode.value === 'KSE') return 'Distribusi Kategori SE';
             if (summaryMode.value === 'CSIRT') return 'Kelengkapan Data CSIRT';
+            if (summaryMode.value === 'MANRIS') return 'Status Survey Risiko';
             return 'Distribusi Level Kematangan';
         }
 
         if (summaryMode.value === 'KSE') return 'Status Pengisian';
         if (summaryMode.value === 'CSIRT') return 'Status Pembentukan';
+        if (summaryMode.value === 'MANRIS') return 'Status Pengisian';
         return 'Rata-rata Domain';
     });
 
@@ -1183,8 +1339,8 @@
                     label: filterStore.quarter ? `CSIRT Q${filterStore.quarter}` : (filterStore.year ? `CSIRT ${filterStore.year}` : 'CSIRT Periode Ini'),
                     value: data.this_month || data.total_csirt,
                     icon: 'ri-calendar-check-line',
-                    gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    color: '#6366f1',
+                    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
+                    color: '#3b82f6',
                     category: '',
                 },
                 {
@@ -1231,8 +1387,8 @@
                     label: filterStore.quarter ? `IKAS Q${filterStore.quarter}` : (filterStore.year ? `IKAS ${filterStore.year}` : 'IKAS Periode Ini'),
                     value: apiIkasStatus.value.sudah_mengisi_ikas,
                     icon: 'ri-calendar-check-line',
-                    gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    color: '#6366f1',
+                    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
+                    color: '#3b82f6',
                     category: '',
                 },
                 {
@@ -1271,6 +1427,47 @@
             return items.map(item => ({ ...item, isMuted: false }));
         }
 
+        if (summaryMode.value === 'MANRIS') {
+            const status = manrisStatus.value;
+            const respondents = resikoStore.adminRespondents || [];
+            const trained = respondents.filter((item) => String(item.sertifikat_training || '').trim()).length;
+            const items = [
+                {
+                    label: 'Total Responden',
+                    value: respondents.length,
+                    icon: 'ri-user-voice-line',
+                    gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)',
+                    color: '#0ea5e9',
+                    category: '',
+                },
+                {
+                    label: 'Perusahaan Mengisi',
+                    value: status.sudah_mengisi_manris,
+                    icon: 'ri-checkbox-circle-line',
+                    gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
+                    color: '#26bf94',
+                    category: 'Sudah Diisi',
+                },
+                {
+                    label: 'Belum Mengisi',
+                    value: status.belum_mengisi_manris,
+                    icon: 'ri-close-circle-line',
+                    gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
+                    color: '#e6533c',
+                    category: 'Belum Diisi',
+                },
+                {
+                    label: 'Sertifikat Training',
+                    value: trained,
+                    icon: 'ri-award-line',
+                    gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
+                    color: '#f5b849',
+                    category: '',
+                },
+            ];
+            return items.map(item => ({ ...item, isMuted: false }));
+        }
+
         // --- KSE MODE ---
         // Keep KSE aligned with IKAS: prefer /api/dashboard/se, then fall back to local data.
         const s = kseData.value;
@@ -1288,8 +1485,8 @@
                 label: filterStore.quarter ? `SE Q${filterStore.quarter}` : (filterStore.year ? `SE ${filterStore.year}` : 'SE Periode Ini'),
                 value: s.this_month || s.total_se,
                 icon: 'ri-calendar-check-line',
-                gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                color: '#6366f1',
+                gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
+                color: '#3b82f6',
                 category: '',
             },
             {
@@ -1532,6 +1729,7 @@
         && csirtStore.initialized
         && ikasStore.initialized
         && konversiStore.initialized
+        && resikoStore.initialized
         && sektorList.value.length > 0
         && subSektorList.value.length > 0
     );
@@ -1590,6 +1788,8 @@
 
             await Promise.allSettled([
                 loadStore(stakeholdersStore),
+                loadStore(resikoStore),
+                resikoStore.loadAdminRespondents(options.refresh),
                 loadDashboardOptions(),
             ]);
 
@@ -2112,25 +2312,37 @@
 
     // ” ROW 2 Cards: CSIRT, SE, IKAS 
     const operationalCards = computed(() => {
-        const csirtCount = apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || filteredCsirt.value;
-        const ikasCount = apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || filteredIkasCount.value;
-        const seCount = apiKseData.value.total_se || filteredSe.value;
-        const stakeholderCount = apiCsirtStatus.value.total_perusahaan
-            || apiIkasStatus.value.total_perusahaan
-            || apiKseStatus.value.total_perusahaan
-            || filteredStakeholders.value;
+        // Only use local calculation if the detailed stores are fully fetched, otherwise fallback to API summary
+        // The API summary already respects global filters sent via getSummary params.
+        const csirtLocalReady = csirtStore.initialized && stakeholdersStore.initialized;
+        const ikasLocalReady = ikasStore.initialized && stakeholdersStore.initialized;
+        
+        // Fixed counts for the top big numbers (ignores global filters)
+        const fixedCsirtCount = globalCsirtStatus.value.sudah_membentuk_csirt || apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || 0;
+        const fixedIkasCount = globalIkasStatus.value.sudah_mengisi_ikas || apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || 0;
+        const fixedSeCount = globalKseData.value.total_se || apiKseData.value.total_se || 0;
+        
+        // Filtered counts for the bottom small numbers (follows global filters)
+        const displayFilteredCsirt = csirtLocalReady ? filteredCsirt.value : (apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || 0);
+        const displayFilteredIkas = ikasLocalReady ? filteredIkasCount.value : (apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || 0);
+        const displayFilteredSe = csirtLocalReady ? filteredSe.value : (apiKseData.value.total_se || 0);
+        
+        // Stakeholder fixed count (Top number)
+        const fixedStakeholderCount = stakeholdersStore.allStakeholders.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
+        // Stakeholder filtered count (Bottom number)
+        const displayFilteredStakeholder = filteredStakeholders.value;
 
         const useDetailedTrends = dashboardDetailsReady.value;
-        const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(csirtCount);
-        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(ikasCount);
-        const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(seCount);
-        const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(stakeholderCount);
+        const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(displayFilteredCsirt);
+        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(displayFilteredIkas);
+        const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(displayFilteredSe);
+        const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(displayFilteredStakeholder);
 
         return [
             {
                 title: "Total CSIRT",
-                count: String(csirtCount),
-                percent: String(csirtCount),
+                count: String(fixedCsirtCount),
+                percent: String(displayFilteredCsirt),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "danger",
                 iconColor: "danger fw-medium",
@@ -2149,8 +2361,8 @@
             },
             {
                 title: "Total IKAS",
-                count: String(ikasCount),
-                percent: String(ikasCount),
+                count: String(fixedIkasCount),
+                percent: String(displayFilteredIkas),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "info",
                 iconColor: "info fw-medium",
@@ -2169,8 +2381,8 @@
             },
             {
                 title: "Sistem Elektronik",
-                count: String(seCount),
-                percent: String(seCount),
+                count: String(fixedSeCount),
+                percent: String(displayFilteredSe),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "success",
                 iconColor: "success fw-medium",
@@ -2189,8 +2401,8 @@
             },
             {
                 title: "Stakeholders",
-                count: String(stakeholderCount),
-                percent: String(stakeholderCount),
+                count: String(fixedStakeholderCount),
+                percent: String(displayFilteredStakeholder),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "secondary",
                 iconColor: "secondary fw-medium",
@@ -2216,6 +2428,7 @@
         // Try nested sub_sektor with multiple paths
         if (s.sub_sektor?.nama_sektor) return s.sub_sektor.nama_sektor;
         if (s.sub_sektor?.sektor?.nama_sektor) return s.sub_sektor.sektor.nama_sektor;
+        if (s.sektor?.nama_sektor) return s.sektor.nama_sektor;
         
         // Fallback: resolve from id_sub_sektor if object is missing
         const subId = s.id_sub_sektor || (s.sub_sektor && s.sub_sektor.id);
@@ -2226,6 +2439,13 @@
                 const parent = sektorList.value.find(p => String(p.id) === String(sId));
                 if (parent) return getSektorName(parent);
             }
+        }
+
+        // Fallback: resolve directly from sektor id if stakeholder has no sub sektor payload
+        const sektorId = s.id_sektor || s.sub_sektor?.id_sektor || s.sektor?.id;
+        if (sektorId) {
+            const parent = sektorList.value.find(item => String(item.id) === String(sektorId));
+            if (parent) return getSektorName(parent);
         }
 
         // Try legacy flat field
@@ -2694,9 +2914,72 @@
     }
 
     const monitoringPalette = [
-        '#2563eb', '#0ea5e9', '#26bf94', '#f5b849', '#e6533c',
-        '#6366f1', '#14b8a6', '#8b5cf6', '#ec4899', '#84cc16'
+        '#477ff0', '#10b981', '#dc2626', '#f17432', '#0ea5e9',
+        '#14b8a6', '#84cc16', '#4a90d9', '#0369a1', '#cc7442',
+        '#65a30d', '#0284c7', '#ff9361', '#7f8fa4', '#d66b2d'
     ];
+
+    const monitoringUnknownColor = '#fb923c';
+    const monitoringSektorColorRules = [
+        { keywords: ['agro', 'surveyor', 'jasa konstruksi'], color: '#477ff0' },
+        { keywords: ['kimia', 'farmasi', 'tekstil', 'ikft'], color: '#10b981' },
+        { keywords: ['logam', 'mesin', 'alat transportasi', 'elektronika', 'ilmate'], color: '#dc2626' },
+        { keywords: ['kawasan industri'], color: '#f17432' },
+    ];
+
+    const normalizeMonitoringLabel = (value) => String(value || '').trim().toLowerCase();
+
+    const getMonitoringSektorBaseColor = (label, index = 0) => {
+        const normalized = normalizeMonitoringLabel(label);
+        if (!normalized || normalized === '-' || normalized === 'tidak diketahui') {
+            return monitoringUnknownColor;
+        }
+
+        const matchedRule = monitoringSektorColorRules.find((rule) =>
+            rule.keywords.some((keyword) => normalized.includes(keyword))
+        );
+        if (matchedRule) return matchedRule.color;
+
+        return monitoringPalette[index % monitoringPalette.length];
+    };
+
+    const findSektorIndexByName = (label) => (
+        sektorList.value.findIndex((item) => normalizeMonitoringLabel(getSektorName(item)) === normalizeMonitoringLabel(label))
+    );
+
+    const findSubSektorByName = (label) => (
+        subSektorList.value.find((item) => normalizeMonitoringLabel(getSubSektorName(item)) === normalizeMonitoringLabel(label))
+    );
+
+    const getMonitoringSektorColor = (label) => {
+        const sektorIndex = findSektorIndexByName(label);
+        return getMonitoringSektorBaseColor(label, sektorIndex >= 0 ? sektorIndex : 0);
+    };
+
+    const getMonitoringSubSektorColor = (label, index = 0) => {
+        const subSektor = findSubSektorByName(label);
+        if (subSektor) {
+            const parentId = getSubSektorParentId(subSektor);
+            const parentIndex = sektorList.value.findIndex((item) => String(item.id) === String(parentId));
+            const parent = parentIndex >= 0 ? sektorList.value[parentIndex] : null;
+            if (parent) {
+                return getMonitoringSektorBaseColor(getSektorName(parent), parentIndex);
+            }
+        }
+
+        return getMonitoringSektorBaseColor(label, index);
+    };
+
+    const getMonitoringSubSektorParentName = (label) => {
+        const subSektor = findSubSektorByName(label);
+        if (subSektor) {
+            const parentId = getSubSektorParentId(subSektor);
+            const parent = sektorList.value.find((item) => String(item.id) === String(parentId));
+            if (parent) return getSektorName(parent);
+        }
+
+        return 'Tidak diketahui';
+    };
 
     const monitoringPercentOf = (value, total) => {
         const safeTotal = Number(total || 0);
@@ -2704,7 +2987,21 @@
         return Math.round((Number(value || 0) / safeTotal) * 100);
     };
 
-    const buildMonitoringGroups = (labelGetter) => {
+    const resolveMonitoringSubSektorId = (stakeholder) => {
+        if (stakeholder?.sub_sektor?.id) return String(stakeholder.sub_sektor.id);
+        if (stakeholder?.id_sub_sektor) return String(stakeholder.id_sub_sektor);
+        if (stakeholder?.sub_sektor?.nama_sub_sektor) {
+            const matched = subSektorList.value.find((item) => getSubSektorName(item) === stakeholder.sub_sektor.nama_sub_sektor);
+            if (matched) return String(matched.id);
+        }
+        if (stakeholder?.sektor) {
+            const matched = subSektorList.value.find((item) => getSubSektorName(item) === stakeholder.sektor);
+            if (matched) return String(matched.id);
+        }
+        return null;
+    };
+
+    const buildMonitoringGroups = (labelGetter, colorGetter) => {
         const groups = new Map();
 
         datedStakeholders.value.forEach((stakeholder) => {
@@ -2717,18 +3014,134 @@
             .map(([label, value], index) => ({
                 label,
                 value,
-                color: monitoringPalette[index % monitoringPalette.length],
+                color: colorGetter(label, index),
             }))
             .sort((a, b) => b.value - a.value);
     };
 
-    const monitoringSektorItems = computed(() => buildMonitoringGroups(getStakeholderSektorName).slice(0, 10));
-    const monitoringSubSektorItems = computed(() => buildMonitoringGroups(getStakeholderSubSektorName).slice(0, 10));
+    const monitoringChartSektors = computed(() => {
+        const shouldKeepEmptySubSektor = (sektorName) =>
+            normalizeMonitoringLabel(sektorName).includes('kawasan industri');
+
+        let data = sektorList.value.map((sektor) => {
+            const children = subSektorList.value.filter((subSektor) => {
+                const parentId = getSubSektorParentId(subSektor);
+                return parentId !== undefined && String(parentId) === String(sektor.id);
+            });
+
+            const subSektors = children.map((subSektor) => {
+                const stakeholderCount = datedStakeholders.value.filter((stakeholder) => {
+                    const subSektorId = resolveMonitoringSubSektorId(stakeholder);
+                    return subSektorId && subSektorId === String(subSektor.id);
+                }).length;
+
+                return {
+                    ...subSektor,
+                    displayName: getSubSektorName(subSektor),
+                    stakeholderCount,
+                };
+            }).filter((subSektor) =>
+                subSektor.stakeholderCount > 0 || shouldKeepEmptySubSektor(getSektorName(sektor))
+            );
+
+            return {
+                ...sektor,
+                displayName: getSektorName(sektor),
+                color: getMonitoringSektorColor(getSektorName(sektor)),
+                subSektors,
+                stakeholderCount: subSektors.reduce((total, subSektor) => total + subSektor.stakeholderCount, 0),
+            };
+        }).filter((sektor) => sektor.stakeholderCount > 0);
+
+        if (filterStore.sektorId) {
+            data = data.filter((sektor) => String(sektor.id) === String(filterStore.sektorId));
+        }
+
+        if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+            data = data
+                .filter((sektor) => sektor.subSektors.some((subSektor) => String(subSektor.id) === String(filterStore.subSektorId)))
+                .map((sektor) => {
+                    const subSektors = sektor.subSektors.filter((subSektor) => String(subSektor.id) === String(filterStore.subSektorId));
+                    return {
+                        ...sektor,
+                        subSektors,
+                        stakeholderCount: subSektors.reduce((total, subSektor) => total + subSektor.stakeholderCount, 0),
+                    };
+                });
+        }
+
+        return [...data].sort((a, b) => b.stakeholderCount - a.stakeholderCount || a.displayName.localeCompare(b.displayName));
+    });
+
+    const monitoringSektorItems = computed(() =>
+        monitoringChartSektors.value.map((sektor) => ({
+            label: sektor.displayName,
+            value: sektor.stakeholderCount,
+            color: sektor.color,
+        }))
+    );
+
+    const monitoringSubSektorItems = computed(() => {
+        return monitoringChartSektors.value.flatMap((sektor) =>
+            [...sektor.subSektors]
+                .sort((a, b) => b.stakeholderCount - a.stakeholderCount || a.displayName.localeCompare(b.displayName))
+                .map((subSektor) => ({
+                    label: subSektor.displayName,
+                    value: subSektor.stakeholderCount,
+                    color: sektor.color,
+                    parentName: sektor.displayName,
+                }))
+        );
+    });
+    const monitoringRiskSummary = computed(() => {
+        const stakeholders = datedStakeholders.value;
+        const completedSlugs = new Set(
+            Object.entries(resikoStore.progressMap || {})
+                .filter(([, progress]) => progress?.status === 'COMPLETED')
+                .map(([slug]) => slug)
+        );
+        const answeredSlugs = new Set(
+            Object.entries(resikoStore.answersMap || {})
+                .filter(([, answers]) => answers && Object.keys(answers).length > 0)
+                .map(([slug]) => slug)
+        );
+
+        let completed = 0;
+        let inProgress = 0;
+
+        stakeholders.forEach((stakeholder) => {
+            const slug = stakeholder?.slug;
+            if (!slug) return;
+            if (completedSlugs.has(slug)) {
+                completed += 1;
+            } else if (answeredSlugs.has(slug)) {
+                inProgress += 1;
+            }
+        });
+
+        const total = stakeholders.length;
+        const notStarted = Math.max(0, total - completed - inProgress);
+        const rate = monitoringPercentOf(completed, total);
+
+        return {
+            total,
+            completed,
+            inProgress,
+            notStarted,
+            rate,
+        };
+    });
 
     const monitoringKpiCards = computed(() => {
         const kse = kseData.value;
+        const kseStatusData = kseStatus.value;
         const csirt = csirtData.value;
+        const csirtStatusData = csirtStatus.value;
         const ikas = ikasSummaryData.value;
+        const risk = monitoringRiskSummary.value;
+        const kseFilled = kseStatusData.sudah_mengisi_kse || kse.total_se;
+        const csirtFormed = csirtStatusData.sudah_membentuk_csirt || csirt.total_csirt;
+        const ikasFilled = ikasFilledCount.value || ikas.total;
 
         return [
             {
@@ -2740,41 +3153,65 @@
             },
             {
                 label: 'Total KSE',
-                value: kse.total_se,
+                value: kseFilled,
+                total: kseStatusData.total_perusahaan || totalStakeholders.value,
                 sub: `${kse.strategis} strategis, ${kse.tinggi} tinggi, ${kse.rendah} rendah`,
                 icon: 'ri-git-branch-line',
-                color: '#f5b849',
+                color: '#d97706',
             },
             {
                 label: 'Total IKAS',
-                value: ikasFilledCount.value || ikas.total,
-                sub: `Rata-rata ${Number(ikas.avgNilaiKematangan || 0).toFixed(2)} dari target ${Number(ikas.avgTargetNilai || 0).toFixed(2)}`,
+                value: ikasFilled,
+                total: ikasStatusTotal.value || totalStakeholders.value,
+                sub: `Rata-rata ${Number(ikas.avgNilaiKematangan || 0).toFixed(2)}`,
                 icon: 'ri-line-chart-line',
-                color: '#26bf94',
+                color: '#16a34a',
             },
             {
                 label: 'Total CSIRT',
-                value: csirt.total_csirt,
+                value: csirtFormed,
+                total: csirtStatusData.total_perusahaan || totalStakeholders.value,
                 sub: `${csirt.lengkap} lengkap, ${csirt.belum_lengkap} belum lengkap`,
                 icon: 'ri-shield-check-line',
-                color: '#0ea5e9',
+                color: '#0891b2',
             },
             {
-                label: 'KSE Terisi',
-                value: kseStatus.value.sudah_mengisi_kse,
-                sub: `${kseFillRate.value}% dari ${formatChartNumber(kseStatus.value.total_perusahaan)} stakeholder`,
-                icon: 'ri-checkbox-circle-line',
-                color: '#6366f1',
-            },
-            {
-                label: 'CSIRT Terbentuk',
-                value: csirtStatus.value.sudah_membentuk_csirt,
-                sub: `${csirtCompletionRateAnalytics.value}% dari ${formatChartNumber(csirtStatus.value.total_perusahaan)} stakeholder`,
-                icon: 'ri-radar-line',
-                color: '#e6533c',
+                label: 'Manajemen Risiko',
+                value: risk.completed,
+                total: risk.total,
+                sub: `${risk.rate}% selesai, ${formatChartNumber(risk.inProgress)} proses`,
+                icon: 'ri-shield-flash-line',
+                color: '#dc2626',
+                rate: risk.rate,
             },
         ];
     });
+
+    const monitoringDataCompleteCount = computed(() => (
+        countCompleteKonversiStakeholders(datedStakeholders.value)
+    ));
+
+    const monitoringDataCompleteRate = computed(() => (
+        monitoringPercentOf(monitoringDataCompleteCount.value, totalStakeholders.value)
+    ));
+
+    const monitoringHeroHighlights = computed(() => [
+        {
+            label: 'Sektor aktif',
+            value: formatChartNumber(monitoringSektorItems.value.length || totalSektors.value),
+            icon: 'ri-building-2-line',
+        },
+        {
+            label: 'Sub-sektor terbaca',
+            value: formatChartNumber(monitoringSubSektorItems.value.length || totalSubSektors.value),
+            icon: 'ri-node-tree',
+        },
+        {
+            label: 'Periode data',
+            value: dateRangeLabel.value,
+            icon: 'ri-calendar-event-line',
+        },
+    ]);
 
     const monitoringKseData = computed(() => ({
         labels: ['Strategis', 'Tinggi', 'Rendah'],
@@ -2796,16 +3233,16 @@
     const monitoringCsirtData = computed(() => ({
         labels: ['Lengkap', 'Belum Lengkap', 'Punya SDM', 'Punya SE'],
         series: [csirtData.value.lengkap, csirtData.value.belum_lengkap, csirtData.value.punya_sdm, csirtData.value.punya_se],
-        colors: ['#26bf94', '#f5b849', '#0ea5e9', '#6366f1'],
+        colors: ['#26bf94', '#f5b849', '#0ea5e9', '#3b82f6'],
     }));
 
     const monitoringStatusItems = computed(() => [
         { label: 'KSE sudah', value: kseStatus.value.sudah_mengisi_kse, color: '#26bf94' },
         { label: 'KSE belum', value: kseStatus.value.belum_mengisi_kse, color: '#e6533c' },
-        { label: 'IKAS sudah', value: ikasFilledCount.value, color: '#0ea5e9' },
+        { label: 'IKAS sudah', value: ikasFilledCount.value, color: '#16a34a' },
         { label: 'IKAS belum', value: ikasUnfilledCount.value, color: '#f5b849' },
-        { label: 'CSIRT sudah', value: csirtStatus.value.sudah_membentuk_csirt, color: '#6366f1' },
-        { label: 'CSIRT belum', value: csirtStatus.value.belum_membentuk_csirt, color: '#ec4899' },
+        { label: 'CSIRT sudah', value: csirtStatus.value.sudah_membentuk_csirt, color: '#0891b2' },
+        { label: 'CSIRT belum', value: csirtStatus.value.belum_membentuk_csirt, color: '#64748b' },
     ]);
 
     const monitoringTrendBase = computed(() => getTrendData(datedStakeholders.value));
@@ -2838,16 +3275,16 @@
             grid: {
                 borderColor: t.grid,
                 strokeDashArray: 4,
-                padding: { top: 10, right: horizontal ? 44 : 12, bottom: 4, left: 8 },
+                padding: { top: 4, right: horizontal ? 28 : 8, bottom: 0, left: 4 },
             },
             plotOptions: {
                 bar: {
                     horizontal,
                     distributed: true,
-                    borderRadius: 7,
+                    borderRadius: 5,
                     borderRadiusApplication: 'end',
                     barHeight: horizontal ? '54%' : '58%',
-                    columnWidth: '52%',
+                    columnWidth: '54%',
                 },
             },
             dataLabels: {
@@ -2858,12 +3295,11 @@
                     fontSize: '11px',
                     fontWeight: 900,
                 },
-                offsetX: horizontal ? 10 : 0,
+                offsetX: horizontal ? 6 : 0,
                 dropShadow: horizontal ? {
                     enabled: true,
                     top: 0,
                     left: 0,
-                    blur: 3,
                     color: t.isDark ? '#0f172a' : '#ffffff',
                     opacity: t.isDark ? 0.65 : 1,
                 } : { enabled: false },
@@ -2882,7 +3318,7 @@
             yaxis: {
                 labels: {
                     show: horizontal,
-                    maxWidth: 138,
+                    maxWidth: 136,
                     style: { colors: t.axis, fontSize: '11px', fontWeight: 850 },
                 },
             },
@@ -2892,6 +3328,94 @@
                 y: { formatter: (value) => formatChartNumber(value) },
             },
         };
+    };
+
+    const buildDistributionBarOptions = (items) => {
+        const t = chartThemeTokens();
+        const maxValue = Math.max(1, ...items.map((item) => Number(item.value || 0)));
+
+        return {
+            chart: {
+                background: 'transparent',
+                fontFamily: 'Inter, sans-serif',
+                toolbar: {
+                    show: true,
+                    tools: {
+                        download: true,
+                        selection: false,
+                        zoom: false,
+                        zoomin: false,
+                        zoomout: false,
+                        pan: false,
+                        reset: false,
+                    },
+                },
+                parentHeightOffset: 0,
+                animations: { enabled: true, speed: 520 },
+            },
+            theme: { mode: t.isDark ? 'dark' : 'light' },
+            colors: items.map((item) => item.color),
+            grid: {
+                borderColor: t.grid,
+                strokeDashArray: 4,
+                padding: { top: 6, right: 20, bottom: 0, left: 0 },
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: true,
+                    distributed: true,
+                    borderRadius: 5,
+                    borderRadiusApplication: 'end',
+                    barHeight: items.length > 8 ? '54%' : '48%',
+                    dataLabels: {
+                        position: 'center',
+                    },
+                },
+            },
+            dataLabels: {
+                enabled: true,
+                formatter: (value) => value ? `${formatChartNumber(value)} stakeholder` : '',
+                textAnchor: 'middle',
+                offsetX: 0,
+                style: {
+                    colors: ['#ffffff'],
+                    fontSize: '11px',
+                    fontWeight: 900,
+                },
+                background: { enabled: false },
+                dropShadow: { enabled: false },
+            },
+            xaxis: {
+                categories: items.map((item) => item.label),
+                min: 0,
+                max: Math.ceil(maxValue / 10) * 10,
+                tickAmount: 4,
+                labels: {
+                    show: true,
+                    trim: true,
+                    style: { colors: t.axis, fontSize: '11px', fontWeight: 700 },
+                    formatter: (value) => formatChartNumber(value),
+                },
+                axisBorder: { show: false },
+                axisTicks: { show: false },
+            },
+            yaxis: {
+                labels: {
+                    show: true,
+                    maxWidth: 200,
+                    style: { colors: t.axis, fontSize: '11px', fontWeight: 700 },
+                },
+            },
+            legend: { show: false },
+            tooltip: {
+                theme: t.isDark ? 'dark' : 'light',
+                y: { formatter: (value) => `${formatChartNumber(value)} stakeholder` },
+            },
+        };
+    };
+
+    const getDistributionChartHeight = (count, minHeight, rowHeight) => {
+        return Math.max(minHeight, Number(count || 0) * rowHeight + 60);
     };
 
     const buildMonitoringDonutOptions = (data, totalLabel) => {
@@ -2913,7 +3437,7 @@
             legend: { show: false },
             plotOptions: {
                 pie: {
-                    customScale: 0.98,
+                    customScale: 0.96,
                     expandOnClick: false,
                     donut: {
                         size: '68%',
@@ -2921,7 +3445,7 @@
                             show: true,
                             name: { fontSize: '12px', fontWeight: 850, color: t.muted, offsetY: -6 },
                             value: {
-                                fontSize: '28px',
+                                fontSize: '27px',
                                 fontWeight: 900,
                                 color: t.text,
                                 offsetY: 8,
@@ -2946,10 +3470,12 @@
         };
     };
 
-    const monitoringSektorChartOptions = computed(() => buildMonitoringBarOptions(monitoringSektorItems.value, true));
+    const monitoringSektorChartOptions = computed(() => buildDistributionBarOptions(monitoringSektorItems.value));
     const monitoringSektorChartSeries = computed(() => [{ name: 'Stakeholder', data: monitoringSektorItems.value.map((item) => item.value) }]);
-    const monitoringSubSektorChartOptions = computed(() => buildMonitoringBarOptions(monitoringSubSektorItems.value, true));
+    const monitoringSektorChartHeight = computed(() => getDistributionChartHeight(monitoringSektorItems.value.length, 255, 40));
+    const monitoringSubSektorChartOptions = computed(() => buildDistributionBarOptions(monitoringSubSektorItems.value));
     const monitoringSubSektorChartSeries = computed(() => [{ name: 'Stakeholder', data: monitoringSubSektorItems.value.map((item) => item.value) }]);
+    const monitoringSubSektorChartHeight = computed(() => getDistributionChartHeight(monitoringSubSektorItems.value.length, 310, 26));
     const monitoringIkasChartOptions = computed(() => buildMonitoringBarOptions(monitoringIkasItems.value, false));
     const monitoringIkasChartSeries = computed(() => [{ name: 'IKAS', data: monitoringIkasItems.value.map((item) => item.value) }]);
     const monitoringStatusChartOptions = computed(() => buildMonitoringBarOptions(monitoringStatusItems.value, true));
@@ -2973,9 +3499,9 @@
                 animations: { enabled: true, speed: 520 },
             },
             theme: { mode: t.isDark ? 'dark' : 'light' },
-            colors: ['#2563eb', '#f5b849', '#26bf94', '#e6533c'],
-            grid: { borderColor: t.grid, strokeDashArray: 4, padding: { top: 12, right: 18, bottom: 8, left: 8 } },
-            stroke: { curve: 'smooth', width: 3 },
+            colors: ['#2563eb', '#f5b849', '#16a34a', '#0891b2'],
+            grid: { borderColor: t.grid, strokeDashArray: 4, padding: { top: 4, right: 14, bottom: 0, left: 4 } },
+            stroke: { curve: 'smooth', width: 2.8 },
             markers: { size: 0, hover: { size: 5 } },
             dataLabels: { enabled: false },
             xaxis: {
@@ -2992,10 +3518,10 @@
             },
             legend: {
                 position: 'bottom',
-                fontSize: '12px',
+                fontSize: '11px',
                 fontWeight: 700,
                 labels: { colors: t.axis },
-                itemMargin: { horizontal: 10, vertical: 6 },
+                itemMargin: { horizontal: 7, vertical: 2 },
             },
             tooltip: {
                 theme: t.isDark ? 'dark' : 'light',
@@ -3015,13 +3541,16 @@
 
     <template>
         <!-- HEADER -->
-        <div class="d-flex align-items-center justify-content-between mb-3 page-header-breadcrumb flex-wrap gap-2">
-            <div>
-                <h1 class="page-title fw-medium fs-20 mb-0">Dashboard</h1>
-                <p class="text-muted mb-0" style="font-size:0.78rem;">Command center untuk monitoring stakeholder & CSIRT</p>
+        <div class="d-flex align-items-center justify-content-between mb-2 page-header-breadcrumb flex-wrap gap-2 dashboard-page-header">
+            <div class="dashboard-page-heading">
+                <h1 class="page-title mb-0">Dashboard</h1>
+                <div class="dashboard-header-meta">
+                    <span><i class="ri-time-line"></i>{{ dateRangeLabel }}</span>
+                    <span><i class="ri-building-2-line"></i>{{ formatChartNumber(totalStakeholders) }} stakeholder</span>
+                </div>
             </div>
 
-            <div class="d-flex align-items-center flex-wrap gap-2">
+            <div class="dashboard-header-actions d-flex align-items-center flex-wrap gap-2">
                 <!-- Datepicker -->
                 <div class="dashboard-datepicker-wrapper">
                     <Datepicker placeholder="Ketik tgl (DD/MM/YYYY) atau Pilih Rentang"
@@ -3054,6 +3583,30 @@
                                 </div>
                                 
                                 <div class="dp-sidebar-divider"></div>
+
+                                <div class="dp-sidebar-section">
+                                    <div class="dp-sidebar-header">
+                                        <i class="ri-calendar-line"></i>
+                                        <span>Pilih Tahun</span>
+                                    </div>
+                                    <p class="dp-sidebar-desc">Klik tahun untuk otomatis ambil 1 Jan - 31 Des.</p>
+                                    <select
+                                        class="dp-year-select"
+                                        :value="selectedFullYear ?? ''"
+                                        @change="handleYearSelect($event.target.value)"
+                                    >
+                                        <option value="" disabled>Pilih tahun</option>
+                                        <option
+                                            v-for="year in availableYearOptions"
+                                            :key="'dashboard-year-' + year"
+                                            :value="year"
+                                        >
+                                            {{ year }}
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div class="dp-sidebar-divider"></div>
                                 
                                 <!-- Section 2: Jump to Date -->
                                 <div class="dp-sidebar-section">
@@ -3077,11 +3630,11 @@
                     @refresh-data="handleRefreshData"
                 />
                 <div>
-                    <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
+                    <button v-if="!showMetabase" class="btn dashboard-alt-btn d-flex align-items-center gap-2" @click="toggleMetabase">
                         <i class="ri-bar-chart-box-line"></i>
                         <span class="d-none d-md-inline">Dashboard Alt</span>
                     </button>
-                    <button v-if="showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
+                    <button v-if="showMetabase" class="btn dashboard-alt-btn d-flex align-items-center gap-2" @click="toggleMetabase">
                         <i class="ri-dashboard-3-line"></i>
                         <span class="d-none d-md-inline">Dashboard Utama</span>
                     </button>
@@ -3144,18 +3697,6 @@
 
             <template v-else>
                 <div class="monitoring-overview animate-show-up">
-                    <div class="monitoring-hero">
-                        <div>
-                            <span class="monitoring-eyebrow">Dashboard Monitoring</span>
-                            <h2>Data Stakeholder</h2>
-                            <p>Ringkasan sektor, KSE, IKAS, CSIRT, dan status pengisian pada periode aktif.</p>
-                        </div>
-                        <div class="monitoring-hero-meta">
-                            <span><i class="ri-time-line"></i>{{ dateRangeLabel }}</span>
-                            <span><i class="ri-building-2-line"></i>{{ formatChartNumber(totalStakeholders) }} stakeholder</span>
-                        </div>
-                    </div>
-
                     <div v-if="filterStore.error" class="monitoring-alert">
                         <i class="ri-error-warning-line"></i>
                         <span>Gagal memuat data dashboard.</span>
@@ -3165,58 +3706,112 @@
                         </button>
                     </div>
 
-                    <div class="monitoring-kpi-grid">
-                        <div
-                            v-for="card in monitoringKpiCards"
-                            :key="'monitoring-kpi-' + card.label"
-                            class="monitoring-kpi"
-                            :style="{ '--monitoring-accent': card.color }"
-                        >
-                            <div class="monitoring-kpi-icon">
-                                <i :class="card.icon"></i>
+                    <div class="monitoring-summary-row">
+                        <section class="monitoring-readiness-summary">
+                            <div class="monitoring-readiness-top">
+                                <div
+                                    class="monitoring-readiness-ring"
+                                    :style="{ '--readiness-score': monitoringDataCompleteRate + '%' }"
+                                >
+                                    <span>{{ monitoringDataCompleteRate }}%</span>
+                                </div>
+                                <div>
+                                    <span>Kesiapan Data</span>
+                                    <strong>
+                                        {{ formatChartNumber(monitoringDataCompleteCount) }}/{{ formatChartNumber(totalStakeholders) }} stakeholder
+                                    </strong>
+                                    <small>Stakeholder dengan data lengkap.</small>
+                                </div>
                             </div>
-                            <div class="monitoring-kpi-copy">
-                                <span>{{ card.label }}</span>
-                                <strong>{{ formatChartNumber(card.value) }}</strong>
-                                <small>{{ card.sub }}</small>
+                        </section>
+
+                        <div class="monitoring-kpi-grid">
+                            <div
+                                v-for="card in monitoringKpiCards"
+                                :key="'monitoring-kpi-' + card.label"
+                                class="monitoring-kpi"
+                                :style="{ '--monitoring-accent': card.color }"
+                            >
+                                <div class="monitoring-kpi-copy">
+                                    <span>{{ card.label }}</span>
+                                    <strong class="monitoring-kpi-value">
+                                        {{ formatChartNumber(card.value) }}
+                                        <small v-if="card.total" class="monitoring-kpi-total">/{{ formatChartNumber(card.total) }}</small>
+                                    </strong>
+                                    <small>{{ card.sub }}</small>
+                                    <div v-if="card.total" class="monitoring-kpi-progress">
+                                        <i :style="{ width: monitoringPercentOf(card.value, card.total) + '%' }"></i>
+                                    </div>
+                                </div>
+                                <div
+                                    v-if="card.total"
+                                    class="monitoring-kpi-donut"
+                                    :style="{ '--kpi-rate': (card.rate ?? monitoringPercentOf(card.value, card.total)) + '%' }"
+                                >
+                                    <span>{{ card.rate ?? monitoringPercentOf(card.value, card.total) }}%</span>
+                                </div>
+                                <div v-else class="monitoring-kpi-icon">
+                                    <i :class="card.icon"></i>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="monitoring-grid">
-                        <section class="monitoring-panel monitoring-panel-wide">
-                            <div class="monitoring-panel-header">
+                        <section class="monitoring-panel dashboard-distribution-panel dashboard-distribution-panel-full">
+                            <div class="dashboard-distribution-header">
                                 <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-stack-line"></i> Sektor</span>
-                                    <h3>Distribusi Stakeholder per Sektor</h3>
-                                    <p>Top sektor berdasarkan data periode aktif.</p>
+                                    <span class="dashboard-distribution-icon"><i class="ri-bar-chart-horizontal-fill"></i></span>
+                                    <div>
+                                        <h3>Distribusi Stakeholder per Sektor</h3>
+                                        <p>Jumlah stakeholder pada masing-masing sektor</p>
+                                    </div>
                                 </div>
-                                <strong>{{ formatChartNumber(totalStakeholders) }}</strong>
                             </div>
-                            <apexchart
-                                height="330"
-                                width="100%"
-                                type="bar"
-                                :options="monitoringSektorChartOptions"
-                                :series="monitoringSektorChartSeries"
-                            />
+                            <div class="dashboard-distribution-scroll dashboard-distribution-scroll--sector">
+                                <div class="dashboard-distribution-chart-frame">
+                                    <apexchart
+                                        v-if="monitoringSektorItems.length"
+                                        :height="monitoringSektorChartHeight"
+                                        width="100%"
+                                        type="bar"
+                                        :options="monitoringSektorChartOptions"
+                                        :series="monitoringSektorChartSeries"
+                                    />
+                                    <div v-else class="dashboard-distribution-empty">
+                                        <i class="ri-bar-chart-2-line"></i>
+                                        <span>Tidak ada data sektor</span>
+                                    </div>
+                                </div>
+                            </div>
                         </section>
 
-                        <section class="monitoring-panel">
-                            <div class="monitoring-panel-header">
+                        <section class="monitoring-panel dashboard-distribution-panel dashboard-distribution-panel-full">
+                            <div class="dashboard-distribution-header">
                                 <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-node-tree"></i> Sub-Sektor</span>
-                                    <h3>Distribusi Sub-Sektor</h3>
-                                    <p>Sub-sektor dengan jumlah stakeholder terbanyak.</p>
+                                    <span class="dashboard-distribution-icon"><i class="ri-bar-chart-horizontal-fill"></i></span>
+                                    <div>
+                                        <h3>Distribusi Stakeholder per Sub Sektor</h3>
+                                        <p>Jumlah stakeholder pada masing-masing sub sektor</p>
+                                    </div>
                                 </div>
                             </div>
-                            <apexchart
-                                height="330"
-                                width="100%"
-                                type="bar"
-                                :options="monitoringSubSektorChartOptions"
-                                :series="monitoringSubSektorChartSeries"
-                            />
+                            <div class="dashboard-distribution-scroll dashboard-distribution-scroll--subsector">
+                                <div class="dashboard-distribution-chart-frame">
+                                    <apexchart
+                                        v-if="monitoringSubSektorItems.length"
+                                        :height="monitoringSubSektorChartHeight"
+                                        width="100%"
+                                        type="bar"
+                                        :options="monitoringSubSektorChartOptions"
+                                        :series="monitoringSubSektorChartSeries"
+                                    />
+                                    <div v-else class="dashboard-distribution-empty">
+                                        <i class="ri-bar-chart-2-line"></i>
+                                        <span>Tidak ada data sub sektor</span>
+                                    </div>
+                                </div>
+                            </div>
                         </section>
 
                         <section class="monitoring-panel">
@@ -3229,7 +3824,7 @@
                                 <strong>{{ formatChartNumber(kseData.total_se) }}</strong>
                             </div>
                             <apexchart
-                                height="290"
+                                height="255"
                                 width="100%"
                                 type="donut"
                                 :options="monitoringKseChartOptions"
@@ -3253,7 +3848,7 @@
                                 <strong>{{ Number(ikasSummaryData.avgNilaiKematangan || 0).toFixed(2) }}</strong>
                             </div>
                             <apexchart
-                                height="315"
+                                height="260"
                                 width="100%"
                                 type="bar"
                                 :options="monitoringIkasChartOptions"
@@ -3271,7 +3866,7 @@
                                 <strong>{{ csirtCompletionRateAnalytics }}%</strong>
                             </div>
                             <apexchart
-                                height="290"
+                                height="255"
                                 width="100%"
                                 type="donut"
                                 :options="monitoringCsirtChartOptions"
@@ -3299,7 +3894,7 @@
                                 <strong>{{ dateRangeLabel }}</strong>
                             </div>
                             <apexchart
-                                height="330"
+                                height="270"
                                 width="100%"
                                 type="line"
                                 :options="monitoringTrendChartOptions"
@@ -3307,7 +3902,7 @@
                             />
                         </section>
 
-                        <section class="monitoring-panel">
+                        <section class="monitoring-panel monitoring-panel-status">
                             <div class="monitoring-panel-header">
                                 <div>
                                     <span class="monitoring-panel-badge"><i class="ri-list-check-3"></i> Status</span>
@@ -3316,7 +3911,7 @@
                                 </div>
                             </div>
                             <apexchart
-                                height="330"
+                                height="260"
                                 width="100%"
                                 type="bar"
                                 :options="monitoringStatusChartOptions"
@@ -3324,7 +3919,41 @@
                             />
                         </section>
 
-                        <section class="monitoring-panel">
+                        <section class="monitoring-panel monitoring-panel-risk">
+                            <div class="monitoring-panel-header">
+                                <div>
+                                    <span class="monitoring-panel-badge"><i class="ri-shield-flash-line"></i> Manris</span>
+                                    <h3>Manajemen Risiko</h3>
+                                    <p>Status survey risiko stakeholder.</p>
+                                </div>
+                                <strong>{{ monitoringRiskSummary.rate }}%</strong>
+                            </div>
+                            <div class="monitoring-risk-body">
+                                <div class="monitoring-risk-meter" :style="{ '--risk-rate': monitoringRiskSummary.rate + '%' }">
+                                    <span></span>
+                                </div>
+                                <div class="monitoring-mini-stats">
+                                    <div>
+                                        <strong>{{ formatChartNumber(monitoringRiskSummary.completed) }}</strong>
+                                        <span>Selesai</span>
+                                    </div>
+                                    <div>
+                                        <strong>{{ formatChartNumber(monitoringRiskSummary.inProgress) }}</strong>
+                                        <span>Proses</span>
+                                    </div>
+                                    <div>
+                                        <strong>{{ formatChartNumber(monitoringRiskSummary.notStarted) }}</strong>
+                                        <span>Belum</span>
+                                    </div>
+                                </div>
+                                <button class="monitoring-risk-action" @click="router.push('/stakeholders')">
+                                    <i class="ri-arrow-right-up-line"></i>
+                                    Kelola stakeholder
+                                </button>
+                            </div>
+                        </section>
+
+                        <section class="monitoring-panel monitoring-panel-top">
                             <div class="monitoring-panel-header">
                                 <div>
                                     <span class="monitoring-panel-badge"><i class="ri-layout-grid-line"></i> Top</span>
@@ -3640,6 +4269,7 @@
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'KSE' }" @click="summaryMode = 'KSE'">KSE</button>
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'IKAS' }" @click="summaryMode = 'IKAS'">IKAS</button>
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'CSIRT' }" @click="summaryMode = 'CSIRT'">CSIRT</button>
+                                        <button class="ki-seg-btn" :class="{ active: summaryMode === 'MANRIS' }" @click="summaryMode = 'MANRIS'">Manris</button>
                                     </div>
                                 </div>
                                 
@@ -3767,7 +4397,7 @@
                                             <div class="ki-chart-header">
                                                 <div class="ki-chart-header-left">
                                                     <div class="ki-chart-icon-wrap">
-                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : (summaryMode === 'CSIRT' ? 'ri-shield-check-fill' : 'ri-bar-chart-grouped-fill')"></i>
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : (summaryMode === 'CSIRT' ? 'ri-shield-check-fill' : (summaryMode === 'MANRIS' ? 'ri-shield-flash-fill' : 'ri-bar-chart-grouped-fill'))"></i>
                                                     </div>
                                                     <div>
                                                         <div class="ki-chart-title">Visualisasi {{ summaryMode }}</div>
@@ -3791,7 +4421,7 @@
                                                     <div class="ki-chart-pane">
                                                         <div class="ki-chart-pane-title">
                                                             <span>{{ analyticsPrimaryLabel }}</span>
-                                                            <small>{{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : 'Level Kematangan') }}</small>
+                                                            <small>{{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : (summaryMode === 'MANRIS' ? 'Survey Risiko' : 'Level Kematangan')) }}</small>
                                                         </div>
                                                         <div class="ki-visual-strip">
                                                             <div
@@ -3821,7 +4451,7 @@
                                                     <div class="ki-chart-pane">
                                                         <div class="ki-chart-pane-title">
                                                             <span>{{ analyticsSecondaryLabel }}</span>
-                                                            <small>{{ summaryMode === 'KSE' ? 'Status Pengisian' : (summaryMode === 'CSIRT' ? 'Status Pembentukan' : 'Rata-rata Nilai') }}</small>
+                                                            <small>{{ summaryMode === 'KSE' ? 'Status Pengisian' : (summaryMode === 'CSIRT' ? 'Status Pembentukan' : (summaryMode === 'MANRIS' ? 'Status Pengisian' : 'Rata-rata Nilai')) }}</small>
                                                         </div>
                                                         <div class="ki-visual-strip">
                                                             <div
@@ -3860,8 +4490,8 @@
                                             <div class="ki-breakdown">
                                                 <div class="ki-bp-header">
                                                     <span class="ki-bp-badge">
-                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : (summaryMode === 'CSIRT' ? 'ri-shield-check-line' : 'ri-bar-chart-box-line')"></i>
-                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : 'Level Kematangan') }}
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : (summaryMode === 'CSIRT' ? 'ri-shield-check-line' : (summaryMode === 'MANRIS' ? 'ri-shield-flash-line' : 'ri-bar-chart-box-line'))"></i>
+                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : (summaryMode === 'MANRIS' ? 'Survey Risiko' : 'Level Kematangan')) }}
                                                     </span>
                                                 </div>
                                                 <div class="ki-bp-items" v-if="summaryMode === 'KSE'">
@@ -3910,12 +4540,12 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="ki-bp-items" v-else>
+                                                <div class="ki-bp-items" v-else-if="summaryMode === 'CSIRT'">
                                                     <div v-for="(item, ci) in [
                                                         { label: 'Lengkap', value: csirtData.lengkap, total: csirtData.total_csirt, color: '#26bf94', icon: 'ri-checkbox-circle-fill' },
                                                         { label: 'Belum Lengkap', value: csirtData.belum_lengkap, total: csirtData.total_csirt, color: '#f5b849', icon: 'ri-error-warning-fill' },
                                                         { label: 'Punya SDM', value: csirtData.punya_sdm, total: csirtData.total_csirt, color: '#0ea5e9', icon: 'ri-team-fill' },
-                                                        { label: 'Punya SE', value: csirtData.punya_se, total: csirtData.total_csirt, color: '#6366f1', icon: 'ri-git-branch-fill' }
+                                                        { label: 'Punya SE', value: csirtData.punya_se, total: csirtData.total_csirt, color: '#3b82f6', icon: 'ri-git-branch-fill' }
                                                     ]" :key="item.label" class="ki-bp-row" :style="{ animationDelay: (ci * 0.08) + 's' }">
                                                         <div class="ki-bp-left">
                                                             <div class="ki-bp-icon" :style="{ background: item.color + '18', color: item.color }">
@@ -3924,6 +4554,29 @@
                                                             <div>
                                                                 <div class="ki-bp-label">{{ item.label }}</div>
                                                                 <div class="ki-bp-count">{{ item.value }} <span>CSIRT</span></div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="ki-bp-bar-wrap">
+                                                            <div class="ki-bp-bar">
+                                                                <div class="ki-bp-bar-fill" :style="{ width: (item.total ? Math.max(3, (item.value / item.total) * 100) : 0) + '%', background: `linear-gradient(90deg, ${item.color}88, ${item.color})` }"></div>
+                                                            </div>
+                                                            <span class="ki-bp-pct" :style="{ color: item.color }">{{ item.total ? Math.round((item.value / item.total) * 100) : 0 }}%</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="ki-bp-items" v-else>
+                                                    <div v-for="(item, ci) in [
+                                                        { label: 'Sudah Diisi', value: manrisStatus.sudah_mengisi_manris, total: manrisStatus.total_perusahaan, color: '#26bf94', icon: 'ri-checkbox-circle-fill' },
+                                                        { label: 'Belum Diisi', value: manrisStatus.belum_mengisi_manris, total: manrisStatus.total_perusahaan, color: '#e6533c', icon: 'ri-close-circle-fill' },
+                                                        { label: 'Responden', value: resikoStore.adminRespondents.length, total: Math.max(resikoStore.adminRespondents.length, 1), color: '#0ea5e9', icon: 'ri-user-voice-fill' }
+                                                    ]" :key="item.label" class="ki-bp-row" :style="{ animationDelay: (ci * 0.08) + 's' }">
+                                                        <div class="ki-bp-left">
+                                                            <div class="ki-bp-icon" :style="{ background: item.color + '18', color: item.color }">
+                                                                <i :class="item.icon"></i>
+                                                            </div>
+                                                            <div>
+                                                                <div class="ki-bp-label">{{ item.label }}</div>
+                                                                <div class="ki-bp-count">{{ item.value }} <span>Manris</span></div>
                                                             </div>
                                                         </div>
                                                         <div class="ki-bp-bar-wrap">
@@ -3975,7 +4628,7 @@
                                                         </div>
                                                     </div>
                                                 </template>
-                                                <template v-else>
+                                                <template v-else-if="summaryMode === 'CSIRT'">
                                                     <div class="ki-insight-content">
                                                         <div class="ki-insight-icon-wrap">
                                                             <i class="ri-shield-check-fill"></i>
@@ -3987,6 +4640,21 @@
                                                         <div class="ki-insight-tip">
                                                             <i class="ri-information-line"></i>
                                                             <span>CSIRT lengkap minimal memiliki data SDM dan Sistem Elektronik</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <template v-else>
+                                                    <div class="ki-insight-content">
+                                                        <div class="ki-insight-icon-wrap">
+                                                            <i class="ri-shield-flash-fill"></i>
+                                                        </div>
+                                                        <h6 class="ki-insight-title">Analisa Manajemen Risiko</h6>
+                                                        <p class="ki-insight-text">
+                                                            Terdapat <strong>{{ manrisStatus.sudah_mengisi_manris }}</strong> perusahaan yang sudah memiliki responden survey risiko dari total <strong>{{ manrisStatus.total_perusahaan }}</strong> stakeholder.
+                                                        </p>
+                                                        <div class="ki-insight-tip">
+                                                            <i class="ri-information-line"></i>
+                                                            <span>Data diambil dari endpoint responden survey risiko admin</span>
                                                         </div>
                                                     </div>
                                                 </template>
@@ -4090,12 +4758,10 @@
         0% {
             opacity: 0;
             transform: translateY(30px) scale(0.98);
-            filter: blur(4px);
         }
         100% {
             opacity: 1;
             transform: translateY(0) scale(1);
-            filter: blur(0);
         }
     }
 
@@ -4132,7 +4798,6 @@
     
     .summary-card-muted {
         opacity: 0.45 !important;
-        filter: grayscale(85%);
         cursor: not-allowed !important;
         transform: none !important;
         box-shadow: none !important;
@@ -4205,7 +4870,7 @@
             linear-gradient(180deg, var(--dashboard-loader-surface, rgba(255, 255, 255, 0.88)), transparent),
             radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.14), transparent 58%);
         box-shadow: var(--dashboard-loader-shadow, 0 20px 46px rgba(37, 99, 235, 0.12));
-        backdrop-filter: blur(10px);
+        backdrop-filter: none;
         color: var(--dashboard-skeleton-muted, #64748b);
     }
 
@@ -4262,7 +4927,6 @@
         height: 5px;
         border-radius: 999px;
         background: rgba(37, 99, 235, 0.16);
-        filter: blur(1px);
         animation: dashboardBallShadow 0.88s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
     }
 
@@ -4426,7 +5090,7 @@
 
     .bg-white-transparent {
         background: rgba(255, 255, 255, 0.6);
-        backdrop-filter: blur(4px);
+        backdrop-filter: none;
     }
 
     /*  Card Animation  */
@@ -4438,12 +5102,10 @@
         0% {
             opacity: 0;
             transform: translateY(20px) scale(0.98);
-            filter: blur(2px);
         }
         100% {
             opacity: 1;
             transform: translateY(0) scale(1);
-            filter: blur(0);
         }
     }
 
@@ -4526,7 +5188,7 @@
     .summary-mode-switcher {
         display: flex;
         background: rgba(255, 255, 255, 0.6);
-        backdrop-filter: blur(8px);
+        backdrop-filter: none;
         padding: 4px;
         border-radius: 50px;
         border: 1px solid rgba(30, 64, 175, 0.15);
@@ -4607,7 +5269,7 @@
     .sa-section-header-inner { display: flex; align-items: center; gap: 14px; }
     .sa-section-icon {
         width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
-        border-radius: 12px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px);
+        border-radius: 12px; background: rgba(255, 255, 255, 0.15); backdrop-filter: none;
     }
     .sa-section-icon i { font-size: 1.5rem; color: #fff; }
     .sa-section-title { font-size: 1.15rem; font-weight: 800; color: #fff; margin: 0; line-height: 1.2; }
@@ -4817,7 +5479,7 @@
         text-transform: uppercase; letter-spacing: 0.5px;
     }
     .ki-metric-active { border: 1px solid #2563eb !important; transform: translateY(-3px); box-shadow: 0 15px 32px rgba(37,99,235,0.15) !important; }
-    .ki-metric-muted { opacity: 0.4; filter: grayscale(85%); cursor: not-allowed !important; transform: none !important; }
+    .ki-metric-muted { opacity: 0.4; cursor: not-allowed !important; transform: none !important; }
     .ki-metric-muted * { pointer-events: none; }
 
     /*  Hero Banner  */
@@ -4874,7 +5536,7 @@
         box-shadow:
             0 9px 22px rgba(15, 23, 42, 0.08),
             inset 0 1px 0 rgba(255,255,255,0.86);
-        backdrop-filter: blur(8px);
+        backdrop-filter: none;
     }
     .ki-pill i { font-size: 0.84rem; }
     .ki-pill span { font-weight: 900; font-size: 0.9rem; }
@@ -5913,66 +6575,226 @@
         border-color: rgba(148, 163, 184, 0.16) !important;
     }
 
+    .dashboard-page-header {
+        align-items: center !important;
+        padding: 0;
+        margin-bottom: 0.72rem !important;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .dashboard-page-heading {
+        display: flex;
+        align-items: center;
+        flex-direction: row;
+        gap: 0.6rem;
+        min-width: 260px;
+        max-width: min(100%, 860px);
+        flex: 1 1 720px;
+        min-height: 34px;
+        overflow: hidden;
+    }
+
+    .dashboard-header-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        width: max-content;
+        max-width: 100%;
+        color: #2563eb;
+        font-size: 0.6rem;
+        font-weight: 900;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        line-height: 1.1;
+        margin-bottom: 0;
+    }
+
+    .dashboard-header-eyebrow i {
+        display: inline-grid;
+        place-items: center;
+        width: 15px;
+        height: 15px;
+        border-radius: 5px;
+        background: rgba(37, 99, 235, 0.1);
+        color: #2563eb;
+        font-size: 0.7rem;
+    }
+
+    .dashboard-page-heading > .page-title {
+        flex: 0 0 auto;
+        color: #0f172a;
+        font-size: clamp(1.24rem, 1.38vw, 1.5rem) !important;
+        line-height: 1;
+        font-weight: 900 !important;
+        letter-spacing: 0;
+    }
+
+    .dashboard-page-heading p {
+        flex: 1 1 auto;
+        min-width: 160px;
+        color: #64748b !important;
+        font-size: 0.76rem;
+        line-height: 1.32;
+        max-width: 720px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dashboard-header-meta {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 0.32rem;
+    }
+
+    .dashboard-header-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-height: 0;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        border: 0;
+        color: #475569;
+        font-size: 0.68rem;
+        font-weight: 850;
+        white-space: nowrap;
+        box-shadow: none;
+    }
+
+    .dashboard-header-meta span i {
+        color: #2563eb;
+        font-size: 0.82rem;
+    }
+
+    .dashboard-header-actions {
+        justify-content: flex-end;
+        align-self: center;
+        gap: 0.42rem !important;
+        flex: 0 0 auto;
+        flex-wrap: nowrap !important;
+        padding-top: 0;
+    }
+
+    .dashboard-header-actions > .dashboard-datepicker-wrapper {
+        flex: 0 0 clamp(235px, 21vw, 310px);
+        min-width: 0;
+    }
+
+    .dashboard-datepicker-wrapper :deep(.dp__input_wrap) {
+        width: 100%;
+    }
+
+    .dashboard-datepicker-wrapper :deep(.dp__input) {
+        width: 100%;
+        min-height: 34px;
+        border-radius: 999px;
+        border: 1px solid rgba(191, 219, 254, 0.9);
+        background: rgba(255, 255, 255, 0.94);
+        color: #0f172a;
+        font-size: 0.7rem;
+        font-weight: 850;
+        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.07);
+    }
+
+    .dashboard-datepicker-wrapper :deep(.dp__input:hover),
+    .dashboard-datepicker-wrapper :deep(.dp__input:focus) {
+        border-color: rgba(37, 99, 235, 0.55);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .dashboard-header-actions :deep(.dw-quick-actions) {
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+
+    .dashboard-header-actions :deep(.dw-quick-btn),
+    .dashboard-alt-btn {
+        min-height: 34px;
+        padding: 0 0.72rem;
+        border-radius: 10px;
+        font-size: 0.68rem;
+        font-weight: 900;
+        line-height: 1;
+        white-space: nowrap;
+        transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+    }
+
+    .dashboard-header-actions :deep(.dw-quick-btn) {
+        border: 1px solid rgba(226, 232, 240, 0.95);
+        background: #ffffff;
+        color: #334155;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.045);
+    }
+
+    .dashboard-header-actions :deep(.dw-quick-btn:hover) {
+        border-color: rgba(37, 99, 235, 0.36);
+        color: #1d4ed8;
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.1);
+    }
+
+    .dashboard-alt-btn {
+        border: 1px solid rgba(30, 64, 175, 0.16);
+        background: linear-gradient(135deg, #1d4ed8 0%, #0f4fbf 100%);
+        color: #ffffff;
+        box-shadow: 0 10px 22px rgba(29, 78, 216, 0.2);
+    }
+
+    .dashboard-alt-btn:hover,
+    .dashboard-alt-btn:focus {
+        color: #ffffff;
+        border-color: rgba(147, 197, 253, 0.6);
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(29, 78, 216, 0.28);
+    }
+
+    :global(html[data-theme-mode="dark"]) .dashboard-page-header,
+    :global(html.dark) .dashboard-page-header {
+        background: transparent;
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
+    :global(html.dark) .dashboard-page-heading > .page-title {
+        color: #eef4ff;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dashboard-header-meta span,
+    :global(html.dark) .dashboard-header-meta span {
+        background: transparent;
+        border-color: transparent;
+        color: #94a3b8;
+    }
+
+    :global(html[data-theme-mode="dark"]) .dashboard-header-actions :deep(.dw-quick-btn),
+    :global(html.dark) .dashboard-header-actions :deep(.dw-quick-btn) {
+        background: rgba(15, 23, 42, 0.74);
+        border-color: rgba(147, 197, 253, 0.22);
+        color: #dbeafe;
+    }
+
     .monitoring-overview {
         display: flex;
         flex-direction: column;
-        gap: 0.95rem;
+        gap: 0.75rem;
     }
 
-    .monitoring-hero,
     .monitoring-kpi,
     .monitoring-panel {
         background: #ffffff;
         border: 1px solid rgba(219, 234, 254, 0.92);
         border-radius: 8px;
-        box-shadow: 0 14px 34px rgba(37, 99, 235, 0.07);
+        box-shadow: none;
     }
 
-    .monitoring-hero {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 1rem;
-        padding: 1rem;
-        background:
-            linear-gradient(135deg, rgba(37, 99, 235, 0.08) 0%, rgba(14, 165, 233, 0.06) 42%, rgba(38, 191, 148, 0.07) 100%),
-            #ffffff;
-    }
-
-    .monitoring-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        color: #2563eb;
-        font-size: 0.72rem;
-        font-weight: 900;
-        letter-spacing: 0;
-        text-transform: uppercase;
-    }
-
-    .monitoring-hero h2 {
-        color: #172554;
-        font-size: 1.2rem;
-        line-height: 1.22;
-        margin: 3px 0 2px;
-        font-weight: 900;
-    }
-
-    .monitoring-hero p {
-        color: #64748b;
-        font-size: 0.78rem;
-        margin: 0;
-    }
-
-    .monitoring-hero-meta {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.45rem;
-    }
-
-    .monitoring-hero-meta span,
     .monitoring-panel-badge {
         display: inline-flex;
         align-items: center;
@@ -6015,66 +6837,419 @@
         font-weight: 850;
     }
 
+    .monitoring-hero {
+        display: grid;
+        grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+        gap: 0.55rem;
+        align-items: center;
+        background:
+            linear-gradient(135deg, rgba(248, 251, 255, 0.98) 0%, rgba(255, 255, 255, 0.96) 46%, rgba(240, 253, 250, 0.92) 100%);
+        border: 1px solid rgba(219, 234, 254, 0.95);
+        border-radius: 10px;
+        padding: 0.52rem 0.62rem;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.055);
+    }
+
+    .monitoring-hero-main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.42rem;
+        padding: 0.1rem 0.15rem;
+    }
+
+    .monitoring-hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        width: max-content;
+        max-width: 100%;
+        color: #0f766e;
+        background: rgba(240, 253, 250, 0.94);
+        border: 1px solid rgba(153, 246, 228, 0.86);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 0.68rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        line-height: 1.1;
+    }
+
+    .monitoring-hero-main h2 {
+        color: #0f172a;
+        font-size: clamp(1.35rem, 2.2vw, 2.15rem);
+        line-height: 1.08;
+        font-weight: 950;
+        margin: 0;
+    }
+
+    .monitoring-hero-main p {
+        color: #475569;
+        max-width: 760px;
+        font-size: 0.86rem;
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .monitoring-hero-highlights {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin-top: 0.15rem;
+    }
+
+    .monitoring-hero-highlight {
+        display: grid;
+        grid-template-columns: 30px minmax(0, 1fr);
+        align-items: center;
+        gap: 0.2rem 0.55rem;
+        min-height: 58px;
+        padding: 0.55rem 0.62rem;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(226, 232, 240, 0.94);
+    }
+
+    .monitoring-hero-highlight i {
+        grid-row: span 2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        color: #2563eb;
+        background: rgba(239, 246, 255, 0.94);
+        border: 1px solid rgba(191, 219, 254, 0.9);
+        font-size: 0.98rem;
+    }
+
+    .monitoring-hero-highlight span {
+        color: #64748b;
+        font-size: 0.66rem;
+        font-weight: 850;
+        line-height: 1.15;
+        text-transform: uppercase;
+    }
+
+    .monitoring-hero-highlight strong {
+        color: #0f172a;
+        min-width: 0;
+        font-size: 0.86rem;
+        font-weight: 950;
+        line-height: 1.15;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .monitoring-readiness-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.42rem;
+        min-width: 0;
+        padding: 0.42rem;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid rgba(203, 213, 225, 0.78);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+    }
+
+    .monitoring-readiness-top {
+        display: flex;
+        align-items: center;
+        gap: 0.58rem;
+        min-width: 0;
+    }
+
+    .monitoring-readiness-ring {
+        width: 54px;
+        height: 54px;
+        flex: 0 0 54px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background:
+            radial-gradient(circle at center, #ffffff 0 56%, transparent 57%),
+            conic-gradient(#2563eb var(--readiness-score), #e2e8f0 0);
+        border: 1px solid rgba(219, 234, 254, 0.98);
+    }
+
+    .monitoring-readiness-ring span {
+        color: #0f172a;
+        font-size: 0.76rem;
+        font-weight: 950;
+    }
+
+    .monitoring-readiness-top > div:last-child {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.12rem;
+    }
+
+    .monitoring-readiness-top span {
+        color: #2563eb;
+        font-size: 0.62rem;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .monitoring-readiness-top strong {
+        color: #0f172a;
+        font-size: 0.9rem;
+        line-height: 1.15;
+        font-weight: 950;
+    }
+
+    .monitoring-readiness-top small {
+        color: #64748b;
+        font-size: 0.62rem;
+        line-height: 1.25;
+        font-weight: 700;
+    }
+
+    .monitoring-readiness-list {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.36rem;
+    }
+
+    .monitoring-readiness-row {
+        min-width: 0;
+        border-radius: 7px;
+        padding: 0.38rem 0.42rem;
+        background: #f8fbff;
+        border: 1px solid rgba(219, 234, 254, 0.92);
+    }
+
+    .monitoring-readiness-row > div:first-child {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.42rem;
+        margin-bottom: 0.26rem;
+    }
+
+    .monitoring-readiness-row span {
+        color: #334155;
+        font-size: 0.6rem;
+        line-height: 1.15;
+        font-weight: 850;
+        overflow-wrap: anywhere;
+    }
+
+    .monitoring-readiness-row strong {
+        color: var(--readiness-color);
+        font-size: 0.68rem;
+        font-weight: 950;
+        white-space: nowrap;
+    }
+
+    .monitoring-readiness-track,
+    .monitoring-kpi-progress {
+        height: 5px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(226, 232, 240, 0.88);
+    }
+
+    .monitoring-readiness-track i,
+    .monitoring-kpi-progress i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        transition: width 0.45s ease;
+    }
+
+    .monitoring-readiness-track i {
+        background: var(--readiness-color);
+    }
+
+    .monitoring-readiness-row small {
+        display: block;
+        color: #64748b;
+        font-size: 0.57rem;
+        line-height: 1.2;
+        margin-top: 0.24rem;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .monitoring-summary-row {
+        display: grid;
+        grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+        gap: 0.55rem;
+        align-items: stretch;
+    }
+
+    .monitoring-readiness-summary {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        min-height: 96px;
+        padding: 0.82rem 0.9rem;
+        background:
+            linear-gradient(135deg, rgba(248, 251, 255, 0.98) 0%, rgba(255, 255, 255, 0.96) 54%, rgba(240, 253, 250, 0.9) 100%);
+        border: 1px solid rgba(219, 234, 254, 0.95);
+        border-radius: 8px;
+        box-shadow: none;
+    }
+
     .monitoring-kpi-grid {
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 0.75rem;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.55rem;
     }
 
     .monitoring-kpi {
-        min-height: 128px;
-        padding: 0.85rem;
+        min-height: 96px;
+        padding: 0.82rem 0.9rem;
         display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.78rem;
         position: relative;
         overflow: hidden;
+        cursor: default;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--monitoring-accent) 10%, #ffffff) 0%, #ffffff 62%),
+            #ffffff;
+        border-color: color-mix(in srgb, var(--monitoring-accent) 28%, rgba(226, 232, 240, 0.96));
+        transition:
+            background-color 0.16s ease,
+            border-color 0.16s ease,
+            transform 0.18s ease;
+        transform-origin: center;
     }
 
     .monitoring-kpi::before {
         content: "";
         position: absolute;
-        inset: 0 auto 0 0;
-        width: 4px;
+        inset: 0 0 auto 0;
+        height: 4px;
         background: var(--monitoring-accent);
+        opacity: 1;
+    }
+
+    .monitoring-kpi:hover {
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--monitoring-accent) 15%, #ffffff) 0%, #ffffff 64%),
+            #ffffff;
+        border-color: color-mix(in srgb, var(--monitoring-accent) 58%, rgba(226, 232, 240, 0.96));
+        transform: translateY(-4px) scale(1.01);
+    }
+
+    .monitoring-kpi:hover::before {
+        height: 5px;
+    }
+
+    .monitoring-kpi:hover .monitoring-kpi-icon {
+        opacity: 1;
+        transform: translateX(2px) scale(1.05);
     }
 
     .monitoring-kpi-icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--monitoring-accent) 12%, #ffffff);
+        width: 38px;
+        height: 38px;
+        border-radius: 0;
+        background: transparent;
         color: var(--monitoring-accent);
-        font-size: 1.1rem;
+        font-size: 1.72rem;
+        opacity: 0.78;
+        position: relative;
+        flex: 0 0 38px;
+        align-self: center;
+        pointer-events: none;
+        z-index: 1;
+        transition:
+            opacity 0.16s ease,
+            transform 0.18s ease;
+    }
+
+    .monitoring-kpi-donut {
+        width: 42px;
+        height: 42px;
+        flex: 0 0 42px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background:
+            radial-gradient(circle at center, #ffffff 0 55%, transparent 56%),
+            conic-gradient(var(--monitoring-accent) var(--kpi-rate), color-mix(in srgb, var(--monitoring-accent) 14%, #e2e8f0) 0);
+        border: 1px solid color-mix(in srgb, var(--monitoring-accent) 20%, #e2e8f0);
+        position: relative;
+        z-index: 1;
+    }
+
+    .monitoring-kpi-donut span {
+        color: var(--monitoring-accent);
+        font-size: 0.64rem;
+        line-height: 1;
+        font-weight: 950;
     }
 
     .monitoring-kpi-copy {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        justify-content: center;
+        gap: 0.28rem;
         min-width: 0;
+        padding-right: 0;
+        position: relative;
+        z-index: 1;
     }
 
     .monitoring-kpi-copy span {
-        color: #64748b;
-        font-size: 0.72rem;
-        font-weight: 850;
+        color: color-mix(in srgb, var(--monitoring-accent) 72%, #334155);
+        font-size: 0.7rem;
+        line-height: 1.18;
+        font-weight: 700;
+        overflow-wrap: anywhere;
     }
 
     .monitoring-kpi-copy strong {
-        color: #172554;
-        font-size: clamp(1.35rem, 1.9vw, 2rem);
+        color: #0f172a;
+        font-size: clamp(1.28rem, 1.46vw, 1.68rem);
         line-height: 1.05;
-        font-weight: 950;
+        font-weight: 850;
+        letter-spacing: 0;
+    }
+
+    .monitoring-kpi-value {
+        display: inline-flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.12rem;
+    }
+
+    .monitoring-kpi-total {
+        color: #64748b !important;
+        font-size: 0.54em !important;
+        font-weight: 800;
+        line-height: 1;
     }
 
     .monitoring-kpi-copy small {
-        color: #7b879a;
-        font-size: 0.7rem;
-        line-height: 1.35;
+        color: #64748b;
+        font-size: 0.65rem;
+        line-height: 1.24;
+        overflow-wrap: anywhere;
+    }
+
+    .monitoring-kpi-progress {
+        width: min(100%, 190px);
+        margin-top: 0.1rem;
+        height: 5px;
+        background: color-mix(in srgb, var(--monitoring-accent) 14%, #e2e8f0);
+    }
+
+    .monitoring-kpi-progress i {
+        background: var(--monitoring-accent);
     }
 
     .monitoring-grid {
@@ -6092,6 +7267,94 @@
 
     .monitoring-panel-wide {
         grid-column: span 8;
+    }
+
+    .dashboard-distribution-panel-full {
+        grid-column: span 6;
+        min-height: 0;
+    }
+
+    .dashboard-distribution-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.85rem;
+        padding: 0.8rem 1rem;
+        border-bottom: 1px solid rgba(219, 234, 254, 0.95);
+        background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), #ffffff);
+    }
+
+    .dashboard-distribution-header > div {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        min-width: 0;
+    }
+
+    .dashboard-distribution-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 auto;
+        border-radius: 8px;
+        color: #2563eb;
+        background: rgba(239, 246, 255, 0.96);
+        border: 1px solid rgba(191, 219, 254, 0.9);
+        font-size: 1rem;
+    }
+
+    .dashboard-distribution-header h3 {
+        color: #0f172a;
+        font-size: 0.92rem;
+        line-height: 1.25;
+        margin: 0;
+        font-weight: 900;
+    }
+
+    .dashboard-distribution-header p {
+        color: #64748b;
+        font-size: 0.72rem;
+        line-height: 1.35;
+        margin: 3px 0 0;
+    }
+
+    .dashboard-distribution-scroll {
+        max-height: 340px;
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.72) transparent;
+    }
+
+    .dashboard-distribution-scroll--subsector {
+        max-height: 570px;
+    }
+
+    .dashboard-distribution-scroll::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    .dashboard-distribution-scroll::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.62);
+        border-radius: 999px;
+    }
+
+    .dashboard-distribution-chart-frame {
+        min-width: 720px;
+        padding: 1rem 1.35rem 1.1rem;
+    }
+
+    .dashboard-distribution-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        min-height: 260px;
+        color: #64748b;
+        font-size: 0.8rem;
+        font-weight: 800;
     }
 
     .monitoring-panel-header {
@@ -6189,6 +7452,56 @@
         font-weight: 700;
     }
 
+    .monitoring-risk-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        padding: 1rem;
+    }
+
+    .monitoring-risk-meter {
+        position: relative;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(8, 145, 178, 0.12);
+    }
+
+    .monitoring-risk-meter span {
+        display: block;
+        width: var(--risk-rate, 0%);
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #0891b2, #06b6d4);
+        transition: width 0.45s ease;
+    }
+
+    .monitoring-risk-body .monitoring-mini-stats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        padding: 0;
+    }
+
+    .monitoring-risk-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+        min-height: 34px;
+        border: 1px solid rgba(8, 145, 178, 0.2);
+        border-radius: 8px;
+        background: rgba(8, 145, 178, 0.08);
+        color: #0e7490;
+        font-size: 0.74rem;
+        font-weight: 900;
+        transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .monitoring-risk-action:hover {
+        transform: translateY(-2px);
+        background: rgba(8, 145, 178, 0.14);
+    }
+
     .monitoring-top-list {
         display: flex;
         flex-direction: column;
@@ -6236,18 +7549,240 @@
         background: transparent !important;
     }
 
-    .dashboard-capture.is-dark .monitoring-hero,
+    /* Compact monitoring layout: keep the dashboard summary readable in one viewport. */
+    .dashboard-page-header {
+        margin-bottom: 0.72rem !important;
+        padding: 0;
+    }
+
+    .dashboard-page-heading,
+    .monitoring-kpi-copy {
+        gap: 0.5rem;
+    }
+
+    .dashboard-header-meta span {
+        min-height: 0;
+        padding: 0;
+        font-size: 0.68rem;
+    }
+
+    .monitoring-overview {
+        gap: 0.62rem;
+    }
+
+    .monitoring-summary-row,
+    .monitoring-grid,
+    .monitoring-kpi-grid {
+        gap: 0.62rem;
+    }
+
+    .monitoring-readiness-summary,
+    .monitoring-kpi {
+        min-height: 82px;
+        padding: 0.7rem 0.78rem 0.65rem;
+        gap: 0.58rem;
+    }
+
+    .monitoring-kpi::before {
+        height: 3px;
+    }
+
+    .monitoring-kpi:hover {
+        transform: translateY(-2px);
+    }
+
+    .monitoring-kpi-icon {
+        width: 34px;
+        height: 34px;
+        flex-basis: 34px;
+        font-size: 1.48rem;
+    }
+
+    .monitoring-kpi-copy span {
+        font-size: 0.68rem;
+        line-height: 1.14;
+    }
+
+    .monitoring-kpi-copy strong {
+        font-size: clamp(1.32rem, 1.46vw, 1.68rem);
+        line-height: 1;
+    }
+
+    .monitoring-kpi-total {
+        font-size: 0.54em !important;
+    }
+
+    .monitoring-kpi-copy small {
+        font-size: 0.63rem;
+        line-height: 1.16;
+    }
+
+    .monitoring-panel {
+        grid-column: span 3;
+        min-height: 300px;
+        border-radius: 9px;
+    }
+
+    .monitoring-panel-wide {
+        grid-column: span 6;
+        order: 2;
+    }
+
+    .monitoring-panel-status {
+        order: 1;
+    }
+
+    .monitoring-panel-risk,
+    .monitoring-panel-top {
+        order: 2;
+    }
+
+    .dashboard-distribution-panel-full {
+        grid-column: span 6;
+    }
+
+    .dashboard-distribution-header,
+    .monitoring-panel-header {
+        gap: 0.65rem;
+        padding: 0.65rem 0.78rem 0.5rem;
+    }
+
+    .dashboard-distribution-header > div {
+        gap: 0.58rem;
+    }
+
+    .dashboard-distribution-icon {
+        width: 30px;
+        height: 30px;
+        flex-basis: 30px;
+        font-size: 0.96rem;
+    }
+
+    .dashboard-distribution-header h3,
+    .monitoring-panel-header h3 {
+        font-size: 0.88rem;
+        line-height: 1.22;
+        margin-top: 0.32rem;
+    }
+
+    .dashboard-distribution-header p,
+    .monitoring-panel-header p {
+        font-size: 0.68rem;
+        line-height: 1.24;
+        margin-top: 2px;
+    }
+
+    .dashboard-distribution-scroll,
+    .dashboard-distribution-scroll--subsector {
+        max-height: 310px;
+    }
+
+    .dashboard-distribution-chart-frame {
+        min-width: 700px;
+        padding: 0.68rem 0.95rem 0.78rem;
+    }
+
+    .dashboard-distribution-empty {
+        min-height: 180px;
+    }
+
+    .monitoring-panel-badge {
+        gap: 5px;
+        min-height: 27px;
+        padding: 4px 8px;
+        border-radius: 7px;
+        font-size: 0.68rem;
+    }
+
+    .monitoring-panel-header > strong {
+        padding: 4px 8px;
+        font-size: 0.7rem;
+    }
+
+    .monitoring-legend,
+    .monitoring-mini-stats {
+        gap: 0.45rem;
+        padding: 0 0.78rem 0.62rem;
+    }
+
+    .monitoring-legend span {
+        gap: 5px;
+        font-size: 0.68rem;
+    }
+
+    .monitoring-legend i,
+    .monitoring-top-row i {
+        width: 8px;
+        height: 8px;
+    }
+
+    .monitoring-mini-stats div {
+        padding: 0.52rem;
+    }
+
+    .monitoring-mini-stats strong {
+        font-size: 0.95rem;
+        line-height: 1;
+    }
+
+    .monitoring-mini-stats span {
+        margin-top: 2px;
+        font-size: 0.64rem;
+    }
+
+    .monitoring-risk-body {
+        gap: 0.62rem;
+        padding: 0.78rem;
+    }
+
+    .monitoring-risk-meter {
+        height: 9px;
+    }
+
+    .monitoring-risk-action {
+        min-height: 32px;
+        font-size: 0.68rem;
+    }
+
+    .monitoring-top-list {
+        gap: 0.4rem;
+        padding: 0.68rem 0.78rem 0.78rem;
+    }
+
+    .monitoring-top-row {
+        grid-template-columns: minmax(0, 1fr) auto 40px;
+        gap: 0.5rem;
+        min-height: 32px;
+        padding: 0.42rem 0.52rem;
+    }
+
+    .monitoring-top-row span {
+        gap: 0.42rem;
+        font-size: 0.7rem;
+    }
+
+    .monitoring-top-row strong {
+        font-size: 0.76rem;
+    }
+
+    .monitoring-top-row small {
+        font-size: 0.68rem;
+    }
+
+    .dashboard-capture.is-dark .monitoring-hero {
+        background: linear-gradient(135deg, #151a2b 0%, #111827 54%, #0f172a 100%) !important;
+        border-color: rgba(148, 163, 184, 0.22) !important;
+        box-shadow: none !important;
+    }
+
+    .dashboard-capture.is-dark .monitoring-readiness-summary,
+    .dashboard-capture.is-dark .monitoring-readiness-card,
+    .dashboard-capture.is-dark .monitoring-hero-highlight,
     .dashboard-capture.is-dark .monitoring-kpi,
     .dashboard-capture.is-dark .monitoring-panel {
         background: linear-gradient(180deg, #151a2b 0%, #111827 100%) !important;
         border-color: rgba(148, 163, 184, 0.22) !important;
-        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.3) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-hero {
-        background:
-            linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(14, 165, 233, 0.13) 46%, rgba(38, 191, 148, 0.14) 100%),
-            #111827 !important;
+        box-shadow: none !important;
     }
 
     .dashboard-capture.is-dark .monitoring-panel-header {
@@ -6255,23 +7790,62 @@
         border-color: rgba(148, 163, 184, 0.18) !important;
     }
 
-    .dashboard-capture.is-dark .monitoring-hero h2,
+    .dashboard-capture.is-dark .dashboard-distribution-header {
+        background: rgba(15, 23, 42, 0.54) !important;
+        border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .dashboard-distribution-icon {
+        color: #93c5fd !important;
+        background: rgba(30, 41, 59, 0.78) !important;
+        border-color: rgba(147, 197, 253, 0.22) !important;
+    }
+
+    .dashboard-capture.is-dark .monitoring-hero-eyebrow {
+        color: #a7f3d0 !important;
+        background: rgba(6, 95, 70, 0.22) !important;
+        border-color: rgba(45, 212, 191, 0.22) !important;
+    }
+
+    .dashboard-capture.is-dark .monitoring-hero-highlight i {
+        color: #93c5fd !important;
+        background: rgba(30, 41, 59, 0.78) !important;
+        border-color: rgba(147, 197, 253, 0.22) !important;
+    }
+
     .dashboard-capture.is-dark .monitoring-kpi-copy strong,
+    .dashboard-capture.is-dark .monitoring-hero-main h2,
+    .dashboard-capture.is-dark .monitoring-hero-highlight strong,
+    .dashboard-capture.is-dark .monitoring-readiness-ring span,
+    .dashboard-capture.is-dark .monitoring-readiness-top strong,
     .dashboard-capture.is-dark .monitoring-panel-header h3,
+    .dashboard-capture.is-dark .dashboard-distribution-header h3,
     .dashboard-capture.is-dark .monitoring-mini-stats strong,
     .dashboard-capture.is-dark .monitoring-top-row strong {
         color: #eef4ff !important;
     }
 
-    .dashboard-capture.is-dark .monitoring-hero p,
     .dashboard-capture.is-dark .monitoring-kpi-copy span,
     .dashboard-capture.is-dark .monitoring-kpi-copy small,
+    .dashboard-capture.is-dark .monitoring-kpi-total,
+    .dashboard-capture.is-dark .monitoring-hero-main p,
+    .dashboard-capture.is-dark .monitoring-hero-highlight span,
+    .dashboard-capture.is-dark .monitoring-readiness-top small,
+    .dashboard-capture.is-dark .monitoring-readiness-row span,
+    .dashboard-capture.is-dark .monitoring-readiness-row small,
     .dashboard-capture.is-dark .monitoring-panel-header p,
+    .dashboard-capture.is-dark .dashboard-distribution-header p,
     .dashboard-capture.is-dark .monitoring-mini-stats span {
         color: #94a3b8 !important;
     }
 
-    .dashboard-capture.is-dark .monitoring-hero-meta span,
+    .dashboard-capture.is-dark .monitoring-readiness-ring {
+        background:
+            radial-gradient(circle at center, #111827 0 56%, transparent 57%),
+            conic-gradient(#60a5fa var(--readiness-score), rgba(51, 65, 85, 0.92) 0) !important;
+        border-color: rgba(147, 197, 253, 0.22) !important;
+    }
+
     .dashboard-capture.is-dark .monitoring-panel-badge,
     .dashboard-capture.is-dark .monitoring-panel-header > strong {
         background: rgba(15, 23, 42, 0.82) !important;
@@ -6279,10 +7853,16 @@
         color: #dbeafe !important;
     }
 
+    .dashboard-capture.is-dark .monitoring-readiness-row,
     .dashboard-capture.is-dark .monitoring-mini-stats div,
     .dashboard-capture.is-dark .monitoring-top-row {
         background: rgba(15, 23, 42, 0.66) !important;
         border-color: rgba(148, 163, 184, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .monitoring-readiness-track,
+    .dashboard-capture.is-dark .monitoring-kpi-progress {
+        background: rgba(51, 65, 85, 0.88) !important;
     }
 
     .dashboard-capture.is-dark .monitoring-legend span,
@@ -6290,13 +7870,25 @@
         color: #dbeafe !important;
     }
 
-    .dashboard-capture.is-dark .monitoring-top-row small,
-    .dashboard-capture.is-dark .monitoring-eyebrow {
+    .dashboard-capture.is-dark .monitoring-top-row small {
         color: #93c5fd !important;
+    }
+
+    .dashboard-capture.is-dark .monitoring-risk-meter {
+        background: rgba(8, 145, 178, 0.18) !important;
+    }
+
+    .dashboard-capture.is-dark .monitoring-risk-action {
+        background: rgba(8, 145, 178, 0.18) !important;
+        border-color: rgba(34, 211, 238, 0.28) !important;
+        color: #a5f3fc !important;
     }
 
     /*  Responsive  */
     @media (max-width: 1199px) {
+        .monitoring-summary-row { grid-template-columns: 1fr; }
+        .monitoring-hero { grid-template-columns: 1fr; }
+        .monitoring-readiness-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .monitoring-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .monitoring-panel,
         .monitoring-panel-wide { grid-column: span 6; }
@@ -6308,18 +7900,85 @@
         .ki-chart-split-grid { min-height: 0; }
     }
     @media (max-width: 991px) {
-        .monitoring-hero { flex-direction: column; }
-        .monitoring-hero-meta { justify-content: flex-start; }
+        .monitoring-hero-highlights,
+        .monitoring-readiness-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .monitoring-panel,
         .monitoring-panel-wide { grid-column: span 12; }
     }
     @media (max-width: 767px) {
-        .monitoring-hero,
+        .monitoring-hero {
+            padding: 0.78rem;
+            border-radius: 10px;
+        }
+        .monitoring-hero-main {
+            padding: 0;
+        }
+        .monitoring-hero-highlights,
+        .monitoring-readiness-list { grid-template-columns: 1fr; }
+        .monitoring-readiness-top {
+            align-items: flex-start;
+        }
+        .monitoring-readiness-ring {
+            width: 66px;
+            height: 66px;
+            flex-basis: 66px;
+        }
         .monitoring-kpi,
         .monitoring-panel-header { padding: 0.8rem; }
+        .dashboard-page-header { align-items: flex-start !important; }
+        .dashboard-page-heading {
+            width: 100%;
+            min-width: 0;
+            min-height: 0;
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 0.35rem;
+            overflow: visible;
+        }
+        .dashboard-page-heading > .page-title { font-size: 1.34rem !important; }
+        .dashboard-page-heading p {
+            max-width: 100%;
+            font-size: 0.74rem;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: normal;
+        }
+        .dashboard-header-meta { width: 100%; gap: 0.5rem; }
+        .dashboard-header-meta span {
+            flex: 0 1 auto;
+            min-width: 0;
+            width: auto;
+            justify-content: center;
+            padding-inline: 0.7rem;
+        }
+        .dashboard-header-actions {
+            width: 100%;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, max-content));
+            gap: 0.55rem;
+            justify-content: flex-start;
+            align-items: start;
+            padding-top: 0.1rem;
+        }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper {
+            grid-column: 1 / -1;
+            width: 100%;
+        }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input_wrap) {
+            width: 100%;
+        }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
+            width: 100%;
+            min-width: 0;
+        }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper + * {
+            min-width: 50px;
+        }
+        .dashboard-header-actions > div:last-child .btn {
+            min-width: 56px;
+        }
         .monitoring-kpi-grid { grid-template-columns: 1fr; }
         .monitoring-panel-header { flex-direction: column; align-items: flex-start; }
-        .monitoring-hero-meta span { width: 100%; justify-content: center; }
         .monitoring-top-row { grid-template-columns: minmax(0, 1fr) auto; }
         .monitoring-top-row small { display: none; }
         .ki-main-header { align-items: stretch; padding: 10px; }

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import LmsEditor from "./LmsEditor.vue";
 import { useLmsStore } from "../../stores/lms";
@@ -31,8 +31,11 @@ export default {
     const deskripsi = ref("");
     const konten = ref("");
     const url_video = ref("");
+    const durasiDetik = ref<number | null>(null);
+    const isFetchingDuration = ref(false);
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
+    let youtubeDurationPlayer: any = null;
 
     // File pendukung
     const filePendukungList = ref<any[]>([]);
@@ -94,6 +97,7 @@ export default {
           deskripsi.value = materi.deskripsi;
           konten.value = materi.konten_html || materi.konten || "";
           url_video.value = materi.url_video || "";
+          durasiDetik.value = Number((materi as any).durasi_detik ?? 0) || null;
           filePendukungList.value = materi.file_pendukung || [];
         } else {
           showNotification("Materi tidak ditemukan", "error");
@@ -101,6 +105,142 @@ export default {
         }
       }
     });
+
+    onUnmounted(() => {
+      youtubeDurationPlayer?.destroy?.();
+      youtubeDurationPlayer = null;
+    });
+
+    const extractYoutubeId = (value: string): string => {
+      const input = String(value || '').trim();
+      if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+
+      const match = input.match(/(?:youtube\.com\/(?:.*[?&]v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+      return match?.[1] || '';
+    };
+
+    const loadYoutubeIframeApi = () => new Promise<void>((resolve, reject) => {
+      if (typeof window === 'undefined') {
+        reject(new Error('Browser tidak tersedia untuk membaca durasi YouTube'));
+        return;
+      }
+
+      if ((window as any).YT?.Player) {
+        resolve();
+        return;
+      }
+
+      const previousReady = (window as any).onYouTubeIframeAPIReady;
+      const timeout = window.setTimeout(() => {
+        reject(new Error('Gagal memuat YouTube Player API'));
+      }, 10000);
+
+      (window as any).onYouTubeIframeAPIReady = () => {
+        previousReady?.();
+        window.clearTimeout(timeout);
+        resolve();
+      };
+
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+    });
+
+    const formatDuration = (seconds: number | null) => {
+      const total = Number(seconds || 0);
+      if (!Number.isFinite(total) || total <= 0) return '';
+
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const secs = total % 60;
+      const pad = (value: number) => String(value).padStart(2, '0');
+
+      return hours > 0
+        ? `${hours}:${pad(minutes)}:${pad(secs)}`
+        : `${minutes}:${pad(secs)}`;
+    };
+
+    const formattedDurasiDetik = computed(() => formatDuration(durasiDetik.value));
+
+    const fetchYoutubeDuration = async () => {
+      const youtubeId = extractYoutubeId(url_video.value);
+
+      if (!youtubeId) {
+        formErrors.value.url_video = 'URL atau YouTube ID tidak valid';
+        showNotification('URL atau YouTube ID tidak valid', 'error');
+        return;
+      }
+
+      isFetchingDuration.value = true;
+      delete formErrors.value.url_video;
+
+      let holder: HTMLDivElement | null = null;
+      let poller: number | null = null;
+      let timeout: number | null = null;
+
+      const cleanup = () => {
+        if (poller) window.clearInterval(poller);
+        if (timeout) window.clearTimeout(timeout);
+        youtubeDurationPlayer?.destroy?.();
+        youtubeDurationPlayer = null;
+        holder?.remove();
+      };
+
+      try {
+        await loadYoutubeIframeApi();
+
+        holder = document.createElement('div');
+        holder.style.position = 'fixed';
+        holder.style.left = '-9999px';
+        holder.style.top = '-9999px';
+        holder.style.width = '200px';
+        holder.style.height = '200px';
+        document.body.appendChild(holder);
+
+        const seconds = await new Promise<number>((resolve, reject) => {
+          const readDuration = () => {
+            const duration = Math.ceil(Number(youtubeDurationPlayer?.getDuration?.() || 0));
+            if (duration > 0) resolve(duration);
+          };
+
+          timeout = window.setTimeout(() => {
+            reject(new Error('Durasi video belum bisa dibaca. Coba lagi beberapa saat.'));
+          }, 12000);
+
+          youtubeDurationPlayer = new (window as any).YT.Player(holder, {
+            width: 200,
+            height: 200,
+            videoId: youtubeId,
+            playerVars: {
+              controls: 0,
+              disablekb: 1,
+              modestbranding: 1,
+              playsinline: 1,
+            },
+            events: {
+              onReady: () => {
+                readDuration();
+                poller = window.setInterval(readDuration, 500);
+              },
+              onError: () => {
+                reject(new Error('Video YouTube tidak bisa dibaca'));
+              },
+            },
+          });
+        });
+
+        durasiDetik.value = seconds;
+        showNotification(`Durasi berhasil diambil: ${formatDuration(seconds)} (${seconds} detik)`, 'success');
+      } catch (e: any) {
+        showNotification(e.message || 'Gagal mengambil durasi YouTube', 'error');
+      } finally {
+        cleanup();
+        isFetchingDuration.value = false;
+      }
+    };
 
     const validate = (): boolean => {
       formErrors.value = {};
@@ -134,6 +274,7 @@ export default {
             konten: konten.value,
             konten_html: konten.value,
             url_video: url_video.value,
+            durasi_detik: tipe.value === 'video' ? Number(durasiDetik.value || 0) : 0,
         };
 
         if (isEdit.value) {
@@ -259,6 +400,9 @@ export default {
       deskripsi,
       konten,
       url_video,
+      durasiDetik,
+      formattedDurasiDetik,
+      isFetchingDuration,
       formErrors,
       kategoriOptions,
       handleSubmit,
@@ -275,6 +419,7 @@ export default {
       removePendingFile,
       uploadFile,
       deleteFile,
+      fetchYoutubeDuration,
     };
   },
 };
@@ -409,6 +554,38 @@ export default {
                   placeholder="Contoh: https://youtube.com/watch?v=..."
                 />
                 <div v-if="formErrors.url_video" class="invalid-feedback">{{ formErrors.url_video }}</div>
+              </div>
+
+              <!-- Durasi Video (Auto Fetch YouTube) -->
+              <div v-show="tipe === 'video'" class="col-12">
+                <label class="form-label fw-semibold">Durasi Video</label>
+                <div class="row g-2 align-items-start">
+                  <div class="col-md-4">
+                    <input
+                      v-model.number="durasiDetik"
+                      type="number"
+                      min="0"
+                      class="form-control kse-modal-input"
+                      placeholder="Durasi dalam detik"
+                    />
+                    <div class="form-text">
+                      <span v-if="formattedDurasiDetik">Terbaca sebagai {{ formattedDurasiDetik }}</span>
+                      <span v-else>Backend tetap menerima nilai dalam detik.</span>
+                    </div>
+                  </div>
+                  <div class="col-md-auto">
+                    <button
+                      type="button"
+                      class="btn btn-outline-primary d-flex align-items-center gap-2"
+                      :disabled="isFetchingDuration || !url_video"
+                      @click="fetchYoutubeDuration"
+                    >
+                      <span v-if="isFetchingDuration" class="spinner-border spinner-border-sm"></span>
+                      <i v-else class="ri-magic-line"></i>
+                      <span>{{ isFetchingDuration ? 'Mengambil...' : 'Ambil Durasi Otomatis' }}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <!-- WYSIWYG Editor (Conditional) -->

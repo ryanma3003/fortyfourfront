@@ -4,6 +4,7 @@ import Landingpage from "../shared/layouts/landingpage.vue";
 import Maindashboard from "../shared/layouts/maindashboard.vue";
 import Authlayout from "../shared/layouts/authlayout.vue";
 import { useAuthStore } from "../stores/auth";
+import TwoStepVerificationBasic from "../components/pages/authentication/two-step-verification/basic.vue";
 
 
 const routes: RouteRecordRaw[] = [
@@ -57,6 +58,7 @@ const routes: RouteRecordRaw[] = [
               path: 'dashboard',
               name: 'Admin Dashboard',
               component: () => import("../views/admin/Dashboard.vue"),
+              meta: { fullWidth: true },
             },
             {
               path: 'dashboard/analytics',
@@ -1289,8 +1291,7 @@ const routes: RouteRecordRaw[] = [
         children: [
           {
             path: "basic",
-            component: () =>
-              import("../components/pages/authentication/two-step-verification/basic.vue"),
+            component: TwoStepVerificationBasic,
           },
           {
             path: "cover",

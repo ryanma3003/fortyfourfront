@@ -23,6 +23,7 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
     isLoading: false,
     error: null as string | null,
     summaryData: null as any,
+    globalSummaryData: null as any,
   }),
 
   getters: {
@@ -169,6 +170,14 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
       try {
         const data = await dashboardService.getSummary(this.apiParams);
         this.summaryData = data;
+        
+        // Fetch global summary independently to always have fixed baseline
+        if (!this.globalSummaryData) {
+            dashboardService.getSummary({}).then(globalData => {
+                this.globalSummaryData = globalData;
+            }).catch(e => console.error(e));
+        }
+        
         this.saveToStorage();
       } catch (err: any) {
         console.error('Failed to fetch dashboard summary globally:', err);

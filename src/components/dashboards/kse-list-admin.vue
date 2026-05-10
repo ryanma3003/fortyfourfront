@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, nextTick, watch, onBeforeUnmount } from 'vue';
+import gsap from 'gsap';
 import { csirtService } from '@/services/csirt.service';
 import { seEditService } from '@/services/se-edit.service';
 import { usersService } from '@/services/users.service';
@@ -15,11 +16,14 @@ const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
 
 // State
+const kseAdminPageRef = ref<HTMLElement | null>(null);
 const seList = ref<SeCsirt[]>([]);
 const userList = ref<User[]>([]);
 const editRequests = ref<SeEditRequest[]>([]);
 const loading = ref(true);
 const searchQuery = ref('');
+const hasRunInitialEntrance = ref(false);
+let gsapCtx: gsap.Context | null = null;
 
 // Pagination State
 const currentPage = ref(1);
@@ -30,6 +34,12 @@ const reviewModal = ref(false);
 const selectedRequest = ref<SeEditRequest | null>(null);
 const adminNotes = ref('');
 const isSubmitting = ref(false);
+
+// Delete Modal State
+const deleteModal = ref(false);
+const deleteTarget = ref<SeCsirt | null>(null);
+const actionLoadingId = ref<number | null>(null);
+const actionError = ref('');
 
 const pageData = {
     title: 'KSE Management',
@@ -101,7 +111,9 @@ const fetchData = async () => {
     }
 };
 
-onMounted(fetchData);
+onMounted(() => {
+    fetchData();
+});
 
 // Computed
 const enrichedRequests = computed(() => {
@@ -138,6 +150,11 @@ const normalizeCategory = (value?: string | null) => String(value || '').trim().
 const countStrategis = computed(() => seList.value.filter(s => normalizeCategory(s.kategori_se) === 'strategis').length);
 const countTinggi    = computed(() => seList.value.filter(s => normalizeCategory(s.kategori_se) === 'tinggi').length);
 const countRendah    = computed(() => seList.value.filter(s => normalizeCategory(s.kategori_se) === 'rendah').length);
+const categorizedCount = computed(() => countStrategis.value + countTinggi.value + countRendah.value);
+const categoryCoverage = computed(() => {
+    if (!seList.value.length) return 0;
+    return Math.round((categorizedCount.value / seList.value.length) * 100);
+});
 
 const filteredSeList = computed(() => {
     const q = searchQuery.value.toLowerCase();
@@ -155,7 +172,9 @@ const paginatedSeList = computed(() => {
     return filteredSeList.value.slice(start, end);
 });
 
-const totalSePages = computed(() => Math.ceil(filteredSeList.value.length / itemsPerPage.value));
+const totalSePages = computed(() => Math.max(1, Math.ceil(filteredSeList.value.length / itemsPerPage.value)));
+const visibleRangeStart = computed(() => filteredSeList.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0);
+const visibleRangeEnd = computed(() => Math.min(currentPage.value * itemsPerPage.value, filteredSeList.value.length));
 
 const paginatedRequests = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
@@ -170,17 +189,67 @@ const refreshData = () => {
 };
 
 // Actions
+const getStakeholderSlug = (se: SeCsirt) => {
+    const companyId = se.id_perusahaan || se.perusahaan?.id;
+    const stakeholder = stakeholdersStore.stakeholders.find(s => String(s.id) === String(companyId));
+    return stakeholder?.slug || se.perusahaan?.slug || '';
+};
+
 const viewDetail = (se: SeCsirt) => {
     // Redirect to the stakeholder's KSE list view
     // Attempt to find the stakeholder from the store to get the correct slug
-    const companyId = se.id_perusahaan || se.perusahaan?.id;
-    const stakeholder = stakeholdersStore.stakeholders.find(s => String(s.id) === String(companyId));
-    const slug = stakeholder?.slug || se.perusahaan?.slug || '';
+    const slug = getStakeholderSlug(se);
     
     if (slug) {
         router.push({ path: '/kse', query: { slug, from: 'admin' } });
     } else {
         console.error('Could not find slug for SE:', se);
+    }
+};
+
+const editSe = (se: SeCsirt) => {
+    router.push({
+        path: '/kse-crud',
+        query: {
+            seId: String(se.id),
+            source: 'csirt',
+            stakeholder: getStakeholderSlug(se),
+            from: 'admin',
+        }
+    });
+};
+
+const openDelete = (se: SeCsirt) => {
+    deleteTarget.value = se;
+    actionError.value = '';
+    deleteModal.value = true;
+};
+
+const closeDelete = () => {
+    if (actionLoadingId.value) return;
+    deleteModal.value = false;
+    deleteTarget.value = null;
+    actionError.value = '';
+};
+
+const confirmDelete = async () => {
+    if (!deleteTarget.value) return;
+    actionLoadingId.value = deleteTarget.value.id;
+    actionError.value = '';
+    try {
+        await csirtService.deleteSe(deleteTarget.value.id);
+        const deletedId = String(deleteTarget.value.id);
+        seList.value = seList.value.filter(se => String(se.id) !== deletedId);
+        editRequests.value = editRequests.value.filter(req => String(req.id_se) !== deletedId);
+        if (currentPage.value > totalSePages.value) currentPage.value = totalSePages.value;
+        deleteModal.value = false;
+        deleteTarget.value = null;
+        window.dispatchEvent(new Event('se-requests-updated'));
+    } catch (error: any) {
+        console.error('Delete SE failed:', error);
+        actionError.value = error?.message || 'Gagal menghapus sistem elektronik. Silakan coba lagi.';
+    } finally {
+        actionLoadingId.value = null;
     }
 };
 
@@ -326,16 +395,115 @@ const getFullStakeholder = (se: SeCsirt) => {
     if (!companyId) return null;
     return stakeholdersStore.stakeholdersByIdMap[String(companyId)];
 };
+
+const prefersReducedMotion = () => {
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+};
+
+const animateTableRows = async (quick = false) => {
+    await nextTick();
+    const root = kseAdminPageRef.value;
+    if (!root || prefersReducedMotion()) return;
+
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.lms-table-row'));
+    if (!rows.length) return;
+
+    gsap.killTweensOf(rows);
+    gsap.fromTo(rows,
+        { y: quick ? 10 : 16, opacity: 0, scale: 0.99 },
+        {
+            y: 0,
+            opacity: 1,
+            scale: 1,
+            duration: quick ? 0.22 : 0.34,
+            stagger: quick ? 0.018 : 0.035,
+            ease: 'power2.out',
+            clearProps: 'transform,opacity',
+        }
+    );
+};
+
+const runEntranceAnimations = async () => {
+    await nextTick();
+    const root = kseAdminPageRef.value;
+    if (!root || prefersReducedMotion()) return;
+
+    gsapCtx?.revert();
+    gsapCtx = gsap.context(() => {
+        const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+        tl.from('.kse-hero-header', { y: 18, opacity: 0, duration: 0.45, clearProps: 'transform,opacity' })
+            .from('.kse-inline-breadcrumb', { y: -8, opacity: 0, duration: 0.28, clearProps: 'transform,opacity' }, '-=0.25')
+            .from('.kse-hero-copy h1', { y: 16, opacity: 0, duration: 0.38, clearProps: 'transform,opacity' }, '-=0.18')
+            .from('.kse-hero-copy p', { y: 12, opacity: 0, duration: 0.3, clearProps: 'transform,opacity' }, '-=0.24')
+            .from('.kse-hero-tools', { y: 16, opacity: 0, duration: 0.36, clearProps: 'transform,opacity' }, '-=0.24')
+            .from('.kse-kpi-card', { y: 16, opacity: 0, scale: 0.96, duration: 0.34, stagger: 0.05, ease: 'back.out(1.35)', clearProps: 'transform,opacity' }, '-=0.12')
+            .from('.stakeholders-toolbar', { y: 18, opacity: 0, duration: 0.34, clearProps: 'transform,opacity' }, '-=0.08')
+            .from('.kse-list-shell', { y: 18, opacity: 0, duration: 0.4, clearProps: 'transform,opacity' }, '-=0.12');
+    }, root);
+
+    animateTableRows(true);
+};
+
+watch(loading, (isLoading) => {
+    if (!isLoading) {
+        if (!hasRunInitialEntrance.value) {
+            hasRunInitialEntrance.value = true;
+            runEntranceAnimations();
+            return;
+        }
+        animateTableRows();
+    }
+});
+
+watch([paginatedSeList, currentPage, itemsPerPage, searchQuery], () => {
+    if (currentPage.value > totalSePages.value) currentPage.value = totalSePages.value;
+    if (!loading.value) animateTableRows(true);
+}, { flush: 'post' });
+
+onBeforeUnmount(() => {
+    gsapCtx?.revert();
+});
 </script>
 
 <template>
-    <div class="kse-admin-page">
+    <div ref="kseAdminPageRef" class="kse-admin-page">
         <Pageheader :propData="pageData" />
 
         <div class="row">
             <div class="col-xl-12">
                 <!-- Premium Shell Card -->
-                <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
+                <div class="card custom-card gradient-header-card stakeholders-shell-card kse-shell-card" style="overflow: visible !important;">
+                <header class="kse-hero-header">
+                    <div class="kse-hero-content">
+                        <div class="kse-hero-copy">
+                            <div class="kse-inline-breadcrumb">Dashboard <span>/</span> KSE <span>/</span> Management</div>
+                            <h1>KSE Management</h1>
+                            <p>Pusat kendali sistem elektronik untuk memantau kategori, kelengkapan penilaian, dan request perubahan dari stakeholder.</p>
+                        </div>
+                    </div>
+
+                    <div class="kse-hero-tools" aria-label="KSE category completion">
+                        <div class="kse-hero-summary-card">
+                            <div class="kse-hero-summary-title">
+                                <span>Klasifikasi KSE</span>
+                                <strong>{{ categoryCoverage }}%</strong>
+                            </div>
+                            <div class="kse-hero-summary-stats">
+                                <div>
+                                    <span>Terkategori</span>
+                                    <strong>{{ categorizedCount }}</strong>
+                                </div>
+                                <div>
+                                    <span>Review</span>
+                                    <strong>{{ pendingRequests.length }}</strong>
+                                </div>
+                            </div>
+                            <div class="kse-hero-progress" aria-hidden="true">
+                                <span :style="{ width: `${categoryCoverage}%` }"></span>
+                            </div>
+                        </div>
+                    </div>
+                </header>
                 
                 <!-- ══ PREMIUM HEADER ══════════════════════════════════════════ -->
                 <div class="stakeholder-header stakeholders-premium-header">
@@ -402,6 +570,53 @@ const getFullStakeholder = (se: SeCsirt) => {
 
                 <!-- ══ CARD BODY ══════════════════════════════════════════ -->
                 <div class="card-body p-4 stakeholders-premium-body">
+                    <section class="kse-kpi-grid mb-4" aria-label="KSE summary">
+                        <article class="kse-kpi-card tone-total">
+                            <div class="kse-kpi-icon"><i class="ri-computer-line"></i></div>
+                            <div>
+                                <span>Total Sistem</span>
+                                <strong v-if="!loading || seList.length">{{ seList.length }}</strong>
+                                <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
+                                <small>Seluruh sistem elektronik</small>
+                            </div>
+                        </article>
+                        <article class="kse-kpi-card tone-danger">
+                            <div class="kse-kpi-icon"><i class="ri-shield-flash-fill"></i></div>
+                            <div>
+                                <span>Strategis</span>
+                                <strong v-if="!loading || seList.length">{{ countStrategis }}</strong>
+                                <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
+                                <small>Dampak paling kritis</small>
+                            </div>
+                        </article>
+                        <article class="kse-kpi-card tone-warning">
+                            <div class="kse-kpi-icon"><i class="ri-shield-fill"></i></div>
+                            <div>
+                                <span>Tinggi</span>
+                                <strong v-if="!loading || seList.length">{{ countTinggi }}</strong>
+                                <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
+                                <small>Prioritas pengawasan</small>
+                            </div>
+                        </article>
+                        <article class="kse-kpi-card tone-success">
+                            <div class="kse-kpi-icon"><i class="ri-shield-line"></i></div>
+                            <div>
+                                <span>Rendah</span>
+                                <strong v-if="!loading || seList.length">{{ countRendah }}</strong>
+                                <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
+                                <small>Risiko terkendali</small>
+                            </div>
+                        </article>
+                        <article class="kse-kpi-card tone-review" :class="{ 'is-hot': pendingRequests.length > 0 }">
+                            <div class="kse-kpi-icon"><i class="ri-edit-2-line" :class="{ 'pulse-icon': pendingRequests.length > 0 }"></i></div>
+                            <div>
+                                <span>Antrian Review</span>
+                                <strong v-if="!loading || editRequests.length">{{ pendingRequests.length }}</strong>
+                                <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
+                                <small>Perubahan menunggu admin</small>
+                            </div>
+                        </article>
+                    </section>
 
                     <!-- ══ TABLE CONTROLS ══════════════════════════════════════════ -->
                     <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar mb-4">
@@ -412,6 +627,17 @@ const getFullStakeholder = (se: SeCsirt) => {
                                     <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
                                 </select>
                             </div>
+                            <label class="kse-search" aria-label="Cari sistem elektronik">
+                                <i class="ri-search-line"></i>
+                                <input
+                                    v-model="searchQuery"
+                                    type="text"
+                                    placeholder="Cari sistem elektronik atau stakeholder..."
+                                />
+                                <button v-if="searchQuery" type="button" @click="searchQuery = ''" aria-label="Clear search">
+                                    <i class="ri-close-circle-fill"></i>
+                                </button>
+                            </label>
                             <button class="btn stakeholders-add-btn d-flex align-items-center gap-2" @click="refreshData" :disabled="loading">
                                 <i class="ri-refresh-line" :class="{ 'ri-spin': loading }"></i>
                                 <span class="btn-text">Refresh Data</span>
@@ -420,7 +646,7 @@ const getFullStakeholder = (se: SeCsirt) => {
                     </div>
 
                     <!-- Unified LMS Card Table Shell -->
-                    <div class="card custom-card shadow-sm border-0 overflow-hidden">
+                    <div class="card custom-card shadow-sm border-0 overflow-hidden kse-list-shell">
                         
                         <!-- 1. PENDING REQUESTS SECTION (Only if exists) -->
                         <div v-if="pendingRequests.length > 0" class="p-4 bg-warning-transparent border-bottom">
@@ -503,9 +729,30 @@ const getFullStakeholder = (se: SeCsirt) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-if="loading && seList.length === 0">
-                                        <td colspan="7" class="text-center py-5">
-                                            <div class="spinner-border text-primary" role="status"></div>
+                                    <tr v-if="loading && seList.length === 0" v-for="index in Math.min(itemsPerPage, 8)" :key="`kse-skeleton-${index}`" class="kse-skeleton-table-row">
+                                        <td class="text-center"><span class="kse-skel-line kse-skel-index"></span></td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <span class="kse-skel-icon"></span>
+                                                <div class="flex-grow-1">
+                                                    <span class="kse-skel-line kse-skel-title"></span>
+                                                    <span class="kse-skel-line kse-skel-subtitle"></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><span class="kse-skel-line kse-skel-title"></span></td>
+                                        <td class="text-center"><span class="kse-skel-pill"></span></td>
+                                        <td class="text-center"><span class="kse-skel-pill"></span></td>
+                                        <td>
+                                            <span class="kse-skel-line kse-skel-title"></span>
+                                            <span class="kse-skel-line kse-skel-subtitle"></span>
+                                        </td>
+                                        <td class="text-center">
+                                            <div class="d-flex justify-content-center gap-2">
+                                                <span class="kse-skel-action"></span>
+                                                <span class="kse-skel-action"></span>
+                                                <span class="kse-skel-action"></span>
+                                            </div>
                                         </td>
                                     </tr>
                                     <tr v-else-if="filteredSeList.length === 0">
@@ -579,11 +826,11 @@ const getFullStakeholder = (se: SeCsirt) => {
                                                     <button class="btn btn-sm btn-icon btn-info-light stakeholders-action-btn" @click.stop="viewDetail(se)" title="View Details">
                                                         <i class="ri-eye-line"></i>
                                                     </button>
-                                                    <button class="btn btn-sm btn-icon btn-primary-light stakeholders-action-btn" @click.stop title="Edit Data">
+                                                    <button class="btn btn-sm btn-icon btn-primary-light stakeholders-action-btn action-edit" @click.stop="editSe(se)" title="Edit Data">
                                                         <i class="ri-edit-line"></i>
                                                     </button>
-                                                    <button class="btn btn-sm btn-icon btn-danger-light stakeholders-action-btn" @click.stop title="Delete">
-                                                        <i class="ri-delete-bin-line"></i>
+                                                    <button class="btn btn-sm btn-icon btn-danger-light stakeholders-action-btn action-delete" @click.stop="openDelete(se)" :disabled="actionLoadingId === se.id" title="Delete">
+                                                        <i :class="actionLoadingId === se.id ? 'ri-loader-4-line ri-spin' : 'ri-delete-bin-line'"></i>
                                                     </button>
                                                 </div>
                                             </td>
@@ -715,7 +962,7 @@ const getFullStakeholder = (se: SeCsirt) => {
                     <!-- ══ TABLE FOOTER ══════════════════════════════════════════ -->
                     <div class="pagination-container stakeholders-pagination mt-4 mb-0 pb-0">
                         <div class="stakeholders-pagination-copy">
-                            Showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, filteredSeList.length) }} 
+                            Showing {{ visibleRangeStart }}-{{ visibleRangeEnd }} 
                             of {{ filteredSeList.length }} sistem elektronik
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
@@ -751,6 +998,43 @@ const getFullStakeholder = (se: SeCsirt) => {
             </div>
         </div>
     </div>
+
+    <Teleport to="body">
+        <div v-if="deleteModal" class="modal-overlay" @click.self="closeDelete">
+            <section class="kse-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="kse-delete-title">
+                <button class="kse-confirm-close" type="button" :disabled="Boolean(actionLoadingId)" @click="closeDelete">
+                    <i class="ri-close-line"></i>
+                </button>
+                <div class="kse-confirm-icon danger">
+                    <i class="ri-delete-bin-6-line"></i>
+                </div>
+                <div class="kse-confirm-copy">
+                    <h3 id="kse-delete-title">Hapus sistem elektronik?</h3>
+                    <p>
+                        Data KSE <strong>{{ deleteTarget?.nama_se }}</strong> akan dihapus dari daftar admin.
+                        Tindakan ini tidak bisa dibatalkan dari halaman ini.
+                    </p>
+                </div>
+                <div class="kse-confirm-record">
+                    <span>{{ deleteTarget ? (getFullStakeholder(deleteTarget)?.nama_perusahaan || deleteTarget.perusahaan?.nama_perusahaan || 'N/A') : '-' }}</span>
+                    <strong>{{ deleteTarget?.kategori_se || 'N/A' }}</strong>
+                </div>
+                <div v-if="actionError" class="kse-action-error" role="alert">
+                    <i class="ri-error-warning-line"></i>
+                    <span>{{ actionError }}</span>
+                </div>
+                <div class="kse-confirm-actions">
+                    <button type="button" class="kse-confirm-secondary" :disabled="Boolean(actionLoadingId)" @click="closeDelete">
+                        Batal
+                    </button>
+                    <button type="button" class="kse-confirm-primary danger" :disabled="Boolean(actionLoadingId)" @click="confirmDelete">
+                        <i :class="actionLoadingId ? 'ri-loader-4-line ri-spin' : 'ri-delete-bin-line'"></i>
+                        <span>{{ actionLoadingId ? 'Menghapus...' : 'Hapus Data' }}</span>
+                    </button>
+                </div>
+            </section>
+        </div>
+    </Teleport>
 
     <!-- Premium Review Modal -->
     <Teleport to="body">
@@ -887,6 +1171,488 @@ const getFullStakeholder = (se: SeCsirt) => {
 </template>
 
 <style scoped>
+.kse-admin-page {
+    --kse-blue: #2563eb;
+    --kse-blue-dark: #1d4ed8;
+    --kse-border: #e2e8f0;
+    --kse-muted: #64748b;
+    --kse-text: #0f172a;
+    --kse-page-bg: #f6f9fc;
+}
+
+.kse-shell-card {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.kse-shell-card > .stakeholder-header {
+    display: none !important;
+}
+
+.kse-hero-header {
+    align-items: center;
+    background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 22px;
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+    color: #ffffff;
+    display: flex;
+    gap: 28px;
+    justify-content: space-between;
+    min-height: 152px;
+    overflow: hidden;
+    padding: 24px 26px;
+    position: relative;
+}
+
+.kse-hero-header::after {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+    content: "";
+    height: 1px;
+    inset: 0 20px auto;
+    position: absolute;
+}
+
+.kse-hero-content,
+.kse-hero-tools {
+    position: relative;
+    z-index: 1;
+}
+
+.kse-hero-copy {
+    max-width: 820px;
+}
+
+.kse-inline-breadcrumb {
+    color: #b9d7ff;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 8px;
+}
+
+.kse-inline-breadcrumb span {
+    color: rgba(255, 255, 255, 0.58);
+    margin: 0 5px;
+}
+
+.kse-hero-copy h1 {
+    color: #ffffff;
+    font-size: 32px;
+    font-weight: 850;
+    line-height: 1.05;
+    margin: 0;
+}
+
+.kse-hero-copy p {
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 16px;
+    line-height: 1.45;
+    margin: 10px 0 0;
+}
+
+.kse-hero-tools {
+    flex: 0 1 360px;
+    min-width: 300px;
+}
+
+.kse-hero-summary-card {
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 18px;
+    box-shadow: 0 18px 38px rgba(2, 6, 23, 0.16);
+    padding: 16px;
+}
+
+.kse-hero-summary-title,
+.kse-hero-summary-stats {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.kse-hero-summary-title span,
+.kse-hero-summary-stats span {
+    color: rgba(255, 255, 255, 0.72);
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.kse-hero-summary-title strong {
+    color: #ffffff;
+    font-size: 30px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.kse-hero-summary-stats {
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.kse-hero-summary-stats div {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    flex: 1;
+    padding: 10px;
+}
+
+.kse-hero-summary-stats strong {
+    color: #ffffff;
+    display: block;
+    font-size: 18px;
+    font-weight: 850;
+    margin-top: 2px;
+}
+
+.kse-hero-progress {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    height: 8px;
+    margin-top: 14px;
+    overflow: hidden;
+}
+
+.kse-hero-progress span {
+    background: linear-gradient(90deg, #22c55e, #38bdf8);
+    border-radius: inherit;
+    display: block;
+    height: 100%;
+    transition: width 280ms ease;
+}
+
+.kse-kpi-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.kse-kpi-card {
+    align-items: flex-start;
+    background: #ffffff;
+    border: 1px solid var(--kse-border);
+    border-radius: 16px;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+    display: flex;
+    gap: 12px;
+    min-height: 118px;
+    padding: 16px;
+    transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.kse-kpi-card:hover {
+    border-color: rgba(37, 99, 235, 0.32);
+    box-shadow: 0 18px 38px rgba(37, 99, 235, 0.12);
+    transform: translateY(-2px);
+}
+
+.kse-kpi-icon {
+    align-items: center;
+    border-radius: 14px;
+    display: inline-flex;
+    flex: 0 0 42px;
+    height: 42px;
+    justify-content: center;
+    width: 42px;
+}
+
+.kse-kpi-card span {
+    color: var(--kse-muted);
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.kse-kpi-card strong {
+    color: var(--kse-text);
+    display: block;
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+    margin: 8px 0 6px;
+}
+
+.kse-kpi-card small {
+    color: var(--kse-muted);
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+.tone-total .kse-kpi-icon { background: #dbeafe; color: #1d4ed8; }
+.tone-danger .kse-kpi-icon { background: #fee2e2; color: #b91c1c; }
+.tone-warning .kse-kpi-icon { background: #fef3c7; color: #b45309; }
+.tone-success .kse-kpi-icon { background: #dcfce7; color: #15803d; }
+.tone-review .kse-kpi-icon { background: #e0e7ff; color: #4f46e5; }
+.tone-review.is-hot { border-color: rgba(79, 70, 229, 0.35); }
+
+.kse-search {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid var(--kse-border);
+    border-radius: 14px;
+    color: var(--kse-muted);
+    display: flex;
+    flex: 1 1 360px;
+    gap: 8px;
+    min-height: 42px;
+    max-width: 520px;
+    padding: 0 14px;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.kse-search:focus-within {
+    border-color: rgba(37, 99, 235, 0.55);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.kse-search input {
+    background: transparent;
+    border: 0;
+    color: var(--kse-text);
+    font-size: 13px;
+    min-width: 0;
+    outline: 0;
+    width: 100%;
+}
+
+.kse-search button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: #2563eb;
+    display: inline-flex;
+    justify-content: center;
+    padding: 0;
+}
+
+.kse-list-shell {
+    border-radius: 16px !important;
+}
+
+.kse-skel-line,
+.kse-skel-icon,
+.kse-skel-pill,
+.kse-skel-action {
+    background: linear-gradient(90deg, #edf2f7 0%, #f8fafc 44%, #edf2f7 88%);
+    background-size: 220% 100%;
+    animation: kse-skeleton-shimmer 1.15s ease-in-out infinite;
+    display: block;
+}
+
+.kse-skel-line {
+    border-radius: 999px;
+    height: 12px;
+}
+
+.kse-skel-kpi {
+    height: 28px;
+    margin: 8px 0 6px;
+    width: 62px;
+}
+
+.kse-skel-index { height: 12px; margin: 0 auto; width: 24px; }
+.kse-skel-title { height: 13px; margin-bottom: 8px; width: min(180px, 100%); }
+.kse-skel-subtitle { height: 10px; width: min(120px, 80%); }
+.kse-skel-icon { border-radius: 14px; height: 42px; width: 42px; }
+.kse-skel-pill { border-radius: 999px; height: 28px; margin: 0 auto; width: 82px; }
+.kse-skel-action { border-radius: 10px; height: 32px; width: 32px; }
+
+@keyframes kse-skeleton-shimmer {
+    0% { background-position: 120% 0; }
+    100% { background-position: -120% 0; }
+}
+
+.kse-confirm-modal {
+    background: #ffffff;
+    border-radius: 22px;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24);
+    max-width: min(92vw, 440px);
+    padding: 1.5rem;
+    position: relative;
+    width: 440px;
+}
+
+.kse-confirm-close {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    color: #64748b;
+    display: inline-flex;
+    height: 34px;
+    justify-content: center;
+    position: absolute;
+    right: 1rem;
+    top: 1rem;
+    width: 34px;
+}
+
+.kse-confirm-icon {
+    align-items: center;
+    border-radius: 18px;
+    display: inline-flex;
+    font-size: 26px;
+    height: 54px;
+    justify-content: center;
+    width: 54px;
+}
+
+.kse-confirm-icon.danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.kse-confirm-copy h3 {
+    color: #0f172a;
+    font-size: 1.12rem;
+    font-weight: 850;
+    margin: 1rem 0 0.45rem;
+}
+
+.kse-confirm-copy p {
+    color: #64748b;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.kse-confirm-record {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+}
+
+.kse-confirm-record span {
+    color: #475569;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.kse-confirm-record strong {
+    color: #1d4ed8;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+}
+
+.kse-action-error {
+    align-items: center;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    color: #b91c1c;
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.75rem 0.9rem;
+}
+
+.kse-confirm-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+.kse-confirm-secondary,
+.kse-confirm-primary {
+    align-items: center;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    font-weight: 800;
+    gap: 0.45rem;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 1.1rem;
+}
+
+.kse-confirm-secondary {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.kse-confirm-primary.danger {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    color: #ffffff;
+}
+
+.action-edit:hover {
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+}
+
+.action-delete:hover {
+    box-shadow: 0 10px 20px rgba(239, 68, 68, 0.16);
+}
+
+@media (max-width: 1199.98px) {
+    .kse-kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 991.98px) {
+    .kse-hero-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .kse-hero-tools {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .kse-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .stakeholders-toolbar-right {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .kse-search {
+        max-width: none;
+        order: 3;
+        width: 100%;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .kse-hero-header {
+        border-radius: 18px;
+        min-height: 0;
+        padding: 20px;
+    }
+
+    .kse-hero-copy h1 {
+        font-size: 26px;
+    }
+
+    .kse-hero-copy p {
+        font-size: 14px;
+    }
+
+    .kse-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .kse-confirm-actions {
+        flex-direction: column;
+    }
+
+    .kse-confirm-actions button {
+        width: 100%;
+    }
+}
+
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1513,6 +2279,46 @@ const getFullStakeholder = (se: SeCsirt) => {
 </style>
 
 <style>
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card,
+html.dark .kse-admin-page .kse-kpi-card,
+[data-theme-mode="dark"] .kse-admin-page .kse-search,
+html.dark .kse-admin-page .kse-search,
+[data-theme-mode="dark"] .kse-confirm-modal,
+html.dark .kse-confirm-modal {
+    background: #08111f !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card strong,
+html.dark .kse-admin-page .kse-kpi-card strong,
+[data-theme-mode="dark"] .kse-confirm-copy h3,
+html.dark .kse-confirm-copy h3 {
+    color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card span,
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card small,
+html.dark .kse-admin-page .kse-kpi-card span,
+html.dark .kse-admin-page .kse-kpi-card small,
+[data-theme-mode="dark"] .kse-confirm-copy p,
+html.dark .kse-confirm-copy p {
+    color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-search input,
+html.dark .kse-admin-page .kse-search input {
+    color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-confirm-record,
+[data-theme-mode="dark"] .kse-confirm-close,
+html.dark .kse-confirm-record,
+html.dark .kse-confirm-close {
+    background: #0b1220 !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
 [data-theme-mode="dark"] .kse-admin-page .header-search-input,
 html.dark .kse-admin-page .header-search-input {
     background: #0b1220 !important;

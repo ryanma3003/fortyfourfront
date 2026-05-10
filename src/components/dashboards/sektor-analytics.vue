@@ -75,48 +75,7 @@ const getSektorColor = (index, sektorName = "") => {
   return matchedRule?.color || sektorColors[index % sektorColors.length];
 };
 
-const hexToRgb = (hex) => {
-  const normalized = String(hex || "").replace("#", "");
-  const full = normalized.length === 3
-    ? normalized.split("").map((char) => char + char).join("")
-    : normalized;
-  const value = Number.parseInt(full, 16);
-  if (Number.isNaN(value)) return { r: 37, g: 99, b: 235 };
-  return {
-    r: (value >> 16) & 255,
-    g: (value >> 8) & 255,
-    b: value & 255,
-  };
-};
-
-const rgbToHex = ({ r, g, b }) =>
-  "#" + [r, g, b].map((value) =>
-    Math.max(0, Math.min(255, Math.round(value)))
-      .toString(16)
-      .padStart(2, "0")
-  ).join("");
-
-const mixColor = (hex, mixHex, amount) => {
-  const base = hexToRgb(hex);
-  const mix = hexToRgb(mixHex);
-  return rgbToHex({
-    r: base.r + (mix.r - base.r) * amount,
-    g: base.g + (mix.g - base.g) * amount,
-    b: base.b + (mix.b - base.b) * amount,
-  });
-};
-
-const getSubSektorChartColor = (parentColor, subIndex) => {
-  const variants = [
-    parentColor,
-    mixColor(parentColor, "#ffffff", 0.22),
-    mixColor(parentColor, "#0f172a", 0.16),
-    mixColor(parentColor, "#ffffff", 0.36),
-    mixColor(parentColor, "#0f172a", 0.28),
-    mixColor(parentColor, "#38bdf8", 0.18),
-  ];
-  return variants[subIndex % variants.length];
-};
+const getSubSektorChartColor = (parentColor) => parentColor;
 
 // ─── Fetch Data ─────────────────────────────────────────
 const fetchData = async () => {
@@ -448,12 +407,12 @@ const minStakeholderSektor = computed(() => {
 const flattenedSubSektors = computed(() => {
   const result = [];
   filteredSektors.value.forEach((sektor) => {
-    sektor.subSektors.forEach((ss, subIndex) => {
+    sektor.subSektors.forEach((ss) => {
       result.push({
         ...ss,
         parentName: sektor.displayName,
         parentColor: sektor.color,
-        chartColor: getSubSektorChartColor(sektor.color, subIndex),
+        chartColor: getSubSektorChartColor(sektor.color),
       });
     });
   });
@@ -932,7 +891,7 @@ watch(selectedSektorId, (newSektorId) => {
         <div class="row g-3">
           <!-- Bar Chart -->
           <div
-            class="col-xl-7 animate-show-up"
+            class="col-xl-6 col-lg-6 animate-show-up"
             :style="{ animationDelay: isReady ? '0s' : '3.2s' }"
           >
             <div class="sa-chart-card">
@@ -970,7 +929,7 @@ watch(selectedSektorId, (newSektorId) => {
 
           <!-- Donut Chart -->
           <div
-            class="col-xl-5 animate-show-up"
+            class="col-xl-6 col-lg-6 animate-show-up"
             :style="{ animationDelay: isReady ? '0s' : '3.3s' }"
           >
             <div class="sa-chart-card">
@@ -1389,12 +1348,10 @@ watch(selectedSektorId, (newSektorId) => {
   0% {
     opacity: 0;
     transform: translateY(30px) scale(0.98);
-    filter: blur(4px);
   }
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-    filter: blur(0);
   }
 }
 
@@ -1539,7 +1496,7 @@ watch(selectedSektorId, (newSektorId) => {
   justify-content: center;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px);
+  backdrop-filter: none;
   flex-shrink: 0;
 }
 .sa-section-icon i {

@@ -210,6 +210,9 @@ const sharedConfig = {
       '|', 'tableProperties', 'tableCellProperties',
     ],
   },
+  mediaEmbed: {
+    previewsInData: true,
+  },
   link: {
     addTargetToExternalLinks: true,
     defaultProtocol: 'https://',

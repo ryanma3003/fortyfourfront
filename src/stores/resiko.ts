@@ -6,7 +6,7 @@ import type {
     AssessmentProgress
 } from '@/types/assessment.types';
 import { resikoData, getTotalRiskQuestionCount } from '@/data/assessment/resiko-data';
-import { resikoService, type SurveyRiskResponse } from '@/services/resiko.service';
+import { resikoService, type SurveyRespondent, type SurveyRiskResponse } from '@/services/resiko.service';
 
 const STORAGE_KEYS = {
     RESIKO_RESPONDENT_PROFILES: 'resiko_respondent_profiles_map',
@@ -30,6 +30,9 @@ export const useResikoStore = defineStore('resiko', {
         answersMap: {} as Record<string, AnswerMap>,
         progressMap: {} as Record<string, AssessmentProgress>,
         surveyResultsMap: {} as Record<string, SurveyRiskResponse>,
+        adminRespondents: [] as SurveyRespondent[],
+        adminRespondentsLoading: false,
+        adminRespondentsError: null as string | null,
         surveyResultLoading: false,
         surveyResultError: null as string | null,
         resikoVersion: 0, // Signal for reactivity
@@ -108,6 +111,25 @@ export const useResikoStore = defineStore('resiko', {
         currentSurveyResult(): SurveyRiskResponse | null {
             if (!this.currentStakeholderSlug) return null;
             return this.surveyResultsMap[this.currentStakeholderSlug] || null;
+        },
+
+        respondentsByCompanyId(): Record<string, SurveyRespondent[]> {
+            return this.adminRespondents.reduce((acc, respondent) => {
+                const companyId = respondent?.id_perusahaan;
+                if (!companyId) return acc;
+                const key = String(companyId);
+                acc[key] = [...(acc[key] || []), respondent];
+                return acc;
+            }, {} as Record<string, SurveyRespondent[]>);
+        },
+
+        completedCompanyIds(): Set<string> {
+            return new Set(
+                this.adminRespondents
+                    .map((respondent) => respondent?.id_perusahaan)
+                    .filter(Boolean)
+                    .map((id) => String(id))
+            );
         }
     },
 
@@ -135,6 +157,23 @@ export const useResikoStore = defineStore('resiko', {
             if (!this.currentStakeholderSlug) return;
             this.respondentProfilesMap[this.currentStakeholderSlug] = profile;
             this.saveToDisk();
+        },
+
+        async loadAdminRespondents(force = false) {
+            if (!force && this.adminRespondents.length) return this.adminRespondents;
+
+            this.adminRespondentsLoading = true;
+            this.adminRespondentsError = null;
+
+            try {
+                this.adminRespondents = await resikoService.getRespondents();
+                return this.adminRespondents;
+            } catch (error: any) {
+                this.adminRespondentsError = error?.message || 'Gagal memuat responden survey risiko';
+                return this.adminRespondents;
+            } finally {
+                this.adminRespondentsLoading = false;
+            }
         },
 
         async loadSurveyResult(stakeholderId: string | number, slug = this.currentStakeholderSlug) {
@@ -167,6 +206,109 @@ export const useResikoStore = defineStore('resiko', {
                         updatedAt: Date.now(),
                     };
                     this.saveToDisk();
+                }
+
+                return result;
+            } catch (error: any) {
+                this.surveyResultError = error?.message || 'Gagal memuat hasil survey risiko';
+                return null;
+            } finally {
+                this.surveyResultLoading = false;
+            }
+        },
+
+        persistRespondentForSlug(slug: string, respondent: SurveyRespondent) {
+            const existing = this.respondentProfilesMap[slug];
+            this.respondentProfilesMap[slug] = {
+                instansi: respondent.nama_perusahaan || existing?.instansi || '',
+                sektor: respondent.nama_sub_sektor || respondent.nama_sektor || existing?.sektor || '',
+                alamat: existing?.alamat || '',
+                email: respondent.email || existing?.email || '',
+                namaResponden: respondent.nama_lengkap || existing?.namaResponden || '',
+                jabatanResponden: respondent.jabatan || existing?.jabatanResponden || '',
+                nomorTelepon: respondent.no_telepon || existing?.nomorTelepon || '',
+                tahunPengukuran: respondent.created_at ? new Date(respondent.created_at).getFullYear().toString() : existing?.tahunPengukuran || new Date().getFullYear().toString(),
+                targetLevel: existing?.targetLevel || 0,
+                targetNilai: existing?.targetNilai || '',
+                acuan: existing?.acuan || '',
+                tanggalPengisian: respondent.created_at ? String(respondent.created_at).split('T')[0] : existing?.tanggalPengisian || '',
+                createdAt: existing?.createdAt || Date.now(),
+                updatedAt: Date.now(),
+            };
+            this.progressMap[slug] = {
+                ...(this.progressMap[slug] || createDefaultProgress()),
+                status: 'COMPLETED',
+                lastUpdated: Date.now(),
+            };
+            this.saveToDisk();
+        },
+
+        async loadSurveyResultByRespondent(respondentId: string | number, slug = this.currentStakeholderSlug) {
+            if (!respondentId || !slug) return null;
+
+            this.surveyResultLoading = true;
+            this.surveyResultError = null;
+
+            try {
+                const result = await resikoService.getSurveyByRespondentId(respondentId);
+                this.surveyResultsMap[slug] = result;
+
+                if (result.respondent) {
+                    this.persistRespondentForSlug(slug, result.respondent);
+                }
+
+                return result;
+            } catch (error: any) {
+                const respondent = await resikoService.getRespondentById(respondentId).catch(() => null);
+                const result = {
+                    respondent,
+                    risks: [],
+                    raw: { respondent, riskPayload: null, riskError: error?.data || error },
+                };
+                this.surveyResultsMap[slug] = result;
+                if (respondent) this.persistRespondentForSlug(slug, respondent);
+                this.surveyResultError = error?.message || 'Gagal memuat hasil survey risiko';
+                return result;
+            } finally {
+                this.surveyResultLoading = false;
+            }
+        },
+
+        async loadSurveyResultByCompany(companyId: string | number, slug = this.currentStakeholderSlug, companyName = '') {
+            if (!companyId || !slug) return null;
+
+            this.surveyResultLoading = true;
+            this.surveyResultError = null;
+
+            try {
+                await this.loadAdminRespondents();
+                const normalizedCompanyName = String(companyName || '').trim().toLowerCase();
+                const respondent = this.adminRespondents.find((item) => (
+                    String(item.id_perusahaan) === String(companyId) ||
+                    (normalizedCompanyName && String(item.nama_perusahaan || '').trim().toLowerCase() === normalizedCompanyName)
+                ));
+                let riskPayload: any = null;
+                let riskError: any = null;
+
+                if (respondent?.id) {
+                    try {
+                        riskPayload = await resikoService.getRiskPayloadByRespondentId(respondent.id);
+                    } catch (error: any) {
+                        riskError = error?.data || error;
+                        this.surveyResultError = error?.message || 'Gagal memuat hasil survey risiko';
+                    }
+                }
+
+                const result = respondent
+                    ? {
+                        ...resikoService.buildSurveyResponseFromRespondent(respondent, riskPayload),
+                        raw: { respondent, riskPayload, riskError },
+                    }
+                    : { respondent: null, risks: [], raw: { respondent: null, riskPayload: null, riskError: null, companyId } };
+                this.surveyResultsMap[slug] = result;
+
+                if (result.respondent) {
+                    this.persistRespondentForSlug(slug, result.respondent);
                 }
 
                 return result;

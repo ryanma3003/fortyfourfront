@@ -124,6 +124,7 @@ export const lmsService = {
             konten: payload.konten || '',
             konten_html: payload.konten_html || '',
             youtube_id: youtubeId,
+            durasi_detik: Number(payload.durasi_detik ?? 0),
             urutan: (payload as any).urutan || 1
         };
         const res = await api.post(`/api/kelas/${kelasId}/materi`, requestPayload);
@@ -151,6 +152,7 @@ export const lmsService = {
             konten: payload.konten || '',
             konten_html: payload.konten_html || '',
             youtube_id: youtubeId,
+            durasi_detik: Number(payload.durasi_detik ?? 0),
             ...((payload as any).urutan ? { urutan: (payload as any).urutan } : {})
         };
         const res = await api.put(`/api/materi/${id}`, requestPayload);
@@ -413,6 +415,7 @@ function normalizeMateri(item: any): LmsMateri {
         tipe: String(item?.tipe ?? item?.type ?? 'teks') as any,
         konten: String(item?.konten ?? item?.konten_html ?? ''),
         url_video: String(item?.url_video ?? item?.youtube_id ?? item?.id_youtube ?? item?.video_url ?? item?.video ?? item?.link_video ?? (item?.tipe === 'video' ? item?.konten : '') ?? item?.url ?? item?.path ?? item?.video_path ?? item?.materi_url ?? ''),
+        durasi_detik: Number(item?.durasi_detik ?? item?.duration_seconds ?? item?.durasi ?? item?.duration ?? 0),
         urutan: Number(item?.urutan ?? 0),
         file_pendukung: item?.file_pendukung ? unwrapDataArray(item.file_pendukung).map(normalizeFilePendukung) : []
     };

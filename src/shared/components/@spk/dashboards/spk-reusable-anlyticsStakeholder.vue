@@ -20,10 +20,12 @@ const props = withDefaults(defineProps<{
   analyticData?: AnalyticItem[];
   csirtId?: number | string | null;
   stakeholderSlug?: string | null;
+  respondentId?: number | string | null;
 }>(), {
   analyticData: () => [],
   csirtId: null,
   stakeholderSlug: null,
+  respondentId: null,
 });
 
 const router = useRouter();
@@ -50,7 +52,13 @@ const handleIkas = () => {
 
 const handleResiko = () => {
   if (props.stakeholderSlug) {
-    router.push({ path: "/profile-resiko", query: { slug: props.stakeholderSlug } });
+    router.push({
+      path: "/profile-resiko",
+      query: {
+        slug: props.stakeholderSlug,
+        ...(props.respondentId ? { respondentId: String(props.respondentId) } : {}),
+      },
+    });
   } else {
     router.push("/profile-resiko");
   }

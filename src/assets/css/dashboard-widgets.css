@@ -27,8 +27,8 @@
   --dw-bg: #f8f9fc;
   --dw-card-bg: #ffffff;
   --dw-card-border: rgba(0, 0, 0, 0.04);
-  --dw-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
-  --dw-card-shadow-hover: 0 8px 32px rgba(30, 64, 175, 0.12);
+  --dw-card-shadow: none;
+  --dw-card-shadow-hover: none;
   --dw-card-radius: 16px;
   --dw-card-radius-sm: 12px;
 
@@ -44,7 +44,7 @@
   /* ── Glassmorphism ── */
   --dw-glass-bg: rgba(255, 255, 255, 0.7);
   --dw-glass-border: rgba(255, 255, 255, 0.3);
-  --dw-glass-blur: 12px;
+  --dw-glass-blur: 0px;
 }
 
 /* ── Dark Mode ── */
@@ -54,8 +54,8 @@
   --dw-bg: #0f172a;
   --dw-card-bg: #1e293b;
   --dw-card-border: rgba(255, 255, 255, 0.06);
-  --dw-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
-  --dw-card-shadow-hover: 0 8px 32px rgba(132, 90, 223, 0.2);
+  --dw-card-shadow: none;
+  --dw-card-shadow-hover: none;
   --dw-text: #e2e8f0;
   --dw-text-secondary: #94a3b8;
   --dw-text-muted: #64748b;
@@ -122,8 +122,8 @@
 /* ═══════ GLASSMORPHISM CARD ═══════ */
 .dw-glass {
   background: var(--dw-glass-bg);
-  backdrop-filter: blur(var(--dw-glass-blur));
-  -webkit-backdrop-filter: blur(var(--dw-glass-blur));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--dw-glass-border);
 }
 
@@ -547,8 +547,8 @@
   position: fixed;
   inset: 0;
   background: rgba(2, 10, 40, 0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   z-index: 1050;
   display: flex;
   align-items: center;
@@ -1358,13 +1358,13 @@
 /* Interesting Hover Effect */
 .card.custom-card.dashboard-main-card:hover {
   transform: translateY(-6px) !important;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: none !important;
   border-color: rgba(var(--dw-primary-rgb), 0.2) !important;
 }
 
 .card.custom-card.dashboard-main-card:hover::before {
   width: 8px !important; /* Wider bar on hover */
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05) !important;
+  box-shadow: none !important;
 }
 
 /* Glow effect inside on hover */
@@ -1380,7 +1380,7 @@
 }
 
 .card.custom-card.dashboard-main-card:hover::after {
-  opacity: 0.05;
+  opacity: 0;
 }
 
 /* Color Mapping System - High Specificity */
@@ -1406,7 +1406,7 @@
 .card.custom-card.dashboard-main-card.sektor-card-active {
   transform: translateY(-8px) scale(1.03) !important;
   z-index: 20 !important;
-  box-shadow: 0 16px 48px rgba(var(--dw-primary-rgb), 0.18) !important;
+  box-shadow: none !important;
   border-color: var(--card-accent) !important;
 }
 
@@ -1417,7 +1417,6 @@
 /* Muted State: Dimmed when a different sector is selection */
 .card.custom-card.dashboard-main-card.sektor-card-muted {
   opacity: 0.25 !important;
-  filter: grayscale(0.95) !important;
   transform: scale(0.96) !important;
   pointer-events: none !important;
   box-shadow: none !important;

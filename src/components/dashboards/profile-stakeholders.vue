@@ -756,8 +756,9 @@ const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } =
     await delay(PROFILE_LOAD_STAGGER_MS);
     const auditPromise = loadIkasAuditLogs(stakeholder, token);
     const konversiPromise = konversiStore.fetchForPerusahaanId(stakeholder.id, options.force);
+    const resikoPromise = resikoStore.loadSurveyResultByCompany(stakeholder.id, stakeholder.slug);
 
-    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise, konversiPromise]);
+    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise, konversiPromise, resikoPromise]);
   } catch {
     if (isLatestProfileLoad(token, slug)) {
       friends.value = [];
@@ -1045,10 +1046,35 @@ const companyDetails = computed(() => {
 
 const riskStatus = computed(() => {
   const slug = stakeholderSlug.value;
+  const stakeholder = currentStakeholder.value;
+  if (stakeholder?.id && resikoStore.completedCompanyIds?.has(String(stakeholder.id))) return 'Sudah Diisi';
   if (resikoStore.progressMap[slug]?.status === 'COMPLETED') return 'Sudah Diisi';
   return resikoStore.answersMap[slug] && Object.keys(resikoStore.answersMap[slug]).length > 0
     ? 'Dalam Proses'
     : 'Belum Diisi';
+});
+
+const currentRiskResult = computed(() => resikoStore.surveyResultsMap[stakeholderSlug.value] || null);
+const currentRiskRespondent = computed(() => {
+  const companyId = currentStakeholder.value?.id;
+  const fromResult = currentRiskResult.value?.respondent;
+  if (fromResult) return fromResult;
+  if (!companyId) return null;
+  return resikoStore.respondentsByCompanyId[String(companyId)]?.[0] || null;
+});
+
+const currentRiskRows = computed(() => currentRiskResult.value?.risks || []);
+
+const currentRiskFacts = computed(() => {
+  const respondent = currentRiskRespondent.value;
+  return [
+    { label: 'Responden', value: respondent?.nama_lengkap || respondent?.responden || '-' },
+    { label: 'Jabatan', value: respondent?.jabatan || '-' },
+    { label: 'Email', value: respondent?.email || '-' },
+    { label: 'Telepon', value: respondent?.no_telepon || respondent?.telepon || '-' },
+    { label: 'Sektor', value: respondent?.nama_sektor || respondent?.nama_sub_sektor || '-' },
+    { label: 'Sertifikat Training', value: respondent?.sertifikat_training || '-' },
+  ];
 });
 
 const ikasProfileStatus = computed(() => {
@@ -1654,7 +1680,7 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   backdrop-filter: blur(6px);
 }
 .activity-modal {
-  width: min(860px, 100%);
+  width: min(1180px, 100%);
   max-height: calc(100vh - 2.5rem);
   display: flex;
   flex-direction: column;
@@ -1911,8 +1937,41 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   margin-bottom: 0.55rem;
 }
 .activity-description :deep(img) {
+  display: block;
   max-width: 100%;
   height: auto;
+  border-radius: 10px;
+  margin: 0.7rem 0;
+}
+.activity-description :deep(figure.media),
+.activity-description :deep(figure.image) {
+  margin: 0.8rem 0;
+}
+.activity-description :deep(figure.media) {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0f172a;
+  aspect-ratio: 16 / 9;
+}
+.activity-description :deep(figure.media iframe) {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.activity-description :deep(.table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.activity-description :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+.activity-description :deep(td),
+.activity-description :deep(th) {
+  border: 1px solid #e2e8f0;
+  padding: 0.45rem 0.6rem;
 }
 .activity-tags {
   display: flex;
@@ -4222,6 +4281,7 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                         :analyticData="penilaian"
                         :csirtId="relatedCsirtId ?? undefined"
                         :stakeholderSlug="currentStakeholder.slug"
+                        :respondentId="currentRiskRespondent?.id ?? undefined"
                       />
 
                       <div
@@ -4261,7 +4321,7 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                             v-if="resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED'"
                             type="button"
                             class="profile-action-card"
-                            @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })"
+                            @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug, ...(currentRiskRespondent?.id ? { respondentId: currentRiskRespondent.id } : {}) } })"
                           >
                             <span class="profile-action-icon action-amber"><i class="ri-error-warning-line"></i></span>
                             <span>
@@ -4271,6 +4331,64 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                             <i class="ri-arrow-right-up-line action-arrow"></i>
                           </button>
 
+                        </div>
+                      </div>
+
+                      <div class="col-12 mb-3">
+                        <div class="card custom-card profile-side-card border-0 shadow-sm">
+                          <div class="card-header profile-section-header d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-2 border-bottom">
+                            <div class="d-flex align-items-center gap-2">
+                              <div class="header-icon-ring bg-danger-transparent me-1 flex-shrink-0">
+                                <i class="ri-shield-flash-line text-danger fs-16"></i>
+                              </div>
+                              <div>
+                                <h6 class="card-title mb-0 fw-bold header-card-title text-dark">Profil Risiko</h6>
+                                <p class="text-muted fs-11 mb-0">Responden dan status survey manajemen risiko perusahaan</p>
+                              </div>
+                            </div>
+                            <span class="badge" :class="riskStatus === 'Sudah Diisi' ? 'bg-success-transparent text-success' : 'bg-warning-transparent text-warning'">
+                              {{ riskStatus }}
+                            </span>
+                          </div>
+                          <div class="card-body">
+                            <div v-if="resikoStore.surveyResultLoading" class="placeholder-glow">
+                              <span class="placeholder col-4 mb-3"></span>
+                              <span class="placeholder col-12 mb-2"></span>
+                              <span class="placeholder col-10"></span>
+                            </div>
+                            <div v-else-if="currentRiskRespondent" class="row g-3">
+                              <div v-for="fact in currentRiskFacts" :key="fact.label" class="col-xl-4 col-md-6">
+                                <div class="border rounded-2 p-3 h-100 bg-light bg-opacity-50">
+                                  <div class="text-muted fs-11 fw-semibold text-uppercase mb-1">{{ fact.label }}</div>
+                                  <div class="fw-bold text-dark text-break">{{ fact.value }}</div>
+                                </div>
+                              </div>
+                              <div class="col-12" v-if="currentRiskRows.length">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                  <i class="ri-file-list-3-line text-danger"></i>
+                                  <span class="fw-bold text-dark">Data Risiko</span>
+                                  <span class="badge bg-danger-transparent text-danger">{{ currentRiskRows.length }}</span>
+                                </div>
+                                <div class="table-responsive">
+                                  <table class="table table-sm align-middle mb-0">
+                                    <tbody>
+                                      <tr v-for="(row, idx) in currentRiskRows.slice(0, 5)" :key="'risk-row-' + idx">
+                                        <td class="fw-semibold text-muted" style="width: 56px;">#{{ idx + 1 }}</td>
+                                        <td class="text-break">{{ row?.nama_risiko || row?.risiko || row?.pertanyaan || row?.question || JSON.stringify(row) }}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                            <div v-else class="empty-state py-4 text-center">
+                              <div class="empty-icon-ring mb-3">
+                                <div class="empty-icon-inner"><i class="ri-shield-flash-line"></i></div>
+                              </div>
+                              <h6 class="fw-bold mb-1 text-dark">Survey Risiko Belum Ada</h6>
+                              <p class="text-muted fs-12 mb-0">Belum ditemukan responden manajemen risiko untuk stakeholder ini.</p>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -4774,9 +4892,9 @@ watch(() => ikasStore.apiLoading, async (loading) => {
             <label class="form-label fs-12 fw-bold text-muted text-uppercase">Deskripsi</label>
             <LmsEditor
               v-model="aktivitasForm.deskripsi"
-              variant="compact"
-              :min-height="240"
-              placeholder="Tulis ringkasan aktivitas di sini... Gunakan heading, list, link, gambar, tabel, dan format teks lainnya."
+              variant="full"
+              :min-height="360"
+              placeholder="Tulis ringkasan aktivitas di sini... Gunakan heading, list, blockquote, code block, gambar, video, tabel, dan lainnya."
             />
           </div>
         </div>

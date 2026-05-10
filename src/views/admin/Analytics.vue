@@ -15,6 +15,7 @@
     import { useIkasStore } from "@/stores/ikas";
     import { useCsirtStore } from "@/stores/csirt";
     import { useKonversiStore } from "@/stores/konversi";
+    import { useResikoStore } from "@/stores/resiko";
     import { useDashboardFilterStore } from "@/stores/dashboardFilter";
     import { useNotificationStore } from "@/stores/notifications";
     import { getKonversiProgress, isKonversiComplete } from "@/services/konversi.service";
@@ -57,6 +58,7 @@
     const ikasStore = useIkasStore();
     const csirtStore = useCsirtStore();
     const konversiStore = useKonversiStore();
+    const resikoStore = useResikoStore();
     const filterStore = useDashboardFilterStore();
     const notifStore = useNotificationStore();
     
@@ -205,7 +207,6 @@
             .to(shell, {
                 autoAlpha: 0,
                 y: -8,
-                filter: 'blur(8px)',
                 duration: 0.24,
                 ease: 'power2.in',
             }, '<')
@@ -298,6 +299,76 @@
         end.setHours(23, 59, 59, 999);
         date.value = [start, end];
         if (datepickerRef.value) datepickerRef.value.closeMenu();
+    };
+
+    const extractYearFromDate = (value) => {
+        if (!value) return null;
+        const parsed = new Date(value);
+        const year = parsed.getFullYear();
+        return Number.isFinite(year) ? year : null;
+    };
+
+    const availableYearOptions = computed(() => {
+        const currentYear = new Date().getFullYear();
+        const yearSet = new Set([currentYear]);
+
+        const pushYear = (value) => {
+            const year = extractYearFromDate(value);
+            if (year && year > 0 && year <= currentYear) {
+                yearSet.add(year);
+            }
+        };
+
+        baseStakeholders.value.forEach((item) => pushYear(item?.created_at));
+        baseCsirts.value.forEach((item) => pushYear(item?.perusahaan?.created_at || item?.created_at));
+        baseSdm.value.forEach((item) => pushYear(item?.created_at));
+        baseIkasStakeholders.value.forEach((item) => pushYear(item?.updated_at || item?.created_at));
+        baseSeList.value.forEach((item) => pushYear(getSeFirstDate(item)));
+
+        const years = Array.from(yearSet).sort((a, b) => b - a);
+        const minYear = years.length ? years[years.length - 1] : currentYear;
+        const maxYear = currentYear;
+        const generatedYears = [];
+
+        for (let year = maxYear; year >= minYear; year -= 1) {
+            generatedYears.push(year);
+        }
+
+        return generatedYears;
+    });
+
+    const selectedFullYear = computed(() => {
+        if (!Array.isArray(date.value) || date.value.length < 2 || !date.value[0] || !date.value[1]) return null;
+
+        const start = new Date(date.value[0]);
+        const end = new Date(date.value[1]);
+
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+        if (start.getFullYear() !== end.getFullYear()) return null;
+
+        const isStartOfYear = start.getMonth() === 0 && start.getDate() === 1;
+        const isEndOfYear = end.getMonth() === 11 && end.getDate() === 31;
+
+        return isStartOfYear && isEndOfYear ? start.getFullYear() : null;
+    });
+
+    const applyYearRange = (year) => {
+        const numericYear = Number(year);
+        if (!Number.isFinite(numericYear)) return;
+
+        const start = new Date(numericYear, 0, 1);
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date(numericYear, 11, 31);
+        end.setHours(23, 59, 59, 999);
+
+        date.value = [start, end];
+        if (datepickerRef.value) datepickerRef.value.closeMenu();
+    };
+
+    const handleYearSelect = (value) => {
+        if (!value) return;
+        applyYearRange(value);
     };
 
     // Alert Indicators Visibility Logic
@@ -558,6 +629,11 @@
         };
     });
 
+    
+    const globalCsirtStatus = computed(() => filterStore.globalSummaryData?.csirt_status || {});
+    const globalIkasStatus = computed(() => filterStore.globalSummaryData?.ikas_status || {});
+    const globalKseData = computed(() => filterStore.globalSummaryData?.kse_summary || {});
+    
     const apiCsirtStatus = computed(() => {
         const status = filterStore.summaryData?.csirt_status || {};
         return {
@@ -672,6 +748,29 @@
         return Math.round((status.sudah_membentuk_csirt / status.total_perusahaan) * 100);
     });
 
+    const manrisStatus = computed(() => {
+        const completedCompanyIds = new Set(resikoStore.completedCompanyIds || []);
+        Object.entries(resikoStore.progressMap || {}).forEach(([slug, progress]) => {
+            if (progress?.status !== 'COMPLETED') return;
+            const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+            if (stakeholder?.id) completedCompanyIds.add(String(stakeholder.id));
+        });
+
+        const total = totalStakeholders.value;
+        const completed = Math.min(completedCompanyIds.size, total);
+        return {
+            total_perusahaan: total,
+            sudah_mengisi_manris: completed,
+            belum_mengisi_manris: Math.max(0, total - completed),
+        };
+    });
+
+    const manrisCompletionRate = computed(() => {
+        const status = manrisStatus.value;
+        if (!status.total_perusahaan) return 0;
+        return Math.round((status.sudah_mengisi_manris / status.total_perusahaan) * 100);
+    });
+
     const ikasSummaryData = computed(() => {
         const stakeholders = baseIkasStakeholders.value;
         const range = filterStore.dateRange;
@@ -747,7 +846,7 @@
                 return {
                     labels: ['Lengkap', 'Belum Lengkap', 'Punya SDM', 'Punya SE'],
                     series: [data.lengkap, data.belum_lengkap, data.punya_sdm, data.punya_se],
-                    colors: ['#26bf94', '#f5b849', '#0ea5e9', '#6366f1']
+                    colors: ['#26bf94', '#f5b849', '#0ea5e9', '#3b82f6']
                 };
             } else {
                 const status = csirtStatus.value;
@@ -757,6 +856,28 @@
                     colors: ['#26bf94', '#e6533c']
                 };
             }
+        } else if (summaryMode.value === 'MANRIS') {
+            const status = manrisStatus.value;
+            const localInProgress = Object.entries(resikoStore.answersMap || {})
+                .filter(([, answers]) => answers && Object.keys(answers).length > 0).length;
+
+            if (view === 'distribution') {
+                return {
+                    labels: ['Sudah Diisi', 'Dalam Proses', 'Belum Diisi'],
+                    series: [
+                        status.sudah_mengisi_manris,
+                        localInProgress,
+                        Math.max(0, status.belum_mengisi_manris - localInProgress),
+                    ],
+                    colors: ['#26bf94', '#f5b849', '#e6533c']
+                };
+            }
+
+            return {
+                labels: ['Sudah Mengisi', 'Belum Mengisi'],
+                series: [status.sudah_mengisi_manris, status.belum_mengisi_manris],
+                colors: ['#26bf94', '#e6533c']
+            };
         } else {
             // IKAS Mode
             if (view === 'distribution') {
@@ -771,7 +892,7 @@
                 return {
                     labels: ['Nilai Kematangan', 'Target Nilai'],
                     series: [Number(s.avgNilaiKematangan), Number(s.avgTargetNilai)],
-                    colors: ['#23b7e5', '#6366f1']
+                    colors: ['#23b7e5', '#3b82f6']
                 };
             }
         }
@@ -930,10 +1051,9 @@
                         colors: ['#ffffff']
                     },
                     dropShadow: {
-                        enabled: true,
+                        enabled: false,
                         top: 1,
                         left: 1,
-                        blur: 2,
                         opacity: 0.6,
                         color: '#000000'
                     }
@@ -985,7 +1105,7 @@
                                 },
                                 total: {
                                     show: true,
-                                    label: view === 'completion' ? 'Total Status' : (summaryMode.value === 'KSE' ? 'Total KSE' : (summaryMode.value === 'CSIRT' ? 'Total CSIRT' : 'Total IKAS')),
+                                    label: view === 'completion' ? 'Total Status' : (summaryMode.value === 'KSE' ? 'Total KSE' : (summaryMode.value === 'CSIRT' ? 'Total CSIRT' : (summaryMode.value === 'MANRIS' ? 'Total Manris' : 'Total IKAS'))),
                                     fontSize: "12px",
                                     fontWeight: 850,
                                     color: mutedColor,
@@ -1017,10 +1137,9 @@
                         enabled: false
                     },
                     dropShadow: {
-                        enabled: true,
+                        enabled: false,
                         top: 0,
                         left: 0,
-                        blur: 3,
                         color: isDark ? '#0f172a' : '#ffffff',
                         opacity: isDark ? 0.65 : 1
                     }
@@ -1112,42 +1231,49 @@
     const activeProgressRate = computed(() => {
         if (summaryMode.value === 'KSE') return kseFillRate.value;
         if (summaryMode.value === 'CSIRT') return csirtCompletionRateAnalytics.value;
+        if (summaryMode.value === 'MANRIS') return manrisCompletionRate.value;
         return ikasCompletionRate.value;
     });
 
     const activeFilledCount = computed(() => {
         if (summaryMode.value === 'KSE') return kseStatus.value?.sudah_mengisi_kse ?? 0;
         if (summaryMode.value === 'CSIRT') return csirtStatus.value?.sudah_membentuk_csirt ?? 0;
+        if (summaryMode.value === 'MANRIS') return manrisStatus.value.sudah_mengisi_manris;
         return ikasFilledCount.value;
     });
 
     const activeUnfilledCount = computed(() => {
         if (summaryMode.value === 'KSE') return kseStatus.value?.belum_mengisi_kse ?? 0;
         if (summaryMode.value === 'CSIRT') return csirtStatus.value?.belum_membentuk_csirt ?? 0;
+        if (summaryMode.value === 'MANRIS') return manrisStatus.value.belum_mengisi_manris;
         return ikasUnfilledCount.value;
     });
 
     const activeStatusTotal = computed(() => {
         if (summaryMode.value === 'KSE') return kseStatus.value?.total_perusahaan ?? 0;
         if (summaryMode.value === 'CSIRT') return csirtStatus.value?.total_perusahaan ?? 0;
+        if (summaryMode.value === 'MANRIS') return manrisStatus.value.total_perusahaan;
         return ikasStatusTotal.value;
     });
 
     const activeDetailRoute = computed(() => {
         if (summaryMode.value === 'KSE') return '/kse-list-admin';
         if (summaryMode.value === 'CSIRT') return '/csirt-list';
+        if (summaryMode.value === 'MANRIS') return '/stakeholders';
         return '/ikas-list';
     });
 
     const analyticsPrimaryLabel = computed(() => {
         if (summaryMode.value === 'KSE') return 'Distribusi';
         if (summaryMode.value === 'CSIRT') return 'Kelengkapan';
+        if (summaryMode.value === 'MANRIS') return 'Status';
         return 'Level';
     });
 
     const analyticsSecondaryLabel = computed(() => {
         if (summaryMode.value === 'KSE') return 'Status';
         if (summaryMode.value === 'CSIRT') return 'Pembentukan';
+        if (summaryMode.value === 'MANRIS') return 'Pengisian';
         return 'Domain';
     });
 
@@ -1155,11 +1281,13 @@
         if (analyticsView.value === 'distribution') {
             if (summaryMode.value === 'KSE') return 'Distribusi Kategori SE';
             if (summaryMode.value === 'CSIRT') return 'Kelengkapan Data CSIRT';
+            if (summaryMode.value === 'MANRIS') return 'Status Survey Risiko';
             return 'Distribusi Level Kematangan';
         }
 
         if (summaryMode.value === 'KSE') return 'Status Pengisian';
         if (summaryMode.value === 'CSIRT') return 'Status Pembentukan';
+        if (summaryMode.value === 'MANRIS') return 'Status Pengisian';
         return 'Rata-rata Domain';
     });
 
@@ -1184,8 +1312,8 @@
                     label: filterStore.quarter ? `CSIRT Q${filterStore.quarter}` : (filterStore.year ? `CSIRT ${filterStore.year}` : 'CSIRT Periode Ini'),
                     value: data.this_month || data.total_csirt,
                     icon: 'ri-calendar-check-line',
-                    gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    color: '#6366f1',
+                    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
+                    color: '#3b82f6',
                     category: '',
                 },
                 {
@@ -1232,8 +1360,8 @@
                     label: filterStore.quarter ? `IKAS Q${filterStore.quarter}` : (filterStore.year ? `IKAS ${filterStore.year}` : 'IKAS Periode Ini'),
                     value: apiIkasStatus.value.sudah_mengisi_ikas,
                     icon: 'ri-calendar-check-line',
-                    gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    color: '#6366f1',
+                    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
+                    color: '#3b82f6',
                     category: '',
                 },
                 {
@@ -1272,6 +1400,19 @@
             return items.map(item => ({ ...item, isMuted: false }));
         }
 
+        if (summaryMode.value === 'MANRIS') {
+            const status = manrisStatus.value;
+            const respondents = resikoStore.adminRespondents || [];
+            const trained = respondents.filter((item) => String(item.sertifikat_training || '').trim()).length;
+            const items = [
+                { label: 'Total Responden', value: respondents.length, icon: 'ri-user-voice-line', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)', color: '#0ea5e9', category: '' },
+                { label: 'Perusahaan Mengisi', value: status.sudah_mengisi_manris, icon: 'ri-checkbox-circle-line', gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)', color: '#26bf94', category: 'Sudah Diisi' },
+                { label: 'Belum Mengisi', value: status.belum_mengisi_manris, icon: 'ri-close-circle-line', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)', color: '#e6533c', category: 'Belum Diisi' },
+                { label: 'Sertifikat Training', value: trained, icon: 'ri-award-line', gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)', color: '#f5b849', category: '' },
+            ];
+            return items.map(item => ({ ...item, isMuted: false }));
+        }
+
         // --- KSE MODE ---
         // Keep KSE aligned with IKAS: prefer /api/dashboard/se, then fall back to local data.
         const s = kseData.value;
@@ -1289,8 +1430,8 @@
                 label: filterStore.quarter ? `SE Q${filterStore.quarter}` : (filterStore.year ? `SE ${filterStore.year}` : 'SE Periode Ini'),
                 value: s.this_month || s.total_se,
                 icon: 'ri-calendar-check-line',
-                gradient: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                color: '#6366f1',
+                gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
+                color: '#3b82f6',
                 category: '',
             },
             {
@@ -1533,6 +1674,7 @@
         && csirtStore.initialized
         && ikasStore.initialized
         && konversiStore.initialized
+        && resikoStore.initialized
         && sektorList.value.length > 0
         && subSektorList.value.length > 0
     );
@@ -1591,6 +1733,8 @@
 
             await Promise.allSettled([
                 loadStore(stakeholdersStore),
+                loadStore(resikoStore),
+                resikoStore.loadAdminRespondents(options.refresh),
                 loadDashboardOptions(),
             ]);
 
@@ -2113,25 +2257,37 @@
 
     // ” ROW 2 Cards: CSIRT, SE, IKAS 
     const operationalCards = computed(() => {
-        const csirtCount = apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || filteredCsirt.value;
-        const ikasCount = apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || filteredIkasCount.value;
-        const seCount = apiKseData.value.total_se || filteredSe.value;
-        const stakeholderCount = apiCsirtStatus.value.total_perusahaan
-            || apiIkasStatus.value.total_perusahaan
-            || apiKseStatus.value.total_perusahaan
-            || filteredStakeholders.value;
+        // Only use local calculation if the detailed stores are fully fetched, otherwise fallback to API summary
+        // The API summary already respects global filters sent via getSummary params.
+        const csirtLocalReady = csirtStore.initialized && stakeholdersStore.initialized;
+        const ikasLocalReady = ikasStore.initialized && stakeholdersStore.initialized;
+        
+        // Fixed counts for the top big numbers (ignores global filters)
+        const fixedCsirtCount = globalCsirtStatus.value.sudah_membentuk_csirt || apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || 0;
+        const fixedIkasCount = globalIkasStatus.value.sudah_mengisi_ikas || apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || 0;
+        const fixedSeCount = globalKseData.value.total_se || apiKseData.value.total_se || 0;
+        
+        // Filtered counts for the bottom small numbers (follows global filters)
+        const displayFilteredCsirt = csirtLocalReady ? filteredCsirt.value : (apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || 0);
+        const displayFilteredIkas = ikasLocalReady ? filteredIkasCount.value : (apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || 0);
+        const displayFilteredSe = csirtLocalReady ? filteredSe.value : (apiKseData.value.total_se || 0);
+        
+        // Stakeholder fixed count (Top number)
+        const fixedStakeholderCount = stakeholdersStore.allStakeholders.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
+        // Stakeholder filtered count (Bottom number)
+        const displayFilteredStakeholder = filteredStakeholders.value;
 
         const useDetailedTrends = dashboardDetailsReady.value;
-        const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(csirtCount);
-        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(ikasCount);
-        const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(seCount);
-        const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(stakeholderCount);
+        const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(displayFilteredCsirt);
+        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(displayFilteredIkas);
+        const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(displayFilteredSe);
+        const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(displayFilteredStakeholder);
 
         return [
             {
                 title: "Total CSIRT",
-                count: String(csirtCount),
-                percent: String(csirtCount),
+                count: String(fixedCsirtCount),
+                percent: String(displayFilteredCsirt),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "danger",
                 iconColor: "danger fw-medium",
@@ -2150,8 +2306,8 @@
             },
             {
                 title: "Total IKAS",
-                count: String(ikasCount),
-                percent: String(ikasCount),
+                count: String(fixedIkasCount),
+                percent: String(displayFilteredIkas),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "info",
                 iconColor: "info fw-medium",
@@ -2170,8 +2326,8 @@
             },
             {
                 title: "Sistem Elektronik",
-                count: String(seCount),
-                percent: String(seCount),
+                count: String(fixedSeCount),
+                percent: String(displayFilteredSe),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "success",
                 iconColor: "success fw-medium",
@@ -2190,8 +2346,8 @@
             },
             {
                 title: "Stakeholders",
-                count: String(stakeholderCount),
-                percent: String(stakeholderCount),
+                count: String(fixedStakeholderCount),
+                percent: String(displayFilteredStakeholder),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "secondary",
                 iconColor: "secondary fw-medium",
@@ -2740,6 +2896,30 @@
                                 </div>
                                 
                                 <div class="dp-sidebar-divider"></div>
+
+                                <div class="dp-sidebar-section">
+                                    <div class="dp-sidebar-header">
+                                        <i class="ri-calendar-line"></i>
+                                        <span>Pilih Tahun</span>
+                                    </div>
+                                    <p class="dp-sidebar-desc">Klik tahun untuk otomatis ambil 1 Jan - 31 Des.</p>
+                                    <select
+                                        class="dp-year-select"
+                                        :value="selectedFullYear ?? ''"
+                                        @change="handleYearSelect($event.target.value)"
+                                    >
+                                        <option value="" disabled>Pilih tahun</option>
+                                        <option
+                                            v-for="year in availableYearOptions"
+                                            :key="'analytics-year-' + year"
+                                            :value="year"
+                                        >
+                                            {{ year }}
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div class="dp-sidebar-divider"></div>
                                 
                                 <!-- Section 2: Jump to Date -->
                                 <div class="dp-sidebar-section">
@@ -3125,6 +3305,7 @@
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'KSE' }" @click="summaryMode = 'KSE'">KSE</button>
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'IKAS' }" @click="summaryMode = 'IKAS'">IKAS</button>
                                         <button class="ki-seg-btn" :class="{ active: summaryMode === 'CSIRT' }" @click="summaryMode = 'CSIRT'">CSIRT</button>
+                                        <button class="ki-seg-btn" :class="{ active: summaryMode === 'MANRIS' }" @click="summaryMode = 'MANRIS'">Manris</button>
                                     </div>
                                 </div>
                                 
@@ -3252,7 +3433,7 @@
                                             <div class="ki-chart-header">
                                                 <div class="ki-chart-header-left">
                                                     <div class="ki-chart-icon-wrap">
-                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : (summaryMode === 'CSIRT' ? 'ri-shield-check-fill' : 'ri-bar-chart-grouped-fill')"></i>
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-pie-chart-2-fill' : (summaryMode === 'CSIRT' ? 'ri-shield-check-fill' : (summaryMode === 'MANRIS' ? 'ri-shield-flash-fill' : 'ri-bar-chart-grouped-fill'))"></i>
                                                     </div>
                                                     <div>
                                                         <div class="ki-chart-title">Visualisasi {{ summaryMode }}</div>
@@ -3276,7 +3457,7 @@
                                                     <div class="ki-chart-pane">
                                                         <div class="ki-chart-pane-title">
                                                             <span>{{ analyticsPrimaryLabel }}</span>
-                                                            <small>{{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : 'Level Kematangan') }}</small>
+                                                            <small>{{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : (summaryMode === 'MANRIS' ? 'Survey Risiko' : 'Level Kematangan')) }}</small>
                                                         </div>
                                                         <div class="ki-visual-strip">
                                                             <div
@@ -3306,7 +3487,7 @@
                                                     <div class="ki-chart-pane">
                                                         <div class="ki-chart-pane-title">
                                                             <span>{{ analyticsSecondaryLabel }}</span>
-                                                            <small>{{ summaryMode === 'KSE' ? 'Status Pengisian' : (summaryMode === 'CSIRT' ? 'Status Pembentukan' : 'Rata-rata Nilai') }}</small>
+                                                            <small>{{ summaryMode === 'KSE' ? 'Status Pengisian' : (summaryMode === 'CSIRT' ? 'Status Pembentukan' : (summaryMode === 'MANRIS' ? 'Status Pengisian' : 'Rata-rata Nilai')) }}</small>
                                                         </div>
                                                         <div class="ki-visual-strip">
                                                             <div
@@ -3345,8 +3526,8 @@
                                             <div class="ki-breakdown">
                                                 <div class="ki-bp-header">
                                                     <span class="ki-bp-badge">
-                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : (summaryMode === 'CSIRT' ? 'ri-shield-check-line' : 'ri-bar-chart-box-line')"></i>
-                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : 'Level Kematangan') }}
+                                                        <i :class="summaryMode === 'KSE' ? 'ri-shield-star-line' : (summaryMode === 'CSIRT' ? 'ri-shield-check-line' : (summaryMode === 'MANRIS' ? 'ri-shield-flash-line' : 'ri-bar-chart-box-line'))"></i>
+                                                        {{ summaryMode === 'KSE' ? 'Kategori SE' : (summaryMode === 'CSIRT' ? 'Kelengkapan CSIRT' : (summaryMode === 'MANRIS' ? 'Survey Risiko' : 'Level Kematangan')) }}
                                                     </span>
                                                 </div>
                                                 <div class="ki-bp-items" v-if="summaryMode === 'KSE'">
@@ -3395,12 +3576,12 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="ki-bp-items" v-else>
+                                                <div class="ki-bp-items" v-else-if="summaryMode === 'CSIRT'">
                                                     <div v-for="(item, ci) in [
                                                         { label: 'Lengkap', value: csirtData.lengkap, total: csirtData.total_csirt, color: '#26bf94', icon: 'ri-checkbox-circle-fill' },
                                                         { label: 'Belum Lengkap', value: csirtData.belum_lengkap, total: csirtData.total_csirt, color: '#f5b849', icon: 'ri-error-warning-fill' },
                                                         { label: 'Punya SDM', value: csirtData.punya_sdm, total: csirtData.total_csirt, color: '#0ea5e9', icon: 'ri-team-fill' },
-                                                        { label: 'Punya SE', value: csirtData.punya_se, total: csirtData.total_csirt, color: '#6366f1', icon: 'ri-git-branch-fill' }
+                                                        { label: 'Punya SE', value: csirtData.punya_se, total: csirtData.total_csirt, color: '#3b82f6', icon: 'ri-git-branch-fill' }
                                                     ]" :key="item.label" class="ki-bp-row" :style="{ animationDelay: (ci * 0.08) + 's' }">
                                                         <div class="ki-bp-left">
                                                             <div class="ki-bp-icon" :style="{ background: item.color + '18', color: item.color }">
@@ -3409,6 +3590,29 @@
                                                             <div>
                                                                 <div class="ki-bp-label">{{ item.label }}</div>
                                                                 <div class="ki-bp-count">{{ item.value }} <span>CSIRT</span></div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="ki-bp-bar-wrap">
+                                                            <div class="ki-bp-bar">
+                                                                <div class="ki-bp-bar-fill" :style="{ width: (item.total ? Math.max(3, (item.value / item.total) * 100) : 0) + '%', background: `linear-gradient(90deg, ${item.color}88, ${item.color})` }"></div>
+                                                            </div>
+                                                            <span class="ki-bp-pct" :style="{ color: item.color }">{{ item.total ? Math.round((item.value / item.total) * 100) : 0 }}%</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="ki-bp-items" v-else>
+                                                    <div v-for="(item, ci) in [
+                                                        { label: 'Sudah Diisi', value: manrisStatus.sudah_mengisi_manris, total: manrisStatus.total_perusahaan, color: '#26bf94', icon: 'ri-checkbox-circle-fill' },
+                                                        { label: 'Belum Diisi', value: manrisStatus.belum_mengisi_manris, total: manrisStatus.total_perusahaan, color: '#e6533c', icon: 'ri-close-circle-fill' },
+                                                        { label: 'Responden', value: resikoStore.adminRespondents.length, total: Math.max(resikoStore.adminRespondents.length, 1), color: '#0ea5e9', icon: 'ri-user-voice-fill' }
+                                                    ]" :key="item.label" class="ki-bp-row" :style="{ animationDelay: (ci * 0.08) + 's' }">
+                                                        <div class="ki-bp-left">
+                                                            <div class="ki-bp-icon" :style="{ background: item.color + '18', color: item.color }">
+                                                                <i :class="item.icon"></i>
+                                                            </div>
+                                                            <div>
+                                                                <div class="ki-bp-label">{{ item.label }}</div>
+                                                                <div class="ki-bp-count">{{ item.value }} <span>Manris</span></div>
                                                             </div>
                                                         </div>
                                                         <div class="ki-bp-bar-wrap">
@@ -3460,7 +3664,7 @@
                                                         </div>
                                                     </div>
                                                 </template>
-                                                <template v-else>
+                                                <template v-else-if="summaryMode === 'CSIRT'">
                                                     <div class="ki-insight-content">
                                                         <div class="ki-insight-icon-wrap">
                                                             <i class="ri-shield-check-fill"></i>
@@ -3472,6 +3676,21 @@
                                                         <div class="ki-insight-tip">
                                                             <i class="ri-information-line"></i>
                                                             <span>CSIRT lengkap minimal memiliki data SDM dan Sistem Elektronik</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <template v-else>
+                                                    <div class="ki-insight-content">
+                                                        <div class="ki-insight-icon-wrap">
+                                                            <i class="ri-shield-flash-fill"></i>
+                                                        </div>
+                                                        <h6 class="ki-insight-title">Analisa Manajemen Risiko</h6>
+                                                        <p class="ki-insight-text">
+                                                            Terdapat <strong>{{ manrisStatus.sudah_mengisi_manris }}</strong> perusahaan yang sudah memiliki responden survey risiko dari total <strong>{{ manrisStatus.total_perusahaan }}</strong> stakeholder.
+                                                        </p>
+                                                        <div class="ki-insight-tip">
+                                                            <i class="ri-information-line"></i>
+                                                            <span>Data diambil dari endpoint responden survey risiko admin</span>
                                                         </div>
                                                     </div>
                                                 </template>
@@ -3574,12 +3793,10 @@
         0% {
             opacity: 0;
             transform: translateY(30px) scale(0.98);
-            filter: blur(4px);
         }
         100% {
             opacity: 1;
             transform: translateY(0) scale(1);
-            filter: blur(0);
         }
     }
 
@@ -3616,7 +3833,6 @@
     
     .summary-card-muted {
         opacity: 0.45 !important;
-        filter: grayscale(85%);
         cursor: not-allowed !important;
         transform: none !important;
         box-shadow: none !important;
@@ -3689,7 +3905,7 @@
             linear-gradient(180deg, var(--dashboard-loader-surface, rgba(255, 255, 255, 0.88)), transparent),
             radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.14), transparent 58%);
         box-shadow: var(--dashboard-loader-shadow, 0 20px 46px rgba(37, 99, 235, 0.12));
-        backdrop-filter: blur(10px);
+        backdrop-filter: none;
         color: var(--dashboard-skeleton-muted, #64748b);
     }
 
@@ -3746,7 +3962,6 @@
         height: 5px;
         border-radius: 999px;
         background: rgba(37, 99, 235, 0.16);
-        filter: blur(1px);
         animation: dashboardBallShadow 0.88s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
     }
 
@@ -3910,7 +4125,7 @@
 
     .bg-white-transparent {
         background: rgba(255, 255, 255, 0.6);
-        backdrop-filter: blur(4px);
+        backdrop-filter: none;
     }
 
     /*  Card Animation  */
@@ -3922,12 +4137,10 @@
         0% {
             opacity: 0;
             transform: translateY(20px) scale(0.98);
-            filter: blur(2px);
         }
         100% {
             opacity: 1;
             transform: translateY(0) scale(1);
-            filter: blur(0);
         }
     }
 
@@ -4010,7 +4223,7 @@
     .summary-mode-switcher {
         display: flex;
         background: rgba(255, 255, 255, 0.6);
-        backdrop-filter: blur(8px);
+        backdrop-filter: none;
         padding: 4px;
         border-radius: 50px;
         border: 1px solid rgba(30, 64, 175, 0.15);
@@ -4091,7 +4304,7 @@
     .sa-section-header-inner { display: flex; align-items: center; gap: 14px; }
     .sa-section-icon {
         width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
-        border-radius: 12px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px);
+        border-radius: 12px; background: rgba(255, 255, 255, 0.15); backdrop-filter: none;
     }
     .sa-section-icon i { font-size: 1.5rem; color: #fff; }
     .sa-section-title { font-size: 1.15rem; font-weight: 800; color: #fff; margin: 0; line-height: 1.2; }
@@ -4301,7 +4514,7 @@
         text-transform: uppercase; letter-spacing: 0.5px;
     }
     .ki-metric-active { border: 1px solid #2563eb !important; transform: translateY(-3px); box-shadow: 0 15px 32px rgba(37,99,235,0.15) !important; }
-    .ki-metric-muted { opacity: 0.4; filter: grayscale(85%); cursor: not-allowed !important; transform: none !important; }
+    .ki-metric-muted { opacity: 0.4; cursor: not-allowed !important; transform: none !important; }
     .ki-metric-muted * { pointer-events: none; }
 
     /*  Hero Banner  */
@@ -4358,7 +4571,7 @@
         box-shadow:
             0 9px 22px rgba(15, 23, 42, 0.08),
             inset 0 1px 0 rgba(255,255,255,0.86);
-        backdrop-filter: blur(8px);
+        backdrop-filter: none;
     }
     .ki-pill i { font-size: 0.84rem; }
     .ki-pill span { font-weight: 900; font-size: 0.9rem; }
