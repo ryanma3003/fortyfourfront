@@ -78,6 +78,7 @@ const rejectReason = ref('');
 const exportLoadingId = ref('');
 const isDarkMode = ref(false);
 const ikasPageRef = ref<HTMLElement | null>(null);
+const ikasDetailPanelRef = ref<HTMLElement | null>(null);
 let actionSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let themeObserver: MutationObserver | undefined;
 let gsapCtx: gsap.Context | null = null;
@@ -731,8 +732,28 @@ const loadData = async (showLoading = true) => {
   return loadDataPromise;
 };
 
+const scrollDetailPreviewIntoView = () => {
+  if (typeof window === 'undefined') return;
+
+  nextTick(() => {
+    const panel = ikasDetailPanelRef.value;
+    if (!panel) return;
+
+    window.requestAnimationFrame(() => {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      panel.scrollIntoView({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'start',
+        inline: 'nearest',
+      });
+      panel.focus({ preventScroll: true });
+    });
+  });
+};
+
 const selectRecord = (record: IkasRecord) => {
   selectedRecord.value = record;
+  scrollDetailPreviewIntoView();
 };
 
 const openFullDetail = () => {
@@ -1024,7 +1045,16 @@ const scoreTone = (score: number) => {
 const syncThemeMode = () => {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  isDarkMode.value = root.getAttribute('data-theme-mode') === 'dark' || root.classList.contains('dark');
+  const body = document.body;
+  isDarkMode.value =
+    root.getAttribute('data-theme-mode') === 'dark' ||
+    root.getAttribute('data-bs-theme') === 'dark' ||
+    body?.getAttribute('data-theme-mode') === 'dark' ||
+    body?.getAttribute('data-bs-theme') === 'dark' ||
+    root.classList.contains('dark') ||
+    root.classList.contains('dark-mode') ||
+    body?.classList.contains('dark') ||
+    body?.classList.contains('dark-mode');
 };
 
 const getRadialOptions = (record: IkasRecord) => ({
@@ -1390,7 +1420,10 @@ const handleVisibilityRefresh = () => {
 onMounted(() => {
   syncThemeMode();
   themeObserver = new MutationObserver(syncThemeMode);
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme-mode', 'class'] });
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme-mode', 'data-bs-theme', 'class'] });
+  if (document.body) {
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme-mode', 'data-bs-theme', 'class'] });
+  }
   loadData(true);
   document.addEventListener('visibilitychange', handleVisibilityRefresh);
   // Keep the list fresh without hammering the maturity API.
@@ -2023,7 +2056,13 @@ const IkasCard = defineComponent({
           </template>
         </div>
 
-        <aside class="ikas-detail-panel" :class="{ 'is-summary': !selectedRecord }" aria-label="IKAS insight panel">
+        <aside
+          ref="ikasDetailPanelRef"
+          class="ikas-detail-panel"
+          :class="{ 'is-summary': !selectedRecord }"
+          aria-label="IKAS insight panel"
+          tabindex="-1"
+        >
         <template v-if="selectedRecord">
         <button class="ikas-panel-close" type="button" aria-label="Show IKAS analytics" @click="closePanel">
           <i class="ri-close-line" aria-hidden="true"></i>
@@ -7896,7 +7935,13 @@ const IkasCard = defineComponent({
 /* Final dark-mode skin: keep this after the dense light-theme passes above. */
 .ikas-page.is-dark,
 :global(html[data-theme-mode="dark"]) .ikas-page,
-:global(html.dark) .ikas-page {
+:global(html[data-bs-theme="dark"]) .ikas-page,
+:global(html.dark) .ikas-page,
+:global(html.dark-mode) .ikas-page,
+:global(body[data-theme-mode="dark"]) .ikas-page,
+:global(body[data-bs-theme="dark"]) .ikas-page,
+:global(body.dark) .ikas-page,
+:global(body.dark-mode) .ikas-page {
   --ikas-blue: #60a5fa;
   --ikas-blue-dark: #93c5fd;
   --ikas-border: rgba(148, 163, 184, 0.22);
@@ -8230,6 +8275,59 @@ const IkasCard = defineComponent({
   border-color: var(--ikas-border) !important;
   box-shadow: none !important;
   color: var(--ikas-text) !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-card, .ikas-summary-sector) {
+  background:
+    linear-gradient(180deg, rgba(22, 32, 52, 0.98), rgba(13, 21, 36, 0.98)) !important;
+  border-color: rgba(118, 140, 171, 0.3) !important;
+}
+
+.ikas-page.is-dark .ikas-summary-hero {
+  border-bottom-color: rgba(118, 140, 171, 0.28) !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-stat, .ikas-attention-row, .ikas-summary-sector-row) {
+  background: rgba(15, 23, 42, 0.62) !important;
+  border-color: rgba(118, 140, 171, 0.27) !important;
+}
+
+.ikas-page.is-dark :is(.ikas-eyebrow, .ikas-attention-stat span) {
+  color: #7dd3fc !important;
+}
+
+.ikas-page.is-dark .ikas-attention-stat strong {
+  color: #f8fafc !important;
+}
+
+.ikas-page.is-dark .ikas-attention-stat small {
+  color: #93a4bd !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-row b, .ikas-summary-sector-row b) {
+  background: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.86) !important;
+  color: #0f172a !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-row:hover, .ikas-attention-row:focus-visible) {
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(96, 165, 250, 0.45) !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-stat.edit-request i, .ikas-attention-row.edit-request > i) {
+  background: rgba(251, 146, 60, 0.18) !important;
+  color: #fdba74 !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-stat.risk i, .ikas-attention-row.risk > i) {
+  background: rgba(248, 113, 113, 0.18) !important;
+  color: #fca5a5 !important;
+}
+
+.ikas-page.is-dark :is(.ikas-attention-stat.draft i, .ikas-attention-row.draft > i) {
+  background: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
 }
 
 .ikas-page.is-dark .ikas-domain-bar,

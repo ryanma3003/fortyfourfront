@@ -30,6 +30,7 @@ export default {
     const usersStore = useUsersStore();
     const stakeholdersStore = useStakeholdersStore();
     const searchInput = ref<HTMLInputElement | null>(null);
+    const searchMode = ref<"user" | "company">("user");
 
     const {
       searchQuery, currentPage, itemsPerPage, sortField, sortOrder,
@@ -83,14 +84,13 @@ export default {
       return map;
     });
 
-    const makeSearchText = (user: User, companyName: string) => [
+    const makeUserSearchText = (user: User) => [
       user.name,
       user.display_name,
       user.username,
       user.email,
       user.jabatan,
       user.role,
-      companyName,
     ].filter(Boolean).join(' ').toLowerCase();
 
     type UserListItem = User & {
@@ -102,7 +102,8 @@ export default {
       roleIcon: string;
       avatarLetter: string;
       avatarClass: string;
-      searchText: string;
+      userSearchText: string;
+      companySearchText: string;
     };
 
     // Computed items from API data. Keep row-ready fields here so the table
@@ -161,7 +162,8 @@ export default {
           roleIcon: getRoleIcon(mergedUser.role),
           avatarLetter,
           avatarClass: getAvatarColorClass(avatarLetter),
-          searchText: makeSearchText(mergedUser, companyName),
+          userSearchText: makeUserSearchText(mergedUser),
+          companySearchText: companyName.toLowerCase(),
         };
       });
     });
@@ -195,7 +197,11 @@ export default {
       let data = items.value;
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
-        data = data.filter((i) => i.searchText.includes(q));
+        data = data.filter((i) =>
+          searchMode.value === "company"
+            ? i.companySearchText.includes(q)
+            : i.userSearchText.includes(q)
+        );
       }
       return [...data].sort((a, b) => {
         const mod = sortOrder.value === "asc" ? 1 : -1;
@@ -213,6 +219,12 @@ export default {
       const end = Math.min(currentPage.value * itemsPerPage.value, total);
       return `Showing ${start}-${end} of ${total} users`;
     });
+
+    const searchPlaceholder = computed(() =>
+      searchMode.value === "company"
+        ? "Cari nama perusahaan..."
+        : "Cari nama user, email, jabatan, atau role..."
+    );
 
     const fallbackRoles = ['admin', 'staff', 'user_pic', 'user'];
     const roleOptions = computed(() => rolesData.value.length ? rolesData.value : fallbackRoles.map((name, index) => ({ id: -(index + 1), name })));
@@ -374,7 +386,7 @@ export default {
 
     return {
       authStore, items, loading, isInitialLoading, searchInput,
-      searchQuery, sortField, sortOrder, currentPage, itemsPerPage,
+      searchQuery, searchMode, searchPlaceholder, sortField, sortOrder, currentPage, itemsPerPage,
       totalPages, displayData, paginationInfo, paginationCopy, filteredData,
       showDeleteModal, currentDeleteItem,
       showEditRoleModal, currentEditItem, selectedRole, selectedStatus,
@@ -405,68 +417,108 @@ export default {
     </div>
   </transition>
 
-  <div class="row">
-    <div class="col-xl-12">
-      <!-- Premium UI like Stakeholders/LMS -->
-      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header">
-          <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
-              <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboards <span>/</span> Users</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Daftar User</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Manajemen data pengguna sistem dan hak akses</div>
-              </div>
-              <div class="stakeholders-meta-stack">
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total User</span>
-                  <strong><i class="ri-group-line text-primary"></i> {{ items.length }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Admin</span>
-                  <strong><i class="ri-shield-star-line text-danger"></i> {{ userStats.admin }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Staff</span>
-                  <strong><i class="ri-shield-user-line text-success"></i> {{ userStats.staff }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">User PIC</span>
-                  <strong><i class="ri-user-settings-line text-warning"></i> {{ userStats.userPic }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">User</span>
-                  <strong><i class="ri-user-line text-info"></i> {{ userStats.user }}</strong>
-                </div>
-              </div>
-            </div>
-            
-            <div class="stakeholders-hero-tools">
-              <div class="stakeholders-search position-relative">
-                <i class="ri-search-line header-search-icon"></i>
-                <input ref="searchInput" v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
-                  placeholder="Cari nama, email, jabatan, atau role..." />
-                <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
-                  <i class="ri-close-circle-fill"></i>
-                </button>
-              </div>
-            </div>
-          </div>
+  <div class="role-page-shell">
+    <section class="role-hero-card">
+      <div class="role-hero-copy">
+        <div class="role-breadcrumb">Dashboards <span>/</span> Users</div>
+        <h2 class="role-hero-title">Manajemen User</h2>
+        <p class="role-hero-desc">Kelola data pengguna, status akun, dan hak akses dalam tampilan yang ringkas.</p>
+      </div>
+      <div class="role-hero-summary">
+        <span class="role-summary-kicker">User Tampil</span>
+        <strong>{{ filteredData.length }}</strong>
+        <span>dari {{ items.length }} user</span>
+      </div>
+    </section>
 
-          <!-- Rows Selector at Absolute Bottom Right -->
-          <div class="header-rows-selector d-flex align-items-center gap-2">
-            <span class="text-white opacity-75 fs-11 fw-bold text-uppercase">Rows</span>
-            <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
-              <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-            </select>
-          </div>
+    <section class="role-stats-grid">
+      <div class="role-stat-card role-stat-total">
+        <span class="role-stat-icon"><i class="ri-team-line"></i></span>
+        <div>
+          <span class="role-stat-label">Total Users</span>
+          <strong>{{ items.length }}</strong>
         </div>
+      </div>
+      <div class="role-stat-card role-stat-admin">
+        <span class="role-stat-icon"><i class="ri-shield-star-line"></i></span>
+        <div>
+          <span class="role-stat-label">Admin</span>
+          <strong>{{ userStats.admin }}</strong>
+        </div>
+      </div>
+      <div class="role-stat-card role-stat-staff">
+        <span class="role-stat-icon"><i class="ri-briefcase-line"></i></span>
+        <div>
+          <span class="role-stat-label">Staff</span>
+          <strong>{{ userStats.staff }}</strong>
+        </div>
+      </div>
+      <div class="role-stat-card role-stat-pic">
+        <span class="role-stat-icon"><i class="ri-user-settings-line"></i></span>
+        <div>
+          <span class="role-stat-label">User / PIC</span>
+          <strong>{{ userStats.userPic }}</strong>
+        </div>
+      </div>
+      <div class="role-stat-card role-stat-user">
+        <span class="role-stat-icon"><i class="ri-user-line"></i></span>
+        <div>
+          <span class="role-stat-label">User</span>
+          <strong>{{ userStats.user }}</strong>
+        </div>
+      </div>
+    </section>
 
-        <div class="card-body p-4 stakeholders-premium-body">
+    <section class="role-toolbar-card users-toolbar-card">
+      <div class="users-toolbar-left">
+        <div class="users-search-tabs" role="tablist" aria-label="Mode pencarian user">
+          <button
+            type="button"
+            class="users-search-tab"
+            :class="{ active: searchMode === 'user' }"
+            @click="searchMode = 'user'; currentPage = 1"
+          >
+            <i class="ri-user-search-line"></i>
+            User
+          </button>
+          <button
+            type="button"
+            class="users-search-tab"
+            :class="{ active: searchMode === 'company' }"
+            @click="searchMode = 'company'; currentPage = 1"
+          >
+            <i class="ri-building-4-line"></i>
+            Perusahaan
+          </button>
+        </div>
+        <div class="stakeholders-search role-search users-toolbar-search position-relative">
+          <i class="ri-search-line header-search-icon"></i>
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="text"
+            class="form-control form-control-sm header-search-input"
+            :placeholder="searchPlaceholder"
+          />
+          <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
+            <i class="ri-close-circle-fill"></i>
+          </button>
+        </div>
+      </div>
+      <div class="users-toolbar-right">
+        <div class="role-rows-selector">
+          <span>Rows</span>
+          <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
+            <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </div>
+      </div>
+    </section>
 
-
-          <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
-            <table class="table stakeholder-table mb-0">
+    <section class="role-table-card">
+      <div class="card-body p-0 stakeholders-premium-body">
+        <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+          <table class="table stakeholder-table mb-0">
               <thead class="stakeholder-thead">
                 <tr>
                   <th class="th-no" style="width: 50px;">No</th>
@@ -580,8 +632,7 @@ export default {
             </table>
           </div>
 
-          <!-- Pagination -->
-          <div class="pagination-container stakeholders-pagination mt-4">
+          <div class="pagination-container stakeholders-pagination">
             <div class="stakeholders-pagination-copy">
               {{ paginationCopy }}
             </div>
@@ -622,8 +673,7 @@ export default {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </section>
   </div>
 
   <!-- Delete Modal -->
@@ -1526,6 +1576,638 @@ export default {
 [data-theme-mode='dark'] .badge-sektor-orange { color: #fb923c !important; background: rgba(251, 146, 60, 0.1) !important; }
 [data-theme-mode='dark'] .badge-sektor-sky { color: #38bdf8 !important; background: rgba(56, 189, 248, 0.1) !important; }
 
+.role-page-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.role-hero-card {
+  align-items: center;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.24), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.16), transparent 24%),
+    linear-gradient(135deg, #071b4f 0%, #173783 46%, #2563eb 100%);
+  border: 1px solid rgba(147, 197, 253, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 22px 55px rgba(37, 99, 235, 0.2), 0 8px 18px rgba(15, 23, 42, 0.08);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 21px 26px;
+  position: relative;
+}
+
+.role-hero-card::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent);
+  content: "";
+  height: 1px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.role-hero-card::after {
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.78), rgba(255, 255, 255, 0));
+  bottom: 0;
+  content: "";
+  height: 3px;
+  left: 26px;
+  position: absolute;
+  width: min(360px, 48%);
+}
+
+.role-breadcrumb {
+  color: rgba(219, 234, 254, 0.9);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.role-breadcrumb span {
+  color: rgba(219, 234, 254, 0.58);
+  margin: 0 6px;
+}
+
+.role-hero-copy h2 {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.role-hero-copy p {
+  color: rgba(239, 246, 255, 0.88);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 0;
+  max-width: 58ch;
+}
+
+.role-hero-summary {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  color: #e2e8f0;
+  display: grid;
+  justify-items: center;
+  min-width: 132px;
+  padding: 14px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.role-summary-kicker {
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.role-hero-summary strong {
+  color: #fff;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1.05;
+  margin-top: 3px;
+}
+
+.role-hero-summary span:last-child {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.role-stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.role-stat-card {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 13px;
+  min-height: 86px;
+  overflow: hidden;
+  padding: 16px;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.role-stat-card::before {
+  background: var(--stat-accent, #2563eb);
+  content: "";
+  height: 100%;
+  left: 0;
+  opacity: 0.85;
+  position: absolute;
+  top: 0;
+  width: 4px;
+}
+
+.role-stat-card::after {
+  background: radial-gradient(circle, var(--stat-soft, rgba(37, 99, 235, 0.1)), transparent 64%);
+  content: "";
+  height: 92px;
+  opacity: 0.72;
+  position: absolute;
+  right: -32px;
+  top: -36px;
+  width: 92px;
+}
+
+.role-stat-card:hover {
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.11);
+  transform: translateY(-2px);
+}
+
+.role-stat-icon {
+  align-items: center;
+  border-radius: 14px;
+  display: inline-flex;
+  flex: 0 0 44px;
+  height: 44px;
+  justify-content: center;
+  position: relative;
+  width: 44px;
+  z-index: 1;
+}
+
+.role-stat-icon i {
+  font-size: 22px;
+}
+
+.role-stat-label {
+  color: #64748b;
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.role-stat-card strong {
+  color: #0f172a;
+  display: block;
+  font-size: 25px;
+  font-weight: 950;
+  line-height: 1.1;
+  margin-top: 3px;
+}
+
+.role-stat-card > div {
+  position: relative;
+  z-index: 1;
+}
+
+.role-stat-total { --stat-accent: #2563eb; --stat-soft: rgba(37, 99, 235, 0.14); }
+.role-stat-admin { --stat-accent: #dc2626; --stat-soft: rgba(220, 38, 38, 0.14); }
+.role-stat-staff { --stat-accent: #16a34a; --stat-soft: rgba(22, 163, 74, 0.14); }
+.role-stat-pic { --stat-accent: #ea580c; --stat-soft: rgba(234, 88, 12, 0.14); }
+.role-stat-user { --stat-accent: #0284c7; --stat-soft: rgba(2, 132, 199, 0.14); }
+
+.role-stat-total .role-stat-icon { background: rgba(37, 99, 235, 0.11); color: #2563eb; }
+.role-stat-admin .role-stat-icon { background: rgba(220, 38, 38, 0.11); color: #dc2626; }
+.role-stat-staff .role-stat-icon { background: rgba(22, 163, 74, 0.11); color: #16a34a; }
+.role-stat-pic .role-stat-icon { background: rgba(234, 88, 12, 0.11); color: #ea580c; }
+.role-stat-user .role-stat-icon { background: rgba(2, 132, 199, 0.11); color: #0284c7; }
+
+.role-toolbar-card {
+  align-items: center;
+  background: linear-gradient(180deg, #fff, #fbfdff);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.users-toolbar-card {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.users-toolbar-left,
+.users-toolbar-right {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.users-toolbar-left {
+  flex: 1 1 560px;
+  flex-wrap: wrap;
+}
+
+.users-toolbar-right {
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.users-search-tabs {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+}
+
+.users-search-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 14px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.users-search-tab:hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: #0f172a;
+}
+
+.users-search-tab.active {
+  background: #ffffff;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+.role-search.users-toolbar-search {
+  max-width: 360px;
+}
+
+.role-toolbar-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.role-toolbar-copy span {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-toolbar-copy strong {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.role-toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.role-search {
+  flex: 1 1 420px;
+  max-width: 460px;
+  min-width: 280px;
+}
+
+.role-search .header-search-input {
+  background: #f8fafc !important;
+  border: 1px solid #dbe5f0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  height: 42px !important;
+  padding-left: 42px !important;
+  padding-right: 42px !important;
+  width: 100% !important;
+}
+
+.role-search .header-search-input:focus {
+  background: #fff !important;
+  border-color: rgba(37, 99, 235, 0.48) !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08) !important;
+}
+
+.role-search .header-search-icon {
+  color: #64748b !important;
+  font-size: 16px;
+  left: 16px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.role-search .clear-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  z-index: 2;
+}
+
+.role-rows-selector {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe5f0;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 7px 5px 14px;
+}
+
+.role-rows-selector span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-rows-selector .header-rows-select {
+  background-color: #fff !important;
+  border: 1px solid #dbe5f0 !important;
+  border-radius: 999px !important;
+  color: #1e293b !important;
+  font-size: 12px !important;
+  font-weight: 850;
+  height: 30px !important;
+  min-width: 72px;
+}
+
+.role-table-card {
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.role-table-card .stakeholders-table-shell {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.role-table-card .stakeholder-table-wrap {
+  margin: 0;
+  width: 100%;
+}
+
+.role-table-card .stakeholder-thead th {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 14px 16px;
+  text-transform: uppercase;
+}
+
+.role-table-card .stakeholder-row td {
+  padding: 15px 16px;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.role-table-card .stakeholder-row:hover td {
+  background: #f8fbff !important;
+}
+
+.role-table-card .th-no,
+.role-table-card .stakeholder-row td:first-child,
+.role-table-card .stakeholder-row:hover td:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.role-table-card .row-number {
+  background: transparent !important;
+}
+
+.role-table-card .stakeholders-pagination {
+  border-top: 1px solid #eef2f7;
+  margin-top: 0 !important;
+  padding: 16px 18px;
+}
+
+.badge-sektor {
+  border-radius: 50px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 4px 12px;
+  text-transform: uppercase;
+}
+
+.company-avatar {
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  height: 46px;
+  width: 46px;
+}
+
+.company-avatar-img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+@media (max-width: 1199.98px) {
+  .role-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .role-hero-card,
+  .role-toolbar-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .role-hero-summary {
+    align-items: start;
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .role-toolbar-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .users-toolbar-left,
+  .users-toolbar-right {
+    width: 100%;
+  }
+
+  .role-search {
+    max-width: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .role-page-shell {
+    gap: 12px;
+  }
+
+  .role-hero-card {
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .role-hero-copy h2 {
+    font-size: 20px;
+  }
+
+  .role-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-stat-card {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 124px;
+  }
+
+  .role-toolbar-actions {
+    flex-direction: column;
+  }
+
+  .users-search-tabs,
+  .users-toolbar-search,
+  .users-toolbar-right,
+  .role-rows-selector {
+    width: 100%;
+  }
+
+  .users-search-tab {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .role-search,
+  .role-rows-selector {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .role-rows-selector {
+    justify-content: space-between;
+  }
+
+  .role-table-card {
+    border-radius: 14px;
+  }
+
+  .role-table-card .stakeholder-table-wrap {
+    margin: 0;
+    width: 100%;
+  }
+
+  .role-table-card .stakeholders-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+[data-theme-mode='dark'] .role-hero-card {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
+    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+}
+
+[data-theme-mode='dark'] .role-toolbar-card,
+[data-theme-mode='dark'] .role-table-card,
+[data-theme-mode='dark'] .role-stat-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28) !important;
+}
+
+[data-theme-mode='dark'] .role-stat-card strong,
+[data-theme-mode='dark'] .role-toolbar-copy strong {
+  color: #e5edf7 !important;
+}
+
+[data-theme-mode='dark'] .role-stat-label,
+[data-theme-mode='dark'] .role-rows-selector span {
+  color: #9fb0c5 !important;
+}
+
+[data-theme-mode='dark'] .role-search .header-search-input,
+[data-theme-mode='dark'] .role-rows-selector,
+[data-theme-mode='dark'] .role-rows-selector .header-rows-select,
+[data-theme-mode='dark'] .users-search-tabs {
+  background: rgba(17, 24, 39, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5edf7 !important;
+}
+
+[data-theme-mode='dark'] .users-search-tab {
+  color: #9fb0c5 !important;
+}
+
+[data-theme-mode='dark'] .users-search-tab:hover,
+[data-theme-mode='dark'] .users-search-tab.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e5edf7 !important;
+}
+
+[data-theme-mode='dark'] .role-table-card .stakeholder-row td {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode='dark'] .role-table-card .stakeholder-row:hover td {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+[data-theme-mode='dark'] .role-table-card .stakeholders-pagination {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
+}
+
 </style>
 
 <style>
@@ -1611,6 +2293,117 @@ html[data-theme-mode="dark"] .user-status-option:last-child.active {
 html[data-theme-mode="dark"] .user-access-footer {
   background: #172033 !important;
   border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme-mode="dark"] .role-hero-card,
+html.dark .role-hero-card,
+.dark-mode .role-hero-card {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
+    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+}
+
+html[data-theme-mode="dark"] .role-toolbar-card,
+html.dark .role-toolbar-card,
+.dark-mode .role-toolbar-card,
+html[data-theme-mode="dark"] .role-table-card,
+html.dark .role-table-card,
+.dark-mode .role-table-card,
+html[data-theme-mode="dark"] .role-stat-card,
+html.dark .role-stat-card,
+.dark-mode .role-stat-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28) !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-card strong,
+html.dark .role-stat-card strong,
+.dark-mode .role-stat-card strong,
+html[data-theme-mode="dark"] .role-toolbar-copy strong,
+html.dark .role-toolbar-copy strong,
+.dark-mode .role-toolbar-copy strong {
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-label,
+html.dark .role-stat-label,
+.dark-mode .role-stat-label,
+html[data-theme-mode="dark"] .role-rows-selector span,
+html.dark .role-rows-selector span,
+.dark-mode .role-rows-selector span {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .role-search .header-search-input,
+html.dark .role-search .header-search-input,
+.dark-mode .role-search .header-search-input,
+html[data-theme-mode="dark"] .role-rows-selector,
+html.dark .role-rows-selector,
+.dark-mode .role-rows-selector,
+html[data-theme-mode="dark"] .role-rows-selector .header-rows-select,
+html.dark .role-rows-selector .header-rows-select,
+.dark-mode .role-rows-selector .header-rows-select,
+html[data-theme-mode="dark"] .users-search-tabs,
+html.dark .users-search-tabs,
+.dark-mode .users-search-tabs {
+  background: rgba(17, 24, 39, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .users-search-tab,
+html.dark .users-search-tab,
+.dark-mode .users-search-tab {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .users-search-tab:hover,
+html.dark .users-search-tab:hover,
+.dark-mode .users-search-tab:hover,
+html[data-theme-mode="dark"] .users-search-tab.active,
+html.dark .users-search-tab.active,
+.dark-mode .users-search-tab.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .role-search .header-search-input::placeholder,
+html.dark .role-search .header-search-input::placeholder,
+.dark-mode .role-search .header-search-input::placeholder {
+  color: rgba(203, 213, 225, 0.72) !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-thead th,
+html.dark .role-table-card .stakeholder-thead th,
+.dark-mode .role-table-card .stakeholder-thead th {
+  background: rgba(30, 41, 59, 0.96) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.2) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row td,
+html.dark .role-table-card .stakeholder-row td,
+.dark-mode .role-table-card .stakeholder-row td {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row:hover td,
+html.dark .role-table-card .stakeholder-row:hover td,
+.dark-mode .role-table-card .stakeholder-row:hover td {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholders-pagination,
+html.dark .role-table-card .stakeholders-pagination,
+.dark-mode .role-table-card .stakeholders-pagination {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
 }
 </style>
 

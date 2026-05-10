@@ -86,7 +86,26 @@
 
             <!-- Sub-menu -->
             <template v-if="mainmenuItem?.type === 'sub'">
-              <a href="javascript:;" class="side-menu__item sb2-item" @click="toggleSubmenu($event, mainmenuItem)">
+              <router-link
+                v-if="mainmenuItem.path"
+                :to="mainmenuItem.path"
+                class="side-menu__item sb2-item"
+                :class="mainmenuItem.selected ? 'active' : ''"
+                @click="mainContentFn"
+              >
+                <span class="sb2-item-indicator" aria-hidden="true"></span>
+                <span class="sb2-icon-wrap" v-if="mainmenuItem.icon" v-html="mainmenuItem.icon"></span>
+                <span class="side-menu__label sb2-label">
+                  {{ mainmenuItem.title }}
+                  <span v-if="mainmenuItem.badgetxt" v-html="mainmenuItem.badgetxt"></span>
+                </span>
+                <i
+                  class="ri-arrow-right-s-line side-menu__angle"
+                  :class="mainmenuItem.active ? 'horizontal-arrow' : ''"
+                  @click.prevent.stop="toggleSubmenu($event, mainmenuItem)"
+                ></i>
+              </router-link>
+              <a v-else href="javascript:;" class="side-menu__item sb2-item" @click="toggleSubmenu($event, mainmenuItem)">
                 <span class="sb2-item-indicator" aria-hidden="true"></span>
                 <span class="sb2-icon-wrap" v-if="mainmenuItem.icon" v-html="mainmenuItem.icon"></span>
                 <span class="side-menu__label sb2-label">
@@ -99,14 +118,16 @@
                 <li
                   v-for="(child, cIndex) in mainmenuItem.children"
                   :key="cIndex"
+                  class="sb2-child-slide"
                   :class="{ 'active': child.selected }"
                 >
                   <router-link
                     :to="child.path"
-                    class="side-menu__item"
+                    class="side-menu__item sb2-child-link"
                     :class="{ 'active': child.selected }"
                   >
-                    <span class="side-menu__label">{{ child.title }}</span>
+                    <span class="sb2-child-icon" v-html="child.icon || '<i class=&quot;ri-circle-line&quot;></i>'"></span>
+                    <span class="sb2-child-label">{{ child.title }}</span>
                   </router-link>
                 </li>
               </ul>

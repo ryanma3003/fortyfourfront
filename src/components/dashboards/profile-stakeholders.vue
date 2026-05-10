@@ -12,7 +12,7 @@ import { picService } from "../../services/pic.service";
 import type { Pic } from "../../types/pic.types";
 import { useCsirtStore } from "../../stores/csirt";
 import { useAuthStore } from "../../stores/auth";
-import { useIkasStore } from "../../stores/ikas";
+import { getMaturityLabel, useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useResikoStore } from "../../stores/resiko";
 import { useKonversiStore } from "../../stores/konversi";
@@ -184,6 +184,7 @@ const sortedAktivitas = computed(() => {
 });
 
 const currentActivityYear = computed(() => String(new Date().getFullYear()));
+const currentIkasYear = computed(() => String(new Date().getFullYear()));
 
 const aktivitasByYear = computed(() => {
   const grouped = new Map<string, Aktivitas[]>();
@@ -879,11 +880,7 @@ const getConversionCardTitle = (key: string, fallback: string) => {
 const getConversionCardValue = (key: string, fallbackPoint: number) => {
   const slug = stakeholderSlug.value;
   if (key === "poin_ikas") {
-    const ikasSummary = ikasStore.getIkasSummary(slug);
-    const ikasData = ikasSummary ? null : ikasStore.getIkasData(slug);
-    const ikasScore = ikasSummary
-      ? Number(ikasSummary.score || 0)
-      : Number(ikasData.total_rata_rata || 0);
+    const ikasScore = getCurrentYearIkasScore(slug);
     return ikasScore > 0 ? ikasScore.toFixed(2) : "Belum Diisi";
   }
   if (key === "poin_kse") return seCount.value > 0 ? "Terdaftar" : "Belum Terdaftar";
@@ -911,6 +908,7 @@ const penilaian = computed(() => {
     svgColor: conversionCardColors[point.key] || "primary",
     title: getConversionCardTitle(point.key, point.label),
     value: getConversionCardValue(point.key, point.value),
+    caption: point.key === "poin_ikas" ? `Tahun ${currentIkasYear.value}` : undefined,
     subLabel: `Poin: ${point.value} poin`,
     detailType: conversionDetailType[point.key] ?? null,
   }));
@@ -1055,9 +1053,18 @@ const riskStatus = computed(() => {
 
 const ikasProfileStatus = computed(() => {
   const slug = stakeholderSlug.value;
-  const status = ikasDataMap.value?.[slug]?.total_kategori;
-  return status && status !== 'INPUT BELUM LENGKAP' ? status : 'Belum Diisi';
+  const score = getCurrentYearIkasScore(slug);
+  if (score <= 0) return 'Belum Diisi';
+
+  const currentYearStatus = selectedIkasYear.value === currentIkasYear.value
+    ? ikasDataMap.value?.[slug]?.total_kategori
+    : '';
+  return currentYearStatus && currentYearStatus !== 'INPUT BELUM LENGKAP'
+    ? currentYearStatus
+    : getMaturityLabel(score);
 });
+
+const isCurrentYearIkasFilled = computed(() => getCurrentYearIkasScore(stakeholderSlug.value) > 0);
 
 const profileCompletion = computed(() => {
   const display = getKonversiDisplay(currentKonversiRecord.value);
@@ -1090,20 +1097,86 @@ const currentStakeholderIkasRecords = computed(() => {
   });
 });
 
+const getIkasRecordScore = (record: any): number => {
+  const parsed = Number(String(
+    record?.nilai_kematangan ??
+    record?.total_rata_rata ??
+    record?.score ??
+    0
+  ).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getIkasRecordForYear = (year: string): any | null => {
+  return currentStakeholderIkasRecords.value.find((record) => getIkasRecordYear(record) === year) || null;
+};
+
+const getIkasDomainObjectFromRecord = (record: any, key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih') => {
+  const domainKey = key === 'tanggulih' ? 'gulih' : key;
+  return record?.[domainKey] || record?.[key] || {};
+};
+
+const getIkasDomainScoreFromRecord = (record: any, key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih'): number => {
+  const domain = getIkasDomainObjectFromRecord(record, key);
+  const scoreKey = key === 'tanggulih' ? 'nilai_gulih' : `nilai_${key}`;
+  const value = domain?.[scoreKey] ?? domain?.nilai ?? domain?.score ?? 0;
+  const parsed = Number(String(value ?? 0).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getSelectedIkasDomainProgress = (
+  key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih',
+  total: number
+) => {
+  const record = selectedIkasRecord.value;
+  if (!record) return ikasStore.getDomainProgress(stakeholderSlug.value, key);
+
+  const domain = getIkasDomainObjectFromRecord(record, key);
+  const subdomainKeys = Array.from({ length: total }, (_, index) => `nilai_subdomain${index + 1}`);
+  const availableKeys = subdomainKeys.filter((subdomainKey) => subdomainKey in domain);
+  const completed = availableKeys.filter((subdomainKey) => {
+    const value = domain?.[subdomainKey];
+    const parsed = Number(String(value ?? 0).replace(',', '.'));
+    return value !== null && value !== undefined && value !== 'NA' && Number.isFinite(parsed) && parsed > 0;
+  }).length;
+
+  const fallbackCompleted = getIkasDomainScoreFromRecord(record, key) > 0 ? total : 0;
+  const finalCompleted = availableKeys.length ? completed : fallbackCompleted;
+
+  return {
+    completed: finalCompleted,
+    total,
+    percent: total > 0 ? Math.round((finalCompleted / total) * 100) : 0,
+  };
+};
+
+const getCurrentYearIkasScore = (slug: string): number => {
+  const year = currentIkasYear.value;
+  const recordScore = getIkasRecordScore(getIkasRecordForYear(year));
+  if (recordScore > 0) return recordScore;
+
+  if (selectedIkasYear.value === year) {
+    const currentYearDataScore = Number(ikasStore.getIkasData(slug).total_rata_rata || 0);
+    return Number.isFinite(currentYearDataScore) ? currentYearDataScore : 0;
+  }
+
+  return 0;
+};
+
 const ikasYearOptions = computed(() => {
   const years = currentStakeholderIkasRecords.value
     .map(getIkasRecordYear)
     .filter(Boolean);
-  return [...new Set(years)].sort((a, b) => Number(b) - Number(a));
+  return [...new Set([currentIkasYear.value, ...years])].sort((a, b) => Number(b) - Number(a));
 });
 
 watch(ikasYearOptions, (years) => {
   if (!years.length) {
-    selectedIkasYear.value = "";
+    selectedIkasYear.value = currentIkasYear.value;
     return;
   }
   if (!selectedIkasYear.value || !years.includes(selectedIkasYear.value)) {
-    selectedIkasYear.value = years[0];
+    selectedIkasYear.value = currentIkasYear.value;
   }
 }, { immediate: true });
 
@@ -1127,7 +1200,48 @@ const getDomainScorePercent = (value: unknown): number => {
   return Number.isFinite(number) ? Math.max(0, Math.min(100, (number / 5) * 100)) : 0;
 };
 
-const selectedIkasDomainData = computed(() => ikasStore.getIkasData(stakeholderSlug.value));
+const selectedIkasRecord = computed(() => {
+  return getIkasRecordForYear(selectedIkasYear.value) || getIkasRecordForYear(currentIkasYear.value) || null;
+});
+
+const selectedIkasDomainData = computed(() => {
+  const storeData = ikasStore.getIkasData(stakeholderSlug.value);
+  const record = selectedIkasRecord.value;
+  if (!record) return storeData;
+
+  const totalScore = getIkasRecordScore(record) || Number(storeData.total_rata_rata || 0);
+  const totalCategory = record?.total_kategori || record?.kategori || getMaturityLabel(totalScore);
+
+  return {
+    ...storeData,
+    total_rata_rata: totalScore,
+    total_kategori: totalCategory,
+    identifikasi: {
+      ...storeData.identifikasi,
+      nilai_identifikasi: getIkasDomainScoreFromRecord(record, 'identifikasi'),
+      kategori_identifikasi: record?.identifikasi?.kategori_identifikasi || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'identifikasi')),
+    },
+    proteksi: {
+      ...storeData.proteksi,
+      nilai_proteksi: getIkasDomainScoreFromRecord(record, 'proteksi'),
+      kategori_proteksi: record?.proteksi?.kategori_proteksi || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'proteksi')),
+    },
+    deteksi: {
+      ...storeData.deteksi,
+      nilai_deteksi: getIkasDomainScoreFromRecord(record, 'deteksi'),
+      kategori_deteksi: record?.deteksi?.kategori_deteksi || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'deteksi')),
+    },
+    tanggulih: {
+      ...storeData.tanggulih,
+      nilai_tanggulih: getIkasDomainScoreFromRecord(record, 'tanggulih'),
+      kategori_tanggulih: record?.gulih?.kategori_gulih || record?.tanggulih?.kategori_tanggulih || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'tanggulih')),
+    },
+  };
+});
+
+const hasSelectedIkasYearRecord = computed(() => {
+  return !!selectedIkasYear.value && !!getIkasRecordForYear(selectedIkasYear.value);
+});
 
 const ikasDomainRows = computed(() => {
   const data = selectedIkasDomainData.value;
@@ -1138,7 +1252,7 @@ const ikasDomainRows = computed(() => {
       icon: 'ri-search-eye-line',
       score: data.identifikasi.nilai_identifikasi,
       category: data.identifikasi.kategori_identifikasi,
-      progress: ikasStore.getDomainProgress(stakeholderSlug.value, 'identifikasi'),
+      progress: getSelectedIkasDomainProgress('identifikasi', 5),
       colorClass: 'domain-blue',
     },
     {
@@ -1147,7 +1261,7 @@ const ikasDomainRows = computed(() => {
       icon: 'ri-shield-keyhole-line',
       score: data.proteksi.nilai_proteksi,
       category: data.proteksi.kategori_proteksi,
-      progress: ikasStore.getDomainProgress(stakeholderSlug.value, 'proteksi'),
+      progress: getSelectedIkasDomainProgress('proteksi', 6),
       colorClass: 'domain-teal',
     },
     {
@@ -1156,7 +1270,7 @@ const ikasDomainRows = computed(() => {
       icon: 'ri-radar-line',
       score: data.deteksi.nilai_deteksi,
       category: data.deteksi.kategori_deteksi,
-      progress: ikasStore.getDomainProgress(stakeholderSlug.value, 'deteksi'),
+      progress: getSelectedIkasDomainProgress('deteksi', 3),
       colorClass: 'domain-amber',
     },
     {
@@ -1165,7 +1279,7 @@ const ikasDomainRows = computed(() => {
       icon: 'ri-restart-line',
       score: data.tanggulih.nilai_tanggulih,
       category: data.tanggulih.kategori_tanggulih,
-      progress: ikasStore.getDomainProgress(stakeholderSlug.value, 'tanggulih'),
+      progress: getSelectedIkasDomainProgress('tanggulih', 4),
       colorClass: 'domain-red',
     },
   ];
@@ -4111,12 +4225,12 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                       />
 
                       <div
-                        v-if="isAdmin && ((!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP') || !relatedCsirtId || resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED')"
+                        v-if="isAdmin && (!isCurrentYearIkasFilled || !relatedCsirtId || resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED')"
                         class="col-12 mb-2"
                       >
                         <div class="profile-action-grid">
                           <button
-                            v-if="!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP'"
+                            v-if="!isCurrentYearIkasFilled"
                             type="button"
                             class="profile-action-card"
                             @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })"
@@ -4542,12 +4656,12 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                               <span>Memuat data IKAS {{ selectedIkasYear }}...</span>
                             </div>
 
-                            <div v-else-if="!ikasYearOptions.length" class="empty-state py-4 text-center">
+                            <div v-else-if="!hasSelectedIkasYearRecord" class="empty-state py-4 text-center">
                               <div class="empty-icon-ring mb-3">
                                 <div class="empty-icon-inner"><i class="ri-bar-chart-box-line"></i></div>
                               </div>
-                              <h6 class="fw-bold mb-1 text-dark">Data IKAS Belum Ada</h6>
-                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 320px;">Belum ada hasil IKAS yang bisa ditampilkan per domain.</p>
+                              <h6 class="fw-bold mb-1 text-dark">Data IKAS {{ selectedIkasYear }} Belum Ada</h6>
+                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 320px;">Belum ada hasil IKAS untuk tahun pengukuran ini.</p>
                             </div>
 
                             <template v-else>

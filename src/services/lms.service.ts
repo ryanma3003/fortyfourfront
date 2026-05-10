@@ -59,7 +59,7 @@ export const lmsService = {
      * Update an existing kelas (PUT /api/kelas/{id})
      */
     async updateKelas(id: string | number, payload: UpdateKelasPayload): Promise<LmsKelas> {
-        const body = buildKelasPayload(payload);
+        const body = buildKelasPayload(payload, { includeStatus: true });
         const response = await api.put<any>(`/api/kelas/${id}`, body);
         return normalizeKelas(response?.data ?? response);
     },
@@ -325,20 +325,34 @@ export const lmsService = {
     },
 };
 
-function buildKelasPayload(payload: CreateKelasPayload | UpdateKelasPayload) {
+function buildKelasPayload(payload: CreateKelasPayload | UpdateKelasPayload, options: { includeStatus?: boolean } = {}) {
     const judul = payload.judul ?? payload.nama_kelas ?? '';
-    return {
-        judul,
-        deskripsi: payload.deskripsi ?? '',
-        durasi_jp: Number(payload.durasi_jp ?? 0),
-        informasi_umum: payload.informasi_umum ?? '',
-        kategori: payload.kategori ?? '',
-        penyelenggara: payload.penyelenggara ?? '',
-        syarat_pendaftaran: payload.syarat_pendaftaran ?? '',
-        target_peserta: payload.target_peserta ?? '',
-        thumbnail: payload.thumbnail ?? '',
-        status: normalizeKelasStatus(payload.status),
+    const form = new FormData();
+    const append = (key: string, value: unknown) => {
+        if (value === undefined || value === null) return;
+        form.append(key, String(value));
     };
+
+    append('judul', judul);
+    append('deskripsi', payload.deskripsi ?? '');
+    append('kategori', payload.kategori ?? '');
+    append('durasi_jp', Number(payload.durasi_jp ?? 0));
+    append('penyelenggara', payload.penyelenggara ?? '');
+    append('target_peserta', payload.target_peserta ?? '');
+    append('syarat_pendaftaran', payload.syarat_pendaftaran ?? '');
+    append('informasi_umum', payload.informasi_umum ?? '');
+    if (options.includeStatus) {
+        append('status', normalizeKelasStatus(payload.status));
+    }
+
+    const thumbnail = (payload as any).thumbnail_file ?? payload.thumbnail;
+    if (thumbnail instanceof File) {
+        form.append('thumbnail_file', thumbnail);
+    } else if (thumbnail) {
+        append('thumbnail_url', thumbnail);
+    }
+
+    return form;
 }
 
 function unwrapDataArray(response: any): any[] {

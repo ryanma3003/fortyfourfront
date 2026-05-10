@@ -42,6 +42,7 @@ const sortOrder = ref<"asc" | "desc">("asc");
 const currentPage = ref(1);
 const itemsPerPage = ref(10);
 const rolePageRoot = ref<HTMLElement | null>(null);
+const roleSearchInput = ref<HTMLInputElement | null>(null);
 let roleGsapContext: gsap.Context | null = null;
 const pageHasEntered = ref(false);
 
@@ -407,6 +408,12 @@ const handleRemovePermission = async (obj: string, act: string) => {
 
 const clearSearch = () => {
   searchQuery.value = "";
+  currentPage.value = 1;
+  nextTick(() => roleSearchInput.value?.focus());
+};
+
+const focusRoleSearch = () => {
+  roleSearchInput.value?.focus();
 };
 
 const toggleSort = (field: "name") => {
@@ -641,24 +648,26 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="role-toolbar-card">
-      <div class="role-toolbar-copy">
-        <span>Direktori Role</span>
-        <strong>{{ paginationInfo }}</strong>
-      </div>
-      <div class="role-toolbar-actions">
-        <div class="stakeholders-search role-search position-relative">
+    <section class="role-toolbar-card users-toolbar-card">
+      <div class="users-toolbar-left">
+        <div class="stakeholders-search role-search users-toolbar-search position-relative" @click="focusRoleSearch">
           <i class="ri-search-line header-search-icon"></i>
           <input
+            ref="roleSearchInput"
             v-model="searchQuery"
             type="text"
             class="form-control form-control-sm header-search-input"
             placeholder="Cari nama role atau deskripsi..."
+            autocomplete="off"
+            @click.stop
+            @keydown.stop
           />
           <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
             <i class="ri-close-circle-fill"></i>
           </button>
         </div>
+      </div>
+      <div class="users-toolbar-right">
         <div class="role-rows-selector">
           <span>Rows</span>
           <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
@@ -1190,6 +1199,29 @@ onUnmounted(() => {
   padding: 14px 16px;
 }
 
+.users-toolbar-card {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.users-toolbar-left,
+.users-toolbar-right {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.users-toolbar-left {
+  flex: 1 1 560px;
+  flex-wrap: wrap;
+}
+
+.users-toolbar-right {
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
 .role-toolbar-copy {
   display: grid;
   gap: 2px;
@@ -1221,6 +1253,13 @@ onUnmounted(() => {
   flex: 1 1 420px;
   max-width: 460px;
   min-width: 280px;
+  position: relative;
+  z-index: 3;
+}
+
+.role-search.users-toolbar-search {
+  max-width: 360px;
+  cursor: text;
 }
 
 .role-search .header-search-input {
@@ -1232,7 +1271,10 @@ onUnmounted(() => {
   height: 42px;
   padding-left: 42px !important;
   padding-right: 42px !important;
+  pointer-events: auto !important;
+  position: relative;
   width: 100% !important;
+  z-index: 1;
 }
 
 .role-search .header-search-input:focus {
@@ -1245,6 +1287,7 @@ onUnmounted(() => {
   color: #64748b;
   font-size: 16px;
   left: 16px;
+  pointer-events: none;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -1264,7 +1307,7 @@ onUnmounted(() => {
   top: 50%;
   transform: translateY(-50%);
   width: 32px;
-  z-index: 2;
+  z-index: 4;
 }
 
 .role-rows-selector {
@@ -1851,6 +1894,11 @@ onUnmounted(() => {
     width: 100%;
   }
 
+  .users-toolbar-left,
+  .users-toolbar-right {
+    width: 100%;
+  }
+
   .role-search {
     max-width: none;
   }
@@ -1890,6 +1938,8 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
+  .users-toolbar-search,
+  .users-toolbar-right,
   .role-search,
   .role-rows-selector {
     min-width: 0;
@@ -2151,5 +2201,211 @@ html.dark .role-table-card .stakeholders-pagination,
 .dark-mode .role-table-card .stakeholders-pagination {
   background: rgba(15, 23, 42, 0.94) !important;
   border-top-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-content,
+html.dark .permission-modal-content,
+body[data-theme-mode="dark"] .permission-modal-content,
+.dark-mode .permission-modal-content {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 32px 88px rgba(0, 0, 0, 0.48) !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-header,
+html.dark .permission-modal-header,
+body[data-theme-mode="dark"] .permission-modal-header,
+.dark-mode .permission-modal-header {
+  background:
+    radial-gradient(circle at 8% 10%, rgba(96, 165, 250, 0.22), transparent 28%),
+    linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-header .text-white,
+html.dark .permission-modal-header .text-white,
+body[data-theme-mode="dark"] .permission-modal-header .text-white,
+.dark-mode .permission-modal-header .text-white,
+html[data-theme-mode="dark"] .permission-modal-header h4,
+html.dark .permission-modal-header h4,
+body[data-theme-mode="dark"] .permission-modal-header h4,
+.dark-mode .permission-modal-header h4 {
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-body,
+html.dark .permission-modal-body,
+body[data-theme-mode="dark"] .permission-modal-body,
+.dark-mode .permission-modal-body,
+html[data-theme-mode="dark"] .permission-modal-scroll-body,
+html.dark .permission-modal-scroll-body,
+body[data-theme-mode="dark"] .permission-modal-scroll-body,
+.dark-mode .permission-modal-scroll-body {
+  background: #0f172a !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-footer,
+html.dark .permission-modal-footer,
+body[data-theme-mode="dark"] .permission-modal-footer,
+.dark-mode .permission-modal-footer {
+  background: #111827 !important;
+  border-top-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+html[data-theme-mode="dark"] .permission-toolbar-card,
+html.dark .permission-toolbar-card,
+body[data-theme-mode="dark"] .permission-toolbar-card,
+.dark-mode .permission-toolbar-card,
+html[data-theme-mode="dark"] .manual-permission-entry,
+html.dark .manual-permission-entry,
+body[data-theme-mode="dark"] .manual-permission-entry,
+.dark-mode .manual-permission-entry,
+html[data-theme-mode="dark"] .permission-table-shell,
+html.dark .permission-table-shell,
+body[data-theme-mode="dark"] .permission-table-shell,
+.dark-mode .permission-table-shell {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: none !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-toolbar-copy h6,
+html.dark .permission-toolbar-copy h6,
+body[data-theme-mode="dark"] .permission-toolbar-copy h6,
+.dark-mode .permission-toolbar-copy h6,
+html[data-theme-mode="dark"] .permission-table .fw-semibold,
+html.dark .permission-table .fw-semibold,
+body[data-theme-mode="dark"] .permission-table .fw-semibold,
+.dark-mode .permission-table .fw-semibold {
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-toolbar-copy p,
+html.dark .permission-toolbar-copy p,
+body[data-theme-mode="dark"] .permission-toolbar-copy p,
+.dark-mode .permission-toolbar-copy p,
+html[data-theme-mode="dark"] .permission-modal-body .text-muted,
+html.dark .permission-modal-body .text-muted,
+body[data-theme-mode="dark"] .permission-modal-body .text-muted,
+.dark-mode .permission-modal-body .text-muted,
+html[data-theme-mode="dark"] .manual-permission-entry label,
+html.dark .manual-permission-entry label,
+body[data-theme-mode="dark"] .manual-permission-entry label,
+.dark-mode .manual-permission-entry label {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal .form-select,
+html.dark .permission-modal .form-select,
+body[data-theme-mode="dark"] .permission-modal .form-select,
+.dark-mode .permission-modal .form-select,
+html[data-theme-mode="dark"] .permission-modal .form-control,
+html.dark .permission-modal .form-control,
+body[data-theme-mode="dark"] .permission-modal .form-control,
+.dark-mode .permission-modal .form-control {
+  background-color: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal .form-control::placeholder,
+html.dark .permission-modal .form-control::placeholder,
+body[data-theme-mode="dark"] .permission-modal .form-control::placeholder,
+.dark-mode .permission-modal .form-control::placeholder {
+  color: #7b8ca5 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal .form-select option,
+html.dark .permission-modal .form-select option,
+body[data-theme-mode="dark"] .permission-modal .form-select option,
+.dark-mode .permission-modal .form-select option {
+  background: #111827 !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table,
+html.dark .permission-table,
+body[data-theme-mode="dark"] .permission-table,
+.dark-mode .permission-table {
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table thead th,
+html.dark .permission-table thead th,
+body[data-theme-mode="dark"] .permission-table thead th,
+.dark-mode .permission-table thead th {
+  background: #1e2d40 !important;
+  border-bottom-color: rgba(148, 163, 184, 0.22) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table tbody tr td,
+html.dark .permission-table tbody tr td,
+body[data-theme-mode="dark"] .permission-table tbody tr td,
+.dark-mode .permission-table tbody tr td {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row):hover td,
+html.dark .permission-table tbody tr:not(.permission-group-row):hover td,
+body[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row):hover td,
+.dark-mode .permission-table tbody tr:not(.permission-group-row):hover td {
+  background: #172235 !important;
+}
+
+html[data-theme-mode="dark"] .permission-group-row td,
+html.dark .permission-group-row td,
+body[data-theme-mode="dark"] .permission-group-row td,
+.dark-mode .permission-group-row td {
+  background: #1a3154 !important;
+  color: #bfdbfe !important;
+  border-color: rgba(191, 219, 254, 0.2) !important;
+}
+
+html[data-theme-mode="dark"] .permission-table code,
+html.dark .permission-table code,
+body[data-theme-mode="dark"] .permission-table code,
+.dark-mode .permission-table code {
+  color: #f472b6 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table .badge.bg-light,
+html.dark .permission-table .badge.bg-light,
+body[data-theme-mode="dark"] .permission-table .badge.bg-light,
+.dark-mode .permission-table .badge.bg-light {
+  background: rgba(148, 163, 184, 0.12) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-close-btn,
+html.dark .permission-modal-close-btn,
+body[data-theme-mode="dark"] .permission-modal-close-btn,
+.dark-mode .permission-modal-close-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light,
+html.dark .permission-modal-footer .btn-primary-light,
+body[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light,
+.dark-mode .permission-modal-footer .btn-primary-light {
+  background: rgba(148, 163, 184, 0.1) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light:hover,
+html.dark .permission-modal-footer .btn-primary-light:hover,
+body[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light:hover,
+.dark-mode .permission-modal-footer .btn-primary-light:hover {
+  background: rgba(37, 99, 235, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  color: #ffffff !important;
 }
 </style>

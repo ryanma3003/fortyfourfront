@@ -58,6 +58,17 @@ export default {
       return richTextToPlainText(value);
     };
 
+    const getTags = (item: Berita): string[] => {
+      const rawTags = (item as any).tags;
+      if (Array.isArray(rawTags)) {
+        return rawTags.map((tag) => String(tag).trim()).filter(Boolean);
+      }
+      if (typeof rawTags === "string") {
+        return rawTags.split(",").map((tag) => tag.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
     const runEntranceAnimations = () => {
       nextTick(() => {
         gsapCtx = gsap.context(() => {
@@ -191,7 +202,11 @@ export default {
     const filteredData = computed(() => {
       const q = searchQuery.value.toLowerCase().trim();
       if (!q) return beritaStore.berita;
-      return beritaStore.berita.filter((item) => (item.judul || "").toLowerCase().includes(q));
+      return beritaStore.berita.filter((item) => {
+        const titleMatch = (item.judul || "").toLowerCase().includes(q);
+        const tagMatch = getTags(item).some((tag) => tag.toLowerCase().includes(q));
+        return titleMatch || tagMatch;
+      });
     });
 
     const totalPages = computed(() => Math.max(1, Math.ceil(filteredData.value.length / itemsPerPage.value)));
@@ -281,6 +296,7 @@ export default {
       goToPage,
       getAvatarClass,
       getAuthorName,
+      getTags,
       formatDate,
       stripHtml,
     };
@@ -387,6 +403,11 @@ export default {
                   <div class="ev-title-wrap">
                     <div class="ev-title-main" role="button" tabindex="0" @click="openView(item)" @keydown.enter.prevent="openView(item)" @keydown.space.prevent="openView(item)">{{ item.judul }}</div>
                     <span class="ev-title-sub">{{ stripHtml(item.deskripsi || '') || '-' }}</span>
+                    <div v-if="getTags(item).length" class="ev-tag-row">
+                      <span v-for="tag in getTags(item)" :key="tag" class="ev-tag-chip">
+                        <i class="ri-price-tag-3-line"></i>{{ tag }}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div class="ev-meta-grid">
@@ -624,6 +645,9 @@ export default {
 .ev-news-shell .ev-title-main{display:block;border:0!important;outline:none!important;background:transparent!important;box-shadow:none!important;padding:0!important;font-size:15px;line-height:1.25;max-width:100%;color:#10203b}
 .ev-news-shell .ev-title-main:focus-visible{color:#0f766e;text-decoration:underline;text-underline-offset:3px}
 .ev-news-shell .ev-title-sub{max-width:100%;color:#64748b}
+.ev-news-shell .ev-tag-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ev-news-shell .ev-tag-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;border:1px solid #cfe0ff;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800}
+.ev-news-shell .ev-tag-chip i{font-size:12px}
 .ev-news-shell .ev-meta-grid{padding-left:58px;gap:8px}
 .ev-news-shell .ev-cell-meta{background:#ecfeff;border-color:#cffafe;color:#4b5563}
 .ev-news-shell .ev-cell-meta i{color:#0891b2}
@@ -848,14 +872,25 @@ export default {
 
 .ev-news-shell.is-dark .ev-title-main,
 .ev-news-shell.is-dark .ev-title-sub,
+.ev-news-shell.is-dark .ev-tag-chip,
 .ev-news-shell.is-dark .ev-page-info,
 :global(html[data-theme-mode="dark"]) .ev-news-shell .ev-title-main,
 :global(html[data-theme-mode="dark"]) .ev-news-shell .ev-title-sub,
+:global(html[data-theme-mode="dark"]) .ev-news-shell .ev-tag-chip,
 :global(html[data-theme-mode="dark"]) .ev-news-shell .ev-page-info,
 :global(html.dark) .ev-news-shell .ev-title-main,
 :global(html.dark) .ev-news-shell .ev-title-sub,
+:global(html.dark) .ev-news-shell .ev-tag-chip,
 :global(html.dark) .ev-news-shell .ev-page-info {
   color: #e2e8f0;
+}
+
+.ev-news-shell.is-dark .ev-tag-chip,
+:global(html[data-theme-mode="dark"]) .ev-news-shell .ev-tag-chip,
+:global(html.dark) .ev-news-shell .ev-tag-chip {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
 }
 
 .ev-news-shell.is-dark .ev-title-main:hover,

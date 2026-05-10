@@ -200,6 +200,8 @@ class ApiClient {
             aktivitas: 'aktivitas',
             kegiatan: 'kegiatan',
             berita: 'berita',
+            event: 'kegiatan',
+            events: 'kegiatan',
             casbin: 'casbin_policy',
         };
 
@@ -217,6 +219,23 @@ class ApiClient {
         } catch {
             // Notification tracking is best-effort and must never block API calls.
         }
+    }
+
+    private syncNotificationsAfterMutation(endpoint: string, method: HttpMethod, body?: any): void {
+        const target = this.getMutationTrackTarget(endpoint, method, body);
+        if (!target) return;
+
+        window.setTimeout(async () => {
+            try {
+                const { useNotificationStore } = await import('@/stores/notifications');
+                const notifStore = useNotificationStore();
+                if (notifStore.initialized) {
+                    await notifStore.mergeFromDatabase();
+                }
+            } catch {
+                // Notification sync is best-effort and must never block CRUD flows.
+            }
+        }, 600);
     }
 
     private async waitTurn(): Promise<void> {
@@ -256,8 +275,15 @@ class ApiClient {
             await this.trackMutationForNotification(cleanEndpoint, method, body);
         }
 
-        const isFormData = body instanceof FormData;
-        const isUrlEncoded = body instanceof URLSearchParams;
+        const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+        const isUrlEncoded = typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams;
+        let requestMethod = method;
+        if (method === 'POST' && /^api\/kelas\/[^/]+$/.test(cleanEndpoint)) {
+            requestMethod = 'PUT';
+            if (isFormData) {
+                body.delete('_method');
+            }
+        }
         const headers: Record<string, string> = {
             ...this.defaultHeaders,
             ...customHeaders as Record<string, string>,
@@ -267,7 +293,11 @@ class ApiClient {
 
         // If body is FormData, let fetch set the Content-Type with boundary
         if (isFormData) {
-            delete headers['Content-Type'];
+            for (const key of Object.keys(headers)) {
+                if (key.toLowerCase() === 'content-type') {
+                    delete headers[key];
+                }
+            }
         }
         // If body is URLSearchParams, set application/x-www-form-urlencoded
         if (isUrlEncoded) {
@@ -275,7 +305,7 @@ class ApiClient {
         }
 
         const fetchOptions: RequestInit = {
-            method,
+            method: requestMethod,
             headers,
             credentials: 'include', // Enable HTTP-only cookie support
             body: isFormData || isUrlEncoded ? body : (body ? JSON.stringify(body) : undefined),
@@ -372,6 +402,7 @@ class ApiClient {
 
             // Handle 204 No Content
             if (response.status === 204) {
+                this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
                 return {} as T;
             }
 
@@ -379,10 +410,13 @@ class ApiClient {
             // HTTP-only cookies and return an empty body.
             const text = await response.text();
             if (!text) {
+                this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
                 return {} as T;
             }
 
-            return JSON.parse(text);
+            const parsed = JSON.parse(text);
+            this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+            return parsed;
         } catch (error) {
             if (error instanceof ApiRequestError) {
                 throw error;

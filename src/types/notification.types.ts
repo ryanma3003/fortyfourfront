@@ -83,6 +83,7 @@ export const ENTITY_LABELS: Record<string, string> = {
     file_pendukung: 'File Pendukung',
     kuis: 'Kuis LMS',
     soal: 'Soal Kuis',
+    berita: 'Berita',
     aktivitas: 'Aktivitas',
     kegiatan: 'Kegiatan',
     se_edit_request: 'Permintaan Edit SE',

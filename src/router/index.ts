@@ -59,6 +59,11 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../views/admin/Dashboard.vue"),
             },
             {
+              path: 'dashboard/analytics',
+              name: 'Admin Analytics',
+              component: () => import("../views/admin/Analytics.vue"),
+            },
+            {
               path: 'notif',
               name: "Notif",
               component: () => import("../components/dashboards/notif.vue"),

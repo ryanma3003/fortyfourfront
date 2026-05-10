@@ -7,7 +7,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useUsersStore } from "../../stores/users";
 import { useRouter, useRoute } from "vue-router";
 import type { CreateBeritaPayload } from "../../types/berita.types";
-import { isRichTextEmpty } from "../../utils/richText";
+import { isRichTextEmpty, sanitizeRichText } from "../../utils/richText";
 
 export default {
   components: { Pageheader, LmsEditor },
@@ -30,6 +30,8 @@ export default {
     const formBerita = ref({
       judul: "",
       deskripsi: "",
+      tags: [] as string[],
+      tagDraft: "",
       author_id: authStore.currentUser?.id || "",
     });
 
@@ -62,6 +64,80 @@ export default {
       );
     });
 
+    const normalizeTags = (value: unknown): string[] => {
+      if (Array.isArray(value)) {
+        return value
+          .map((tag) => {
+            if (typeof tag === "object" && tag !== null) {
+              const item = tag as Record<string, unknown>;
+              return item.name || item.nama || item.tag || item.label || item.value || "";
+            }
+            return tag;
+          })
+          .map((tag) => String(tag).trim())
+          .filter(Boolean);
+      }
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) return normalizeTags(parsed);
+        } catch {
+          // keep parsing as a plain separated string
+        }
+        return value.split(/[,;\n]/).map((tag) => tag.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
+    const parsedTags = computed(() => {
+      return [...new Set(normalizeTags(formBerita.value.tags))];
+    });
+
+    const addTags = (value: unknown) => {
+      const nextTags = normalizeTags(value);
+      if (!nextTags.length) return;
+
+      const existing = new Set(parsedTags.value.map((tag) => tag.toLowerCase()));
+      const merged = [...formBerita.value.tags];
+
+      nextTags.forEach((tag) => {
+        const normalizedKey = tag.toLowerCase();
+        if (!existing.has(normalizedKey)) {
+          existing.add(normalizedKey);
+          merged.push(tag);
+        }
+      });
+
+      formBerita.value.tags = merged;
+      formBerita.value.tagDraft = "";
+      delete formErrors.value.tags;
+    };
+
+    const addTagFromDraft = () => {
+      addTags(formBerita.value.tagDraft);
+    };
+
+    const removeTag = (tagToRemove: string) => {
+      formBerita.value.tags = parsedTags.value.filter((tag) => tag !== tagToRemove);
+    };
+
+    const handleTagKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === ",") {
+        event.preventDefault();
+        addTagFromDraft();
+      }
+      if (event.key === "Backspace" && !formBerita.value.tagDraft && parsedTags.value.length) {
+        formBerita.value.tags = parsedTags.value.slice(0, -1);
+      }
+    };
+
+    const handleTagPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text") || "";
+      if (!/[,;\n]/.test(text)) return;
+      event.preventDefault();
+      addTags(text);
+    };
+
     onMounted(async () => {
       await usersStore.initialize().catch(() => undefined);
 
@@ -73,9 +149,12 @@ export default {
         try {
           const item = await beritaStore.fetchBeritaById(Number(route.params.id));
           if (item) {
+            const cleanDescription = sanitizeRichText(item.deskripsi) || item.deskripsi || "";
             formBerita.value = {
               judul: item.judul || "",
-              deskripsi: item.deskripsi || "",
+              deskripsi: cleanDescription,
+              tags: normalizeTags((item as any).tags),
+              tagDraft: "",
               author_id: item.author_id || authStore.currentUser?.id || "",
             };
           } else {
@@ -95,11 +174,12 @@ export default {
       formErrors.value = {};
       if (!formBerita.value.judul.trim()) formErrors.value.judul = "Judul wajib diisi";
       if (isRichTextEmpty(formBerita.value.deskripsi)) formErrors.value.deskripsi = "Deskripsi wajib diisi";
-      if (!formBerita.value.author_id.trim()) formErrors.value.author_id = "Pembuat berita wajib tersedia";
+      if (!parsedTags.value.length) formErrors.value.tags = "Minimal satu tag wajib diisi";
       return Object.keys(formErrors.value).length === 0;
     };
 
     const handleSubmit = async () => {
+      addTagFromDraft();
       if (!validate()) return;
 
       isSaving.value = true;
@@ -107,7 +187,7 @@ export default {
       const payload: CreateBeritaPayload = {
         judul: formBerita.value.judul.trim(),
         deskripsi: formBerita.value.deskripsi.trim(),
-        author_id: formBerita.value.author_id.trim(),
+        tags: parsedTags.value,
       };
 
       try {
@@ -131,7 +211,8 @@ export default {
     const goBack = () => router.push("/event/berita");
 
     return {
-      dataToPass, isEdit, pageTitle, isLoading, formBerita, formErrors, authorDisplayName,
+      dataToPass, isEdit, pageTitle, isLoading, formBerita, formErrors, authorDisplayName, parsedTags,
+      addTagFromDraft, removeTag, handleTagKeydown, handleTagPaste,
       handleSubmit, goBack, showToast, toastMessage, toastType, isSaving
     };
   },
@@ -198,7 +279,30 @@ export default {
                   <i class="ri-user-line text-primary"></i>
                   <span class="fw-medium">{{ authorDisplayName }}</span>
                 </div>
-                <div v-if="formErrors.author_id" class="text-danger fs-12 mt-1">{{ formErrors.author_id }}</div>
+              </div>
+
+              <div class="col-md-12">
+                <label class="form-label fw-semibold">Tag Berita <span class="text-danger">*</span></label>
+                <div class="berita-tag-input" :class="{ 'is-invalid': formErrors.tags }">
+                  <span v-for="tag in parsedTags" :key="tag" class="berita-tag-chip">
+                    <i class="ri-price-tag-3-line"></i>
+                    {{ tag }}
+                    <button type="button" class="berita-tag-remove" :title="`Hapus ${tag}`" @click="removeTag(tag)">
+                      <i class="ri-close-line"></i>
+                    </button>
+                  </span>
+                  <input
+                    v-model="formBerita.tagDraft"
+                    type="text"
+                    class="berita-tag-field"
+                    placeholder="Ketik tag lalu Enter"
+                    @keydown="handleTagKeydown"
+                    @blur="addTagFromDraft"
+                    @paste="handleTagPaste"
+                  />
+                </div>
+                <div v-if="formErrors.tags" class="text-danger fs-12 mt-1">{{ formErrors.tags }}</div>
+                <div class="fs-11 text-muted mt-1">Gunakan Enter atau koma untuk menambahkan lebih dari satu tag.</div>
               </div>
 
               <div class="col-12">
@@ -234,4 +338,184 @@ export default {
 </template>
 
 <style scoped>
+.berita-tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1px solid #dde5f4;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.berita-tag-input:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.berita-tag-input.is-invalid {
+  border-color: #dc3545;
+}
+
+.berita-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.berita-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(29, 78, 216, 0.1);
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.berita-tag-remove:hover {
+  background: rgba(29, 78, 216, 0.18);
+}
+
+.berita-tag-field {
+  flex: 1;
+  min-width: 180px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font-size: 13px;
+  padding: 4px 2px;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-input,
+:global(html.dark) .berita-tag-input,
+:global(body[data-theme-mode="dark"]) .berita-tag-input {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e5edf7 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-input:focus-within,
+:global(html.dark) .berita-tag-input:focus-within,
+:global(body[data-theme-mode="dark"]) .berita-tag-input:focus-within {
+  border-color: rgba(96, 165, 250, 0.72) !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.14) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-chip,
+:global(html.dark) .berita-tag-chip,
+:global(body[data-theme-mode="dark"]) .berita-tag-chip {
+  background: rgba(37, 99, 235, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-remove,
+:global(html.dark) .berita-tag-remove,
+:global(body[data-theme-mode="dark"]) .berita-tag-remove {
+  background: rgba(191, 219, 254, 0.12) !important;
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-remove:hover,
+:global(html.dark) .berita-tag-remove:hover,
+:global(body[data-theme-mode="dark"]) .berita-tag-remove:hover {
+  background: rgba(248, 113, 113, 0.22) !important;
+  color: #fecaca !important;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-field,
+:global(html.dark) .berita-tag-field,
+:global(body[data-theme-mode="dark"]) .berita-tag-field {
+  color: #e5edf7 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .berita-tag-field::placeholder,
+:global(html.dark) .berita-tag-field::placeholder,
+:global(body[data-theme-mode="dark"]) .berita-tag-field::placeholder {
+  color: #94a3b8 !important;
+}
+</style>
+
+<style>
+html[data-theme-mode="dark"] .berita-tag-input,
+html.dark .berita-tag-input,
+body[data-theme-mode="dark"] .berita-tag-input,
+body.dark .berita-tag-input {
+  background: #0b1220 !important;
+  background-color: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-input:focus-within,
+html.dark .berita-tag-input:focus-within,
+body[data-theme-mode="dark"] .berita-tag-input:focus-within,
+body.dark .berita-tag-input:focus-within {
+  border-color: rgba(96, 165, 250, 0.78) !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.14) !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-chip,
+html.dark .berita-tag-chip,
+body[data-theme-mode="dark"] .berita-tag-chip,
+body.dark .berita-tag-chip {
+  background: rgba(37, 99, 235, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.42) !important;
+  color: #bfdbfe !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-chip i,
+html.dark .berita-tag-chip i,
+body[data-theme-mode="dark"] .berita-tag-chip i,
+body.dark .berita-tag-chip i {
+  color: #93c5fd !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-remove,
+html.dark .berita-tag-remove,
+body[data-theme-mode="dark"] .berita-tag-remove,
+body.dark .berita-tag-remove {
+  background: rgba(191, 219, 254, 0.12) !important;
+  color: #dbeafe !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-remove:hover,
+html.dark .berita-tag-remove:hover,
+body[data-theme-mode="dark"] .berita-tag-remove:hover,
+body.dark .berita-tag-remove:hover {
+  background: rgba(248, 113, 113, 0.22) !important;
+  color: #fecaca !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-field,
+html.dark .berita-tag-field,
+body[data-theme-mode="dark"] .berita-tag-field,
+body.dark .berita-tag-field {
+  background: transparent !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .berita-tag-field::placeholder,
+html.dark .berita-tag-field::placeholder,
+body[data-theme-mode="dark"] .berita-tag-field::placeholder,
+body.dark .berita-tag-field::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
 </style>

@@ -40,9 +40,10 @@ const IGNORED_TYPES = new Set([
 ]);
 
 /** Delay between SSE reconnect attempts in ms */
-const RECONNECT_INTERVAL_MS = 10_000;
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_COOLDOWN_MS = 5 * 60_000;
+const RECONNECT_INTERVAL_MS = 15_000;
+const MAX_RECONNECT_ATTEMPTS = 2;
+const RECONNECT_COOLDOWN_MS = 15 * 60_000;
+const SSE_OPEN_TIMEOUT_MS = 20_000;
 const SSE_EVENT_NAMES = [
     'notification',
     'notifications',
@@ -64,6 +65,8 @@ class NotificationService {
     private onConnectionChange: ((connected: boolean) => void) | null = null;
     private reconnectAttempt = 0;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private openTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    private ssePausedUntil = 0;
     private _connected = false;
 
     // ── SSE Connection ───────────────────────────────────────────────
@@ -144,19 +147,37 @@ class NotificationService {
     connect(onEvent: EventCallback, onConnectionChange?: (connected: boolean) => void): void {
         this.onEventCallback = onEvent;
         this.onConnectionChange = onConnectionChange ?? null;
+        if (Date.now() < this.ssePausedUntil) {
+            this.setConnected(false);
+            return;
+        }
         if (this.eventSource || this.reconnectTimer) return;
         this.openConnection();
     }
 
     private openConnection(): void {
+        if (Date.now() < this.ssePausedUntil) {
+            this.setConnected(false);
+            return;
+        }
+
         const url = this.buildUrl('/api/events');
         try {
             console.info('[NotifService] opening SSE:', url);
             this.eventSource = new EventSource(url, { withCredentials: true });
+            this.openTimeoutTimer = setTimeout(() => {
+                if (!this.eventSource || this._connected) return;
+                console.warn('[NotifService] SSE did not open in time; switching to polling.');
+                this.closeConnection();
+                this.setConnected(false);
+                this.scheduleReconnect();
+            }, SSE_OPEN_TIMEOUT_MS);
 
             this.eventSource.onopen = () => {
                 console.info('[NotifService] SSE connected');
+                this.clearOpenTimeout();
                 this.reconnectAttempt = 0;
+                this.ssePausedUntil = 0;
                 this.setConnected(true);
             };
 
@@ -177,12 +198,16 @@ class NotificationService {
             });
 
             this.eventSource.onerror = () => {
-                console.warn('[NotifService] SSE error, reconnecting...');
+                this.clearOpenTimeout();
+                if (this.reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+                    console.warn('[NotifService] SSE error, reconnecting...');
+                }
                 this.closeConnection();
                 this.setConnected(false);
                 this.scheduleReconnect();
             };
         } catch (err) {
+            this.clearOpenTimeout();
             console.error('[NotifService] Failed to create EventSource:', err);
             this.setConnected(false);
             this.scheduleReconnect();
@@ -194,10 +219,12 @@ class NotificationService {
         this.reconnectAttempt++;
 
         if (this.reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+            this.ssePausedUntil = Date.now() + RECONNECT_COOLDOWN_MS;
             console.warn('[NotifService] SSE unavailable; falling back to polling for now.');
             this.reconnectTimer = setTimeout(() => {
                 this.reconnectTimer = null;
                 this.reconnectAttempt = 0;
+                this.ssePausedUntil = 0;
                 if (this.onEventCallback) this.openConnection();
             }, RECONNECT_COOLDOWN_MS);
             return;
@@ -210,12 +237,20 @@ class NotificationService {
         }, delay);
     }
 
+    private clearOpenTimeout(): void {
+        if (this.openTimeoutTimer) {
+            clearTimeout(this.openTimeoutTimer);
+            this.openTimeoutTimer = null;
+        }
+    }
+
     private setConnected(value: boolean): void {
         this._connected = value;
         this.onConnectionChange?.(value);
     }
 
     private closeConnection(): void {
+        this.clearOpenTimeout();
         if (this.eventSource) {
             this.eventSource.close();
             this.eventSource = null;
@@ -228,9 +263,11 @@ class NotificationService {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
+        this.clearOpenTimeout();
         this.closeConnection();
         this.setConnected(false);
         this.reconnectAttempt = 0;
+        this.ssePausedUntil = 0;
         this.onEventCallback = null;
         this.onConnectionChange = null;
     }

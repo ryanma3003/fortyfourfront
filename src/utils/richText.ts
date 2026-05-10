@@ -5,6 +5,8 @@ const allowedTags = new Set([
   "code",
   "div",
   "em",
+  "figcaption",
+  "figure",
   "h1",
   "h2",
   "h3",
@@ -40,11 +42,30 @@ const attributesByTag: Record<string, Set<string>> = {
 
 const urlAttributes = new Set(["href", "src"]);
 const allowedHrefProtocols = new Set(["http:", "https:", "mailto:", "tel:"]);
-const allowedSrcProtocols = new Set(["http:", "https:"]);
+const allowedSrcProtocols = new Set(["http:", "https:", "data:"]);
+
+const escapedHtmlPattern = /&lt;\/?(?:a|blockquote|br|code|div|em|figcaption|figure|h[1-6]|hr|img|li|ol|p|pre|s|span|strong|table|tbody|td|th|thead|tr|u|ul)(?:\s|&gt;|\/&gt;)/i;
 
 const getParserDocument = (html: string): Document | null => {
   if (typeof DOMParser === "undefined") return null;
   return new DOMParser().parseFromString(html, "text/html");
+};
+
+const decodeHtmlEntities = (value: string): string => {
+  const parsedDocument = getParserDocument(value);
+  return parsedDocument?.documentElement.textContent || value;
+};
+
+const normalizeRichTextInput = (html: string): string => {
+  let normalized = html.trim();
+
+  for (let i = 0; i < 3 && escapedHtmlPattern.test(normalized); i += 1) {
+    const decoded = decodeHtmlEntities(normalized).trim();
+    if (!decoded || decoded === normalized) break;
+    normalized = decoded;
+  }
+
+  return normalized;
 };
 
 const isAllowedAttribute = (tagName: string, attrName: string) => {
@@ -55,13 +76,19 @@ const getSafeUrl = (rawUrl: string, attrName: string): string | null => {
   if (!rawUrl.trim()) return null;
 
   try {
+    const trimmedUrl = rawUrl.trim();
+
+    if (attrName === "src" && trimmedUrl.startsWith("data:")) {
+      return /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(trimmedUrl) ? trimmedUrl : null;
+    }
+
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://local.invalid";
-    const parsed = new URL(rawUrl, baseUrl);
+    const parsed = new URL(trimmedUrl, baseUrl);
     const allowedProtocols = attrName === "src" ? allowedSrcProtocols : allowedHrefProtocols;
 
     if (!allowedProtocols.has(parsed.protocol)) return null;
 
-    if (parsed.origin === baseUrl && !/^[a-z][a-z0-9+.-]*:/i.test(rawUrl.trim())) {
+    if (parsed.origin === baseUrl && !/^[a-z][a-z0-9+.-]*:/i.test(trimmedUrl)) {
       return `${parsed.pathname}${parsed.search}${parsed.hash}`;
     }
 
@@ -120,7 +147,8 @@ const cleanNode = (node: Node, ownerDocument: Document): Node | null => {
 export const sanitizeRichText = (html?: string | null): string => {
   if (!html?.trim()) return "";
 
-  const parsedDocument = getParserDocument(html);
+  const normalizedHtml = normalizeRichTextInput(html);
+  const parsedDocument = getParserDocument(normalizedHtml);
   if (!parsedDocument || typeof document === "undefined") return "";
 
   const cleanDocument = document.implementation.createHTMLDocument("");
@@ -137,7 +165,8 @@ export const sanitizeRichText = (html?: string | null): string => {
 export const richTextToPlainText = (html?: string | null): string => {
   if (!html?.trim()) return "";
 
-  const parsedDocument = getParserDocument(html);
+  const normalizedHtml = normalizeRichTextInput(html);
+  const parsedDocument = getParserDocument(normalizedHtml);
   if (!parsedDocument) return html;
 
   return parsedDocument.body.textContent?.trim() || "";
@@ -146,7 +175,8 @@ export const richTextToPlainText = (html?: string | null): string => {
 export const isRichTextEmpty = (html?: string | null): boolean => {
   if (!html?.trim()) return true;
 
-  const parsedDocument = getParserDocument(html);
+  const normalizedHtml = normalizeRichTextInput(html);
+  const parsedDocument = getParserDocument(normalizedHtml);
   if (!parsedDocument) return !html.trim();
 
   return !parsedDocument.body.textContent?.trim() && !parsedDocument.body.querySelector("img");

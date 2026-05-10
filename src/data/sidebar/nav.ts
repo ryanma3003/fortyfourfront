@@ -10,6 +10,7 @@ const badgeSuccess = `<span class="badge bg-success-transparent ms-2">8</span>`
 
 interface MenuItemBase {
   title: string;
+  path?: string;
   icon?: any;
   type?: string;
   active?: boolean;
@@ -38,7 +39,26 @@ type MenuItem = LinkMenuItem | SubMenuItem;
 export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
 
   {
-    path: "/dashboard", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/dashboard",
+    icon: Svgicons.Dashboardicon,
+    title: "Dashboard",
+    type: "sub",
+    active: true,
+    dirchange: false,
+    selected: false,
+    requiredRole: "admin",
+    children: [
+      {
+        path: "/dashboard/analytics",
+        icon: '<i class="ri-line-chart-line"></i>',
+        title: "Enterprise Analytics",
+        type: "link",
+        active: true,
+        dirchange: false,
+        selected: false,
+        requiredRole: "admin",
+      },
+    ],
   },
   {
     path: "/dashboards", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
