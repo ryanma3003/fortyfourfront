@@ -7,6 +7,7 @@ export interface Berita {
     id: number;
     judul: string;
     deskripsi: string;
+    tags?: string[];
     author_id: string;
     author_name?: string;
     user_name?: string;
@@ -43,7 +44,7 @@ export interface BeritaDetailResponse {
 export interface CreateBeritaPayload {
     judul: string;
     deskripsi: string;
-    author_id: string;
+    tags: string[];
 }
 
 export interface CreateBeritaResponse {
@@ -57,7 +58,7 @@ export interface CreateBeritaResponse {
 export interface UpdateBeritaPayload {
     judul: string;
     deskripsi: string;
-    author_id: string;
+    tags: string[];
 }
 
 export interface BeritaMutationResponse {

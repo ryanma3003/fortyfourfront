@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStakeholdersStore } from '../stores/stakeholders';
 import { ikasDataStatic } from '../data/ikas-data';
@@ -74,9 +74,40 @@ const hydrateCurrentStakeholderIkas = async () => {
     ikasStore.recalculate(slug);
 };
 
+// Theme mode synchronization
+const isDarkMode = ref(false);
+let themeObserver;
+
+function syncThemeMode() {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const body = document.body;
+    isDarkMode.value =
+        root.getAttribute("data-theme-mode") === "dark" ||
+        body?.getAttribute("data-theme-mode") === "dark" ||
+        root.classList.contains("dark") ||
+        body?.classList.contains("dark");
+}
+
 // Initialize store
 onMounted(async () => {
+    syncThemeMode();
+    themeObserver = new MutationObserver(syncThemeMode);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme-mode', 'class'],
+    });
+    if (document.body) {
+        themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['data-theme-mode', 'class'],
+        });
+    }
     await hydrateCurrentStakeholderIkas();
+});
+
+onUnmounted(() => {
+    themeObserver?.disconnect();
 });
 
 watch(
@@ -126,6 +157,15 @@ const ikasDataDynamic = computed(() => {
         edit_request_reason: '',
     };
 });
+
+const ikasAnsweredQuestions = computed(() => assessmentStore.answeredQuestions || 0);
+const ikasTotalQuestions = computed(() => assessmentStore.totalQuestions || 0);
+const ikasCompletionPercentage = computed(() => {
+    const total = ikasTotalQuestions.value;
+    if (!total) return 0;
+    return Math.min(100, Math.round((ikasAnsweredQuestions.value / total) * 100));
+});
+const ikasPendingQuestions = computed(() => Math.max(ikasTotalQuestions.value - ikasAnsweredQuestions.value, 0));
 
 const editRequestReasonLabel = computed(() => {
     if (ikasDataDynamic.value.edit_request_status === 'rejected') {
@@ -550,37 +590,50 @@ const exportToPdf = async () => {
 /* ── IKAS Table ─────────────────────────────────────────── */
 .table-wrapper { 
   overflow-x: auto; 
-  border-radius: 14px;
-  border: 1px solid #dae4f0;
+  border-radius: 16px;
+  border: 1px solid #d9e3ef;
   overflow: hidden;
+  background: #fff;
 }
 
 .maturity-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 1230px;
+  table-layout: fixed;
+  background: #fff;
   font-size: 12px;
 }
+.maturity-table .col-domain-label { width: 34px; }
+.maturity-table .col-question { width: 390px; }
+.maturity-table .col-target { width: 160px; }
+.maturity-table .col-score { width: 120px; }
+.maturity-table .col-domain-score { width: 180px; }
+.maturity-table .col-domain-category { width: 260px; }
+.maturity-table .col-total-category { width: 180px; }
 .maturity-table th,
 .maturity-table td {
-  border: 1px solid #dae4f0;
-  padding: 6px 10px;
+  border: 1px solid #d9e3ef;
+  padding: 7px 10px;
   vertical-align: middle;
+  line-height: 1.25;
 }
 .maturity-table thead th {
-  background: #f3f4f6;
-  color: #4b5563;
-  font-size: 0.69rem;
+  background: #f6f7fa;
+  color: #425466;
+  font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.045em;
   text-transform: uppercase;
 }
 .left-title, .year-title, .right-title { font-weight: bold; text-align: center; }
-.year-title   { font-size: 16px; }
-.total        { background: #1e3a5f !important; color: #fff !important; font-weight: bold; text-align: center; }
-.item         { font-size: 11.5px; color: #374151; }
+.left-title   { width: 424px; }
+.year-title   { font-size: 15px; }
+.total        { background: #203a63 !important; color: #fff !important; font-weight: 800; text-align: center; }
+.item         { font-size: 11.5px; color: #334155; min-width: 320px; }
 .center       { text-align: center; }
 .bold         { font-weight: bold; }
-.status-big   { font-size: 20px; font-weight: 800; text-align: center; color: #1e3a5f; letter-spacing: 0.02em; }
+.status-big   { font-size: 19px; font-weight: 800; text-align: center; color: #1e3a5f; letter-spacing: 0.02em; }
 
 /* Domain column labels */
 .domain {
@@ -589,9 +642,11 @@ const exportToPdf = async () => {
   text-align: center;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  width: 28px;
+  min-width: 28px;
 }
 .blue   { background: linear-gradient(180deg, #1e40af, #2563eb); }
 .purple { background: linear-gradient(180deg, #5b21b6, #7c3aed); }
@@ -627,16 +682,19 @@ const exportToPdf = async () => {
 .ikas-header-score { font-size:2.4rem; font-weight:900; color:#fff; line-height:1; }
 .ikas-header-score-lbl { font-size:11px; color:rgba(255,255,255,0.6); letter-spacing:0.04em; text-transform:uppercase; margin-top:2px; }
 .ikas-header-kat-badge {
-  display:inline-block;
-  padding: 8px 20px;
+  display:inline-flex;
+  align-items:center;
+  min-height: 34px;
+  padding: 7px 16px;
   border-radius:50px;
   background: rgba(255,255,255,0.15);
   color:#fff;
-  font-size:0.9rem;
+  font-size:0.78rem;
   font-weight:700;
   letter-spacing:0.04em;
   border:1px solid rgba(255,255,255,0.3);
   text-transform:uppercase;
+  text-align:center;
 }
 
 /* ── Action buttons area ────────────────────────────────── */
@@ -806,27 +864,27 @@ const exportToPdf = async () => {
 
 /* ── Domain score summary strip ─────────────────────────── */
 .domain-strip {
-  display: flex;
+  display: grid;
   gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 1.5rem;
-  flex-wrap: wrap;
 }
 .domain-card {
-  flex: 1; min-width: 160px;
   border-radius: 14px;
-  padding: 14px 18px;
+  min-width: 0;
+  padding: 14px 16px;
   display: flex; align-items: center; gap: 12px;
   position: relative; overflow: hidden;
 }
-.domain-card-blue   { background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); box-shadow: 0 4px 18px rgba(37,99,235,0.3); }
-.domain-card-purple { background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%); box-shadow: 0 4px 18px rgba(124,58,237,0.3); }
-.domain-card-orange { background: linear-gradient(135deg, #78350f 0%, #d97706 100%); box-shadow: 0 4px 18px rgba(217,119,6,0.3); }
-.domain-card-green  { background: linear-gradient(135deg, #064e3b 0%, #059669 100%); box-shadow: 0 4px 18px rgba(5,150,105,0.3); }
-.domain-card-icon   { width:42px; height:42px; border-radius:12px; background: rgba(255,255,255,0.18); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.domain-card-blue   { background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%); box-shadow: 0 6px 18px rgba(37,99,235,0.26); }
+.domain-card-purple { background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%); box-shadow: 0 6px 18px rgba(124,58,237,0.24); }
+.domain-card-orange { background: linear-gradient(135deg, #b45309 0%, #d97706 100%); box-shadow: 0 6px 18px rgba(217,119,6,0.24); }
+.domain-card-green  { background: linear-gradient(135deg, #065f46 0%, #059669 100%); box-shadow: 0 6px 18px rgba(5,150,105,0.24); }
+.domain-card-icon   { width:42px; height:42px; border-radius:12px; background: rgba(255,255,255,0.16); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .domain-card-icon i { font-size:1.3rem; color:#fff; }
 .domain-card-score  { font-size: 1.6rem; font-weight: 900; color:#fff; line-height:1; }
 .domain-card-label  { font-size: 11px; color: rgba(255,255,255,0.75); margin-top:3px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; }
-.domain-card-kat    { font-size: 11px; color: rgba(255,255,255,0.85); margin-top:2px; font-style:italic; }
+.domain-card-kat    { font-size: 11px; color: rgba(255,255,255,0.85); line-height: 1.25; margin-top:2px; }
 
 /* ── Radar section header ───────────────────────────────── */
 .radar-section-header {
@@ -845,48 +903,671 @@ const exportToPdf = async () => {
 .radar-header-icon i { font-size:1.6rem; color:#fff; }
 .radar-header-title  { font-size:1rem; font-weight:800; color:#fff; }
 .radar-header-sub    { font-size:12px; color:rgba(255,255,255,0.6); margin-top:2px; }
+
+.ikas-shell {
+  --ikas-surface: rgba(255, 255, 255, 0.94);
+  --ikas-surface-soft: #f8fbff;
+  --ikas-border: #dce7f4;
+  --ikas-text: #0f172a;
+  --ikas-muted: #64748b;
+  --ikas-track: #e8eef6;
+}
+
+.ikas-hero-card {
+  background: transparent;
+  box-shadow: none;
+}
+
+.ikas-unified-header {
+  border-radius: 18px;
+  padding: 1.2rem 1.35rem;
+  min-height: 102px;
+}
+
+.ikas-header-left,
+.ikas-header-right {
+  align-items: center;
+  display: flex;
+}
+
+.ikas-header-left {
+  gap: 1rem;
+  min-width: 280px;
+}
+
+.ikas-header-right {
+  gap: 0.45rem;
+  justify-content: flex-end;
+  max-width: 540px;
+  flex-wrap: wrap;
+}
+
+.ikas-header-icon-box {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.ikas-header-kicker {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ikas-header-label {
+  padding-top: 2px;
+}
+
+.ikas-main-card {
+  background: var(--ikas-surface);
+  border: 1px solid var(--ikas-border);
+  border-radius: 18px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.06);
+}
+
+.ikas-progress-panel {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.14), transparent 34%),
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid var(--ikas-border);
+  border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.045);
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.ikas-progress-head,
+.ikas-progress-foot {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ikas-progress-title-wrap {
+  align-items: center;
+  display: flex;
+  gap: 0.85rem;
+}
+
+.ikas-progress-icon {
+  align-items: center;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  border-radius: 13px;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
+  color: #fff;
+  display: flex;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.ikas-progress-icon i {
+  font-size: 1.4rem;
+}
+
+.ikas-progress-title {
+  color: var(--ikas-text);
+  font-size: 0.95rem;
+  font-weight: 850;
+}
+
+.ikas-progress-subtitle,
+.ikas-progress-foot {
+  color: var(--ikas-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.ikas-progress-stat {
+  align-items: flex-end;
+  display: grid;
+  gap: 0.12rem;
+  justify-items: end;
+}
+
+.ikas-progress-stat strong {
+  color: #1d4ed8;
+  font-size: 1.55rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ikas-progress-stat span {
+  color: var(--ikas-muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.ikas-progress-track {
+  background: var(--ikas-track);
+  border-radius: 999px;
+  height: 10px;
+  margin: 1rem 0 0.75rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.ikas-progress-fill {
+  background: linear-gradient(90deg, #2563eb, #0ea5e9, #10b981);
+  border-radius: inherit;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+  height: 100%;
+  min-width: 8px;
+  transition: width 0.28s ease;
+}
+
+.ikas-progress-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 0.8rem;
+}
+
+.ikas-progress-metric {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.7);
+  border-radius: 12px;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+}
+
+.ikas-progress-metric span {
+  color: var(--ikas-muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ikas-progress-metric strong {
+  color: var(--ikas-text);
+  font-size: 0.96rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.ikas-year-status-bar {
+  align-items: center;
+  background: rgba(248, 251, 255, 0.86);
+  border: 1px solid var(--ikas-border);
+  border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.045);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding: 12px 14px;
+}
+
+.ikas-year-status-main {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ikas-year-status-icon {
+  align-items: center;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+  color: #fff;
+  display: flex;
+  flex-shrink: 0;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.ikas-year-status-icon i {
+  font-size: 1.25rem;
+}
+
+.ikas-year-status-kicker {
+  color: var(--ikas-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ikas-year-status-value {
+  color: var(--ikas-text);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.ikas-year-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ikas-year-status-chip {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 999px;
+  color: #475569;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 850;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.ikas-year-status-chip i {
+  font-size: 0.92rem;
+}
+
+.ikas-year-status-chip.is-valid {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.22);
+  color: #047857;
+}
+
+.ikas-year-status-chip.is-draft {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #b45309;
+}
+
+.ikas-year-status-chip.is-edit {
+  background: rgba(37, 99, 235, 0.09);
+  border-color: rgba(37, 99, 235, 0.18);
+  color: #1d4ed8;
+}
+
+.ikas-action-bar {
+  background: rgba(248, 251, 255, 0.8);
+  border-color: var(--ikas-border);
+  border-radius: 16px;
+  display: block;
+  margin: 0 0 1rem;
+  box-shadow: none;
+  padding: 14px;
+}
+
+.ikas-action-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.ikas-action-title {
+  color: var(--ikas-text);
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.ikas-action-subtitle {
+  color: var(--ikas-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.ikas-action-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ikas-action-meta-chip {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 999px;
+  color: var(--ikas-text);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 850;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.ikas-action-meta-chip i {
+  font-size: 0.9rem;
+}
+
+.ikas-action-meta-chip-muted {
+  background: rgba(248, 250, 252, 0.62);
+  border-color: rgba(203, 213, 225, 0.52);
+  color: #738196;
+  font-weight: 750;
+}
+
+.ikas-action-grid {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.ikas-action-cluster {
+  align-items: flex-start;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  gap: 8px;
+  justify-content: stretch;
+  min-width: 0;
+  padding: 0;
+}
+
+.ikas-action-cluster-admin {
+  background: transparent;
+  justify-items: stretch;
+}
+
+.ikas-action-label {
+  color: var(--ikas-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.ikas-action-buttons {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.btn-ikas-input,
+.btn-ikas-upload,
+.btn-ikas-pdf,
+.btn-ikas-delete,
+.btn-ikas-validate,
+.btn-ikas-unlock,
+.btn-ikas-approve,
+.btn-ikas-reject {
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 7px 13px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.09);
+}
+
+.table-wrapper {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: none;
+  border: 1px solid #d9e3ef;
+}
+
+.maturity-table thead th {
+  background: #f6f7fa;
+  color: #425466;
+}
+
+.maturity-table td {
+  background: #fff;
+}
+
+.maturity-table .total,
+.maturity-table td.domain {
+  background-clip: padding-box;
+}
+
+.maturity-table td.domain.blue {
+  background: linear-gradient(180deg, #1e40af, #2563eb) !important;
+  color: #fff !important;
+}
+
+.maturity-table td.domain.purple {
+  background: linear-gradient(180deg, #5b21b6, #7c3aed) !important;
+  color: #fff !important;
+}
+
+.maturity-table td.domain.orange {
+  background: linear-gradient(180deg, #b45309, #d97706) !important;
+  color: #fff !important;
+}
+
+.maturity-table td.domain.green {
+  background: linear-gradient(180deg, #065f46, #059669) !important;
+  color: #fff !important;
+}
+
+@media (min-width: 992px) {
+  .ikas-action-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+  }
+
+  .ikas-action-cluster-admin .ikas-action-buttons {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .domain-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .ikas-unified-header,
+  .ikas-header-left,
+  .ikas-header-right,
+  .ikas-progress-head,
+  .ikas-progress-foot,
+  .ikas-action-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ikas-header-right,
+  .ikas-action-buttons {
+    justify-content: flex-start;
+  }
+
+  .ikas-header-left {
+    min-width: 0;
+  }
+
+  .domain-strip,
+  .ikas-progress-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .ikas-action-meta {
+    justify-content: flex-start;
+  }
+
+  .ikas-year-status-bar,
+  .ikas-year-status-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ikas-year-status-chips {
+    justify-content: flex-start;
+  }
+
+  .ikas-progress-panel,
+  .ikas-action-bar {
+    padding: 0.9rem;
+  }
+
+  .ikas-action-buttons,
+  .ikas-action-buttons button {
+    width: 100%;
+  }
+
+  .ikas-action-buttons button {
+    justify-content: center;
+  }
+}
+
+.ikas-shell.is-dark {
+  --ikas-surface: rgba(15, 23, 42, 0.92);
+  --ikas-surface-soft: rgba(17, 24, 39, 0.88);
+  --ikas-border: rgba(148, 163, 184, 0.22);
+  --ikas-text: #e5edf7;
+  --ikas-muted: #9fb0c5;
+  --ikas-track: rgba(148, 163, 184, 0.2);
+}
+
+.ikas-shell.is-dark .ikas-main-card,
+.ikas-shell.is-dark .ikas-progress-panel {
+  background: var(--ikas-surface) !important;
+  border-color: var(--ikas-border) !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28) !important;
+}
+
+.ikas-shell.is-dark .table-wrapper {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+  }
+
+.ikas-shell.is-dark .ikas-action-bar,
+.ikas-shell.is-dark .ikas-action-cluster {
+  background: rgba(17, 24, 39, 0.78) !important;
+  border-color: var(--ikas-border) !important;
+  box-shadow: none !important;
+}
+
+.ikas-shell.is-dark .ikas-action-title,
+.ikas-shell.is-dark .ikas-action-meta-chip {
+  color: #dbe7f3 !important;
+}
+
+.ikas-shell.is-dark .ikas-action-meta-chip {
+  background: rgba(15, 23, 42, 0.68) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.ikas-shell.is-dark .ikas-year-status-bar {
+  background: rgba(17, 24, 39, 0.78) !important;
+  border-color: var(--ikas-border) !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22) !important;
+}
+
+.ikas-shell.is-dark .ikas-year-status-chip {
+  background: rgba(15, 23, 42, 0.68) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #dbe7f3 !important;
+}
+
+.ikas-shell.is-dark .ikas-year-status-chip.is-valid {
+  background: rgba(16, 185, 129, 0.14) !important;
+  border-color: rgba(16, 185, 129, 0.22) !important;
+  color: #6ee7b7 !important;
+}
+
+.ikas-shell.is-dark .ikas-year-status-chip.is-draft {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(245, 158, 11, 0.22) !important;
+  color: #fcd34d !important;
+}
+
+.ikas-shell.is-dark .ikas-year-status-chip.is-edit {
+  background: rgba(59, 130, 246, 0.14) !important;
+  border-color: rgba(59, 130, 246, 0.22) !important;
+  color: #bfdbfe !important;
+}
+
+.ikas-shell.is-dark .ikas-action-meta-chip-muted {
+  background: rgba(15, 23, 42, 0.46) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: #9fb0c5 !important;
+}
+
+.ikas-shell.is-dark .ikas-progress-metric {
+  background: rgba(15, 23, 42, 0.64) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+.ikas-shell.is-dark .maturity-table {
+  background: transparent !important;
+}
+
+.ikas-shell.is-dark .maturity-table th {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.ikas-shell.is-dark .maturity-table td {
+  background: rgba(255, 255, 255, 0.015) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.ikas-shell.is-dark .maturity-table .total {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #fff !important;
+}
+
+.ikas-shell.is-dark .maturity-table td.domain.blue {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-left: 4px solid #3b82f6 !important;
+  color: #93c5fd !important;
+}
+
+.ikas-shell.is-dark .maturity-table td.domain.purple {
+  background: rgba(139, 92, 246, 0.12) !important;
+  border-left: 4px solid #8b5cf6 !important;
+  color: #c4b5fd !important;
+}
+
+.ikas-shell.is-dark .maturity-table td.domain.orange {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-left: 4px solid #f59e0b !important;
+  color: #fcd34d !important;
+}
+
+.ikas-shell.is-dark .maturity-table td.domain.green {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-left: 4px solid #10b981 !important;
+  color: #6ee7b7 !important;
+}
+
+.ikas-shell.is-dark .maturity-table .item,
+.ikas-shell.is-dark .status-big {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
 </style>
 
 <template>
   <Pageheader :propData="dataToPass" />
 
-  <div id="ikas-report-content" class="p-1">
+  <div id="ikas-report-content" class="ikas-shell p-1" :class="{ 'is-dark': isDarkMode }">
   <!-- Standalone Header Card -->
   <div class="row">
     <div class="col-12">
-      <div class="card custom-card border-0 mb-4" style="background: transparent; box-shadow: none;">
-
-        <!-- Unified Header -->
-        <div class="card-header ikas-unified-header" style="border-radius: 14px;">
-          <!-- Left: title + stakeholder -->
-          <div class="d-flex align-items-center gap-3">
+      <div class="card custom-card border-0 mb-4 ikas-hero-card">
+        <div class="card-header ikas-unified-header">
+          <div class="ikas-header-left">
             <div class="ikas-header-icon-box">
               <i class="ri-building-2-line"></i>
             </div>
-            <div>
+            <div class="ikas-header-copy">
+              <div class="ikas-header-kicker">IKAS</div>
               <div class="ikas-header-label">IKAS - {{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }}</div>
               <div class="ikas-header-stakeholder">
-                <span v-if="currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor" class="ikas-header-sektor">{{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor }}</span>
+                <span v-if="currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor" class="ikas-header-sektor">
+                  {{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor }}
+                </span>
               </div>
             </div>
           </div>
-          <!-- Right: badges -->
-          <div class="ikas-header-score-box d-flex align-items-center gap-2">
-            <span v-if="ikasDataDynamic.is_validated" class="badge bg-success-transparent rounded-pill px-3 py-2">
-              <i class="ri-checkbox-circle-fill me-1"></i> Tervalidasi
-            </span>
-            <span v-else class="badge bg-warning-transparent rounded-pill px-3 py-2">
-              <i class="ri-error-warning-line me-1"></i> Belum Validasi
-            </span>
-            <span v-if="ikasDataDynamic.edit_request_status === 'pending'" class="badge bg-info-transparent rounded-pill px-3 py-2">
-              <i class="ri-edit-2-line me-1"></i> Edit Pending
-            </span>
-            <span v-else-if="ikasDataDynamic.edit_request_status === 'approved'" class="badge bg-success-transparent rounded-pill px-3 py-2">
-              <i class="ri-check-double-line me-1"></i> Edit Disetujui
-            </span>
-            <span v-else-if="ikasDataDynamic.edit_request_status === 'rejected'" class="badge bg-danger-transparent rounded-pill px-3 py-2">
-              <i class="ri-close-circle-line me-1"></i> Edit Ditolak
-            </span>
+          <div class="ikas-header-right">
             <span class="ikas-header-kat-badge">{{ ikasDataDynamic.total_kategori }}</span>
           </div>
         </div>
@@ -909,8 +1590,47 @@ const exportToPdf = async () => {
   <!-- Main IKAS Card Body -->
   <div class="row">
     <div class="col-12">
-      <div class="card custom-card" style="border-radius: 14px;">
+      <div class="card custom-card ikas-main-card">
         <div class="card-body p-4">
+          <div class="ikas-year-status-bar">
+            <div class="ikas-year-status-main">
+              <div class="ikas-year-status-icon"><i class="ri-calendar-check-line"></i></div>
+              <div>
+                <div class="ikas-year-status-kicker">Tahun Data</div>
+                <div class="ikas-year-status-value">{{ tableMeasurementYear }}</div>
+              </div>
+            </div>
+            <div class="ikas-year-status-chips">
+              <span
+                class="ikas-year-status-chip"
+                :class="ikasDataDynamic.is_validated ? 'is-valid' : 'is-draft'"
+              >
+                <i :class="ikasDataDynamic.is_validated ? 'ri-checkbox-circle-line' : 'ri-time-line'"></i>
+                {{ ikasDataDynamic.is_validated ? 'Tervalidasi' : 'Belum validasi' }}
+              </span>
+              <span
+                v-if="ikasDataDynamic.edit_request_status === 'pending'"
+                class="ikas-year-status-chip is-edit"
+              >
+                <i class="ri-edit-2-line"></i>
+                Edit pending
+              </span>
+              <span
+                v-else-if="ikasDataDynamic.edit_request_status === 'approved'"
+                class="ikas-year-status-chip is-edit"
+              >
+                <i class="ri-check-line"></i>
+                Edit disetujui
+              </span>
+              <span
+                v-else-if="ikasDataDynamic.edit_request_status === 'rejected'"
+                class="ikas-year-status-chip is-edit"
+              >
+                <i class="ri-close-line"></i>
+                Edit ditolak
+              </span>
+            </div>
+          </div>
 
           <!-- Domain summary cards -->
           <div class="domain-strip">
@@ -948,55 +1668,118 @@ const exportToPdf = async () => {
             </div>
           </div>
 
+          <div class="ikas-progress-panel">
+            <div class="ikas-progress-head">
+              <div class="ikas-progress-title-wrap">
+                <div class="ikas-progress-icon"><i class="ri-progress-3-line"></i></div>
+                <div>
+                  <div class="ikas-progress-title">Progress IKAS</div>
+                  <div class="ikas-progress-subtitle">
+                    {{ ikasAnsweredQuestions }} dari {{ ikasTotalQuestions }} jawaban terisi
+                  </div>
+                </div>
+              </div>
+              <div class="ikas-progress-stat">
+                <strong>{{ ikasCompletionPercentage }}%</strong>
+                <span>{{ ikasPendingQuestions }} belum terisi</span>
+              </div>
+            </div>
+            <div class="ikas-progress-track">
+              <div class="ikas-progress-fill" :style="{ width: `${ikasCompletionPercentage}%` }"></div>
+            </div>
+            <div class="ikas-progress-metrics">
+              <div class="ikas-progress-metric">
+                <span>Terjawab</span>
+                <strong>{{ ikasAnsweredQuestions }}/{{ ikasTotalQuestions }}</strong>
+              </div>
+              <div class="ikas-progress-metric">
+                <span>Persentase</span>
+                <strong>{{ ikasCompletionPercentage }}%</strong>
+              </div>
+              <div class="ikas-progress-metric">
+                <span>Sisa</span>
+                <strong>{{ ikasPendingQuestions }}</strong>
+              </div>
+            </div>
+            <div class="ikas-progress-foot">
+              <span>Jawaban terbaru langsung tercermin di ringkasan IKAS.</span>
+              <span>Target: 100%</span>
+            </div>
+          </div>
+
           <!-- Action toolbar -->
           <div class="ikas-action-bar" data-html2canvas-ignore="true">
             <input type="file" ref="fileInput" class="d-none" accept=".xlsx, .xls" @change="handleFile" />
-            <div class="ikas-action-group">
-              <button
-                @click="goToIkasCrud"
-                class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input"
-                :class="{ 'btn-ikas-input-locked': ikasDataDynamic.is_validated }"
-                :title="ikasDataDynamic.is_validated ? 'Buka validasi dulu sebelum edit' : 'Input data IKAS'"
-              >
-                <i class="ri-edit-box-line"></i> Input Data
-              </button>
-              <button @click="triggerFileInput" class="btn-ikas-upload" :disabled="loading">
-                <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-file-excel-2-line"></i>
-                {{ loading ? 'Mengupload...' : 'Upload Excel' }}
-              </button>
-              <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !currentIkasId">
-                <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-file-pdf-line"></i>
-                {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
-              </button>
+            <div class="ikas-action-header">
+              <div>
+                <div class="ikas-action-title">Panel Aksi IKAS</div>
+                <div class="ikas-action-subtitle">Kelola input, status, ekspor, dan validasi dari satu area.</div>
+              </div>
+              <div class="ikas-action-meta">
+                <span class="ikas-action-meta-chip">
+                  <i class="ri-file-list-3-line"></i>
+                  {{ ikasAnsweredQuestions }}/{{ ikasTotalQuestions }} terjawab
+                </span>
+                <span class="ikas-action-meta-chip">
+                  <i class="ri-check-double-line"></i>
+                  {{ ikasCompletionPercentage }}% selesai
+                </span>
+              </div>
             </div>
-            <div class="ikas-action-group ikas-action-group-admin">
-              <button v-if="canRequestEdit && currentIkasId && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
-                <span v-if="isRequestingEdit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-edit-2-line"></i>
-                {{ isRequestingEdit ? 'Mengajukan...' : 'Request Edit' }}
-              </button>
-              <button v-if="currentIkasId && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
-                <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-checkbox-circle-line"></i>
-                {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
-              </button>
-              <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
-                <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-check-line"></i>
-                {{ isApproving ? 'Menyetujui...' : 'Request Acc' }}
-              </button>
-              <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
-                <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-close-line"></i>
-                {{ isRejecting ? 'Menolak...' : 'Tolak' }}
-              </button>
-              <button v-if="currentIkasId" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
-                <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <i v-else class="ri-delete-bin-line"></i>
-                {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
-              </button>
+            <div class="ikas-action-grid">
+              <div class="ikas-action-cluster">
+                <span class="ikas-action-label">Aksi utama</span>
+                <div class="ikas-action-buttons">
+                  <button
+                    @click="goToIkasCrud"
+                    class="btn-secondary btn-glare rounded-pill btn-md btn-ikas-input"
+                    :class="{ 'btn-ikas-input-locked': ikasDataDynamic.is_validated }"
+                    :title="ikasDataDynamic.is_validated ? 'Buka validasi dulu sebelum edit' : 'Input data IKAS'"
+                  >
+                    <i class="ri-edit-box-line"></i> Input Data
+                  </button>
+                  <button @click="triggerFileInput" class="btn-ikas-upload" :disabled="loading">
+                    <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-file-excel-2-line"></i>
+                    {{ loading ? 'Mengupload...' : 'Upload Excel' }}
+                  </button>
+                  <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !currentIkasId">
+                    <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-file-pdf-line"></i>
+                    {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
+                  </button>
+                </div>
+              </div>
+              <div class="ikas-action-cluster ikas-action-cluster-admin">
+                <span class="ikas-action-label">Kontrol status</span>
+                <div class="ikas-action-buttons">
+                  <button v-if="canRequestEdit && currentIkasId && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
+                    <span v-if="isRequestingEdit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-edit-2-line"></i>
+                    {{ isRequestingEdit ? 'Mengajukan...' : 'Request Edit' }}
+                  </button>
+                  <button v-if="currentIkasId && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
+                    <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-checkbox-circle-line"></i>
+                    {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
+                  </button>
+                  <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
+                    <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-check-line"></i>
+                    {{ isApproving ? 'Menyetujui...' : 'Request Acc' }}
+                  </button>
+                  <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
+                    <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-close-line"></i>
+                    {{ isRejecting ? 'Menolak...' : 'Tolak' }}
+                  </button>
+                  <button v-if="currentIkasId" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
+                    <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <i v-else class="ri-delete-bin-line"></i>
+                    {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1015,6 +1798,15 @@ const exportToPdf = async () => {
           <!-- Maturity table (unchanged logic) -->
           <div class="table-wrapper">
             <table class="maturity-table">
+              <colgroup>
+                <col class="col-domain-label" />
+                <col class="col-question" />
+                <col class="col-target" />
+                <col class="col-score" />
+                <col class="col-domain-score" />
+                <col class="col-domain-category" />
+                <col class="col-total-category" />
+              </colgroup>
               <thead>
                 <tr>
                   <th rowspan="2" colspan="2" class="left-title fs-14">
@@ -1166,3 +1958,10 @@ const exportToPdf = async () => {
   </div>
 
 </template>
+
+
+
+
+
+
+

@@ -70,6 +70,9 @@ const scopeColor = computed(() => {
 
       <!-- Question Text -->
       <div class="question-text mb-4">
+        <div v-if="question.subCategoryName" class="text-muted small mb-1">
+          {{ question.subCategoryName }}
+        </div>
         <h6 class="mb-0">{{ question.text }}</h6>
       </div>
 

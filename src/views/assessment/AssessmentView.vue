@@ -57,12 +57,6 @@ const isCurrentDomain = (domainId: string) => {
   return assessmentStore.progress.currentDomainId === domainId;
 };
 
-// Check if category is current
-const isCurrentCategory = (domainId: string, categoryId: string) => {
-  return assessmentStore.progress.currentDomainId === domainId &&
-         assessmentStore.progress.currentCategoryId === categoryId;
-};
-
 // Get answered count for a category
 const getCategoryProgress = (domainId: string, categoryId: string) => {
   const domain = assessmentStore.domains.find(d => d.id === domainId);
@@ -70,37 +64,59 @@ const getCategoryProgress = (domainId: string, categoryId: string) => {
   
   if (!category) return { answered: 0, total: 0 };
 
-  const total = category.questions.length;
-  const answered = category.questions.filter(q => 
+  const questions = category.subCategories?.length
+    ? category.subCategories.flatMap((subCategory) => subCategory.questions)
+    : category.questions;
+
+  const total = questions.length;
+  const answered = questions.filter(q => 
     assessmentStore.getAnswer(q.id) !== undefined
   ).length;
 
   return { answered, total };
 };
 
-// Sidebar navigation - jump to specific category (page 1)
-const jumpToCategory = (domainId: string, categoryId: string) => {
-  assessmentStore.updateProgress(domainId, categoryId, 1);
+const getSubCategoryProgress = (domainId: string, categoryId: string, subCategoryId: string) => {
+  const domain = assessmentStore.domains.find(d => d.id === domainId);
+  const category = domain?.categories.find(c => c.id === categoryId);
+  const subCategory = category?.subCategories.find(sc => sc.id === subCategoryId);
+
+  if (!subCategory) return { answered: 0, total: 0 };
+
+  const total = subCategory.questions.length;
+  const answered = subCategory.questions.filter(q =>
+    assessmentStore.getAnswer(q.id) !== undefined
+  ).length;
+
+  return { answered, total };
+};
+
+// Sidebar navigation - jump to specific sub-category (page 1)
+const jumpToSubCategory = (domainId: string, categoryId: string, subCategoryId: string) => {
+  assessmentStore.updateProgress(domainId, categoryId, subCategoryId, 1);
 };
 
 // --- Computed Properties for Navigation & State ---
 
 // Check if we are on the very last page of the entire assessment
 const isLastPage = computed(() => {
-    const totalPages = assessmentStore.totalPagesInCategory;
-    const isLastPageInCat = assessmentStore.progress.currentPage === totalPages;
-    
     const d = assessmentStore.currentDomain;
     const c = assessmentStore.currentCategory;
+    const sc = assessmentStore.currentSubCategory;
     
     if(!d || !c) return false;
     
     const domains = assessmentStore.domains;
+    const lastDomain = domains[domains.length - 1];
+    const lastCategory = lastDomain?.categories[lastDomain.categories.length - 1];
+    const lastSubCategory = lastCategory?.subCategories[lastCategory.subCategories.length - 1];
     
-    const isLastDom = d.id === domains[domains.length-1].id;
-    const isLastCat = c.id === d.categories[d.categories.length-1].id;
-    
-    return isLastDom && isLastCat && isLastPageInCat;
+    const isLastDom = d.id === lastDomain?.id;
+    const isLastCat = c.id === lastCategory?.id;
+    const isLastSubCat = (lastSubCategory?.id || '') === (sc?.id || '');
+    const isLastPageInStep = assessmentStore.progress.currentPage === assessmentStore.totalPagesInSubCategory;
+
+    return isLastDom && isLastCat && isLastSubCat && isLastPageInStep;
 });
 
 // Navigation checks
@@ -130,7 +146,18 @@ const goToPreviousPage = () => {
   assessmentStore.goToPreviousPage();
 };
 
-const goToNextPage = () => {
+const goToNextPage = async () => {
+  if (!assessmentStore.isLocked && currentSlug.value) {
+    const syncResult = await assessmentStore.syncCurrentPageAnswersToBackend(currentSlug.value);
+    if (!syncResult.success) {
+      toast.error('Masih ada jawaban halaman ini yang gagal disimpan', {
+        autoClose: 3000,
+        position: 'top-right',
+      });
+      return;
+    }
+  }
+
   assessmentStore.goToNextPage();
 };
 
@@ -260,7 +287,7 @@ const handleEditData = () => {
           :answered="assessmentStore.answeredQuestions"
           :total="assessmentStore.totalQuestions"
           :currentPage="assessmentStore.progress.currentPage"
-          :totalPages="assessmentStore.totalPagesInCategory"
+          :totalPages="assessmentStore.totalPagesInSubCategory"
           title="IKAS"
         />
       </div>
@@ -371,18 +398,36 @@ const handleEditData = () => {
                 data-bs-parent="#assessmentAccordion"
               >
                 <div class="accordion-body p-0">
-                  <!-- Categories as Clickable Items -->
-                  <div 
-                    v-for="category in domain.categories" 
-                    :key="category.id"
-                    class="subcategory-item"
-                    :class="{ 'active': isCurrentCategory(domain.id, category.id) }"
-                    @click="jumpToCategory(domain.id, category.id)"
-                  >
-                    <div class="d-flex justify-content-between align-items-center">
-                      <span class="subcategory-name">{{ category.name }}</span>
+                  <div v-for="category in domain.categories" :key="category.id" class="category-group border-bottom">
+                    <div class="bg-light px-3 py-2 fw-bold fs-11 text-muted text-uppercase tracking-wider d-flex justify-content-between align-items-center">
+                      <span>{{ category.name }}</span>
                       <span class="badge bg-secondary-transparent">
                         {{ getCategoryProgress(domain.id, category.id).answered }} / 
+                        {{ getCategoryProgress(domain.id, category.id).total }}
+                      </span>
+                    </div>
+                    <div
+                      v-for="subCategory in category.subCategories"
+                      :key="subCategory.id"
+                      class="subcategory-item px-3 py-2 d-flex justify-content-between align-items-center"
+                      :class="{ 'active': assessmentStore.progress.currentCategoryId === category.id && assessmentStore.progress.currentSubCategoryId === subCategory.id }"
+                      @click="jumpToSubCategory(domain.id, category.id, subCategory.id)"
+                    >
+                      <span class="subcategory-name">{{ subCategory.name }}</span>
+                      <span class="badge bg-primary-transparent">
+                        {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).answered }} /
+                        {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).total }}
+                      </span>
+                    </div>
+                    <div
+                      v-if="category.subCategories.length === 0"
+                      class="subcategory-item px-3 py-2 d-flex justify-content-between align-items-center"
+                      :class="{ 'active': assessmentStore.progress.currentCategoryId === category.id }"
+                      @click="jumpToSubCategory(domain.id, category.id, '')"
+                    >
+                      <span class="subcategory-name">Pertanyaan</span>
+                      <span class="badge bg-primary-transparent">
+                        {{ getCategoryProgress(domain.id, category.id).answered }} /
                         {{ getCategoryProgress(domain.id, category.id).total }}
                       </span>
                     </div>
@@ -471,7 +516,7 @@ const handleEditData = () => {
           <PaginationControl
             v-if="!assessmentStore.loading && assessmentStore.currentPageQuestions.length > 0"
             :currentPage="assessmentStore.progress.currentPage"
-            :totalPages="assessmentStore.totalPagesInCategory"
+            :totalPages="assessmentStore.totalPagesInSubCategory"
             :canGoPrevious="canGoPrevious"
             :canGoNext="canGoNext"
             @previous="goToPreviousPage"

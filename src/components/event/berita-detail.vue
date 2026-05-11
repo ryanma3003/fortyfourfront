@@ -7,6 +7,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useUsersStore } from "../../stores/users";
 import { useRouter, useRoute } from "vue-router";
 import type { Berita } from "../../types/berita.types";
+import { sanitizeRichText } from "../../utils/richText";
 
 export default {
   components: { Pageheader },
@@ -152,43 +153,25 @@ export default {
       }
     };
 
-    const decodeHtmlEntities = (value: string): string => {
-      if (typeof document === 'undefined') return value;
-      let decoded = value;
-      for (let i = 0; i < 2; i += 1) {
-        const textarea = document.createElement('textarea');
-        textarea.innerHTML = decoded;
-        const next = textarea.value;
-        if (next === decoded) break;
-        decoded = next;
-      }
-      return decoded;
-    };
-
-    const sanitizeRichText = (value: string): string => {
-      if (typeof document === 'undefined') return value;
-      const template = document.createElement('template');
-      template.innerHTML = value;
-      template.content.querySelectorAll('script, iframe, object, embed').forEach((node) => node.remove());
-      template.content.querySelectorAll('*').forEach((node) => {
-        [...node.attributes].forEach((attr) => {
-          const name = attr.name.toLowerCase();
-          const value = attr.value.trim().toLowerCase();
-          const isUnsafeUrl = ['href', 'src'].includes(name) && value.startsWith('javascript:');
-          if (name.startsWith('on') || isUnsafeUrl) node.removeAttribute(attr.name);
-        });
-      });
-      return template.innerHTML;
-    };
-
     const htmlOrFallback = (value: string) => {
       if (!value?.trim()) return 'Tidak ada deskripsi tersedia.';
-      return sanitizeRichText(decodeHtmlEntities(value));
+      return sanitizeRichText(value);
+    };
+
+    const getTags = (item: Berita | null): string[] => {
+      const rawTags = (item as any)?.tags;
+      if (Array.isArray(rawTags)) {
+        return rawTags.map((tag) => String(tag).trim()).filter(Boolean);
+      }
+      if (typeof rawTags === "string") {
+        return rawTags.split(",").map((tag) => tag.trim()).filter(Boolean);
+      }
+      return [];
     };
 
     return {
       dataToPass, beritaData, isLoading, isDarkMode, goBack, goEdit, showToast, toastMessage, toastType,
-      getAuthorName, formatDate, formatDateShort, htmlOrFallback
+      getAuthorName, getTags, formatDate, formatDateShort, htmlOrFallback
     };
   },
 };
@@ -227,6 +210,7 @@ export default {
         <button type="button" class="brd-icon-btn" @click="goBack" title="Kembali"><i class="ri-arrow-left-line"></i></button>
         <span class="brd-meta-pill"><i class="ri-newspaper-line"></i> Berita</span>
         <span class="brd-meta-pill"><i class="ri-user-3-line"></i> {{ getAuthorName(beritaData) }}</span>
+        <span v-for="tag in getTags(beritaData)" :key="tag" class="brd-meta-pill"><i class="ri-price-tag-3-line"></i> {{ tag }}</span>
       </div>
       <h1>{{ beritaData.judul }}</h1>
       <p>Dipublikasikan pada {{ formatDate(beritaData.created_at) }}</p>
@@ -250,7 +234,13 @@ export default {
           <span>Informasi Sistem</span>
           <i class="ri-information-line"></i>
         </div>
-        <div class="brd-info-row"><span><i class="ri-hashtag"></i>Berita ID</span><strong>#{{ beritaData.id }}</strong></div>
+        <div class="brd-info-row brd-tag-info">
+          <span><i class="ri-price-tag-3-line"></i>Tag</span>
+          <strong v-if="getTags(beritaData).length" class="brd-tag-list">
+            <span v-for="tag in getTags(beritaData)" :key="tag" class="brd-tag-chip">{{ tag }}</span>
+          </strong>
+          <strong v-else>-</strong>
+        </div>
         <div class="brd-info-row"><span><i class="ri-user-line"></i>Pembuat</span><strong>{{ getAuthorName(beritaData) }}</strong></div>
         <div class="brd-info-row"><span><i class="ri-time-line"></i>Dibuat</span><strong>{{ formatDateShort(beritaData.created_at) }}</strong></div>
         <div class="brd-info-row"><span><i class="ri-history-line"></i>Diupdate</span><strong>{{ formatDateShort(beritaData.updated_at) }}</strong></div>
@@ -287,6 +277,9 @@ export default {
 .brd-info-row span{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#64748b}
 .brd-info-row span i{color:#2563eb}
 .brd-info-row strong{font-size:12.5px;color:#14213d;text-align:right;line-height:1.35}
+.brd-tag-info{align-items:flex-start}
+.brd-tag-list{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.brd-tag-chip{display:inline-flex;align-items:center;border:1px solid #cfe0ff;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900}
 .event-html-content {
   line-height: 1.75;
   color:#253044;
@@ -425,6 +418,14 @@ export default {
 :global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row strong,
 :global(html.dark) .brd-shell .brd-info-row strong {
   color: #e2e8f0;
+}
+
+.brd-shell.is-dark .brd-tag-chip,
+:global(html[data-theme-mode="dark"]) .brd-shell .brd-tag-chip,
+:global(html.dark) .brd-shell .brd-tag-chip {
+  background: rgba(30, 41, 59, 0.72);
+  border-color: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
 }
 
 .brd-shell.is-dark .event-html-content,

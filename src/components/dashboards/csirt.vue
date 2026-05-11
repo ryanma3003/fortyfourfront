@@ -1,6 +1,6 @@
 <script lang="ts">
 import SimpleCardComponent from "../../shared/components/@spk/simple-card.vue";
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, onUnmounted, watch, computed, nextTick } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { csirtService } from "../../services/csirt.service";
 import type { SdmCsirt, SeCsirt, CsirtMember } from "../../types/csirt.types";
@@ -11,6 +11,7 @@ import { useCsirtStore } from "../../stores/csirt";
 import { useKseStore } from "../../stores/kse";
 import { useRouter } from "vue-router";
 import { config } from "../../config/env";
+import gsap from "gsap";
 
 export default {
     components: {
@@ -24,6 +25,49 @@ export default {
         const router = useRouter();
         const isAdmin = computed(() => authStore.isAdmin);
         const isFullAdmin = computed(() => authStore.isFullAdmin);
+        const csirtPageRef = ref<HTMLElement | null>(null);
+        const isCsirtDarkMode = ref(false);
+        let themeObserver: MutationObserver | null = null;
+
+        const syncCsirtTheme = () => {
+            if (typeof document === "undefined") return;
+            const root = document.documentElement;
+            const body = document.body;
+            isCsirtDarkMode.value =
+                root.getAttribute("data-theme-mode") === "dark" ||
+                body?.getAttribute("data-theme-mode") === "dark" ||
+                root.classList.contains("dark") ||
+                body?.classList.contains("dark");
+        };
+
+        const animateCsirtPage = async () => {
+            await nextTick();
+            const root = csirtPageRef.value;
+            const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+            if (!root || prefersReducedMotion) return;
+
+            const blocks = root.querySelectorAll<HTMLElement>(".csirt-animate");
+            const rows = root.querySelectorAll<HTMLElement>(".stakeholder-row");
+            const fills = root.querySelectorAll<HTMLElement>(".csirt-meter-fill");
+            const animatedElements = [...blocks, ...rows, ...fills];
+
+            gsap.killTweensOf(animatedElements);
+            gsap.fromTo(
+                blocks,
+                { autoAlpha: 0, y: 18 },
+                { autoAlpha: 1, y: 0, duration: 0.48, stagger: 0.07, ease: "power3.out" }
+            );
+            gsap.fromTo(
+                rows,
+                { autoAlpha: 0, x: -10 },
+                { autoAlpha: 1, x: 0, duration: 0.34, stagger: 0.035, ease: "power2.out", delay: 0.12 }
+            );
+            gsap.fromTo(
+                fills,
+                { scaleX: 0, transformOrigin: "left center" },
+                { scaleX: 1, duration: 0.54, stagger: 0.05, ease: "power2.out", delay: 0.16 }
+            );
+        };
 
         // For user role: check if the logged-in user owns this CSIRT (same id_perusahaan)
         const isOwner = computed(() => {
@@ -157,6 +201,19 @@ export default {
         };
 
         onMounted(async () => {
+            syncCsirtTheme();
+            themeObserver = new MutationObserver(syncCsirtTheme);
+            themeObserver.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ["data-theme-mode", "class"],
+            });
+            if (document.body) {
+                themeObserver.observe(document.body, {
+                    attributes: true,
+                    attributeFilter: ["data-theme-mode", "class"],
+                });
+            }
+
             if (!stakeholdersStore.initialized) {
                 await stakeholdersStore.initialize();
             }
@@ -176,6 +233,16 @@ export default {
             if (route.query.action === 'create' && canCreateCsirt.value) {
                 openAddCsirtModal();
             }
+
+            await animateCsirtPage();
+        });
+
+        onUnmounted(() => {
+            themeObserver?.disconnect();
+            const root = csirtPageRef.value;
+            if (root) {
+                gsap.killTweensOf([...root.querySelectorAll(".csirt-animate, .stakeholder-row, .csirt-meter-fill")]);
+            }
         });
 
         watch(csirtId, () => {
@@ -186,6 +253,10 @@ export default {
         watch(currentCsirt, (val) => {
             console.debug('[csirt.vue] currentCsirt changed:', val);
         }, { immediate: true });
+
+        watch([currentCsirt, items, seItems], () => {
+            animateCsirtPage();
+        });
 
         const dataToPass = computed(() => {
             const from = String(route.query.from || '');
@@ -768,6 +839,38 @@ export default {
             }
         };
 
+        const closeEditableModalOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== "Escape") return;
+
+            if (showEditSdmModal.value) {
+                showEditSdmModal.value = false;
+                event.preventDefault();
+                return;
+            }
+            if (showCreateSdmModal.value) {
+                showCreateSdmModal.value = false;
+                event.preventDefault();
+                return;
+            }
+            if (showEditProfileModal.value) {
+                showEditProfileModal.value = false;
+                event.preventDefault();
+                return;
+            }
+            if (showAddCsirtModal.value) {
+                showAddCsirtModal.value = false;
+                event.preventDefault();
+            }
+        };
+
+        onMounted(() => {
+            window.addEventListener("keydown", closeEditableModalOnEscape);
+        });
+
+        onUnmounted(() => {
+            window.removeEventListener("keydown", closeEditableModalOnEscape);
+        });
+
         return {
 
             isAdmin, isFullAdmin,
@@ -775,6 +878,8 @@ export default {
             canEdit,
             canDelete,
             canCreateCsirt,
+            csirtPageRef,
+            isCsirtDarkMode,
             csirtStore,
             newStakeholder,
             // Tambah CSIRT
@@ -1056,6 +1161,43 @@ export default {
   min-width: 0;
 }
 
+.modal-overlay .form-group-split-input-card {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.modal-overlay .form-group-split-input-card:focus-within {
+  border-color: rgba(37, 99, 235, 0.45) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.modal-overlay .form-item-input,
+.modal-overlay .form-control,
+.modal-overlay .form-select {
+  color: #1f2937;
+}
+
+.modal-overlay select.form-item-input,
+.modal-overlay .form-select {
+  min-height: 30px;
+  padding-right: 2rem !important;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 52%,
+    calc(100% - 9px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.modal-overlay select.form-item-input option,
+.modal-overlay .form-select option {
+  color: #0f172a;
+  background: #ffffff;
+}
+
 .profile-csirt-img {
   width: 100%;
   height: 100%;
@@ -1065,8 +1207,942 @@ export default {
   border-radius: 12px;
 }
 
+.csirt-page-shell {
+  --csirt-surface: #ffffff;
+  --csirt-surface-soft: #f8fbff;
+  --csirt-panel: #f1f5f9;
+  --csirt-line: rgba(148, 163, 184, 0.24);
+  --csirt-ink: #0f172a;
+  --csirt-muted: #64748b;
+  --csirt-blue: #2563eb;
+  --csirt-cyan: #06b6d4;
+  --csirt-teal: #0f766e;
+  --csirt-amber: #f59e0b;
+  --csirt-red: #ef4444;
+  --csirt-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+}
+
+.csirt-page-shell > .row + .row {
+  margin-top: 1.25rem;
+}
+
+.csirt-hero-card {
+  overflow: visible !important;
+  border: 1px solid var(--csirt-line) !important;
+  border-radius: 20px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.98)),
+    radial-gradient(circle at 9% 0%, rgba(37, 99, 235, 0.1), transparent 30%),
+    radial-gradient(circle at 91% 0%, rgba(20, 184, 166, 0.1), transparent 30%) !important;
+  box-shadow: var(--csirt-shadow) !important;
+}
+
+.csirt-hero-header {
+  min-height: 82px;
+  border: 0 !important;
+  border-radius: 20px 20px 0 0 !important;
+  background:
+    linear-gradient(135deg, #102a7a 0%, #2563eb 58%, #06b6d4 100%) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.csirt-hero-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16), transparent 34%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 18px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.csirt-hero-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.csirt-hero-header .header-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.csirt-hero-header .header-icon-box i {
+  font-size: 1.35rem;
+}
+
+.csirt-hero-header .btn {
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  padding-inline: 0.85rem;
+  font-size: 12px;
+  font-weight: 850;
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.16);
+}
+
+.csirt-hero-body {
+  padding: 1.25rem !important;
+}
+
+.csirt-profile-grid {
+  display: grid !important;
+  grid-template-columns: 140px minmax(280px, 1fr) minmax(360px, 0.95fr);
+  gap: 1.35rem;
+  align-items: stretch;
+  min-height: 0;
+  margin: 0 !important;
+}
+
+.csirt-profile-grid > .csirt-logo-column,
+.csirt-profile-grid > .csirt-identity-column,
+.csirt-profile-grid > .csirt-side-column {
+  width: auto !important;
+  max-width: none !important;
+  flex: none !important;
+  padding: 0 !important;
+}
+
+.csirt-logo-column {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: stretch;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.csirt-identity-column {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.csirt-side-column {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  margin-top: 0;
+  justify-content: flex-start;
+}
+
+.csirt-logo-column,
+.csirt-identity-column,
+.csirt-side-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.csirt-side-column {
+  justify-content: flex-start;
+}
+
+.csirt-page-shell .profile-photo-wrapper {
+  align-self: center;
+  width: 140px !important;
+  height: 140px !important;
+  margin: 0 !important;
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96)),
+    radial-gradient(circle at 50% 20%, rgba(6, 182, 212, 0.18), transparent 54%);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.12);
+}
+
+.csirt-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.csirt-identity-column {
+  min-width: 0;
+  padding: 0.35rem 0.35rem;
+  text-align: left !important;
+}
+
+.csirt-status-pill,
+.csirt-company-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 28px;
+  padding: 0.35rem 0.68rem;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.csirt-status-pill {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.csirt-company-pill {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+}
+
+.csirt-profile-title {
+  color: var(--csirt-blue);
+  font-size: clamp(1.55rem, 2vw, 2rem);
+  letter-spacing: 0;
+}
+
+.csirt-contact-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+
+.csirt-contact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0.52rem 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.csirt-contact-item .text-start {
+  min-width: 0;
+}
+
+.csirt-contact-item .fw-semibold {
+  overflow-wrap: anywhere;
+}
+
+.csirt-contact-item .fw-semibold,
+.csirt-contact-item a {
+  color: var(--csirt-ink);
+}
+
+.csirt-contact-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+}
+
+.csirt-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.csirt-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 64px;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  color: #fff;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+  position: relative;
+}
+
+.csirt-stat-card::after {
+  content: "";
+  position: absolute;
+  left: 0.9rem;
+  right: 0.9rem;
+  bottom: 0.58rem;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.csirt-stat-card .csirt-meter-fill {
+  position: absolute;
+  left: 0.9rem;
+  bottom: 0.58rem;
+  width: 52%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.54);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.csirt-stat-card > i,
+.csirt-stat-card > div {
+  position: relative;
+  z-index: 1;
+}
+
+.csirt-stat-card.stat-blue {
+  background: linear-gradient(135deg, #1e40af, #2563eb 56%, #0ea5e9);
+}
+
+.csirt-stat-card.stat-green {
+  background: linear-gradient(135deg, #0f766e, #059669 58%, #14b8a6);
+}
+
+.csirt-stat-card i,
+.csirt-stat-card .fw-bold,
+.csirt-stat-card .text-muted {
+  color: #fff !important;
+}
+
+.csirt-stat-card .text-muted {
+  color: rgba(255, 255, 255, 0.86) !important;
+  opacity: 1;
+}
+
+.csirt-doc-card {
+  flex: 1;
+  min-height: 166px;
+  padding: 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.92)),
+    radial-gradient(circle at 0% 0%, rgba(245, 158, 11, 0.1), transparent 34%);
+}
+
+.csirt-doc-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.csirt-doc-body > .d-flex {
+  flex: 1;
+}
+
+.csirt-doc-btn {
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  padding-inline: 0.78rem;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.csirt-doc-btn.btn-primary {
+  background: #1d4ed8 !important;
+}
+
+.csirt-doc-btn.btn-secondary {
+  background: #f59e0b !important;
+}
+
+.csirt-doc-btn.btn-info {
+  background: #0891b2 !important;
+  color: #fff !important;
+}
+
+.csirt-doc-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 38px;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+  border-radius: 12px;
+  color: var(--csirt-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+:deep(.csirt-table-card) {
+  border: 1px solid var(--csirt-line) !important;
+  border-radius: 18px !important;
+  background: var(--csirt-surface) !important;
+  box-shadow: var(--csirt-shadow) !important;
+  overflow: hidden;
+}
+
+:deep(.csirt-table-card .csirt-table-header) {
+  min-height: 64px;
+  padding: 1rem 1.25rem !important;
+  border-bottom: 1px solid var(--csirt-line) !important;
+  background:
+    linear-gradient(180deg, #ffffff, #f8fafc),
+    radial-gradient(circle at 4% 0%, rgba(37, 99, 235, 0.08), transparent 28%) !important;
+}
+
+:deep(.csirt-table-card .card-title) {
+  color: var(--csirt-ink);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+:deep(.csirt-table-card .csirt-table-body) {
+  padding: 1.15rem 1.25rem 1.25rem !important;
+}
+
+.stakeholder-table-wrap {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  overflow: auto;
+  background: var(--csirt-surface);
+}
+
+.stakeholder-table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--csirt-ink);
+  --bs-table-border-color: rgba(148, 163, 184, 0.16);
+  --bs-table-hover-bg: rgba(37, 99, 235, 0.04);
+  --bs-table-hover-color: var(--csirt-ink);
+  color: var(--csirt-ink);
+}
+
+.stakeholder-table .stakeholder-thead th {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.stakeholder-table tbody td {
+  padding: 0.9rem 1rem;
+  border-color: rgba(226, 232, 240, 0.72);
+  vertical-align: middle;
+}
+
+.stakeholder-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.stakeholder-row {
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.stakeholder-row:hover {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.row-number {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #eef2f7;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.empty-state-title {
+  color: var(--csirt-ink);
+}
+
+.empty-icon-ring {
+  width: 62px;
+  height: 62px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--csirt-blue);
+}
+
+.empty-icon-inner i {
+  font-size: 1.55rem;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 48px 40px 1fr 120px 100px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0;
+}
+
+.skel {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e2e8f0, #f8fafc, #e2e8f0);
+  background-size: 180% 100%;
+  animation: csirt-skeleton 1.15s linear infinite;
+}
+
+.skel-no { width: 24px; }
+.skel-avatar { width: 34px; height: 34px; border-radius: 12px; }
+.skel-name { width: 72%; }
+.skel-badge { width: 100%; }
+.skel-actions { width: 80%; }
+
+@keyframes csirt-skeleton {
+  to { background-position: -180% 0; }
+}
+
+@media (min-width: 1200px) {
+  .csirt-profile-grid {
+    grid-template-columns: 140px minmax(280px, 1fr) minmax(360px, 0.95fr);
+    gap: 1.5rem;
+  }
+
+  .csirt-logo-column {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .csirt-identity-column {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .csirt-side-column {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .csirt-page-shell .profile-photo-wrapper {
+    width: 140px !important;
+    height: 140px !important;
+  }
+
+  .csirt-contact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1200px) and (max-width: 1399.98px) {
+  .csirt-profile-grid {
+    grid-template-columns: 130px minmax(250px, 1fr) minmax(330px, 0.95fr);
+  }
+
+  .csirt-page-shell .profile-photo-wrapper {
+    width: 130px !important;
+    height: 130px !important;
+  }
+
+  .csirt-contact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.modal-overlay {
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.sdm-modal {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px 16px !important;
+  overflow: auto !important;
+}
+
+.sdm-modal .sdm-modal-dialog {
+  width: min(800px, calc(100vw - 32px)) !important;
+  max-width: 800px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  display: block !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.sdm-modal .modal-content {
+  width: 100% !important;
+  max-width: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.sdm-modal .gradient-header-card {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24) !important;
+}
+
+.sdm-modal .form-item-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+}
+
+.sdm-modal .form-item-icon i {
+  color: #ffffff !important;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.sdm-modal .stat-icon-orange {
+  background: linear-gradient(135deg, #c2410c 0%, #f97316 52%, #fdba74 100%);
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+}
+
+.sdm-modal .stat-icon-pink {
+  background: linear-gradient(135deg, #be185d 0%, #ec4899 52%, #f9a8d4 100%);
+  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.35);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell,
+:global(html.dark) .csirt-page-shell,
+.csirt-page-shell.is-dark {
+  --csirt-surface: #101827;
+  --csirt-surface-soft: #131d2e;
+  --csirt-panel: #0b1220;
+  --csirt-line: rgba(148, 163, 184, 0.18);
+  --csirt-ink: #edf4ff;
+  --csirt-muted: #94a3b8;
+  --csirt-shadow: 0 22px 52px rgba(0, 0, 0, 0.28);
+  color: var(--csirt-ink);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-card,
+:global(html.dark) .csirt-hero-card,
+.csirt-page-shell.is-dark .csirt-hero-card {
+  background:
+    linear-gradient(180deg, #111827 0%, #0c1424 100%),
+    radial-gradient(circle at 12% 12%, rgba(59, 130, 246, 0.13), transparent 36%),
+    radial-gradient(circle at 88% 0%, rgba(20, 184, 166, 0.12), transparent 34%) !important;
+  border-color: rgba(148, 163, 184, 0.17) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header,
+:global(html.dark) .csirt-hero-header,
+.csirt-page-shell.is-dark .csirt-hero-header {
+  background:
+    linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 48%, #0f766e 100%) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .profile-photo-wrapper,
+:global(html.dark) .csirt-page-shell .profile-photo-wrapper,
+.csirt-page-shell.is-dark .profile-photo-wrapper {
+  background:
+    linear-gradient(135deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98)),
+    radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.16), transparent 52%);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.36);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-contact-item,
+:global(html.dark) .csirt-contact-item,
+.csirt-page-shell.is-dark .csirt-contact-item {
+  background: rgba(15, 23, 42, 0.62);
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: none;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-contact-item .fw-semibold,
+:global(html[data-theme-mode="dark"]) .csirt-contact-item a,
+:global(html.dark) .csirt-contact-item .fw-semibold,
+:global(html.dark) .csirt-contact-item a,
+.csirt-page-shell.is-dark .csirt-contact-item .fw-semibold,
+.csirt-page-shell.is-dark .csirt-contact-item a {
+  color: #e5eefb;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-status-pill,
+:global(html.dark) .csirt-status-pill,
+.csirt-page-shell.is-dark .csirt-status-pill {
+  background: rgba(16, 185, 129, 0.15);
+  color: #86efac;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-company-pill,
+:global(html.dark) .csirt-company-pill,
+.csirt-page-shell.is-dark .csirt-company-pill {
+  background: rgba(96, 165, 250, 0.16);
+  color: #bfdbfe;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-profile-title,
+:global(html.dark) .csirt-profile-title,
+.csirt-page-shell.is-dark .csirt-profile-title {
+  color: #60a5fa;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-card,
+:global(html.dark) .csirt-doc-card,
+.csirt-page-shell.is-dark .csirt-doc-card {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(11, 18, 32, 0.86)),
+    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.1), transparent 35%);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-empty,
+:global(html.dark) .csirt-doc-empty,
+.csirt-page-shell.is-dark .csirt-doc-empty {
+  border-color: rgba(148, 163, 184, 0.26);
+  color: #94a3b8;
+}
+
+.csirt-page-shell.is-dark :deep(.csirt-table-card) {
+  background: #101827 !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.csirt-page-shell.is-dark :deep(.csirt-table-card .csirt-table-header) {
+  background:
+    linear-gradient(180deg, #121c2d, #101827),
+    radial-gradient(circle at 4% 0%, rgba(96, 165, 250, 0.08), transparent 28%) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.csirt-page-shell.is-dark :deep(.csirt-table-card .card-title) {
+  color: #e5eefb;
+}
+
+:global(html[data-theme-mode="dark"]) .stakeholder-table-wrap,
+:global(html.dark) .stakeholder-table-wrap,
+.csirt-page-shell.is-dark .stakeholder-table-wrap {
+  background: #0b1220;
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+:global(html[data-theme-mode="dark"]) .stakeholder-table,
+:global(html.dark) .stakeholder-table,
+.csirt-page-shell.is-dark .stakeholder-table {
+  --bs-table-bg: #0b1220;
+  --bs-table-color: #dbeafe;
+  --bs-table-border-color: rgba(148, 163, 184, 0.12);
+  --bs-table-hover-bg: rgba(59, 130, 246, 0.07);
+  --bs-table-hover-color: #eff6ff;
+  color: #dbeafe;
+}
+
+:global(html[data-theme-mode="dark"]) .stakeholder-table .stakeholder-thead th,
+:global(html.dark) .stakeholder-table .stakeholder-thead th,
+.csirt-page-shell.is-dark .stakeholder-table .stakeholder-thead th {
+  background: #111827;
+  border-bottom-color: rgba(148, 163, 184, 0.2);
+  color: #9fb0c8;
+}
+
+:global(html[data-theme-mode="dark"]) .stakeholder-table tbody td,
+:global(html.dark) .stakeholder-table tbody td,
+.csirt-page-shell.is-dark .stakeholder-table tbody td {
+  border-color: rgba(148, 163, 184, 0.12);
+  background: transparent;
+}
+
+:global(html[data-theme-mode="dark"]) .stakeholder-row:hover,
+:global(html.dark) .stakeholder-row:hover,
+.csirt-page-shell.is-dark .stakeholder-row:hover {
+  background: rgba(96, 165, 250, 0.065);
+}
+
+:global(html[data-theme-mode="dark"]) .row-number,
+:global(html.dark) .row-number,
+.csirt-page-shell.is-dark .row-number {
+  background: rgba(59, 130, 246, 0.14);
+  color: #bfdbfe;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .text-muted,
+:global(html.dark) .csirt-page-shell .text-muted,
+.csirt-page-shell.is-dark .text-muted {
+  color: #94a3b8 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-stat-card .text-muted,
+:global(html.dark) .csirt-stat-card .text-muted,
+.csirt-page-shell.is-dark .csirt-stat-card .text-muted {
+  color: rgba(255, 255, 255, 0.92) !important;
+  opacity: 1;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .bg-light,
+:global(html.dark) .csirt-page-shell .bg-light,
+.csirt-page-shell.is-dark .bg-light {
+  background: #1e293b !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .badge.bg-light,
+:global(html.dark) .csirt-page-shell .badge.bg-light,
+.csirt-page-shell.is-dark .badge.bg-light {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: #cbd5e1 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell code,
+:global(html.dark) .csirt-page-shell code,
+.csirt-page-shell.is-dark code {
+  color: #60a5fa !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .bg-info-transparent,
+:global(html.dark) .csirt-page-shell .bg-info-transparent,
+.csirt-page-shell.is-dark .bg-info-transparent {
+  background: rgba(14, 165, 233, 0.14) !important;
+  color: #67e8f9 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .bg-primary-transparent,
+:global(html.dark) .csirt-page-shell .bg-primary-transparent,
+.csirt-page-shell.is-dark .bg-primary-transparent {
+  background: rgba(59, 130, 246, 0.14) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .bg-warning-transparent,
+:global(html.dark) .csirt-page-shell .bg-warning-transparent,
+.csirt-page-shell.is-dark .bg-warning-transparent {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .bg-secondary-transparent,
+:global(html.dark) .csirt-page-shell .bg-secondary-transparent,
+.csirt-page-shell.is-dark .bg-secondary-transparent {
+  background: rgba(148, 163, 184, 0.13) !important;
+  color: #cbd5e1 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .empty-state-title,
+:global(html.dark) .empty-state-title,
+.csirt-page-shell.is-dark .empty-state-title {
+  color: #e5eefb;
+}
+
+:global(html[data-theme-mode="dark"]) .skel,
+:global(html.dark) .skel,
+.csirt-page-shell.is-dark .skel {
+  background: linear-gradient(90deg, #1e293b, #263449, #1e293b);
+  background-size: 180% 100%;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay,
+:global(html.dark) .modal-overlay {
+  background: rgba(2, 6, 23, 0.72) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .custom-card,
+:global(html.dark) .modal-overlay .custom-card,
+:global(html[data-theme-mode="dark"]) .modal-overlay .modal-content,
+:global(html.dark) .modal-overlay .modal-content {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .card-body,
+:global(html.dark) .modal-overlay .card-body,
+:global(html[data-theme-mode="dark"]) .modal-overlay .card-footer,
+:global(html.dark) .modal-overlay .card-footer,
+:global(html[data-theme-mode="dark"]) .modal-overlay .bg-white,
+:global(html.dark) .modal-overlay .bg-white,
+:global(html[data-theme-mode="dark"]) .modal-overlay .bg-light,
+:global(html.dark) .modal-overlay .bg-light {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .text-dark,
+:global(html.dark) .modal-overlay .text-dark,
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-label,
+:global(html.dark) .modal-overlay .form-label {
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-control,
+:global(html.dark) .modal-overlay .form-control,
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-select,
+:global(html.dark) .modal-overlay .form-select,
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-item-input,
+:global(html.dark) .modal-overlay .form-item-input,
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-group-split-input-card,
+:global(html.dark) .modal-overlay .form-group-split-input-card,
+:global(html[data-theme-mode="dark"]) .edit-logo-panel,
+:global(html.dark) .edit-logo-panel,
+:global(html[data-theme-mode="dark"]) .document-upload-box,
+:global(html.dark) .document-upload-box {
+  background: #172235 !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-control::placeholder,
+:global(html.dark) .modal-overlay .form-control::placeholder,
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-item-input::placeholder,
+:global(html.dark) .modal-overlay .form-item-input::placeholder {
+  color: #64748b !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay select.form-item-input option,
+:global(html.dark) .modal-overlay select.form-item-input option,
+:global(html[data-theme-mode="dark"]) .modal-overlay .form-select option,
+:global(html.dark) .modal-overlay .form-select option {
+  background: #172235 !important;
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .sdm-modal .modal-content,
+:global(html.dark) .sdm-modal .modal-content {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 /* Responsive adjustments */
-@media (max-width: 768px) {
+@media (max-width: 991.98px) {
+  .csirt-hero-body {
+    padding: 1.1rem !important;
+  }
+
+  .csirt-profile-grid {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    gap: 1rem;
+  }
+
+  .csirt-logo-column,
+  .csirt-identity-column,
+  .csirt-side-column {
+    grid-column: 1;
+    grid-row: auto;
+    align-items: center;
+    text-align: center !important;
+  }
+
+  .csirt-title-row {
+    justify-content: center;
+  }
+
+  .csirt-contact-grid {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .csirt-stat-grid {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .csirt-hero-header .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .profile-photo-wrapper {
     max-width: 180px;
     margin: 0 auto 12px;
@@ -1098,13 +2174,14 @@ export default {
   </div>
 </transition>
 
-<div class="row">
+<div ref="csirtPageRef" class="csirt-page-shell" :class="{ 'is-dark': isCsirtDarkMode }">
+<div class="row csirt-animate">
     <div class="col-xl-12">
-        <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">   
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header">
+        <div class="card custom-card gradient-header-card stakeholders-shell-card csirt-hero-card">   
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3 stakeholder-header csirt-hero-header">
                 <div class="d-flex align-items-center gap-3 header-inner">
                     <div class="header-icon-box">
-                        <i class="ri-building-2-line"></i>
+                        <i class="ri-shield-check-line"></i>
                     </div>
                     <div>
                         <div class="card-title mb-0 text-white fw-bold header-card-title">{{ currentCsirt?.nama_csirt || 'Profil CSIRT' }}</div>
@@ -1127,7 +2204,7 @@ export default {
                 </div>
             </div>
 
-            <div class="card-body">
+            <div class="card-body csirt-hero-body">
                 <div v-if="!currentCsirt" class="text-center py-5">
                     <div class="empty-state">
                         <div class="avatar avatar-xxl bg-primary-transparent rounded-circle mb-3">
@@ -1140,17 +2217,27 @@ export default {
                         </button>
                     </div>
                 </div>
-                <div v-else class="row align-items-center gy-4">
-                    <div class="col-12 col-xl-auto d-flex justify-content-center justify-content-xl-start">
+                <div v-else class="row align-items-stretch gy-4 csirt-profile-grid">
+                    <div class="col-12 col-xl-auto d-flex justify-content-center justify-content-xl-start csirt-logo-column">
                         <div class="profile-photo-wrapper mb-0" style="width: 140px; height: 140px;">
                             <img :src="currentCsirt.photo_csirt" class="img-fluid profile-csirt-img" alt="Logo CSIRT"/>
                         </div>
                     </div>
-                    <div class="col-12 col-xl text-center text-xl-start">
-                        <h3 class="fw-bold mb-3 text-primary">{{ currentCsirt.nama_csirt }}</h3>
-                        <div class="d-flex flex-column flex-sm-row flex-xl-column gap-3 mt-4 justify-content-center justify-content-xl-start">
-                            <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
-                                <div class="avatar avatar-sm avatar-rounded bg-primary-transparent flex-shrink-0">
+                    <div class="col-12 col-xl text-center text-xl-start csirt-identity-column">
+                        <h3 class="fw-bold mb-2 csirt-profile-title">{{ currentCsirt.nama_csirt }}</h3>
+                        <div class="csirt-title-row">
+                            <span class="csirt-status-pill">
+                                <i class="ri-pulse-line"></i>
+                                {{ currentCsirt.status || 'Aktif' }}
+                            </span>
+                            <span v-if="currentCsirt.perusahaan?.nama_perusahaan" class="csirt-company-pill">
+                                <i class="ri-building-4-line"></i>
+                                {{ currentCsirt.perusahaan.nama_perusahaan }}
+                            </span>
+                        </div>
+                        <div class="csirt-contact-grid">
+                            <div class="csirt-contact-item">
+                                <div class="avatar avatar-sm avatar-rounded bg-primary-transparent flex-shrink-0 csirt-contact-icon">
                                     <i class="ri-phone-line fs-16"></i>
                                 </div>
                                 <div class="text-start">
@@ -1158,8 +2245,8 @@ export default {
                                     <div class="fw-semibold">{{ currentCsirt.telepon_csirt }}</div>
                                 </div>
                             </div>
-                            <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
-                                <div class="avatar avatar-sm avatar-rounded bg-info-transparent flex-shrink-0">
+                            <div class="csirt-contact-item">
+                                <div class="avatar avatar-sm avatar-rounded bg-info-transparent flex-shrink-0 csirt-contact-icon">
                                     <i class="ri-mail-line fs-16"></i>
                                 </div>
                                 <div class="text-start">
@@ -1170,8 +2257,8 @@ export default {
                                     </div>
                                 </div>
                             </div>
-                            <div class="d-flex align-items-center justify-content-center justify-content-xl-start gap-3">
-                                <div class="avatar avatar-sm avatar-rounded bg-secondary-transparent flex-shrink-0">
+                            <div class="csirt-contact-item">
+                                <div class="avatar avatar-sm avatar-rounded bg-secondary-transparent flex-shrink-0 csirt-contact-icon">
                                     <i class="ri-global-line fs-16"></i>
                                 </div>
                                 <div class="text-start" style="min-width: 0;">
@@ -1183,42 +2270,48 @@ export default {
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-xl-5">
+                    <div class="col-12 col-xl-5 csirt-side-column">
                         <!-- Stats strip: SDM & SE counts -->
-                        <div class="d-flex gap-3 mb-3">
-                            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-primary-transparent flex-fill">
-                                <i class="ri-group-line fs-20 text-primary"></i>
+                        <div class="csirt-stat-grid mb-3">
+                            <div class="csirt-stat-card stat-blue">
+                                <i class="ri-group-line fs-20"></i>
                                 <div>
-                                    <div class="fw-bold fs-18 text-primary">{{ items.length }}</div>
+                                    <div class="fw-bold fs-18">{{ items.length }}</div>
                                     <div class="text-muted fs-11">SDM Terdaftar</div>
                                 </div>
+                                <span class="csirt-meter-fill" aria-hidden="true"></span>
                             </div>
-                            <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-success-transparent flex-fill">
-                                <i class="ri-server-line fs-20 text-success"></i>
+                            <div class="csirt-stat-card stat-green">
+                                <i class="ri-server-line fs-20"></i>
                                 <div>
-                                    <div class="fw-bold fs-18 text-success">{{ seItems.length }}</div>
+                                    <div class="fw-bold fs-18">{{ seItems.length }}</div>
                                     <div class="text-muted fs-11">SE Terdaftar</div>
                                 </div>
+                                <span class="csirt-meter-fill" aria-hidden="true"></span>
                             </div>
                         </div>
-                        <div class="card bg-light border-0 shadow-none mb-0">
-                            <div class="card-body">
+                        <div class="csirt-doc-card">
+                            <div class="csirt-doc-body">
                                 <h6 class="fw-bold mb-3 fs-13 d-flex align-items-center gap-2">
                                     <i class="ri-links-line text-primary"></i> Dokumen Pendukung
                                 </h6>
                                 <div class="d-flex flex-column gap-2">
-                                    <button v-if="currentCsirt.file_rfc2350" @click="forceDownloadFile(currentCsirt.file_rfc2350, 'RFC2350.pdf')" class="btn btn-primary btn-sm btn-wave d-flex align-items-center justify-content-between">
+                                    <button v-if="currentCsirt.file_rfc2350" @click="forceDownloadFile(currentCsirt.file_rfc2350, 'RFC2350.pdf')" class="btn btn-primary btn-sm btn-wave d-flex align-items-center justify-content-between csirt-doc-btn">
                                         <span><i class="ri-file-pdf-line me-2"></i> RFC 2350</span>
                                         <i class="ri-download-2-line opacity-50"></i>
                                     </button>
-                                    <button v-if="currentCsirt.file_public_key_pgp" @click="forceDownloadFile(currentCsirt.file_public_key_pgp, 'Public_Key_PGP.asc')" class="btn btn-secondary btn-sm btn-wave d-flex align-items-center justify-content-between">
+                                    <button v-if="currentCsirt.file_public_key_pgp" @click="forceDownloadFile(currentCsirt.file_public_key_pgp, 'Public_Key_PGP.asc')" class="btn btn-secondary btn-sm btn-wave d-flex align-items-center justify-content-between csirt-doc-btn">
                                         <span><i class="ri-key-2-line me-2"></i> Public Key PGP</span>
                                         <i class="ri-download-2-line opacity-50"></i>
                                     </button>
-                                    <button v-if="currentCsirt.file_surat_tanda_registrasi" @click="forceDownloadFile(currentCsirt.file_surat_tanda_registrasi, 'Surat_Tanda_Registrasi.pdf')" class="btn btn-info btn-sm btn-wave d-flex align-items-center justify-content-between">
+                                    <button v-if="currentCsirt.file_surat_tanda_registrasi" @click="forceDownloadFile(currentCsirt.file_surat_tanda_registrasi, 'Surat_Tanda_Registrasi.pdf')" class="btn btn-info btn-sm btn-wave d-flex align-items-center justify-content-between csirt-doc-btn">
                                         <span><i class="ri-file-pdf-line me-2"></i> Surat Tanda Registrasi</span>
                                         <i class="ri-download-2-line opacity-50"></i>
                                     </button>
+                                    <div v-if="!currentCsirt.file_rfc2350 && !currentCsirt.file_public_key_pgp && !currentCsirt.file_surat_tanda_registrasi" class="csirt-doc-empty">
+                                        <i class="ri-folder-warning-line"></i>
+                                        <span>Belum ada dokumen pendukung.</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1230,9 +2323,14 @@ export default {
 </div>
 
 <!-- ------- Tabel SDM ------- -->
-<div class="row" v-if="currentCsirt">
+<div class="row csirt-animate" v-if="currentCsirt">
     <div class="col-xl-12">
-        <SimpleCardComponent title="Tabel Daftar SDM CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
+        <SimpleCardComponent
+            title="Tabel Daftar SDM CSIRT"
+            customCardClass="csirt-table-card"
+            cardHeaderClass="d-flex justify-content-between align-items-center csirt-table-header"
+            cardClassBody="csirt-table-body"
+        >
             <!-- Toolbar -->
             <template #showheader>
                 <button v-if="canEdit" @click="openCreateSdmModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
@@ -1353,9 +2451,14 @@ export default {
 </div>
 
 <!-- ------- Tabel SE ------- -->
-<div class="row" v-if="currentCsirt">
+<div class="row csirt-animate" v-if="currentCsirt">
     <div class="col-xl-12">
-        <SimpleCardComponent title="Tabel Daftar SE-CSIRT" cardHeaderClass="d-flex justify-content-between align-items-center">
+        <SimpleCardComponent
+            title="Tabel Daftar SE-CSIRT"
+            customCardClass="csirt-table-card"
+            cardHeaderClass="d-flex justify-content-between align-items-center csirt-table-header"
+            cardClassBody="csirt-table-body"
+        >
             <!-- Toolbar -->
             <template #showheader>
                 <div class="d-flex gap-2">
@@ -1493,11 +2596,13 @@ export default {
     </div>
 </div>
 
+</div>
+
 <!-- ------------------------------------------------------------------ -->
 <!-- MODAL: Tambah SDM -->
 <!-- ------------------------------------------------------------------ -->
-<div v-if="showCreateSdmModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateSdmModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
+<div v-if="showCreateSdmModal" class="modal fade show d-block modal-overlay sdm-modal" tabindex="-1" @click.self="showCreateSdmModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal sdm-modal-dialog">
         <div class="modal-content border-0 bg-transparent">
             <div class="card custom-card gradient-header-card w-100 mb-0">
                 <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
@@ -1626,8 +2731,8 @@ export default {
 </div>
 
 <!-- MODAL: Edit SDM -->
-<div v-if="showEditSdmModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditSdmModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
+<div v-if="showEditSdmModal" class="modal fade show d-block modal-overlay sdm-modal" tabindex="-1" @click.self="showEditSdmModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal sdm-modal-dialog">
         <div class="modal-content border-0 bg-transparent">
             <div class="card custom-card gradient-header-card w-100 mb-0">
                 <div class="card-header d-flex justify-content-between align-items-center gradient-header-blue">
@@ -2122,6 +3227,85 @@ export default {
     background: transparent !important;
     box-shadow: none !important;
   }
+
+  .modal.fade.show.d-block.sdm-modal .sdm-modal-dialog {
+    width: min(800px, calc(100vw - 32px)) !important;
+    max-width: 800px !important;
+    margin: 0 !important;
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .custom-card,
+.dark .csirt-edit-modal .custom-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  color: #e5eefb !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .card-body,
+.dark .csirt-edit-modal .card-body {
+  background: #1e293b !important;
+  color: #e5eefb !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .card-footer,
+.dark .csirt-edit-modal .card-footer {
+  background: #0b1220 !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .edit-logo-panel,
+[data-theme-mode='dark'] .csirt-edit-modal .document-upload-box,
+.dark .csirt-edit-modal .edit-logo-panel,
+.dark .csirt-edit-modal .document-upload-box {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5eefb !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .photo-preview-modal,
+.dark .csirt-edit-modal .photo-preview-modal {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  box-shadow: none !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .form-label,
+[data-theme-mode='dark'] .csirt-edit-modal h6,
+[data-theme-mode='dark'] .csirt-edit-modal .edit-section-title,
+.dark .csirt-edit-modal .form-label,
+.dark .csirt-edit-modal h6,
+.dark .csirt-edit-modal .edit-section-title {
+  color: #e5eefb !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .edit-section-title,
+.dark .csirt-edit-modal .edit-section-title {
+  border-bottom-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .form-control,
+.dark .csirt-edit-modal .form-control {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5eefb !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .form-control::placeholder,
+.dark .csirt-edit-modal .form-control::placeholder {
+  color: #64748b !important;
+}
+
+[data-theme-mode='dark'] .csirt-edit-modal .text-muted,
+.dark .csirt-edit-modal .text-muted {
+  color: #94a3b8 !important;
 }
 </style>
 

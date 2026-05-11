@@ -201,6 +201,11 @@ const ENTITY_ALIASES: Record<string, string> = {
     quizzes: 'kuis',
     soal: 'soal',
     aktivitas: 'aktivitas',
+    berita: 'berita',
+    beritas: 'berita',
+    news: 'berita',
+    event: 'kegiatan',
+    events: 'kegiatan',
     kegiatans: 'kegiatan',
     kegiatan: 'kegiatan',
     ruang_lingkup: 'ruang_lingkup',
@@ -1082,7 +1087,7 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
     }
 
     if (entity === 'unknown' && rawMsg) {
-        const entityMatch = rawMsg.match(/(pic|stakeholders?|users?|roles?|jabatan|csirts?|csirt|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)/i);
+        const entityMatch = rawMsg.match(/(pic|stakeholders?|users?|roles?|jabatan|csirts?|csirt|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|berita|news|events?|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)/i);
         if (entityMatch) entity = normalizeEntityKey(entityMatch[1]);
     }
 
@@ -1103,7 +1108,7 @@ function normalizeToServerEvent(raw: any): ServerEvent | null {
     }
 
     if (!entityName && rawMsg) {
-        const nameExtracted = rawMsg.match(/(?:pic|stakeholders?|users?|roles?|jabatan|csirts?|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)\s+(?:baru\s+)?([a-zA-Z0-9_.\-\s]+?)\s+berhasil/i);
+        const nameExtracted = rawMsg.match(/(?:pic|stakeholders?|users?|roles?|jabatan|csirts?|ikas|kse|sdm_csirt|sdm csirt|se_csirt|sistem elektronik|sektor|sub sektor|sub_sektor|kelas|materi|file pendukung|file_pendukung|kuis|quiz|soal|aktivitas|berita|news|events?|kegiatan|domain|kategori|sub kategori|sub_kategori|ruang lingkup|ruang_lingkup|pertanyaan|jawaban|perusahaan)\s+(?:baru\s+)?([a-zA-Z0-9_.\-\s]+?)\s+berhasil/i);
         if (nameExtracted) {
             entityName = nameExtracted[1].trim();
         }
@@ -1303,7 +1308,11 @@ export const useNotificationStore = defineStore('notifications', {
         async init() {
             if (this.initialized) return;
             const authStore = useAuthStore();
-            if (!authStore.authenticated || !authStore.isAdmin) return;
+            if (!authStore.authenticated || !authStore.isAdmin) {
+                notificationService.disconnect();
+                this.stopPolling();
+                return;
+            }
 
             this.initialized = true;
             this.loading = true;
@@ -1327,12 +1336,16 @@ export const useNotificationStore = defineStore('notifications', {
 
             const canContinue = await this.loadFromDatabase();
             if (!canContinue || !authStore.authenticated) {
+                notificationService.disconnect();
+                this.stopPolling();
                 this.loading = false;
                 this.initialized = false;
                 return;
             }
             await this.refreshStats();
             if (!authStore.authenticated) {
+                notificationService.disconnect();
+                this.stopPolling();
                 this.loading = false;
                 this.initialized = false;
                 return;

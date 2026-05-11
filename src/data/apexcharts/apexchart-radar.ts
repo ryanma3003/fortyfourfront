@@ -52,7 +52,7 @@ export const Multiseries = [{
 }]
 export const Multioptions = {
 	chart: {
-		height: 350,
+		height: 500,
 		type: "radar",
 		
 		dropShadow: {
@@ -89,7 +89,7 @@ export const Multioptions = {
 	},
 		plotOptions: {
 		radar: {
-			size: 140,
+			size: 180,
 			offsetX: 20,
 			offsetY: 0
 		}
@@ -103,7 +103,7 @@ export const Multioptions = {
 		],
 		labels: {
 			style: {
-				fontSize: '9px',
+				fontSize: '13px',
 				// colors: Array(19).fill('#000'), // semua label jadi hitam
 				// color: '#000'
 			},
@@ -122,7 +122,7 @@ export const Multioptions = {
 	tickAmount: 10,
 	labels: {
 		style: {
-		fontSize: '9px',
+		fontSize: '11px',
 		},
 		formatter: function (val: number) {
 		return val.toFixed(1); 
@@ -134,21 +134,21 @@ export const Multioptions = {
     {
       breakpoint: 1920,
       options: {
-        chart: { height: 500 },
-        plotOptions: { radar: { size: 180 } },
-        xaxis: { labels: { style: { fontSize: "12px" } } },
-        legend: { fontSize: "13px" },
-        tooltip: { style: { fontSize: "10px" } }
+        chart: { height: 600 },
+        plotOptions: { radar: { size: 220 } },
+        xaxis: { labels: { style: { fontSize: "14px" } } },
+        legend: { fontSize: "14px" },
+        tooltip: { style: { fontSize: "12px" } }
       }
     },
     {
       breakpoint: 1600,
       options: {
-        chart: { height: 500 },
-        plotOptions: { radar: { size: 150 } },
-        xaxis: { labels: { style: { fontSize: "10px" } } },
-        legend: { fontSize: "12px" },
-        tooltip: { style: { fontSize: "10px" } }
+        chart: { height: 550 },
+        plotOptions: { radar: { size: 200 } },
+        xaxis: { labels: { style: { fontSize: "13px" } } },
+        legend: { fontSize: "13px" },
+        tooltip: { style: { fontSize: "11px" } }
       }
     },
 
@@ -156,11 +156,11 @@ export const Multioptions = {
     {
       breakpoint: 1400,
       options: {
-        chart: { height: 500 },
-        plotOptions: { radar: { size: 130 } },
-        xaxis: { labels: { style: { fontSize: "7.5px" } } },
-        legend: { fontSize: "11px" },
-        tooltip: { style: { fontSize: "9px" } }
+        chart: { height: 550 },
+        plotOptions: { radar: { size: 180 } },
+        xaxis: { labels: { style: { fontSize: "11px" } } },
+        legend: { fontSize: "12px" },
+        tooltip: { style: { fontSize: "10px" } }
       }
     },
 
@@ -168,11 +168,11 @@ export const Multioptions = {
     {
       breakpoint: 1200,
       options: {
-        chart: { height: 340 },
-        plotOptions: { radar: { size: 130 } },
-        xaxis: { labels: { style: { fontSize: "8.5px" } } },
-        legend: { fontSize: "10px" },
-        tooltip: { style: { fontSize: "9px" } }
+        chart: { height: 450 },
+        plotOptions: { radar: { size: 160 } },
+        xaxis: { labels: { style: { fontSize: "10px" } } },
+        legend: { fontSize: "11px" },
+        tooltip: { style: { fontSize: "10px" } }
       }
     },
 
@@ -253,7 +253,7 @@ export const Multiseries2 = [
 
 export const Multioptions2 = {
   chart: {
-    height: 350,
+    height: 550,
     type: "radar",
     dropShadow: {
       enabled: true,
@@ -284,7 +284,7 @@ export const Multioptions2 = {
   markers: { size: 3 },
 
   plotOptions: {
-    radar: { size: 120 }
+    radar: { size: 200 }
   },
 
   xaxis: {
@@ -326,7 +326,7 @@ export const Multioptions2 = {
         arr.push(line);
         return arr;
       },
-      style: { fontSize: "7px" }
+      style: { fontSize: "10px" }
     }
   },
 
@@ -335,17 +335,17 @@ export const Multioptions2 = {
     max: 5,
     tickAmount: 10,
     labels: {
-      style: { fontSize: "9px" },
+      style: { fontSize: "11px" },
       formatter: (val: number) => val.toFixed(1)
     }
   },
 
   legend: {
     position: "bottom",
-    fontSize: "10px",
+    fontSize: "12px",
 	offsetY: 0,
     labels: {
-      fontSize: "10px",
+      fontSize: "12px",
       formatter: (value: string) => value
     }
   },
@@ -355,21 +355,21 @@ export const Multioptions2 = {
     {
       breakpoint: 1920,
       options: {
-        chart: { height: 500 },
-        plotOptions: { radar: { size: 170 } },
-        xaxis: { labels: { style: { fontSize: "11px" } } },
-        legend: { fontSize: "13px" },
-        tooltip: { style: { fontSize: "10px" } }
+        chart: { height: 600 },
+        plotOptions: { radar: { size: 240 } },
+        xaxis: { labels: { style: { fontSize: "12px" } } },
+        legend: { fontSize: "14px" },
+        tooltip: { style: { fontSize: "11px" } }
       }
     },
     {
       breakpoint: 1600,
       options: {
-        chart: { height: 500 },
-        plotOptions: { radar: { size: 150 } },
-        xaxis: { labels: { style: { fontSize: "9px" } } },
-        legend: { fontSize: "12px" },
-        tooltip: { style: { fontSize: "9px" } }
+        chart: { height: 600 },
+        plotOptions: { radar: { size: 220 } },
+        xaxis: { labels: { style: { fontSize: "11px" } } },
+        legend: { fontSize: "13px" },
+        tooltip: { style: { fontSize: "10px" } }
       }
     },
 
@@ -377,11 +377,11 @@ export const Multioptions2 = {
     {
       breakpoint: 1400,
       options: {
-        chart: { height: 500 },
-        plotOptions: { radar: { size: 115 } },
-        xaxis: { labels: { style: { fontSize: "7.5px" } } },
-        legend: { fontSize: "11px" },
-        tooltip: { style: { fontSize: "9px" } }
+        chart: { height: 550 },
+        plotOptions: { radar: { size: 180 } },
+        xaxis: { labels: { style: { fontSize: "10px" } } },
+        legend: { fontSize: "12px" },
+        tooltip: { style: { fontSize: "10px" } }
       }
     },
 
@@ -389,11 +389,11 @@ export const Multioptions2 = {
     {
       breakpoint: 1200,
       options: {
-        chart: { height: 340 },
-        plotOptions: { radar: { size: 130 } },
-        xaxis: { labels: { style: { fontSize: "8.5px" } } },
-        legend: { fontSize: "10px" },
-        tooltip: { style: { fontSize: "9px" } }
+        chart: { height: 450 },
+        plotOptions: { radar: { size: 160 } },
+        xaxis: { labels: { style: { fontSize: "9px" } } },
+        legend: { fontSize: "11px" },
+        tooltip: { style: { fontSize: "10px" } }
       }
     },
 

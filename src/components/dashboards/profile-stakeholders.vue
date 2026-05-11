@@ -4,20 +4,23 @@ import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder } from "../../types/stakeholders.types";
-import { computed, ref, onMounted, onActivated, onUnmounted, watch } from "vue";
+import { computed, ref, onMounted, onActivated, onUnmounted, watch, nextTick } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
+import gsap from "gsap";
 import { picService } from "../../services/pic.service";
 import type { Pic } from "../../types/pic.types";
 import { useCsirtStore } from "../../stores/csirt";
 import { useAuthStore } from "../../stores/auth";
-import { useIkasStore } from "../../stores/ikas";
+import { getMaturityLabel, useIkasStore } from "../../stores/ikas";
 import { useKseStore } from "../../stores/kse";
 import { useResikoStore } from "../../stores/resiko";
+import { useKonversiStore } from "../../stores/konversi";
 import { aktivitasService } from "../../services/aktivitas.service";
 import type { Aktivitas, AktivitasPayload } from "../../types/aktivitas.types";
 import { ikasService } from "../../services/ikas.service";
 import type { IkasAuditLog } from "../../types/ikas.types";
+import { getKonversiDisplay } from "../../services/konversi.service";
 import LmsEditor from "../lms/LmsEditor.vue";
 
 const authStore = useAuthStore();
@@ -25,6 +28,7 @@ const ikasStore = useIkasStore();
 const kseStore = useKseStore();
 const resikoStore = useResikoStore();
 const csirtStore = useCsirtStore();
+const konversiStore = useKonversiStore();
 const isAdmin = computed(() => authStore.isAdmin);
 
 // Use storeToRefs to get reactive refs — ensures computed() tracks store state changes
@@ -62,7 +66,11 @@ const isLoadingAktivitas = ref(false);
 const isLoadingIkasAuditLogs = ref(false);
 const isSavingAktivitas = ref(false);
 const isActivityFormVisible = ref(false);
+const selectedAktivitasDetail = ref<Aktivitas | null>(null);
 const isProfileDarkMode = ref(false);
+const selectedIkasYear = ref("");
+const isIkasYearMenuOpen = ref(false);
+const ikasDomainRailRef = ref<HTMLElement | null>(null);
 const editingAktivitasId = ref<number | null>(null);
 const auditLogPage = ref(1);
 const auditLogPageSize = ref(5);
@@ -113,6 +121,7 @@ const initializeProfileDependencies = async () => {
       ikasStore.initialize(),
       Promise.resolve(kseStore.initialize()),
       Promise.resolve(resikoStore.initialize()),
+      Promise.resolve(konversiStore.initialize()),
       csirtStore.initialized ? Promise.resolve() : csirtStore.initialize(),
       loadJenisAktivitas(),
     ]);
@@ -158,6 +167,16 @@ const getHtmlDescription = (value: string | null | undefined, fallback = "Tidak 
   return value && value.trim() ? value : fallback;
 };
 
+const getPlainDescription = (value: string | null | undefined, fallback = "Tidak ada deskripsi."): string => {
+  if (!value || !value.trim()) return fallback;
+  if (typeof document !== "undefined") {
+    const parser = document.createElement("div");
+    parser.innerHTML = value;
+    return parser.textContent?.replace(/\s+/g, " ").trim() || fallback;
+  }
+  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || fallback;
+};
+
 const toDateInputValue = (value: string | null | undefined): string => {
   const date = parseActivityDate(value);
   if (!date) return "";
@@ -176,6 +195,7 @@ const sortedAktivitas = computed(() => {
 });
 
 const currentActivityYear = computed(() => String(new Date().getFullYear()));
+const currentIkasYear = computed(() => String(new Date().getFullYear()));
 
 const aktivitasByYear = computed(() => {
   const grouped = new Map<string, Aktivitas[]>();
@@ -204,8 +224,38 @@ const selectedActivityCount = computed(() => {
   return filteredAktivitasByYear.value.reduce((total, group) => total + group.items.length, 0);
 });
 
+const totalActivityCount = computed(() => sortedAktivitas.value.length);
+
 const resetActivityYearToPresent = () => {
   selectedActivityYear.value = currentActivityYear.value;
+};
+
+const parseIkasDate = (value: string | Date | null | undefined): Date | null => {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(String(value).replace(" ", "T").replace(/Z$/i, ""));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getIkasRecordYear = (record: any): string => {
+  const explicit = String(
+    record?.tahun_pengukuran ||
+    record?.tahunPengukuran ||
+    record?.tahun ||
+    record?.year ||
+    ""
+  ).match(/\d{4}/)?.[0];
+  if (explicit) return explicit;
+
+  const date = parseIkasDate(
+    record?.tanggal_pengukuran ||
+    record?.tanggalPengukuran ||
+    record?.tanggal_pengisian ||
+    record?.tanggalPengisian ||
+    record?.tanggal ||
+    record?.updated_at ||
+    record?.created_at
+  );
+  return date ? String(date.getFullYear()) : "";
 };
 
 const displayedIkasAuditLogs = computed(() => {
@@ -599,6 +649,14 @@ const openEditAktivitas = (item: Aktivitas) => {
   isActivityFormVisible.value = true;
 };
 
+const openAktivitasDetail = (item: Aktivitas) => {
+  selectedAktivitasDetail.value = item;
+};
+
+const closeAktivitasDetail = () => {
+  selectedAktivitasDetail.value = null;
+};
+
 const closeAktivitasForm = () => {
   isActivityFormVisible.value = false;
   resetAktivitasForm();
@@ -718,8 +776,10 @@ const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } =
     const aktivitasPromise = loadAktivitas(stakeholder, token);
     await delay(PROFILE_LOAD_STAGGER_MS);
     const auditPromise = loadIkasAuditLogs(stakeholder, token);
+    const konversiPromise = konversiStore.fetchForPerusahaanId(stakeholder.id, options.force);
+    const resikoPromise = resikoStore.loadSurveyResultByCompany(stakeholder.id, stakeholder.slug);
 
-    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise]);
+    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise, konversiPromise, resikoPromise]);
   } catch {
     if (isLatestProfileLoad(token, slug)) {
       friends.value = [];
@@ -791,6 +851,7 @@ onActivated(async () => {
 // Refresh profile data when switching between stakeholder profiles
 watch(stakeholderSlug, async (newSlug, oldSlug) => {
     if (newSlug && newSlug !== oldSlug) {
+        selectedIkasYear.value = "";
         await loadProfileData({ force: true, resetUi: true });
     }
 });
@@ -799,7 +860,62 @@ onUnmounted(() => {
     profileThemeObserver?.disconnect?.();
 });
 
-// Dynamic penilaian from IKAS and KSE stores
+const currentKonversiRecord = computed(() => (
+  currentStakeholder.value ? konversiStore.getByPerusahaanId(currentStakeholder.value.id) : null
+));
+
+const conversionSvgIcons: Record<string, string> = {
+  poin_ikas: `<svg xmlns="http://www.w3.org/2000/svg" enableBackground="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><g><rect fill="none" height="24" width="24"></rect></g><g><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"></path></g></svg>`,
+  poin_kse: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,
+  poin_survey: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 2L1 21h22L12 2zm1 14h-2v-2h2v2zm0-4h-2V8h2v4z"></path></svg>`,
+  post_survey: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14l4-4h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 8H7V9h10v2zm0-3H7V6h10v2z"></path></svg>`,
+  poin_csirt: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
+  total_poin: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"></path></svg>`,
+};
+
+const conversionCardColors: Record<string, string> = {
+  poin_ikas: "primary",
+  poin_kse: "warning",
+  poin_survey: "danger",
+  post_survey: "secondary",
+  poin_csirt: "success",
+  total_poin: "primary",
+};
+
+const conversionDetailType: Record<string, "ikas" | "kse" | "csirt" | "resiko" | null> = {
+  poin_ikas: "ikas",
+  poin_kse: "kse",
+  poin_survey: "resiko",
+  post_survey: "resiko",
+  poin_csirt: "csirt",
+  total_poin: null,
+};
+
+const getConversionCardTitle = (key: string, fallback: string) => {
+  const titles: Record<string, string> = {
+    poin_survey: "Survey Risiko",
+    post_survey: "Post Survey",
+  };
+  return titles[key] || fallback;
+};
+
+const getConversionCardValue = (key: string, fallbackPoint: number) => {
+  const slug = stakeholderSlug.value;
+  if (key === "poin_ikas") {
+    const ikasScore = getCurrentYearIkasScore(slug);
+    return ikasScore > 0 ? ikasScore.toFixed(2) : "Belum Diisi";
+  }
+  if (key === "poin_kse") return seCount.value > 0 ? "Terdaftar" : "Belum Terdaftar";
+  if (key === "poin_csirt") return getCsirtStatus();
+  if (key === "poin_survey" || key === "post_survey") {
+    return resikoStore.progressMap[slug]?.status === 'COMPLETED'
+      ? "Sudah Diisi"
+      : (resikoStore.answersMap[slug] && Object.keys(resikoStore.answersMap[slug]).length > 0 ? "Dalam Proses" : "Belum Diisi");
+  }
+  return fallbackPoint;
+};
+
+// Dynamic penilaian from /api/konversi response
 const penilaian = computed(() => {
   const slug = stakeholderSlug.value;
   if (!slug) return [];
@@ -808,42 +924,18 @@ const penilaian = computed(() => {
   // This forces re-evaluation whenever store data is loaded/saved.
   void ikasVersion.value;
   void resikoVersion.value;
-  const ikasSummary = ikasStore.getIkasSummary(slug);
-  const ikasData = ikasSummary ? null : ikasStore.getIkasData(slug);
-  const ikasScore = ikasSummary
-    ? Number(ikasSummary.score || 0)
-    : Number(ikasData.total_rata_rata || 0);
-  const ikasStatus = ikasScore > 0 ? ikasScore.toFixed(2) : "Belum Diisi";
+  const display = getKonversiDisplay(currentKonversiRecord.value);
+  const pointCards = display.pointMetrics.map((point) => ({
+    svgIcon: conversionSvgIcons[point.key] || conversionSvgIcons.total_poin,
+    svgColor: conversionCardColors[point.key] || "primary",
+    title: getConversionCardTitle(point.key, point.label),
+    value: getConversionCardValue(point.key, point.value),
+    caption: point.key === "poin_ikas" ? `Tahun ${currentIkasYear.value}` : undefined,
+    subLabel: `Poin: ${point.value} poin`,
+    detailType: conversionDetailType[point.key] ?? null,
+  }));
 
-  return [
-    {
-      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" enableBackground="new 0 0 24 24" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><g><rect fill="none" height="24" width="24"></rect></g><g><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"></path></g></svg>`,
-      svgColor: "primary",
-      title: "IKAS",
-      value: ikasStatus
-    },
-    {
-      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-5h2v5zm4 0h-2v-3h2v3zm0-5h-2v-2h2v2zm4 5h-2V7h2v10z"></path></svg>`,
-      svgColor: "warning",
-      title: "KSE",
-      value: seCount.value > 0 ? "Terdaftar" : "Belum Terdaftar"
-    },
-    {
-      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"></path></svg>`,
-      svgColor: "success",
-      title: "CSIRT",
-      value: getCsirtStatus()
-    },
-    {
-      svgIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#5f6368"><path d="M0 0h24v24H0z" fill="none"></path><path d="M12 2L1 21h22L12 2zm1 14h-2v-2h2v2zm0-4h-2V8h2v4z"></path></svg>`,
-      svgColor: "danger",
-      title: "Survey Resiko",
-      value: resikoStore.progressMap[slug]?.status === 'COMPLETED' 
-        ? "Sudah Diisi" 
-        : (resikoStore.answersMap[slug] && Object.keys(resikoStore.answersMap[slug]).length > 0 ? "Dalam Proses" : "Belum Diisi")
-    }
-    
-  ];
+  return pointCards;
 });
 
 const relatedCsirtId = computed(() => {
@@ -975,34 +1067,306 @@ const companyDetails = computed(() => {
 
 const riskStatus = computed(() => {
   const slug = stakeholderSlug.value;
+  const stakeholder = currentStakeholder.value;
+  if (stakeholder?.id && resikoStore.completedCompanyIds?.has(String(stakeholder.id))) return 'Sudah Diisi';
   if (resikoStore.progressMap[slug]?.status === 'COMPLETED') return 'Sudah Diisi';
   return resikoStore.answersMap[slug] && Object.keys(resikoStore.answersMap[slug]).length > 0
     ? 'Dalam Proses'
     : 'Belum Diisi';
 });
 
-const ikasProfileStatus = computed(() => {
-  const slug = stakeholderSlug.value;
-  const status = ikasDataMap.value?.[slug]?.total_kategori;
-  return status && status !== 'INPUT BELUM LENGKAP' ? status : 'Belum Diisi';
+const currentRiskResult = computed(() => resikoStore.surveyResultsMap[stakeholderSlug.value] || null);
+const currentRiskRespondent = computed(() => {
+  const companyId = currentStakeholder.value?.id;
+  const fromResult = currentRiskResult.value?.respondent;
+  if (fromResult) return fromResult;
+  if (!companyId) return null;
+  return resikoStore.respondentsByCompanyId[String(companyId)]?.[0] || null;
 });
 
-const profileCompletion = computed(() => {
-  const checks = [
-    ikasProfileStatus.value !== 'Belum Diisi',
-    seCount.value > 0,
-    getCsirtStatus() === 'Terdaftar',
-    riskStatus.value === 'Sudah Diisi',
+const currentRiskRows = computed(() => currentRiskResult.value?.risks || []);
+
+const currentRiskFacts = computed(() => {
+  const respondent = currentRiskRespondent.value;
+  return [
+    { label: 'Responden', value: respondent?.nama_lengkap || respondent?.responden || '-' },
+    { label: 'Jabatan', value: respondent?.jabatan || '-' },
+    { label: 'Email', value: respondent?.email || '-' },
+    { label: 'Telepon', value: respondent?.no_telepon || respondent?.telepon || '-' },
+    { label: 'Sektor', value: respondent?.nama_sektor || respondent?.nama_sub_sektor || '-' },
+    { label: 'Sertifikat Training', value: respondent?.sertifikat_training || '-' },
   ];
-  const completed = checks.filter(Boolean).length;
-  const total = checks.length;
+});
+
+const ikasProfileStatus = computed(() => {
+  const slug = stakeholderSlug.value;
+  const score = getCurrentYearIkasScore(slug);
+  if (score <= 0) return 'Belum Diisi';
+
+  const currentYearStatus = selectedIkasYear.value === currentIkasYear.value
+    ? ikasDataMap.value?.[slug]?.total_kategori
+    : '';
+  return currentYearStatus && currentYearStatus !== 'INPUT BELUM LENGKAP'
+    ? currentYearStatus
+    : getMaturityLabel(score);
+});
+
+const isCurrentYearIkasFilled = computed(() => getCurrentYearIkasScore(stakeholderSlug.value) > 0);
+
+const profileCompletion = computed(() => {
+  const display = getKonversiDisplay(currentKonversiRecord.value);
 
   return {
-    completed,
-    total,
-    percent: Math.round((completed / total) * 100),
-    isComplete: completed === total,
+    completed: display.completed,
+    total: display.total,
+    percent: display.percent,
+    isComplete: display.isComplete,
+    totalPoint: display.totalPoin,
   };
+});
+
+const currentStakeholderIkasRecords = computed(() => {
+  const stakeholder = currentStakeholder.value;
+  if (!stakeholder) return [];
+
+  const recordsById = new Map<string, any>();
+  ikasStore.ikasRawRecords
+    .filter((record) => recordBelongsToStakeholder(record, stakeholder))
+    .forEach((record, index) => {
+      const id = String(record?.id || `${getIkasRecordYear(record)}-${index}`);
+      recordsById.set(id, record);
+    });
+
+  return Array.from(recordsById.values()).sort((a, b) => {
+    const yearDiff = Number(getIkasRecordYear(b) || 0) - Number(getIkasRecordYear(a) || 0);
+    if (yearDiff) return yearDiff;
+    return (parseIkasDate(b?.updated_at || b?.created_at)?.getTime() || 0) - (parseIkasDate(a?.updated_at || a?.created_at)?.getTime() || 0);
+  });
+});
+
+const getIkasRecordScore = (record: any): number => {
+  const parsed = Number(String(
+    record?.nilai_kematangan ??
+    record?.total_rata_rata ??
+    record?.score ??
+    0
+  ).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getIkasRecordForYear = (year: string): any | null => {
+  return currentStakeholderIkasRecords.value.find((record) => getIkasRecordYear(record) === year) || null;
+};
+
+const getIkasDomainObjectFromRecord = (record: any, key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih') => {
+  const domainKey = key === 'tanggulih' ? 'gulih' : key;
+  return record?.[domainKey] || record?.[key] || {};
+};
+
+const getIkasDomainScoreFromRecord = (record: any, key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih'): number => {
+  const domain = getIkasDomainObjectFromRecord(record, key);
+  const scoreKey = key === 'tanggulih' ? 'nilai_gulih' : `nilai_${key}`;
+  const value = domain?.[scoreKey] ?? domain?.nilai ?? domain?.score ?? 0;
+  const parsed = Number(String(value ?? 0).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getSelectedIkasDomainProgress = (
+  key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih',
+  total: number
+) => {
+  const record = selectedIkasRecord.value;
+  if (!record) return ikasStore.getDomainProgress(stakeholderSlug.value, key);
+
+  const domain = getIkasDomainObjectFromRecord(record, key);
+  const subdomainKeys = Array.from({ length: total }, (_, index) => `nilai_subdomain${index + 1}`);
+  const availableKeys = subdomainKeys.filter((subdomainKey) => subdomainKey in domain);
+  const completed = availableKeys.filter((subdomainKey) => {
+    const value = domain?.[subdomainKey];
+    const parsed = Number(String(value ?? 0).replace(',', '.'));
+    return value !== null && value !== undefined && value !== 'NA' && Number.isFinite(parsed) && parsed > 0;
+  }).length;
+
+  const fallbackCompleted = getIkasDomainScoreFromRecord(record, key) > 0 ? total : 0;
+  const finalCompleted = availableKeys.length ? completed : fallbackCompleted;
+
+  return {
+    completed: finalCompleted,
+    total,
+    percent: total > 0 ? Math.round((finalCompleted / total) * 100) : 0,
+  };
+};
+
+const getCurrentYearIkasScore = (slug: string): number => {
+  const year = currentIkasYear.value;
+  const recordScore = getIkasRecordScore(getIkasRecordForYear(year));
+  if (recordScore > 0) return recordScore;
+
+  if (selectedIkasYear.value === year) {
+    const currentYearDataScore = Number(ikasStore.getIkasData(slug).total_rata_rata || 0);
+    return Number.isFinite(currentYearDataScore) ? currentYearDataScore : 0;
+  }
+
+  return 0;
+};
+
+const ikasYearOptions = computed(() => {
+  const years = currentStakeholderIkasRecords.value
+    .map(getIkasRecordYear)
+    .filter(Boolean);
+  return [...new Set([currentIkasYear.value, ...years])].sort((a, b) => Number(b) - Number(a));
+});
+
+watch(ikasYearOptions, (years) => {
+  if (!years.length) {
+    selectedIkasYear.value = currentIkasYear.value;
+    return;
+  }
+  if (!selectedIkasYear.value || !years.includes(selectedIkasYear.value)) {
+    selectedIkasYear.value = currentIkasYear.value;
+  }
+}, { immediate: true });
+
+watch(selectedIkasYear, async (year) => {
+  const stakeholder = currentStakeholder.value;
+  if (!stakeholder || !year) return;
+  isIkasYearMenuOpen.value = false;
+  await ikasStore.fetchFromBackend(stakeholder.slug, String(stakeholder.id), year);
+  await animateIkasDomainPanel();
+});
+
+const formatIkasScore = (value: unknown): string => {
+  if (value === 'NA') return 'NA';
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number.toFixed(2) : '0.00';
+};
+
+const getDomainScorePercent = (value: unknown): number => {
+  if (value === 'NA') return 0;
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, (number / 5) * 100)) : 0;
+};
+
+const selectedIkasRecord = computed(() => {
+  return getIkasRecordForYear(selectedIkasYear.value) || getIkasRecordForYear(currentIkasYear.value) || null;
+});
+
+const selectedIkasDomainData = computed(() => {
+  const storeData = ikasStore.getIkasData(stakeholderSlug.value);
+  const record = selectedIkasRecord.value;
+  if (!record) return storeData;
+
+  const totalScore = getIkasRecordScore(record) || Number(storeData.total_rata_rata || 0);
+  const totalCategory = record?.total_kategori || record?.kategori || getMaturityLabel(totalScore);
+
+  return {
+    ...storeData,
+    total_rata_rata: totalScore,
+    total_kategori: totalCategory,
+    identifikasi: {
+      ...storeData.identifikasi,
+      nilai_identifikasi: getIkasDomainScoreFromRecord(record, 'identifikasi'),
+      kategori_identifikasi: record?.identifikasi?.kategori_identifikasi || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'identifikasi')),
+    },
+    proteksi: {
+      ...storeData.proteksi,
+      nilai_proteksi: getIkasDomainScoreFromRecord(record, 'proteksi'),
+      kategori_proteksi: record?.proteksi?.kategori_proteksi || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'proteksi')),
+    },
+    deteksi: {
+      ...storeData.deteksi,
+      nilai_deteksi: getIkasDomainScoreFromRecord(record, 'deteksi'),
+      kategori_deteksi: record?.deteksi?.kategori_deteksi || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'deteksi')),
+    },
+    tanggulih: {
+      ...storeData.tanggulih,
+      nilai_tanggulih: getIkasDomainScoreFromRecord(record, 'tanggulih'),
+      kategori_tanggulih: record?.gulih?.kategori_gulih || record?.tanggulih?.kategori_tanggulih || getMaturityLabel(getIkasDomainScoreFromRecord(record, 'tanggulih')),
+    },
+  };
+});
+
+const hasSelectedIkasYearRecord = computed(() => {
+  return !!selectedIkasYear.value && !!getIkasRecordForYear(selectedIkasYear.value);
+});
+
+const ikasDomainRows = computed(() => {
+  const data = selectedIkasDomainData.value;
+  return [
+    {
+      key: 'identifikasi',
+      label: 'Identifikasi',
+      icon: 'ri-search-eye-line',
+      score: data.identifikasi.nilai_identifikasi,
+      category: data.identifikasi.kategori_identifikasi,
+      progress: getSelectedIkasDomainProgress('identifikasi', 5),
+      colorClass: 'domain-blue',
+    },
+    {
+      key: 'proteksi',
+      label: 'Proteksi',
+      icon: 'ri-shield-keyhole-line',
+      score: data.proteksi.nilai_proteksi,
+      category: data.proteksi.kategori_proteksi,
+      progress: getSelectedIkasDomainProgress('proteksi', 6),
+      colorClass: 'domain-teal',
+    },
+    {
+      key: 'deteksi',
+      label: 'Deteksi',
+      icon: 'ri-radar-line',
+      score: data.deteksi.nilai_deteksi,
+      category: data.deteksi.kategori_deteksi,
+      progress: getSelectedIkasDomainProgress('deteksi', 3),
+      colorClass: 'domain-amber',
+    },
+    {
+      key: 'tanggulih',
+      label: 'Penanggulangan & Pemulihan',
+      icon: 'ri-restart-line',
+      score: data.tanggulih.nilai_tanggulih,
+      category: data.tanggulih.kategori_tanggulih,
+      progress: getSelectedIkasDomainProgress('tanggulih', 4),
+      colorClass: 'domain-red',
+    },
+  ];
+});
+
+const weakestIkasDomain = computed(() => {
+  const scored = ikasDomainRows.value
+    .filter((item) => item.score !== 'NA')
+    .map((item) => ({ ...item, numericScore: Number(item.score || 0) }))
+    .filter((item) => Number.isFinite(item.numericScore) && item.numericScore > 0)
+    .sort((a, b) => a.numericScore - b.numericScore);
+
+  return scored[0] || null;
+});
+
+const animateIkasDomainPanel = async () => {
+  await nextTick();
+  const root = ikasDomainRailRef.value;
+  if (!root) return;
+
+  const items = root.querySelectorAll<HTMLElement>(".ikas-domain-animate");
+  const fills = root.querySelectorAll<HTMLElement>(".ikas-domain-fill");
+  gsap.killTweensOf(items);
+  gsap.killTweensOf(fills);
+
+  gsap.fromTo(
+    items,
+    { autoAlpha: 0, y: 12 },
+    { autoAlpha: 1, y: 0, duration: 0.34, stagger: 0.045, ease: "power2.out" }
+  );
+
+  gsap.fromTo(
+    fills,
+    { scaleX: 0, transformOrigin: "left center" },
+    { scaleX: 1, duration: 0.46, stagger: 0.04, ease: "power2.out", delay: 0.08 }
+  );
+};
+
+watch(() => ikasStore.apiLoading, async (loading) => {
+  if (!loading) await animateIkasDomainPanel();
 });
 
 </script>
@@ -1337,7 +1701,7 @@ const profileCompletion = computed(() => {
   backdrop-filter: blur(6px);
 }
 .activity-modal {
-  width: min(860px, 100%);
+  width: min(1180px, 100%);
   max-height: calc(100vh - 2.5rem);
   display: flex;
   flex-direction: column;
@@ -1407,18 +1771,48 @@ const profileCompletion = computed(() => {
   background: linear-gradient(180deg, #ffffff 0%, rgba(255,255,255,0.96) 72%, rgba(255,255,255,0));
 }
 .activity-year-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 220px;
+}
+
+.activity-year-filter-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  color: #64748b;
-  font-size: 11.5px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0;
-  white-space: nowrap;
-}
-.activity-year-filter-label i {
+  justify-content: center;
+  background: #eff6ff;
   color: #2563eb;
+  flex: 0 0 auto;
+}
+
+.activity-year-filter-icon i {
+  color: #2563eb;
+  font-size: 17px;
+}
+
+.activity-year-filter-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.activity-year-filter-copy strong {
+  color: #000000;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.activity-year-filter-copy small {
+  color: #000000;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.35;
 }
 .activity-year-filter-chips {
   display: flex;
@@ -1427,6 +1821,24 @@ const profileCompletion = computed(() => {
   flex-wrap: wrap;
   gap: 0.45rem;
   min-width: 0;
+}
+.activity-year-filter-select {
+  min-width: 118px;
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid #dbe7f5;
+  background-color: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  padding: 0.42rem 2rem 0.42rem 0.85rem;
+  cursor: pointer;
+  box-shadow: none;
+}
+.activity-year-filter-select:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.14);
 }
 .activity-year-filter-chip,
 .activity-year-filter-reset {
@@ -1554,6 +1966,12 @@ const profileCompletion = computed(() => {
   border-radius: 12px;
   background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
   box-shadow: 0 6px 18px rgba(15,23,42,0.04);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.activity-timeline-content:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 3px;
 }
 .activity-timeline-top {
   display: flex;
@@ -1585,6 +2003,29 @@ const profileCompletion = computed(() => {
   margin: 0.65rem 0 0;
   word-break: break-word;
 }
+.activity-description-preview {
+  display: -webkit-box;
+  margin: 0.6rem 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.activity-open-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 850;
+}
+.activity-open-hint i {
+  font-size: 14px;
+}
 .activity-description :deep(p) {
   margin-bottom: 0.55rem;
 }
@@ -1594,8 +2035,67 @@ const profileCompletion = computed(() => {
   margin-bottom: 0.55rem;
 }
 .activity-description :deep(img) {
+  display: block;
   max-width: 100%;
   height: auto;
+  border-radius: 10px;
+  margin: 0.7rem 0;
+}
+.activity-description :deep(figure.media),
+.activity-description :deep(figure.image) {
+  margin: 0.8rem 0;
+}
+.activity-description :deep(figure.media) {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0f172a;
+  aspect-ratio: 16 / 9;
+}
+.activity-description :deep(figure.media iframe) {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.activity-description :deep(.table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.activity-description :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+.activity-description :deep(td),
+.activity-description :deep(th) {
+  border: 1px solid #e2e8f0;
+  padding: 0.45rem 0.6rem;
+}
+.activity-detail-modal {
+  width: min(920px, 100%);
+}
+.activity-detail-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-detail-body {
+  padding: 1.35rem;
+}
+.activity-detail-tags {
+  margin-bottom: 1rem;
+}
+.activity-detail-description {
+  margin-top: 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.activity-detail-description :deep(img) {
+  max-height: 520px;
+  object-fit: contain;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 .activity-tags {
   display: flex;
@@ -2539,6 +3039,287 @@ const profileCompletion = computed(() => {
   line-height: 1.35;
 }
 
+.profile-ikas-domain-rail {
+  overflow: visible;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+}
+
+.profile-ikas-domain-rail .card-header {
+  padding: 0.95rem 1rem !important;
+  background: #fff !important;
+  overflow: visible;
+  position: relative;
+  z-index: 5;
+}
+
+.profile-ikas-domain-rail .card-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem !important;
+  border-radius: 0 0 20px 20px;
+}
+
+.ikas-domain-year-menu {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+}
+
+.ikas-domain-year-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  min-width: 86px;
+  min-height: 34px;
+  padding: 0.42rem 0.62rem 0.42rem 0.72rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.ikas-domain-year-button:hover:not(:disabled),
+.ikas-domain-year-button:focus-visible {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12), 0 10px 22px rgba(15, 23, 42, 0.08);
+  outline: none;
+}
+
+.ikas-domain-year-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.ikas-domain-year-button i {
+  color: #64748b;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.ikas-domain-year-button i.open {
+  transform: rotate(180deg);
+}
+
+.ikas-domain-year-list {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  min-width: 112px;
+  overflow: hidden;
+  padding: 0.28rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.ikas-domain-year-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 0.42rem 0.58rem;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ikas-domain-year-list button:hover {
+  background: #eef4ff;
+  color: #1d4ed8;
+}
+
+.ikas-domain-year-list button.active {
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
+}
+
+.ikas-domain-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 120px;
+  justify-content: center;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ikas-domain-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(59, 130, 246, 0.16);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.07), rgba(20, 184, 166, 0.05));
+}
+
+.ikas-domain-summary span {
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.ikas-domain-summary strong {
+  display: block;
+  color: #0f172a;
+  font-size: 1.45rem;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.ikas-domain-summary > span {
+  max-width: 52%;
+  padding: 0.32rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #1d4ed8;
+  text-align: right;
+  text-transform: none;
+}
+
+.ikas-domain-list {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.ikas-domain-row {
+  display: flex;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.78rem;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.ikas-domain-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.ikas-domain-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 12px;
+  color: #ffffff;
+}
+
+.domain-blue .ikas-domain-icon { background: linear-gradient(135deg, #2563eb, #60a5fa); }
+.domain-teal .ikas-domain-icon { background: linear-gradient(135deg, #0f766e, #2dd4bf); }
+.domain-amber .ikas-domain-icon { background: linear-gradient(135deg, #d97706, #fbbf24); }
+.domain-red .ikas-domain-icon { background: linear-gradient(135deg, #dc2626, #fb7185); }
+
+.ikas-domain-row-head,
+.ikas-domain-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.ikas-domain-row-head span {
+  color: #0f172a;
+  font-size: 12.4px;
+  font-weight: 900;
+}
+
+.ikas-domain-row-head strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.ikas-domain-track {
+  height: 7px;
+  overflow: hidden;
+  margin: 0.48rem 0;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.ikas-domain-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #14b8a6);
+}
+
+.ikas-domain-row-meta span {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ikas-domain-priority {
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 16px;
+  background: #fffbeb;
+}
+
+.ikas-domain-priority-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 12px;
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.ikas-domain-priority div {
+  min-width: 0;
+}
+
+.ikas-domain-priority span,
+.ikas-domain-priority small {
+  display: block;
+  color: #92400e;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.ikas-domain-priority strong {
+  display: block;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 12.8px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .info-grid {
   gap: 0.85rem;
 }
@@ -2885,12 +3666,14 @@ const profileCompletion = computed(() => {
 
 .profile-side-card,
 .profile-about-rail,
+.profile-ikas-domain-rail,
 .activity-timeline-card {
   border-radius: 20px !important;
 }
 
 .profile-side-card > .card-header,
 .profile-about-rail > .card-header,
+.profile-ikas-domain-rail > .card-header,
 .activity-timeline-card > .card-header {
   border-radius: 20px 20px 0 0 !important;
 }
@@ -2940,6 +3723,8 @@ const profileCompletion = computed(() => {
 :global(html.dark) .profile-stakeholder-page .profile-audit-log-card,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-about-rail,
 :global(html.dark) .profile-stakeholder-page .profile-about-rail,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-ikas-domain-rail,
+:global(html.dark) .profile-stakeholder-page .profile-ikas-domain-rail,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card,
 :global(html.dark) .profile-stakeholder-page .activity-timeline-card,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card,
@@ -2965,13 +3750,19 @@ const profileCompletion = computed(() => {
 
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card > .card-body,
 :global(html.dark) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(body.dark) .profile-stakeholder-page .activity-timeline-card > .card-body,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .pic-card-list,
-:global(html.dark) .profile-stakeholder-page .pic-card-list {
+:global(html.dark) .profile-stakeholder-page .pic-card-list,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .pic-card-list,
+:global(body.dark) .profile-stakeholder-page .pic-card-list {
   background: #111827 !important;
 }
 
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter,
-:global(html.dark) .profile-stakeholder-page .activity-year-filter {
+:global(html.dark) .profile-stakeholder-page .activity-year-filter,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter {
   background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(17, 24, 39, 0.88) 72%, rgba(17, 24, 39, 0)) !important;
 }
 
@@ -2983,10 +3774,14 @@ const profileCompletion = computed(() => {
 :global(html.dark) .activity-form-panel,
 :global(html[data-theme-mode="dark"]) .activity-timeline-content,
 :global(html.dark) .activity-timeline-content,
+:global(body[data-theme-mode="dark"]) .activity-timeline-content,
+:global(body.dark) .activity-timeline-content,
 :global(html[data-theme-mode="dark"]) .pic-contact-card,
 :global(html.dark) .pic-contact-card,
 :global(html[data-theme-mode="dark"]) .ikas-audit-log-item,
-:global(html.dark) .ikas-audit-log-item {
+:global(html.dark) .ikas-audit-log-item,
+:global(html[data-theme-mode="dark"]) .ikas-domain-row,
+:global(html.dark) .ikas-domain-row {
   background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   color: #c7d9f5 !important;
@@ -2998,6 +3793,8 @@ const profileCompletion = computed(() => {
 :global(html.dark) .info-grid-item:hover,
 :global(html[data-theme-mode="dark"]) .activity-timeline-content:hover,
 :global(html.dark) .activity-timeline-content:hover,
+:global(body[data-theme-mode="dark"]) .activity-timeline-content:hover,
+:global(body.dark) .activity-timeline-content:hover,
 :global(html[data-theme-mode="dark"]) .pic-contact-card:hover,
 :global(html.dark) .pic-contact-card:hover {
   border-color: rgba(37, 99, 235, 0.3) !important;
@@ -3010,12 +3807,22 @@ const profileCompletion = computed(() => {
 :global(html.dark) .profile-stakeholder-page .company-name,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-title,
 :global(html.dark) .profile-stakeholder-page .activity-title,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-title,
+:global(body.dark) .profile-stakeholder-page .activity-title,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .info-grid-value,
 :global(html.dark) .profile-stakeholder-page .info-grid-value,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-top h6,
 :global(html.dark) .profile-stakeholder-page .ikas-audit-log-top h6,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card strong,
-:global(html.dark) .profile-stakeholder-page .profile-action-card strong {
+:global(html.dark) .profile-stakeholder-page .profile-action-card strong,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-row-head span,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-row-head span,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-row-head strong,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-row-head strong,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-summary strong,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-summary strong,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-priority strong,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-priority strong {
   color: #dde8f5 !important;
 }
 
@@ -3025,6 +3832,12 @@ const profileCompletion = computed(() => {
 :global(html.dark) .profile-stakeholder-page .info-grid-label,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description,
 :global(html.dark) .profile-stakeholder-page .activity-description,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description-preview,
+:global(html.dark) .profile-stakeholder-page .activity-description-preview,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description,
+:global(body.dark) .profile-stakeholder-page .activity-description,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description-preview,
+:global(body.dark) .profile-stakeholder-page .activity-description-preview,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-date,
 :global(html.dark) .profile-stakeholder-page .activity-date,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-meta,
@@ -3034,7 +3847,11 @@ const profileCompletion = computed(() => {
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-pagination-info,
 :global(html.dark) .profile-stakeholder-page .ikas-audit-pagination-info,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-action-card small,
-:global(html.dark) .profile-stakeholder-page .profile-action-card small {
+:global(html.dark) .profile-stakeholder-page .profile-action-card small,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-row-meta span,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-row-meta span,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-summary span,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-summary span {
   color: #94a3b8 !important;
 }
 
@@ -3071,6 +3888,10 @@ const profileCompletion = computed(() => {
 :global(html.dark) .activity-year-chip,
 :global(html[data-theme-mode="dark"]) .activity-tags span,
 :global(html.dark) .activity-tags span,
+:global(body[data-theme-mode="dark"]) .activity-year-chip,
+:global(body.dark) .activity-year-chip,
+:global(body[data-theme-mode="dark"]) .activity-tags span,
+:global(body.dark) .activity-tags span,
 :global(html[data-theme-mode="dark"]) .pic-count-badge,
 :global(html.dark) .pic-count-badge,
 :global(html[data-theme-mode="dark"]) .pic-index,
@@ -3098,33 +3919,226 @@ const profileCompletion = computed(() => {
   color: #fff !important;
 }
 
+:global(html[data-theme-mode="dark"]) .activity-year-filter-icon,
+:global(html.dark) .activity-year-filter-icon {
+  background: rgba(37, 99, 235, 0.16) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-icon i,
+:global(html.dark) .activity-year-filter-icon i {
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-copy strong,
+:global(html.dark) .activity-year-filter-copy strong {
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-copy small,
+:global(html.dark) .activity-year-filter-copy small {
+  color: #ffffff !important;
+}
+
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-copy strong,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-copy strong,
+.profile-stakeholder-page.is-dark .activity-year-filter-copy strong,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-copy small,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-copy small,
+.profile-stakeholder-page.is-dark .activity-year-filter-copy small {
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select,
+:global(html.dark) .profile-stakeholder-page .activity-year-filter-select,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-select,
+.profile-stakeholder-page.is-dark .activity-year-filter-select {
+  background-color: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select option,
+:global(html.dark) .profile-stakeholder-page .activity-year-filter-select option,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select option,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-select option,
+.profile-stakeholder-page.is-dark .activity-year-filter-select option {
+  background-color: #0f172a;
+  color: #ffffff;
+}
+
 :global(html[data-theme-mode="dark"]) .activity-modal,
 :global(html.dark) .activity-modal,
+:global(body[data-theme-mode="dark"]) .activity-modal,
+:global(body.dark) .activity-modal,
+.activity-modal-backdrop.is-dark .activity-modal,
 :global(html[data-theme-mode="dark"]) .activity-modal-header,
 :global(html.dark) .activity-modal-header,
+:global(body[data-theme-mode="dark"]) .activity-modal-header,
+:global(body.dark) .activity-modal-header,
+.activity-modal-backdrop.is-dark .activity-modal-header,
 :global(html[data-theme-mode="dark"]) .activity-modal-body,
 :global(html.dark) .activity-modal-body,
+:global(body[data-theme-mode="dark"]) .activity-modal-body,
+:global(body.dark) .activity-modal-body,
+.activity-modal-backdrop.is-dark .activity-modal-body,
 :global(html[data-theme-mode="dark"]) .activity-modal-footer,
-:global(html.dark) .activity-modal-footer {
+:global(html.dark) .activity-modal-footer,
+:global(body[data-theme-mode="dark"]) .activity-modal-footer,
+:global(body.dark) .activity-modal-footer,
+.activity-modal-backdrop.is-dark .activity-modal-footer {
   background: #162131 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   color: #e2e8f0 !important;
 }
 
 :global(html[data-theme-mode="dark"]) .activity-modal h6,
-:global(html.dark) .activity-modal h6 {
+:global(html.dark) .activity-modal h6,
+:global(body[data-theme-mode="dark"]) .activity-modal h6,
+:global(body.dark) .activity-modal h6,
+.activity-modal-backdrop.is-dark .activity-modal h6 {
   color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-detail-description,
+:global(html.dark) .activity-detail-description,
+:global(body[data-theme-mode="dark"]) .activity-detail-description,
+:global(body.dark) .activity-detail-description,
+.activity-modal-backdrop.is-dark .activity-detail-description,
+:global(html[data-theme-mode="dark"]) .activity-detail-description :deep(p),
+:global(html.dark) .activity-detail-description :deep(p),
+:global(body[data-theme-mode="dark"]) .activity-detail-description :deep(p),
+:global(body.dark) .activity-detail-description :deep(p),
+.activity-modal-backdrop.is-dark .activity-detail-description :deep(p),
+:global(html[data-theme-mode="dark"]) .activity-detail-description :deep(li),
+:global(html.dark) .activity-detail-description :deep(li),
+:global(body[data-theme-mode="dark"]) .activity-detail-description :deep(li),
+:global(body.dark) .activity-detail-description :deep(li),
+.activity-modal-backdrop.is-dark .activity-detail-description :deep(li) {
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-open-hint,
+:global(html.dark) .activity-open-hint,
+:global(body[data-theme-mode="dark"]) .activity-open-hint,
+:global(body.dark) .activity-open-hint,
+.profile-stakeholder-page.is-dark .activity-open-hint {
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-detail-description :deep(img),
+:global(html.dark) .activity-detail-description :deep(img),
+:global(body[data-theme-mode="dark"]) .activity-detail-description :deep(img),
+:global(body.dark) .activity-detail-description :deep(img),
+.activity-modal-backdrop.is-dark .activity-detail-description :deep(img) {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
 }
 
 :global(html[data-theme-mode="dark"]) .activity-kind-check,
 :global(html.dark) .activity-kind-check,
+:global(body[data-theme-mode="dark"]) .activity-kind-check,
+:global(body.dark) .activity-kind-check,
+.activity-modal-backdrop.is-dark .activity-kind-check,
 :global(html[data-theme-mode="dark"]) .activity-modal .form-control,
 :global(html.dark) .activity-modal .form-control,
+:global(body[data-theme-mode="dark"]) .activity-modal .form-control,
+:global(body.dark) .activity-modal .form-control,
+.activity-modal-backdrop.is-dark .activity-modal .form-control,
 :global(html[data-theme-mode="dark"]) .activity-modal .form-select,
-:global(html.dark) .activity-modal .form-select {
+:global(html.dark) .activity-modal .form-select,
+:global(body[data-theme-mode="dark"]) .activity-modal .form-select,
+:global(body.dark) .activity-modal .form-select,
+.activity-modal-backdrop.is-dark .activity-modal .form-select {
   background: #1a2535 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-ikas-domain-rail .card-header,
+:global(html.dark) .profile-stakeholder-page .profile-ikas-domain-rail .card-header,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .profile-ikas-domain-rail .card-body {
+  background: #0f172a !important;
+}
+
+:global(html.dark) .profile-stakeholder-page .profile-ikas-domain-rail .card-body {
+  background: #0f172a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-button,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-button {
+  background: linear-gradient(180deg, #1e2d40 0%, #172235 100%) !important;
+  border-color: rgba(147, 197, 253, 0.26) !important;
+  color: #e5eefb !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-button:hover:not(:disabled),
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-button:hover:not(:disabled),
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-button:focus-visible,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-button:focus-visible {
+  border-color: rgba(96, 165, 250, 0.62) !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16), 0 12px 26px rgba(0, 0, 0, 0.3) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-button i,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-button i {
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-list,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-list {
+  background: #111827 !important;
+  border-color: rgba(147, 197, 253, 0.22) !important;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.42) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-list button,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-list button {
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-list button:hover,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-list button:hover {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-year-list button.active,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-year-list button.active {
+  background: linear-gradient(135deg, #2563eb, #0f766e) !important;
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-summary,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-summary {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(20, 184, 166, 0.12)) !important;
+  border-color: rgba(96, 165, 250, 0.22) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-summary > span,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-summary > span {
+  background: rgba(191, 219, 254, 0.12) !important;
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-track,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-track {
+  background: rgba(148, 163, 184, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-priority,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-priority {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(146, 64, 14, 0.12)) !important;
+  border-color: rgba(251, 191, 36, 0.24) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-priority span,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-priority span,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-domain-priority small,
+:global(html.dark) .profile-stakeholder-page .ikas-domain-priority small {
+  color: #fcd58b !important;
 }
 
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .skeleton-block,
@@ -3159,6 +4173,7 @@ const profileCompletion = computed(() => {
 .profile-stakeholder-page.is-dark .profile-side-card,
 .profile-stakeholder-page.is-dark .profile-audit-log-card,
 .profile-stakeholder-page.is-dark .profile-about-rail,
+.profile-stakeholder-page.is-dark .profile-ikas-domain-rail,
 .profile-stakeholder-page.is-dark .activity-timeline-card,
 .profile-stakeholder-page.is-dark .profile-action-card {
   background: #111827 !important;
@@ -3189,7 +4204,8 @@ const profileCompletion = computed(() => {
 .profile-stakeholder-page.is-dark .activity-form-panel,
 .profile-stakeholder-page.is-dark .activity-timeline-content,
 .profile-stakeholder-page.is-dark .pic-contact-card,
-.profile-stakeholder-page.is-dark .ikas-audit-log-item {
+.profile-stakeholder-page.is-dark .ikas-audit-log-item,
+.profile-stakeholder-page.is-dark .ikas-domain-row {
   background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   color: #c7d9f5 !important;
@@ -3200,19 +4216,30 @@ const profileCompletion = computed(() => {
 .profile-stakeholder-page.is-dark .activity-title,
 .profile-stakeholder-page.is-dark .info-grid-value,
 .profile-stakeholder-page.is-dark .ikas-audit-log-top h6,
-.profile-stakeholder-page.is-dark .profile-action-card strong {
+.profile-stakeholder-page.is-dark .profile-action-card strong,
+.profile-stakeholder-page.is-dark .ikas-domain-row-head span,
+.profile-stakeholder-page.is-dark .ikas-domain-row-head strong,
+.profile-stakeholder-page.is-dark .ikas-domain-summary strong,
+.profile-stakeholder-page.is-dark .ikas-domain-priority strong {
   color: #dde8f5 !important;
 }
 
 .profile-stakeholder-page.is-dark .text-muted,
 .profile-stakeholder-page.is-dark .info-grid-label,
 .profile-stakeholder-page.is-dark .activity-description,
+.profile-stakeholder-page.is-dark .activity-description-preview,
 .profile-stakeholder-page.is-dark .activity-date,
 .profile-stakeholder-page.is-dark .ikas-audit-log-meta,
 .profile-stakeholder-page.is-dark .ikas-audit-log-content p,
 .profile-stakeholder-page.is-dark .ikas-audit-pagination-info,
-.profile-stakeholder-page.is-dark .profile-action-card small {
+.profile-stakeholder-page.is-dark .profile-action-card small,
+.profile-stakeholder-page.is-dark .ikas-domain-row-meta span,
+.profile-stakeholder-page.is-dark .ikas-domain-summary span {
   color: #94a3b8 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-open-hint {
+  color: #93c5fd !important;
 }
 
 .profile-stakeholder-page.is-dark .ikas-audit-log-changes span,
@@ -3243,6 +4270,72 @@ const profileCompletion = computed(() => {
   background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
   border-color: #2563eb !important;
   color: #fff !important;
+}
+
+.profile-stakeholder-page.is-dark .profile-ikas-domain-rail .card-header,
+.profile-stakeholder-page.is-dark .profile-ikas-domain-rail .card-body {
+  background: #0f172a !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-button {
+  background: linear-gradient(180deg, #1e2d40 0%, #172235 100%) !important;
+  border-color: rgba(147, 197, 253, 0.26) !important;
+  color: #e5eefb !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24) !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-button:hover:not(:disabled),
+.profile-stakeholder-page.is-dark .ikas-domain-year-button:focus-visible {
+  border-color: rgba(96, 165, 250, 0.62) !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16), 0 12px 26px rgba(0, 0, 0, 0.3) !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-button i {
+  color: #bfdbfe !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-list {
+  background: #111827 !important;
+  border-color: rgba(147, 197, 253, 0.22) !important;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.42) !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-list button {
+  color: #dbeafe !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-list button:hover {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #ffffff !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-year-list button.active {
+  background: linear-gradient(135deg, #2563eb, #0f766e) !important;
+  color: #ffffff !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-summary {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(20, 184, 166, 0.12)) !important;
+  border-color: rgba(96, 165, 250, 0.22) !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-summary > span {
+  background: rgba(191, 219, 254, 0.12) !important;
+  color: #bfdbfe !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-track {
+  background: rgba(148, 163, 184, 0.18) !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-priority {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(146, 64, 14, 0.12)) !important;
+  border-color: rgba(251, 191, 36, 0.24) !important;
+}
+
+.profile-stakeholder-page.is-dark .ikas-domain-priority span,
+.profile-stakeholder-page.is-dark .ikas-domain-priority small {
+  color: #fcd58b !important;
 }
 
 .profile-stakeholder-page.is-dark .skeleton-block {
@@ -3429,7 +4522,7 @@ const profileCompletion = computed(() => {
                         <i :class="profileCompletion.isComplete ? 'ri-checkbox-circle-fill' : 'ri-loader-4-line'"></i>
                       </div>
                       <strong>{{ profileCompletion.percent }}%</strong>
-                      <p>{{ profileCompletion.isComplete ? 'Data lengkap' : `${profileCompletion.completed}/${profileCompletion.total} data lengkap` }}</p>
+                      <p>Total {{ profileCompletion.totalPoint }} poin - {{ profileCompletion.completed }}/{{ profileCompletion.total }} poin terisi</p>
                       <div class="profile-hero-completion-track">
                         <span :style="`width:${profileCompletion.percent}%`"></span>
                       </div>
@@ -3447,15 +4540,16 @@ const profileCompletion = computed(() => {
                         :analyticData="penilaian"
                         :csirtId="relatedCsirtId ?? undefined"
                         :stakeholderSlug="currentStakeholder.slug"
+                        :respondentId="currentRiskRespondent?.id ?? undefined"
                       />
 
                       <div
-                        v-if="isAdmin && ((!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP') || !relatedCsirtId || resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED')"
+                        v-if="isAdmin && (!isCurrentYearIkasFilled || !relatedCsirtId || resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED')"
                         class="col-12 mb-2"
                       >
                         <div class="profile-action-grid">
                           <button
-                            v-if="!ikasDataMap[stakeholderSlug]?.total_kategori || ikasDataMap[stakeholderSlug]?.total_kategori === 'INPUT BELUM LENGKAP'"
+                            v-if="!isCurrentYearIkasFilled"
                             type="button"
                             class="profile-action-card"
                             @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })"
@@ -3486,7 +4580,7 @@ const profileCompletion = computed(() => {
                             v-if="resikoStore.progressMap[stakeholderSlug]?.status !== 'COMPLETED'"
                             type="button"
                             class="profile-action-card"
-                            @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug } })"
+                            @click="router.push({ path: '/survey-resiko', query: { slug: currentStakeholder.slug, ...(currentRiskRespondent?.id ? { respondentId: currentRiskRespondent.id } : {}) } })"
                           >
                             <span class="profile-action-icon action-amber"><i class="ri-error-warning-line"></i></span>
                             <span>
@@ -3525,20 +4619,26 @@ const profileCompletion = computed(() => {
                           <div class="card-body">
                             <div v-if="activityYearOptions.length" class="activity-year-filter">
                               <div class="activity-year-filter-label">
-                                <i class="ri-calendar-2-line"></i>
-                                <span>Tahun Aktivitas</span>
+                                <span class="activity-year-filter-icon"><i class="ri-calendar-2-line"></i></span>
+                                <span class="activity-year-filter-copy">
+                                  <strong>Tahun Aktivitas</strong>
+                                  <small>{{ selectedActivityCount }} aktivitas di {{ selectedActivityYear }} dari total {{ totalActivityCount }} aktivitas</small>
+                                </span>
                               </div>
                               <div class="activity-year-filter-chips">
-                                <button
-                                  v-for="year in activityYearOptions"
-                                  :key="year"
-                                  type="button"
-                                  class="activity-year-filter-chip"
-                                  :class="{ active: selectedActivityYear === year }"
-                                  @click="selectedActivityYear = year"
+                                <select
+                                  v-model="selectedActivityYear"
+                                  class="form-select activity-year-filter-select"
+                                  aria-label="Pilih tahun aktivitas"
                                 >
-                                  {{ year }}
-                                </button>
+                                  <option
+                                    v-for="year in activityYearOptions"
+                                    :key="year"
+                                    :value="year"
+                                  >
+                                    {{ year }}
+                                  </option>
+                                </select>
                                 <button
                                   type="button"
                                   class="activity-year-filter-reset"
@@ -3589,7 +4689,14 @@ const profileCompletion = computed(() => {
                                   <div class="activity-timeline-marker">
                                     <span>{{ String(index + 1).padStart(2, '0') }}</span>
                                   </div>
-                                  <div class="activity-timeline-content">
+                                  <div
+                                    class="activity-timeline-content"
+                                    role="button"
+                                    tabindex="0"
+                                    @click="openAktivitasDetail(item)"
+                                    @keydown.enter.prevent="openAktivitasDetail(item)"
+                                    @keydown.space.prevent="openAktivitasDetail(item)"
+                                  >
                                     <div class="activity-timeline-top">
                                       <div>
                                         <div class="activity-date">
@@ -3599,17 +4706,23 @@ const profileCompletion = computed(() => {
                                         <h6 class="activity-title">{{ item.judul }}</h6>
                                       </div>
                                       <div v-if="isAdmin" class="activity-actions">
-                                        <button type="button" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Aktivitas" @click="openEditAktivitas(item)">
+                                        <button type="button" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Aktivitas" @click.stop="openEditAktivitas(item)">
                                           <i class="ri-pencil-fill"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Aktivitas" @click="deleteAktivitas(item)">
+                                        <button type="button" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Aktivitas" @click.stop="deleteAktivitas(item)">
                                           <i class="ri-delete-bin-5-line"></i>
                                         </button>
                                       </div>
                                     </div>
-                                    <div class="activity-description" v-html="getHtmlDescription(item.deskripsi)"></div>
+                                    <p class="activity-description-preview">
+                                      {{ getPlainDescription(item.deskripsi) }}
+                                    </p>
                                     <div v-if="item.jenis_aktivitas?.length" class="activity-tags">
                                       <span v-for="jenis in item.jenis_aktivitas" :key="`${item.id}-${jenis}`">{{ jenis }}</span>
+                                    </div>
+                                    <div class="activity-open-hint">
+                                      <i class="ri-eye-line"></i>
+                                      <span>Lihat detail aktivitas</span>
                                     </div>
                                   </div>
                                 </div>
@@ -3845,6 +4958,94 @@ const profileCompletion = computed(() => {
                             </div>
                           </div>
                         </div>
+
+                        <div ref="ikasDomainRailRef" class="card custom-card profile-ikas-domain-rail">
+                          <div class="card-header profile-section-header d-flex align-items-center justify-content-between gap-3 border-bottom">
+                            <div>
+                              <div class="card-title mb-0 fw-semibold text-dark">IKAS per Domain</div>
+                              <div class="text-muted fs-13 mt-1">Skor domain berdasarkan tahun pengukuran</div>
+                            </div>
+                            <div class="ikas-domain-year-menu">
+                              <button
+                                type="button"
+                                class="ikas-domain-year-button"
+                                :disabled="!ikasYearOptions.length || ikasStore.apiLoading"
+                                @click="isIkasYearMenuOpen = !isIkasYearMenuOpen"
+                              >
+                                <span>{{ selectedIkasYear || 'Tahun' }}</span>
+                                <i class="ri-arrow-down-s-line" :class="{ open: isIkasYearMenuOpen }"></i>
+                              </button>
+                              <div v-if="isIkasYearMenuOpen && ikasYearOptions.length" class="ikas-domain-year-list">
+                                <button
+                                  v-for="year in ikasYearOptions"
+                                  :key="year"
+                                  type="button"
+                                  :class="{ active: selectedIkasYear === year }"
+                                  @click="selectedIkasYear = year"
+                                >
+                                  {{ year }}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="card-body">
+                            <div v-if="ikasStore.apiLoading" class="ikas-domain-loading">
+                              <span class="spinner-border spinner-border-sm"></span>
+                              <span>Memuat data IKAS {{ selectedIkasYear }}...</span>
+                            </div>
+
+                            <div v-else-if="!hasSelectedIkasYearRecord" class="empty-state py-4 text-center">
+                              <div class="empty-icon-ring mb-3">
+                                <div class="empty-icon-inner"><i class="ri-bar-chart-box-line"></i></div>
+                              </div>
+                              <h6 class="fw-bold mb-1 text-dark">Data IKAS {{ selectedIkasYear }} Belum Ada</h6>
+                              <p class="text-muted fs-12 mb-0 px-4 mx-auto" style="max-width: 320px;">Belum ada hasil IKAS untuk tahun pengukuran ini.</p>
+                            </div>
+
+                            <template v-else>
+                              <div class="ikas-domain-summary ikas-domain-animate">
+                                <div>
+                                  <span>Nilai IKAS {{ selectedIkasYear }}</span>
+                                  <strong>{{ formatIkasScore(selectedIkasDomainData.total_rata_rata) }}</strong>
+                                </div>
+                                <span>{{ selectedIkasDomainData.total_kategori || 'Belum Diisi' }}</span>
+                              </div>
+
+                              <div class="ikas-domain-list">
+                                <div
+                                  v-for="domain in ikasDomainRows"
+                                  :key="domain.key"
+                                  class="ikas-domain-row ikas-domain-animate"
+                                  :class="domain.colorClass"
+                                >
+                                  <span class="ikas-domain-icon"><i :class="domain.icon"></i></span>
+                                  <div>
+                                    <div class="ikas-domain-row-head">
+                                      <span>{{ domain.label }}</span>
+                                      <strong>{{ formatIkasScore(domain.score) }}</strong>
+                                    </div>
+                                    <div class="ikas-domain-track">
+                                      <span class="ikas-domain-fill" :style="`width:${getDomainScorePercent(domain.score)}%`"></span>
+                                    </div>
+                                    <div class="ikas-domain-row-meta">
+                                      <span>{{ domain.category }}</span>
+                                      <span>{{ domain.progress.completed }}/{{ domain.progress.total }} subdomain</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div class="ikas-domain-priority ikas-domain-animate">
+                                <span class="ikas-domain-priority-icon"><i class="ri-focus-3-line"></i></span>
+                                <div>
+                                  <span>Prioritas domain</span>
+                                  <strong>{{ weakestIkasDomain ? weakestIkasDomain.label : 'Belum tersedia' }}</strong>
+                                  <small>{{ weakestIkasDomain ? `${formatIkasScore(weakestIkasDomain.score)} - ${weakestIkasDomain.category}` : 'Isi IKAS terlebih dahulu untuk melihat prioritas.' }}</small>
+                                </div>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
                       </div>
 
                     </div>
@@ -3859,8 +5060,54 @@ const profileCompletion = computed(() => {
   </div>
 
   <div
+    v-if="selectedAktivitasDetail"
+    class="activity-modal-backdrop"
+    :class="{ 'is-dark': isProfileDarkMode }"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeAktivitasDetail"
+  >
+    <div class="activity-modal activity-detail-modal">
+      <div class="activity-modal-header">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+          <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
+            <i class="ri-file-list-3-line text-primary fs-16"></i>
+          </div>
+          <div class="min-w-0">
+            <h6 class="mb-0 fw-bold text-dark activity-detail-title">
+              {{ selectedAktivitasDetail.judul }}
+            </h6>
+            <p class="text-muted fs-11 mb-0">
+              {{ formatActivityDate(selectedAktivitasDetail.tanggal_mulai) }} - {{ formatActivityDate(selectedAktivitasDetail.tanggal_selesai) }}
+            </p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-icon btn-light rounded-3" @click="closeAktivitasDetail">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="activity-modal-body activity-detail-body">
+        <div v-if="selectedAktivitasDetail.jenis_aktivitas?.length" class="activity-tags activity-detail-tags">
+          <span v-for="jenis in selectedAktivitasDetail.jenis_aktivitas" :key="`detail-${selectedAktivitasDetail.id}-${jenis}`">{{ jenis }}</span>
+        </div>
+        <div class="activity-description activity-detail-description" v-html="getHtmlDescription(selectedAktivitasDetail.deskripsi)"></div>
+      </div>
+
+      <div v-if="isAdmin" class="activity-modal-footer">
+        <button type="button" class="btn btn-light" @click="closeAktivitasDetail">Tutup</button>
+        <button type="button" class="btn btn-warning text-white" @click="openEditAktivitas(selectedAktivitasDetail); closeAktivitasDetail();">
+          <i class="ri-pencil-fill me-1"></i>
+          Edit Aktivitas
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div
     v-if="isActivityFormVisible"
     class="activity-modal-backdrop"
+    :class="{ 'is-dark': isProfileDarkMode }"
     role="dialog"
     aria-modal="true"
     @click.self="closeAktivitasForm"
@@ -3911,9 +5158,9 @@ const profileCompletion = computed(() => {
             <label class="form-label fs-12 fw-bold text-muted text-uppercase">Deskripsi</label>
             <LmsEditor
               v-model="aktivitasForm.deskripsi"
-              variant="compact"
-              :min-height="240"
-              placeholder="Tulis ringkasan aktivitas di sini... Gunakan heading, list, link, gambar, tabel, dan format teks lainnya."
+              variant="full"
+              :min-height="360"
+              placeholder="Tulis ringkasan aktivitas di sini... Gunakan heading, list, blockquote, code block, gambar, video, tabel, dan lainnya."
             />
           </div>
         </div>

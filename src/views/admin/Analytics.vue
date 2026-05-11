@@ -5,6 +5,7 @@
 
     // ” Dashboard Widgets 
     import AlertIndicators from '@/components/dashboard-widgets/AlertIndicators.vue';
+    import GlobalFilter from '@/components/dashboard-widgets/GlobalFilter.vue';
 
     // ” CSS 
     import '@/assets/css/dashboard-widgets.css';
@@ -15,7 +16,7 @@
     import { useCsirtStore } from "@/stores/csirt";
     import { useKonversiStore } from "@/stores/konversi";
     import { useResikoStore } from "@/stores/resiko";
-    import { useDashboardFilterStore } from "@/stores/dashboardFilter";
+    import { useAnalyticsDashboardFilterStore } from "@/stores/dashboardFilter";
     import { useNotificationStore } from "@/stores/notifications";
     import { getKonversiProgress, isKonversiComplete } from "@/services/konversi.service";
 
@@ -23,6 +24,7 @@
     import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
 
     const SpkReusebleJobs = defineAsyncComponent(() => import("@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue"));
+    const RadarChartIkas = defineAsyncComponent(() => import('@/shared/components/@spk/charts/ikas-charts.vue'));
     const SektorAnalytics = defineAsyncComponent(() => import('@/components/dashboards/sektor-analytics.vue'));
     const InsightCard = defineAsyncComponent(() => import('@/components/dashboard-widgets/InsightCard.vue'));
     const ActionCenter = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActionCenter.vue'));
@@ -35,7 +37,7 @@
     const showMetabase = ref(false);
     const isFirstLoad = ref(true);
     const loading = ref(true);
-    const showDashboardLoader = ref(false);
+    const showDashboardLoader = ref(true);
     const dashboardLoaderRef = ref(null);
     const dashboardLoaderExiting = ref(false);
     const dashboardDetailsReady = ref(false);
@@ -57,10 +59,9 @@
     const csirtStore = useCsirtStore();
     const konversiStore = useKonversiStore();
     const resikoStore = useResikoStore();
-    const filterStore = useDashboardFilterStore();
+    const filterStore = useAnalyticsDashboardFilterStore();
     const notifStore = useNotificationStore();
     provide('dashboardFilterStore', filterStore);
-    const DASHBOARD_IGNORES_GLOBAL_FILTER = true;
     
     // Analytics Chart States
     const kseChartType = ref('donut'); // 'donut' or 'bar'
@@ -230,7 +231,7 @@
             dashboardLoaderTimeline?.kill();
             dashboardLoaderTimeline = null;
             dashboardLoaderExiting.value = false;
-            showDashboardLoader.value = false;
+            showDashboardLoader.value = true;
             nextTick(() => {
                 const root = dashboardLoaderRef.value;
                 root?.classList.remove('is-breaking');
@@ -267,7 +268,6 @@
 
     // Watch datepicker changes †’ push to filterStore
     watch(date, (newVal) => {
-        if (DASHBOARD_IGNORES_GLOBAL_FILTER) return;
         if (isSyncingDateFromStore) return;
         if (!newVal || !Array.isArray(newVal) || newVal.length < 2) return;
         filterStore.updateDateRange(newVal[0], newVal[1]);
@@ -568,47 +568,19 @@
         if (hasUsableApiKseData.value) return apiKseData.value;
         return localKseData.value;
     });
-
-    const resolveSektorNameById = (id) => {
-        if (!id) return '';
-        const sektor = sektorList.value.find((item) => String(item.id) === String(id));
-        return sektor ? getSektorName(sektor) : '';
-    };
-
-    const resolveSubSektorNameById = (id) => {
-        if (!id) return '';
-        const subSektor = subSektorList.value.find((item) => String(item.id) === String(id));
-        return subSektor ? getSubSektorName(subSektor) : '';
-    };
-
     const apiSektorCounts = computed(() => {
         const counts = filterStore.summaryData?.sektor_counts;
         if (!Array.isArray(counts)) return [];
 
         return counts
-            .map((item) => {
-                const id = String(item?.id ?? item?.sektor_id ?? item?.sub_sektor_id ?? item?.nama_sektor ?? '');
-                const sektorId = item?.sektor_id ?? item?.id_sektor ?? '';
-                const subSektorId = item?.sub_sektor_id ?? '';
-                const rawName = String(item?.nama_sektor ?? item?.nama_sub_sektor ?? item?.nama ?? item?.label ?? '').trim();
-                const isUnknown = !rawName || rawName.toLowerCase() === 'tidak diketahui';
-
-                let resolvedName = rawName;
-                if (isUnknown) {
-                    resolvedName = filterStore.sektorId
-                        ? (resolveSubSektorNameById(subSektorId || id) || rawName)
-                        : (resolveSektorNameById(sektorId || id) || rawName);
-                }
-
-                return {
-                    id,
-                    nama_sektor: resolvedName || 'Tidak diketahui',
-                    total: Number(item?.total ?? item?.count ?? item?.jumlah ?? 0) || 0,
-                    this_month: Number(item?.this_month ?? item?.bulan_ini ?? 0) || 0,
-                    countYear: Number(item?.countYear ?? item?.count_year ?? item?.tahun_ini ?? 0) || 0,
-                    countQuarter: Number(item?.countQuarter ?? item?.count_quarter ?? item?.kuartal_ini ?? 0) || 0,
-                };
-            })
+            .map((item) => ({
+                id: String(item?.id ?? item?.sektor_id ?? item?.sub_sektor_id ?? item?.nama_sektor ?? ''),
+                nama_sektor: String(item?.nama_sektor ?? item?.nama_sub_sektor ?? item?.nama ?? 'Tidak diketahui'),
+                total: Number(item?.total ?? item?.count ?? item?.jumlah ?? 0) || 0,
+                this_month: Number(item?.this_month ?? item?.bulan_ini ?? 0) || 0,
+                countYear: Number(item?.countYear ?? item?.count_year ?? item?.tahun_ini ?? 0) || 0,
+                countQuarter: Number(item?.countQuarter ?? item?.count_quarter ?? item?.kuartal_ini ?? 0) || 0,
+            }))
             .filter((item) => item.total > 0 || item.this_month > 0 || item.countYear > 0 || item.countQuarter > 0)
             .sort((a, b) => b.total - a.total);
     });
@@ -806,45 +778,34 @@
         
         // Filter by date range if active
         const filtered = (range && (range[0] || range[1]))
-            ? stakeholders.filter(s => isInDateRange(getStakeholderIkasDate(s), range))
+            ? stakeholders.filter(s => isInDateRange(s.updated_at || s.created_at, range))
             : stakeholders;
 
         let level1 = 0, level2 = 0, level3 = 0, level4 = 0, level5 = 0;
         let idenTotal = 0, protTotal = 0, detTotal = 0, tangTotal = 0;
-        let scoreTotal = 0, scoreCount = 0;
-        let idenCount = 0, protCount = 0, detCount = 0, tangCount = 0;
-        const addDomainValue = (value, addTotal, addCount) => {
-            const numericValue = Number(value);
-            if (!Number.isFinite(numericValue) || numericValue <= 0) return [addTotal, addCount];
-            return [addTotal + numericValue, addCount + 1];
-        };
+        let count = 0;
 
         filtered.forEach(s => {
             const data = ikasStore.ikasDataMap[s.slug];
             if (!data) return;
             
             const score = Number(data.total_rata_rata || 0);
-            if (Number.isFinite(score) && score > 0) {
-                scoreTotal += score;
-                scoreCount++;
-            }
             if (score < 1.5) level1++;
             else if (score < 2.5) level2++;
             else if (score < 3.5) level3++;
             else if (score < 4.5) level4++;
             else level5++;
 
-            [idenTotal, idenCount] = addDomainValue(data.identifikasi?.nilai_identifikasi, idenTotal, idenCount);
-            [protTotal, protCount] = addDomainValue(data.proteksi?.nilai_proteksi, protTotal, protCount);
-            [detTotal, detCount] = addDomainValue(data.deteksi?.nilai_deteksi, detTotal, detCount);
-            [tangTotal, tangCount] = addDomainValue(data.tanggulih?.nilai_tanggulih, tangTotal, tangCount);
+            idenTotal += Number(data.identifikasi?.nilai_identifikasi || 0);
+            protTotal += Number(data.proteksi?.nilai_proteksi || 0);
+            detTotal += Number(data.deteksi?.nilai_deteksi || 0);
+            tangTotal += Number(data.tanggulih?.nilai_tanggulih || 0);
+            count++;
         });
-
-        const localAverageScore = scoreCount > 0 ? Number((scoreTotal / scoreCount).toFixed(2)) : 0;
 
         return {
             total: apiIkasData.value.total_ikas || filtered.length,
-            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan || localAverageScore,
+            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan,
             avgTargetNilai: apiIkasData.value.avg_target_nilai,
             levels: { 
                 level1: { count: level1, label: 'Level 1 - Awal', color: '#e6533c', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)' },
@@ -854,10 +815,10 @@
                 level5: { count: level5, label: 'Level 5 - Inovatif', color: '#26bf94', gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)' }
             },
             averages: {
-                identifikasi: idenCount > 0 ? (idenTotal / idenCount).toFixed(2) : 0,
-                proteksi: protCount > 0 ? (protTotal / protCount).toFixed(2) : 0,
-                deteksi: detCount > 0 ? (detTotal / detCount).toFixed(2) : 0,
-                tanggulih: tangCount > 0 ? (tangTotal / tangCount).toFixed(2) : 0,
+                identifikasi: count > 0 ? (idenTotal / count).toFixed(2) : 0,
+                proteksi: count > 0 ? (protTotal / count).toFixed(2) : 0,
+                deteksi: count > 0 ? (detTotal / count).toFixed(2) : 0,
+                tanggulih: count > 0 ? (tangTotal / count).toFixed(2) : 0,
             }
         };
     });
@@ -1445,38 +1406,10 @@
             const respondents = resikoStore.adminRespondents || [];
             const trained = respondents.filter((item) => String(item.sertifikat_training || '').trim()).length;
             const items = [
-                {
-                    label: 'Total Responden',
-                    value: respondents.length,
-                    icon: 'ri-user-voice-line',
-                    gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)',
-                    color: '#0ea5e9',
-                    category: '',
-                },
-                {
-                    label: 'Perusahaan Mengisi',
-                    value: status.sudah_mengisi_manris,
-                    icon: 'ri-checkbox-circle-line',
-                    gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)',
-                    color: '#26bf94',
-                    category: 'Sudah Diisi',
-                },
-                {
-                    label: 'Belum Mengisi',
-                    value: status.belum_mengisi_manris,
-                    icon: 'ri-close-circle-line',
-                    gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)',
-                    color: '#e6533c',
-                    category: 'Belum Diisi',
-                },
-                {
-                    label: 'Sertifikat Training',
-                    value: trained,
-                    icon: 'ri-award-line',
-                    gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)',
-                    color: '#f5b849',
-                    category: '',
-                },
+                { label: 'Total Responden', value: respondents.length, icon: 'ri-user-voice-line', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)', color: '#0ea5e9', category: '' },
+                { label: 'Perusahaan Mengisi', value: status.sudah_mengisi_manris, icon: 'ri-checkbox-circle-line', gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)', color: '#26bf94', category: 'Sudah Diisi' },
+                { label: 'Belum Mengisi', value: status.belum_mengisi_manris, icon: 'ri-close-circle-line', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)', color: '#e6533c', category: 'Belum Diisi' },
+                { label: 'Sertifikat Training', value: trained, icon: 'ri-award-line', gradient: 'linear-gradient(135deg, #f5b849 0%, #fcd34d 100%)', color: '#f5b849', category: '' },
             ];
             return items.map(item => ({ ...item, isMuted: false }));
         }
@@ -1548,7 +1481,7 @@
         showMetabase.value = !showMetabase.value;
     };
 
-    // Date state is synchronized through Pinia so dashboard charts stay in step.
+    // (Custom date state logic removed as it's now handled entirely by GlobalFilter.vue & Pinia)
 
     //Date range helpers
     function isInDateRange(createdAt, rangeStrArray) {
@@ -1663,7 +1596,6 @@
 
         // 3. Count items into buckets
         function getField(obj, path) {
-            if (typeof path === 'function') return path(obj);
             return path.split('.').reduce((o, k) => o && o[k], obj);
         }
         
@@ -1711,56 +1643,9 @@
 
     const isLatestDashboardLoad = (token) => token === dashboardLoadSeq;
 
-    let isResettingFilter = false;
-
-    const resetDashboardFilterState = () => {
-        if (isResettingFilter) return;
-        isResettingFilter = true;
-        try {
-            filterStore.$patch({
-                dateRange: [null, null],
-                year: '',
-                quarter: '',
-                sektorId: '',
-                subSektorId: '',
-                kategoriSe: '',
-            });
-        } finally {
-            isResettingFilter = false;
-        }
-    };
-
-    const isDashboardFilterNeutral = () => (
-        !filterStore.dateRange?.[0]
-        && !filterStore.dateRange?.[1]
-        && !filterStore.year
-        && !filterStore.quarter
-        && !filterStore.sektorId
-        && !filterStore.subSektorId
-        && !filterStore.kategoriSe
-    );
-
-    watch(
-        () => [
-            filterStore.dateRange?.[0],
-            filterStore.dateRange?.[1],
-            filterStore.year,
-            filterStore.quarter,
-            filterStore.sektorId,
-            filterStore.subSektorId,
-            filterStore.kategoriSe,
-        ],
-        () => {
-            if (DASHBOARD_IGNORES_GLOBAL_FILTER && !isDashboardFilterNeutral()) {
-                resetDashboardFilterState();
-            }
-        },
-        { flush: 'post' },
-    );
-
     const initializeDashboardFilter = () => {
         if (dashboardFilterInitialized) return;
-        resetDashboardFilterState();
+        filterStore.loadFromStorage();
         initDateFromStore();
         dashboardFilterInitialized = true;
     };
@@ -2205,16 +2090,10 @@
         if (!range || (!range[0] && !range[1])) return baseSdm.value;
         return baseSdm.value.filter(s => isInDateRange(s.created_at, range));
     });
-    const getStakeholderIkasDate = (stakeholder) => (
-        ikasStore.ikasSummaryMap[stakeholder?.slug]?.updated_at ||
-        stakeholder?.updated_at ||
-        stakeholder?.created_at ||
-        ''
-    );
     const datedIkasStakeholders = computed(() => {
         const range = filterStore.dateRange;
         if (!range || (!range[0] && !range[1])) return baseIkasStakeholders.value;
-        return baseIkasStakeholders.value.filter(s => isInDateRange(getStakeholderIkasDate(s), range));
+        return baseIkasStakeholders.value.filter(s => isInDateRange(s.updated_at || s.created_at, range));
     });
     const datedSeList = computed(() => {
         const range = filterStore.dateRange;
@@ -2401,7 +2280,7 @@
 
         const useDetailedTrends = dashboardDetailsReady.value;
         const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(displayFilteredCsirt);
-        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, getStakeholderIkasDate) : fallbackTrendData(displayFilteredIkas);
+        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(displayFilteredIkas);
         const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(displayFilteredSe);
         const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(displayFilteredStakeholder);
 
@@ -2495,7 +2374,6 @@
         // Try nested sub_sektor with multiple paths
         if (s.sub_sektor?.nama_sektor) return s.sub_sektor.nama_sektor;
         if (s.sub_sektor?.sektor?.nama_sektor) return s.sub_sektor.sektor.nama_sektor;
-        if (s.sektor?.nama_sektor) return s.sektor.nama_sektor;
         
         // Fallback: resolve from id_sub_sektor if object is missing
         const subId = s.id_sub_sektor || (s.sub_sektor && s.sub_sektor.id);
@@ -2506,13 +2384,6 @@
                 const parent = sektorList.value.find(p => String(p.id) === String(sId));
                 if (parent) return getSektorName(parent);
             }
-        }
-
-        // Fallback: resolve directly from sektor id if stakeholder has no sub sektor payload
-        const sektorId = s.id_sektor || s.sub_sektor?.id_sektor || s.sektor?.id;
-        if (sektorId) {
-            const parent = sektorList.value.find(item => String(item.id) === String(sektorId));
-            if (parent) return getSektorName(parent);
         }
 
         // Try legacy flat field
@@ -2971,6 +2842,9 @@
         }
     }
 
+    // ” Global Filter Handler 
+    // This is now purely Pinia-based, no emits needed from GlobalFilter component
+
     // ” Quick Action Handlers 
     function handleAddStakeholder() {
         router.push('/stakeholders');
@@ -2980,671 +2854,17 @@
         await loadDashboardData({ force: true, refresh: true });
     }
 
-    const monitoringPalette = [
-        '#477ff0', '#10b981', '#dc2626', '#f17432', '#0ea5e9',
-        '#14b8a6', '#84cc16', '#4a90d9', '#0369a1', '#cc7442',
-        '#65a30d', '#0284c7', '#ff9361', '#7f8fa4', '#d66b2d'
-    ];
-
-    const monitoringUnknownColor = '#fb923c';
-    const monitoringSektorColorRules = [
-        { keywords: ['agro', 'surveyor', 'jasa konstruksi'], color: '#477ff0' },
-        { keywords: ['kimia', 'farmasi', 'tekstil', 'ikft'], color: '#10b981' },
-        { keywords: ['logam', 'mesin', 'alat transportasi', 'elektronika', 'ilmate'], color: '#dc2626' },
-        { keywords: ['kawasan industri'], color: '#f17432' },
-    ];
-
-    const normalizeMonitoringLabel = (value) => String(value || '').trim().toLowerCase();
-
-    const getMonitoringSektorBaseColor = (label, index = 0) => {
-        const normalized = normalizeMonitoringLabel(label);
-        if (!normalized || normalized === '-' || normalized === 'tidak diketahui') {
-            return monitoringUnknownColor;
-        }
-
-        const matchedRule = monitoringSektorColorRules.find((rule) =>
-            rule.keywords.some((keyword) => normalized.includes(keyword))
-        );
-        if (matchedRule) return matchedRule.color;
-
-        return monitoringPalette[index % monitoringPalette.length];
-    };
-
-    const findSektorIndexByName = (label) => (
-        sektorList.value.findIndex((item) => normalizeMonitoringLabel(getSektorName(item)) === normalizeMonitoringLabel(label))
-    );
-
-    const findSubSektorByName = (label) => (
-        subSektorList.value.find((item) => normalizeMonitoringLabel(getSubSektorName(item)) === normalizeMonitoringLabel(label))
-    );
-
-    const getMonitoringSektorColor = (label) => {
-        const sektorIndex = findSektorIndexByName(label);
-        return getMonitoringSektorBaseColor(label, sektorIndex >= 0 ? sektorIndex : 0);
-    };
-
-    const getMonitoringSubSektorColor = (label, index = 0) => {
-        const subSektor = findSubSektorByName(label);
-        if (subSektor) {
-            const parentId = getSubSektorParentId(subSektor);
-            const parentIndex = sektorList.value.findIndex((item) => String(item.id) === String(parentId));
-            const parent = parentIndex >= 0 ? sektorList.value[parentIndex] : null;
-            if (parent) {
-                return getMonitoringSektorBaseColor(getSektorName(parent), parentIndex);
-            }
-        }
-
-        return getMonitoringSektorBaseColor(label, index);
-    };
-
-    const getMonitoringSubSektorParentName = (label) => {
-        const subSektor = findSubSektorByName(label);
-        if (subSektor) {
-            const parentId = getSubSektorParentId(subSektor);
-            const parent = sektorList.value.find((item) => String(item.id) === String(parentId));
-            if (parent) return getSektorName(parent);
-        }
-
-        return 'Tidak diketahui';
-    };
-
-    const monitoringPercentOf = (value, total) => {
-        const safeTotal = Number(total || 0);
-        if (!safeTotal) return 0;
-        return Math.round((Number(value || 0) / safeTotal) * 100);
-    };
-
-    const resolveMonitoringSubSektorId = (stakeholder) => {
-        if (stakeholder?.sub_sektor?.id) return String(stakeholder.sub_sektor.id);
-        if (stakeholder?.id_sub_sektor) return String(stakeholder.id_sub_sektor);
-        if (stakeholder?.sub_sektor?.nama_sub_sektor) {
-            const matched = subSektorList.value.find((item) => getSubSektorName(item) === stakeholder.sub_sektor.nama_sub_sektor);
-            if (matched) return String(matched.id);
-        }
-        if (stakeholder?.sektor) {
-            const matched = subSektorList.value.find((item) => getSubSektorName(item) === stakeholder.sektor);
-            if (matched) return String(matched.id);
-        }
-        return null;
-    };
-
-    const buildMonitoringGroups = (labelGetter, colorGetter) => {
-        const groups = new Map();
-
-        datedStakeholders.value.forEach((stakeholder) => {
-            const rawLabel = String(labelGetter(stakeholder) || '').trim();
-            const label = rawLabel && rawLabel !== '-' ? rawLabel : 'Tidak diketahui';
-            groups.set(label, (groups.get(label) || 0) + 1);
-        });
-
-        return Array.from(groups.entries())
-            .map(([label, value], index) => ({
-                label,
-                value,
-                color: colorGetter(label, index),
-            }))
-            .sort((a, b) => b.value - a.value);
-    };
-
-    const monitoringChartSektors = computed(() => {
-        const shouldKeepEmptySubSektor = (sektorName) =>
-            normalizeMonitoringLabel(sektorName).includes('kawasan industri');
-
-        let data = sektorList.value.map((sektor) => {
-            const children = subSektorList.value.filter((subSektor) => {
-                const parentId = getSubSektorParentId(subSektor);
-                return parentId !== undefined && String(parentId) === String(sektor.id);
-            });
-
-            const subSektors = children.map((subSektor) => {
-                const stakeholderCount = datedStakeholders.value.filter((stakeholder) => {
-                    const subSektorId = resolveMonitoringSubSektorId(stakeholder);
-                    return subSektorId && subSektorId === String(subSektor.id);
-                }).length;
-
-                return {
-                    ...subSektor,
-                    displayName: getSubSektorName(subSektor),
-                    stakeholderCount,
-                };
-            }).filter((subSektor) =>
-                subSektor.stakeholderCount > 0 || shouldKeepEmptySubSektor(getSektorName(sektor))
-            );
-
-            return {
-                ...sektor,
-                displayName: getSektorName(sektor),
-                color: getMonitoringSektorColor(getSektorName(sektor)),
-                subSektors,
-                stakeholderCount: subSektors.reduce((total, subSektor) => total + subSektor.stakeholderCount, 0),
-            };
-        }).filter((sektor) => sektor.stakeholderCount > 0);
-
-        if (filterStore.sektorId) {
-            data = data.filter((sektor) => String(sektor.id) === String(filterStore.sektorId));
-        }
-
-        if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
-            data = data
-                .filter((sektor) => sektor.subSektors.some((subSektor) => String(subSektor.id) === String(filterStore.subSektorId)))
-                .map((sektor) => {
-                    const subSektors = sektor.subSektors.filter((subSektor) => String(subSektor.id) === String(filterStore.subSektorId));
-                    return {
-                        ...sektor,
-                        subSektors,
-                        stakeholderCount: subSektors.reduce((total, subSektor) => total + subSektor.stakeholderCount, 0),
-                    };
-                });
-        }
-
-        return [...data].sort((a, b) => b.stakeholderCount - a.stakeholderCount || a.displayName.localeCompare(b.displayName));
-    });
-
-    const monitoringSektorItems = computed(() =>
-        monitoringChartSektors.value.map((sektor) => ({
-            label: sektor.displayName,
-            value: sektor.stakeholderCount,
-            color: sektor.color,
-        }))
-    );
-
-    const monitoringSubSektorItems = computed(() => {
-        return monitoringChartSektors.value.flatMap((sektor) =>
-            [...sektor.subSektors]
-                .sort((a, b) => b.stakeholderCount - a.stakeholderCount || a.displayName.localeCompare(b.displayName))
-                .map((subSektor) => ({
-                    label: subSektor.displayName,
-                    value: subSektor.stakeholderCount,
-                    color: sektor.color,
-                    parentName: sektor.displayName,
-                }))
-        );
-    });
-    const monitoringRiskSummary = computed(() => {
-        const stakeholders = datedStakeholders.value;
-        const completedSlugs = new Set(
-            Object.entries(resikoStore.progressMap || {})
-                .filter(([, progress]) => progress?.status === 'COMPLETED')
-                .map(([slug]) => slug)
-        );
-        const answeredSlugs = new Set(
-            Object.entries(resikoStore.answersMap || {})
-                .filter(([, answers]) => answers && Object.keys(answers).length > 0)
-                .map(([slug]) => slug)
-        );
-
-        let completed = 0;
-        let inProgress = 0;
-
-        stakeholders.forEach((stakeholder) => {
-            const slug = stakeholder?.slug;
-            if (!slug) return;
-            if (completedSlugs.has(slug)) {
-                completed += 1;
-            } else if (answeredSlugs.has(slug)) {
-                inProgress += 1;
-            }
-        });
-
-        const total = stakeholders.length;
-        const notStarted = Math.max(0, total - completed - inProgress);
-        const rate = monitoringPercentOf(completed, total);
-
-        return {
-            total,
-            completed,
-            inProgress,
-            notStarted,
-            rate,
-        };
-    });
-
-    const monitoringKpiCards = computed(() => {
-        const kse = kseData.value;
-        const kseStatusData = kseStatus.value;
-        const csirt = csirtData.value;
-        const csirtStatusData = csirtStatus.value;
-        const ikas = ikasSummaryData.value;
-        const risk = monitoringRiskSummary.value;
-        const lengkapCount = monitoringDataCompleteCount.value;
-        const lengkapRate = monitoringDataCompleteRate.value;
-        const kseFilled = kseStatusData.sudah_mengisi_kse || kse.total_se;
-        const csirtFormed = csirtStatusData.sudah_membentuk_csirt || csirt.total_csirt;
-        const ikasFilled = ikasFilledCount.value || ikas.total;
-
-        return [
-            {
-                label: 'Total Stakeholder',
-                value: totalStakeholders.value,
-                total: totalStakeholders.value,
-                sub: `${formatChartNumber(lengkapCount)} data lengkap, ${totalSektors.value} sektor, ${totalSubSektors.value} sub-sektor`,
-                icon: 'ri-building-4-line',
-                color: '#2563eb',
-                rate: lengkapRate,
-            },
-            {
-                label: 'Total KSE',
-                value: kseFilled,
-                total: kseStatusData.total_perusahaan || totalStakeholders.value,
-                sub: `${kse.strategis} strategis, ${kse.tinggi} tinggi, ${kse.rendah} rendah`,
-                icon: 'ri-git-branch-line',
-                color: '#d97706',
-            },
-            {
-                label: 'Total IKAS',
-                value: ikasFilled,
-                total: ikasStatusTotal.value || totalStakeholders.value,
-                sub: `Rata-rata ${Number(ikas.avgNilaiKematangan || 0).toFixed(2)}`,
-                icon: 'ri-line-chart-line',
-                color: '#16a34a',
-            },
-            {
-                label: 'Total CSIRT',
-                value: csirtFormed,
-                total: csirtStatusData.total_perusahaan || totalStakeholders.value,
-                sub: `${csirt.lengkap} lengkap, ${csirt.belum_lengkap} belum lengkap`,
-                icon: 'ri-shield-check-line',
-                color: '#0891b2',
-            },
-            {
-                label: 'Manajemen Risiko',
-                value: risk.completed,
-                total: risk.total,
-                sub: `${risk.rate}% selesai, ${formatChartNumber(risk.inProgress)} proses`,
-                icon: 'ri-shield-flash-line',
-                color: '#dc2626',
-                rate: risk.rate,
-            },
-        ];
-    });
-
-    const monitoringDataCompleteCount = computed(() => (
-        countCompleteKonversiStakeholders(datedStakeholders.value)
-    ));
-
-    const monitoringDataCompleteRate = computed(() => (
-        monitoringPercentOf(monitoringDataCompleteCount.value, totalStakeholders.value)
-    ));
-
-    const monitoringHeroHighlights = computed(() => [
-        {
-            label: 'Sektor aktif',
-            value: formatChartNumber(monitoringSektorItems.value.length || totalSektors.value),
-            icon: 'ri-building-2-line',
-        },
-        {
-            label: 'Sub-sektor terbaca',
-            value: formatChartNumber(monitoringSubSektorItems.value.length || totalSubSektors.value),
-            icon: 'ri-node-tree',
-        },
-        {
-            label: 'Periode data',
-            value: dateRangeLabel.value,
-            icon: 'ri-calendar-event-line',
-        },
-    ]);
-
-    const monitoringKseData = computed(() => ({
-        labels: ['Strategis', 'Tinggi', 'Rendah'],
-        series: [kseData.value.strategis, kseData.value.tinggi, kseData.value.rendah],
-        colors: ['#e6533c', '#f5b849', '#26bf94'],
-    }));
-
-    const monitoringIkasItems = computed(() => {
-        const levels = ikasSummaryData.value.levels;
-        return [
-            { label: 'Level 1', value: levels.level1.count, color: '#e6533c' },
-            { label: 'Level 2', value: levels.level2.count, color: '#f5b849' },
-            { label: 'Level 3', value: levels.level3.count, color: '#0ea5e9' },
-            { label: 'Level 4', value: levels.level4.count, color: '#23b7e5' },
-            { label: 'Level 5', value: levels.level5.count, color: '#26bf94' },
-        ];
-    });
-
-    const monitoringCsirtData = computed(() => ({
-        labels: ['Lengkap', 'Belum Lengkap', 'Punya SDM', 'Punya SE'],
-        series: [csirtData.value.lengkap, csirtData.value.belum_lengkap, csirtData.value.punya_sdm, csirtData.value.punya_se],
-        colors: ['#26bf94', '#f5b849', '#0ea5e9', '#3b82f6'],
-    }));
-
-    const monitoringStatusItems = computed(() => [
-        { label: 'KSE sudah', value: kseStatus.value.sudah_mengisi_kse, color: '#26bf94' },
-        { label: 'KSE belum', value: kseStatus.value.belum_mengisi_kse, color: '#e6533c' },
-        { label: 'IKAS sudah', value: ikasFilledCount.value, color: '#16a34a' },
-        { label: 'IKAS belum', value: ikasUnfilledCount.value, color: '#f5b849' },
-        { label: 'CSIRT sudah', value: csirtStatus.value.sudah_membentuk_csirt, color: '#0891b2' },
-        { label: 'CSIRT belum', value: csirtStatus.value.belum_membentuk_csirt, color: '#64748b' },
-    ]);
-
-    const monitoringIkasDomainItems = computed(() => [
-        { key: 'identifikasi', label: 'Identifikasi', value: Number(ikasSummaryData.value.averages.identifikasi || 0), color: '#2563eb', icon: 'ri-search-eye-line' },
-        { key: 'proteksi', label: 'Proteksi', value: Number(ikasSummaryData.value.averages.proteksi || 0), color: '#16a34a', icon: 'ri-shield-check-line' },
-        { key: 'deteksi', label: 'Deteksi', value: Number(ikasSummaryData.value.averages.deteksi || 0), color: '#d97706', icon: 'ri-radar-line' },
-        { key: 'tanggulih', label: 'Penanggulangan & Pemulihan', value: Number(ikasSummaryData.value.averages.tanggulih || 0), color: '#0891b2', icon: 'ri-lifebuoy-line' },
-    ]);
-
-    const monitoringIkasLevelDonutData = computed(() => {
-        const levels = ikasSummaryData.value.levels;
-        return {
-            labels: ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'],
-            series: [levels.level1.count, levels.level2.count, levels.level3.count, levels.level4.count, levels.level5.count],
-            colors: ['#e6533c', '#f5b849', '#0ea5e9', '#23b7e5', '#26bf94'],
-        };
-    });
-
-    const monitoringIkasDomainPieData = computed(() => {
-        const avg = ikasSummaryData.value.averages;
-        return {
-            labels: ['Identifikasi', 'Proteksi', 'Deteksi', 'Penanggulangan'],
-            series: [
-                Number(avg.identifikasi || 0),
-                Number(avg.proteksi || 0),
-                Number(avg.deteksi || 0),
-                Number(avg.tanggulih || 0),
-            ],
-            colors: ['#2563eb', '#16a34a', '#d97706', '#0891b2'],
-        };
-    });
-
-    const chartThemeTokens = () => {
-        const isDark = isDashboardDarkMode.value;
-        return {
-            isDark,
-            text: isDark ? '#eef4ff' : '#172554',
-            muted: isDark ? '#94a3b8' : '#64748b',
-            axis: isDark ? '#dbeafe' : '#334155',
-            grid: isDark ? 'rgba(148, 163, 184, 0.18)' : '#eef3f9',
-            stroke: isDark ? '#151a2b' : '#ffffff',
-        };
-    };
-
-    const buildMonitoringBarOptions = (items, horizontal = true) => {
-        const t = chartThemeTokens();
-
-        return {
-            chart: {
-                background: 'transparent',
-                fontFamily: 'Inter, sans-serif',
-                toolbar: { show: false },
-                parentHeightOffset: 0,
-                animations: { enabled: true, speed: 520 },
-            },
-            theme: { mode: t.isDark ? 'dark' : 'light' },
-            colors: items.map((item) => item.color),
-            grid: {
-                borderColor: t.grid,
-                strokeDashArray: 4,
-                padding: { top: 4, right: horizontal ? 28 : 8, bottom: 0, left: 4 },
-            },
-            plotOptions: {
-                bar: {
-                    horizontal,
-                    distributed: true,
-                    borderRadius: 5,
-                    borderRadiusApplication: 'end',
-                    barHeight: horizontal ? '54%' : '58%',
-                    columnWidth: '54%',
-                },
-            },
-            dataLabels: {
-                enabled: true,
-                formatter: (value) => value ? formatChartNumber(value) : '',
-                style: {
-                    colors: [horizontal ? t.text : '#ffffff'],
-                    fontSize: '11px',
-                    fontWeight: 900,
-                },
-                offsetX: horizontal ? 6 : 0,
-                dropShadow: horizontal ? {
-                    enabled: true,
-                    top: 0,
-                    left: 0,
-                    color: t.isDark ? '#0f172a' : '#ffffff',
-                    opacity: t.isDark ? 0.65 : 1,
-                } : { enabled: false },
-            },
-            xaxis: {
-                categories: items.map((item) => item.label),
-                labels: {
-                    show: !horizontal,
-                    rotate: horizontal ? 0 : -35,
-                    trim: true,
-                    style: { colors: t.axis, fontSize: '11px', fontWeight: 700 },
-                },
-                axisBorder: { show: false },
-                axisTicks: { show: false },
-            },
-            yaxis: {
-                labels: {
-                    show: horizontal,
-                    maxWidth: 136,
-                    style: { colors: t.axis, fontSize: '11px', fontWeight: 850 },
-                },
-            },
-            legend: { show: false },
-            tooltip: {
-                theme: t.isDark ? 'dark' : 'light',
-                y: { formatter: (value) => formatChartNumber(value) },
-            },
-        };
-    };
-
-    const buildDistributionBarOptions = (items) => {
-        const t = chartThemeTokens();
-        const maxValue = Math.max(1, ...items.map((item) => Number(item.value || 0)));
-
-        return {
-            chart: {
-                background: 'transparent',
-                fontFamily: 'Inter, sans-serif',
-                toolbar: {
-                    show: true,
-                    tools: {
-                        download: true,
-                        selection: false,
-                        zoom: false,
-                        zoomin: false,
-                        zoomout: false,
-                        pan: false,
-                        reset: false,
-                    },
-                },
-                parentHeightOffset: 0,
-                animations: { enabled: true, speed: 520 },
-            },
-            theme: { mode: t.isDark ? 'dark' : 'light' },
-            colors: items.map((item) => item.color),
-            grid: {
-                borderColor: t.grid,
-                strokeDashArray: 4,
-                padding: { top: 6, right: 20, bottom: 0, left: 0 },
-            },
-            plotOptions: {
-                bar: {
-                    horizontal: true,
-                    distributed: true,
-                    borderRadius: 5,
-                    borderRadiusApplication: 'end',
-                    barHeight: items.length > 8 ? '54%' : '48%',
-                    dataLabels: {
-                        position: 'center',
-                    },
-                },
-            },
-            dataLabels: {
-                enabled: true,
-                formatter: (value) => value ? `${formatChartNumber(value)} stakeholder` : '',
-                textAnchor: 'middle',
-                offsetX: 0,
-                style: {
-                    colors: ['#ffffff'],
-                    fontSize: '11px',
-                    fontWeight: 900,
-                },
-                background: { enabled: false },
-                dropShadow: { enabled: false },
-            },
-            xaxis: {
-                categories: items.map((item) => item.label),
-                min: 0,
-                max: Math.ceil(maxValue / 10) * 10,
-                tickAmount: 4,
-                labels: {
-                    show: true,
-                    trim: true,
-                    style: { colors: t.axis, fontSize: '11px', fontWeight: 700 },
-                    formatter: (value) => formatChartNumber(value),
-                },
-                axisBorder: { show: false },
-                axisTicks: { show: false },
-            },
-            yaxis: {
-                labels: {
-                    show: true,
-                    maxWidth: 200,
-                    style: { colors: t.axis, fontSize: '11px', fontWeight: 700 },
-                },
-            },
-            legend: { show: false },
-            tooltip: {
-                theme: t.isDark ? 'dark' : 'light',
-                y: { formatter: (value) => `${formatChartNumber(value)} stakeholder` },
-            },
-        };
-    };
-
-    const getDistributionChartHeight = (count, minHeight, rowHeight) => {
-        return Math.max(minHeight, Number(count || 0) * rowHeight + 60);
-    };
-
-    const buildMonitoringDonutOptions = (data, totalLabel) => {
-        const t = chartThemeTokens();
-
-        return {
-            chart: {
-                background: 'transparent',
-                fontFamily: 'Inter, sans-serif',
-                toolbar: { show: false },
-                parentHeightOffset: 0,
-                animations: { enabled: true, speed: 520 },
-            },
-            theme: { mode: t.isDark ? 'dark' : 'light' },
-            labels: data.labels,
-            colors: data.colors,
-            stroke: { width: 4, colors: [t.stroke] },
-            dataLabels: { enabled: false },
-            legend: { show: false },
-            plotOptions: {
-                pie: {
-                    customScale: 0.96,
-                    expandOnClick: false,
-                    donut: {
-                        size: '68%',
-                        labels: {
-                            show: true,
-                            name: { fontSize: '12px', fontWeight: 850, color: t.muted, offsetY: -6 },
-                            value: {
-                                fontSize: '27px',
-                                fontWeight: 900,
-                                color: t.text,
-                                offsetY: 8,
-                                formatter: (value) => formatChartNumber(value),
-                            },
-                            total: {
-                                show: true,
-                                label: totalLabel,
-                                fontSize: '12px',
-                                fontWeight: 850,
-                                color: t.muted,
-                                formatter: (w) => formatChartNumber(w.globals.seriesTotals.reduce((a, b) => a + b, 0)),
-                            },
-                        },
-                    },
-                },
-            },
-            tooltip: {
-                theme: t.isDark ? 'dark' : 'light',
-                y: { formatter: (value) => formatChartNumber(value) },
-            },
-        };
-    };
-
-    const buildMonitoringPieOptions = (data) => {
-        const t = chartThemeTokens();
-
-        return {
-            chart: {
-                background: 'transparent',
-                fontFamily: 'Inter, sans-serif',
-                toolbar: { show: false },
-                parentHeightOffset: 0,
-                animations: { enabled: true, speed: 520 },
-            },
-            theme: { mode: t.isDark ? 'dark' : 'light' },
-            labels: data.labels,
-            colors: data.colors,
-            stroke: { width: 3, colors: [t.stroke] },
-            dataLabels: {
-                enabled: true,
-                formatter: (val) => val > 5 ? val.toFixed(0) + '%' : '',
-                style: {
-                    fontSize: '11px',
-                    fontWeight: 900,
-                    colors: ['#ffffff'],
-                },
-                dropShadow: { enabled: false },
-            },
-            legend: { show: false },
-            plotOptions: {
-                pie: {
-                    customScale: 0.88,
-                    expandOnClick: false,
-                },
-            },
-            tooltip: {
-                theme: t.isDark ? 'dark' : 'light',
-                y: { formatter: (value) => Number(value || 0).toFixed(2) },
-            },
-        };
-    };
-
-    const monitoringSektorChartOptions = computed(() => buildDistributionBarOptions(monitoringSektorItems.value));
-    const monitoringSektorChartSeries = computed(() => [{ name: 'Stakeholder', data: monitoringSektorItems.value.map((item) => item.value) }]);
-    const monitoringSektorChartHeight = computed(() => getDistributionChartHeight(monitoringSektorItems.value.length, 255, 40));
-    const monitoringSubSektorChartOptions = computed(() => buildDistributionBarOptions(monitoringSubSektorItems.value));
-    const monitoringSubSektorChartSeries = computed(() => [{ name: 'Stakeholder', data: monitoringSubSektorItems.value.map((item) => item.value) }]);
-    const monitoringSubSektorChartHeight = computed(() => getDistributionChartHeight(monitoringSubSektorItems.value.length, 310, 26));
-    const monitoringIkasChartOptions = computed(() => buildMonitoringBarOptions(monitoringIkasItems.value, false));
-    const monitoringIkasChartSeries = computed(() => [{ name: 'IKAS', data: monitoringIkasItems.value.map((item) => item.value) }]);
-    const monitoringStatusChartOptions = computed(() => buildMonitoringBarOptions(monitoringStatusItems.value, true));
-    const monitoringStatusChartSeries = computed(() => [{ name: 'Status', data: monitoringStatusItems.value.map((item) => item.value) }]);
-    const monitoringKseChartOptions = computed(() => buildMonitoringDonutOptions(monitoringKseData.value, 'Total KSE'));
-    const monitoringKseChartSeries = computed(() => monitoringKseData.value.series);
-    const monitoringCsirtChartOptions = computed(() => buildMonitoringDonutOptions(monitoringCsirtData.value, 'CSIRT'));
-    const monitoringCsirtChartSeries = computed(() => monitoringCsirtData.value.series);
-
-    // IKAS Donut Chart (Level Distribution)
-    const monitoringIkasDonutOptions = computed(() => buildMonitoringDonutOptions(monitoringIkasLevelDonutData.value, 'Total IKAS'));
-    const monitoringIkasDonutSeries = computed(() => monitoringIkasLevelDonutData.value.series);
-
-    // IKAS Pie Chart (Domain Averages)
-    const monitoringIkasPieOptions = computed(() => buildMonitoringPieOptions(monitoringIkasDomainPieData.value));
-    const monitoringIkasPieSeries = computed(() => monitoringIkasDomainPieData.value.series);
-
     </script>
 
     <template>
         <!-- HEADER -->
-        <div class="d-flex align-items-center justify-content-between mb-2 page-header-breadcrumb flex-wrap gap-2 dashboard-page-header">
-            <div class="dashboard-page-heading">
-                <h1 class="page-title mb-0">Dashboard</h1>
-                <div class="dashboard-header-meta">
-                    <span><i class="ri-time-line"></i>{{ dateRangeLabel }}</span>
-                    <span><i class="ri-building-2-line"></i>{{ formatChartNumber(totalStakeholders) }} stakeholder</span>
-                </div>
+        <div class="d-flex align-items-center justify-content-between mb-3 page-header-breadcrumb flex-wrap gap-2">
+            <div>
+                <h1 class="page-title fw-medium fs-20 mb-0">Enterprise Analytics</h1>
+                <p class="text-muted mb-0" style="font-size:0.78rem;">Command center analitik untuk monitoring stakeholder & CSIRT</p>
             </div>
 
-            <div class="dashboard-header-actions d-flex align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center flex-wrap gap-2">
                 <!-- Datepicker -->
                 <div class="dashboard-datepicker-wrapper">
                     <Datepicker placeholder="Ketik tgl (DD/MM/YYYY) atau Pilih Rentang"
@@ -3692,7 +2912,7 @@
                                         <option value="" disabled>Pilih tahun</option>
                                         <option
                                             v-for="year in availableYearOptions"
-                                            :key="'dashboard-year-' + year"
+                                            :key="'analytics-year-' + year"
                                             :value="year"
                                         >
                                             {{ year }}
@@ -3724,19 +2944,26 @@
                     @refresh-data="handleRefreshData"
                 />
                 <div>
-                    <button v-if="!showMetabase" class="btn dashboard-alt-btn d-flex align-items-center gap-2" @click="toggleMetabase">
+                    <button v-if="!showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
                         <i class="ri-bar-chart-box-line"></i>
-                        <span class="d-none d-md-inline">Dashboard Alt</span>
+                        <span class="d-none d-md-inline">Analytics Alt</span>
                     </button>
-                    <button v-if="showMetabase" class="btn dashboard-alt-btn d-flex align-items-center gap-2" @click="toggleMetabase">
+                    <button v-if="showMetabase" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm" style="border-radius:10px;" @click="toggleMetabase">
                         <i class="ri-dashboard-3-line"></i>
-                        <span class="d-none d-md-inline">Dashboard Utama</span>
+                        <span class="d-none d-md-inline">Analytics Utama</span>
                     </button>
                 </div>
             </div>
         </div>
 
         <div v-if="!showMetabase" id="dashboard-capture" class="dashboard-capture" :class="{ 'is-dark': isDashboardDarkMode }">
+            <div class="mb-3">
+                <GlobalFilter
+                    :sektor-list="sektorList"
+                    :sub-sektor-list="subSektorList"
+                />
+            </div>
+
             <!-- Initial loading skeleton -->
             <div
                 v-if="showDashboardLoader"
@@ -3779,328 +3006,17 @@
                             <span class="bouncing-loader-shard bouncing-loader-shard-6"></span>
                         </div>
                         <div class="dashboard-loader-copy">
-                            <p class="text-muted fs-12 fw-medium mb-2">Menyiapkan dashboard...</p>
+                            <p class="text-muted fs-12 fw-medium mb-2">Menyiapkan analytics...</p>
                             <div class="bouncing-loader-line" aria-hidden="true">
                                 <span></span>
                             </div>
                         </div>
-                        <span class="visually-hidden">Menyiapkan dashboard...</span>
+                        <span class="visually-hidden">Menyiapkan analytics...</span>
                     </div>
                 </div>
             </div>
 
             <template v-else>
-                <div class="monitoring-overview animate-show-up">
-                    <div v-if="filterStore.error" class="monitoring-alert">
-                        <i class="ri-error-warning-line"></i>
-                        <span>Gagal memuat data dashboard.</span>
-                        <button @click="filterStore.fetchDashboardData">
-                            <i class="ri-refresh-line"></i>
-                            Coba Lagi
-                        </button>
-                    </div>
-
-                    <div class="monitoring-summary-row">
-                        <div class="monitoring-kpi-grid">
-                            <div
-                                v-for="card in monitoringKpiCards"
-                                :key="'monitoring-kpi-' + card.label"
-                                class="monitoring-kpi"
-                                :style="{ '--monitoring-accent': card.color }"
-                            >
-                                <div class="monitoring-kpi-copy">
-                                    <span>{{ card.label }}</span>
-                                    <strong class="monitoring-kpi-value">
-                                        {{ formatChartNumber(card.value) }}
-                                        <small v-if="card.total" class="monitoring-kpi-total">/{{ formatChartNumber(card.total) }}</small>
-                                    </strong>
-                                    <small>{{ card.sub }}</small>
-                                    <div v-if="card.total" class="monitoring-kpi-progress">
-                                        <i :style="{ width: monitoringPercentOf(card.value, card.total) + '%' }"></i>
-                                    </div>
-                                </div>
-                                <div
-                                    v-if="card.total"
-                                    class="monitoring-kpi-donut"
-                                    :style="{ '--kpi-rate': (card.rate ?? monitoringPercentOf(card.value, card.total)) + '%' }"
-                                >
-                                    <span>{{ card.rate ?? monitoringPercentOf(card.value, card.total) }}%</span>
-                                </div>
-                                <div v-else class="monitoring-kpi-icon">
-                                    <i :class="card.icon"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="monitoring-grid">
-                        <section class="monitoring-panel dashboard-distribution-panel dashboard-distribution-panel-full">
-                            <div class="dashboard-distribution-header">
-                                <div>
-                                    <span class="dashboard-distribution-icon"><i class="ri-bar-chart-horizontal-fill"></i></span>
-                                    <div>
-                                        <h3>Distribusi Stakeholder per Sektor</h3>
-                                        <p>Jumlah stakeholder pada masing-masing sektor</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="dashboard-distribution-scroll dashboard-distribution-scroll--sector">
-                                <div class="dashboard-distribution-chart-frame">
-                                    <apexchart
-                                        v-if="monitoringSektorItems.length"
-                                        :height="monitoringSektorChartHeight"
-                                        width="100%"
-                                        type="bar"
-                                        :options="monitoringSektorChartOptions"
-                                        :series="monitoringSektorChartSeries"
-                                    />
-                                    <div v-else class="dashboard-distribution-empty">
-                                        <i class="ri-bar-chart-2-line"></i>
-                                        <span>Tidak ada data sektor</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel dashboard-distribution-panel dashboard-distribution-panel-full">
-                            <div class="dashboard-distribution-header">
-                                <div>
-                                    <span class="dashboard-distribution-icon"><i class="ri-bar-chart-horizontal-fill"></i></span>
-                                    <div>
-                                        <h3>Distribusi Stakeholder per Sub Sektor</h3>
-                                        <p>Jumlah stakeholder pada masing-masing sub sektor</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="dashboard-distribution-scroll dashboard-distribution-scroll--subsector">
-                                <div class="dashboard-distribution-chart-frame">
-                                    <apexchart
-                                        v-if="monitoringSubSektorItems.length"
-                                        :height="monitoringSubSektorChartHeight"
-                                        width="100%"
-                                        type="bar"
-                                        :options="monitoringSubSektorChartOptions"
-                                        :series="monitoringSubSektorChartSeries"
-                                    />
-                                    <div v-else class="dashboard-distribution-empty">
-                                        <i class="ri-bar-chart-2-line"></i>
-                                        <span>Tidak ada data sub sektor</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-shield-star-line"></i> KSE</span>
-                                    <h3>KSE per Kategori</h3>
-                                    <p>Strategis, tinggi, dan rendah.</p>
-                                </div>
-                                <strong>{{ formatChartNumber(kseData.total_se) }}</strong>
-                            </div>
-                            <apexchart
-                                height="255"
-                                width="100%"
-                                type="donut"
-                                :options="monitoringKseChartOptions"
-                                :series="monitoringKseChartSeries"
-                            />
-                            <div class="monitoring-legend">
-                                <span v-for="(label, index) in monitoringKseData.labels" :key="'monitoring-kse-' + label">
-                                    <i :style="{ background: monitoringKseData.colors[index] }"></i>
-                                    {{ label }} {{ formatChartNumber(monitoringKseData.series[index]) }}
-                                </span>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-bar-chart-box-line"></i> IKAS</span>
-                                    <h3>Level Kematangan IKAS</h3>
-                                    <p>Distribusi level hasil asesmen.</p>
-                                </div>
-                                <strong>{{ Number(ikasSummaryData.avgNilaiKematangan || 0).toFixed(2) }}</strong>
-                            </div>
-                            <apexchart
-                                height="255"
-                                width="100%"
-                                type="donut"
-                                :options="monitoringIkasDonutOptions"
-                                :series="monitoringIkasDonutSeries"
-                            />
-                            <div class="monitoring-legend">
-                                <span v-for="(item, index) in monitoringIkasItems" :key="'monitoring-ikas-lvl-' + item.label">
-                                    <i :style="{ background: item.color }"></i>
-                                    {{ item.label }} {{ formatChartNumber(item.value) }}
-                                </span>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-shield-check-line"></i> CSIRT</span>
-                                    <h3>Kelengkapan CSIRT</h3>
-                                    <p>Komponen dan status kelengkapan CSIRT.</p>
-                                </div>
-                                <strong>{{ csirtCompletionRateAnalytics }}%</strong>
-                            </div>
-                            <apexchart
-                                height="255"
-                                width="100%"
-                                type="donut"
-                                :options="monitoringCsirtChartOptions"
-                                :series="monitoringCsirtChartSeries"
-                            />
-                            <div class="monitoring-mini-stats">
-                                <div>
-                                    <strong>{{ formatChartNumber(csirtStatus.sudah_membentuk_csirt) }}</strong>
-                                    <span>Sudah membentuk</span>
-                                </div>
-                                <div>
-                                    <strong>{{ formatChartNumber(csirtStatus.belum_membentuk_csirt) }}</strong>
-                                    <span>Belum membentuk</span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel monitoring-panel-ikas-bars">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-focus-3-line"></i> IKAS</span>
-                                    <h3>Bar IKAS per Domain</h3>
-                                    <p>Nilai rata-rata domain utama IKAS saat ini.</p>
-                                </div>
-                                <strong>{{ Number(ikasSummaryData.avgNilaiKematangan || 0).toFixed(2) }}</strong>
-                            </div>
-                            <div class="ki-domain-grid">
-                                <div
-                                    v-for="domain in monitoringIkasDomainItems"
-                                    :key="'monitoring-domain-' + domain.key"
-                                    class="ki-domain-item"
-                                >
-                                    <div class="ki-domain-icon" :style="{ background: domain.color + '15', color: domain.color }">
-                                        <i :class="domain.icon"></i>
-                                    </div>
-                                    <div class="ki-domain-info">
-                                        <span class="ki-domain-label">{{ domain.label }}</span>
-                                        <div class="ki-domain-score-bar">
-                                            <div class="ki-domain-fill" :style="{ width: Math.min(100, (domain.value / 5) * 100) + '%', background: domain.color }"></div>
-                                        </div>
-                                    </div>
-                                    <span class="ki-domain-val" :style="{ color: domain.color }">{{ domain.value.toFixed(2) }}</span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel monitoring-panel-ikas-pie">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-pie-chart-2-line"></i> IKAS</span>
-                                    <h3>Pie IKAS per Domain</h3>
-                                    <p>Proporsi rata-rata nilai domain IKAS.</p>
-                                </div>
-                                <strong>{{ monitoringIkasDomainItems.length }}</strong>
-                            </div>
-                            <div class="ki-domain-pie-panel-body">
-                                <div class="ki-domain-pie-wrap">
-                                    <apexchart
-                                        height="210"
-                                        width="100%"
-                                        type="pie"
-                                        :options="monitoringIkasPieOptions"
-                                        :series="monitoringIkasPieSeries"
-                                    />
-                                </div>
-                                <div class="monitoring-legend ki-domain-pie-legend">
-                                    <span v-for="domain in monitoringIkasDomainItems" :key="'monitoring-pie-legend-' + domain.key">
-                                        <i :style="{ background: domain.color }"></i>
-                                        {{ domain.label }}
-                                    </span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel monitoring-panel-status">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-list-check-3"></i> Status</span>
-                                    <h3>Status Pengisian</h3>
-                                    <p>KSE, IKAS, dan CSIRT.</p>
-                                </div>
-                            </div>
-                            <apexchart
-                                height="260"
-                                width="100%"
-                                type="bar"
-                                :options="monitoringStatusChartOptions"
-                                :series="monitoringStatusChartSeries"
-                            />
-                        </section>
-
-                        <section class="monitoring-panel monitoring-panel-risk">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-shield-flash-line"></i> Manris</span>
-                                    <h3>Manajemen Risiko</h3>
-                                    <p>Status survey risiko stakeholder.</p>
-                                </div>
-                                <strong>{{ monitoringRiskSummary.rate }}%</strong>
-                            </div>
-                            <div class="monitoring-risk-body">
-                                <div class="monitoring-risk-meter" :style="{ '--risk-rate': monitoringRiskSummary.rate + '%' }">
-                                    <span></span>
-                                </div>
-                                <div class="monitoring-mini-stats">
-                                    <div>
-                                        <strong>{{ formatChartNumber(monitoringRiskSummary.completed) }}</strong>
-                                        <span>Selesai</span>
-                                    </div>
-                                    <div>
-                                        <strong>{{ formatChartNumber(monitoringRiskSummary.inProgress) }}</strong>
-                                        <span>Proses</span>
-                                    </div>
-                                    <div>
-                                        <strong>{{ formatChartNumber(monitoringRiskSummary.notStarted) }}</strong>
-                                        <span>Belum</span>
-                                    </div>
-                                </div>
-                                <button class="monitoring-risk-action" @click="router.push('/stakeholders')">
-                                    <i class="ri-arrow-right-up-line"></i>
-                                    Kelola stakeholder
-                                </button>
-                            </div>
-                        </section>
-
-                        <section class="monitoring-panel monitoring-panel-top">
-                            <div class="monitoring-panel-header">
-                                <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-layout-grid-line"></i> Top</span>
-                                    <h3>Top Sub-Sektor</h3>
-                                    <p>Ringkasan proporsi stakeholder.</p>
-                                </div>
-                            </div>
-                            <div class="monitoring-top-list">
-                                <div
-                                    v-for="item in monitoringSubSektorItems.slice(0, 7)"
-                                    :key="'monitoring-top-sub-' + item.label"
-                                    class="monitoring-top-row"
-                                >
-                                    <span>
-                                        <i :style="{ background: item.color }"></i>
-                                        {{ item.label }}
-                                    </span>
-                                    <strong>{{ formatChartNumber(item.value) }}</strong>
-                                    <small>{{ monitoringPercentOf(item.value, totalStakeholders) }}%</small>
-                                </div>
-                            </div>
-                        </section>
-                    </div>
-                </div>
-
-                <template v-if="false">
                 <!--  SEKTOR / SUB SEKTOR CARDS  -->
                 <div v-if="filterStore.sektorId" class="d-flex align-items-center gap-2 mb-2 mt-1 animate-show-up" :style="{ animationDelay: isFirstLoad ? '0.1s' : '0s' }">
                     <span class="badge bg-primary-transparent text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.75rem; padding: 5px 12px; border-radius: 8px;">
@@ -4828,9 +3744,18 @@
                     </div>
                 </div>
                 </template>
-                </template>
 
-               
+                <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
+                <SektorAnalytics
+                    v-if="lowerSectionsReady"
+                    :sektor-list="sektorList"
+                    :sub-sektor-list="subSektorList"
+                />
+
+                <!-- RADAR CHARTS -->
+                <div v-if="lowerSectionsReady" class="animate-show-up" :style="{ animationDelay: isFirstLoad ? '3.6s' : '0s' }">
+                    <RadarChartIkas />
+                </div>
 
             </template>
         </div>
@@ -6686,1694 +5611,37 @@
         border-color: rgba(148, 163, 184, 0.16) !important;
     }
 
-    .dashboard-page-header {
-        align-items: center !important;
-        padding: 0;
-        margin-bottom: 0.72rem !important;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
-    }
-
-    .dashboard-page-heading {
-        display: flex;
-        align-items: center;
-        flex-direction: row;
-        gap: 0.6rem;
-        min-width: 260px;
-        max-width: min(100%, 860px);
-        flex: 1 1 720px;
-        min-height: 34px;
-        overflow: hidden;
-    }
-
-    .dashboard-header-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        width: max-content;
-        max-width: 100%;
-        color: #2563eb;
-        font-size: 0.6rem;
-        font-weight: 900;
-        letter-spacing: 0;
-        text-transform: uppercase;
-        line-height: 1.1;
-        margin-bottom: 0;
-    }
-
-    .dashboard-header-eyebrow i {
-        display: inline-grid;
-        place-items: center;
-        width: 15px;
-        height: 15px;
-        border-radius: 5px;
-        background: rgba(37, 99, 235, 0.1);
-        color: #2563eb;
-        font-size: 0.7rem;
-    }
-
-    .dashboard-page-heading > .page-title {
-        flex: 0 0 auto;
-        color: #0f172a;
-        font-size: clamp(1.24rem, 1.38vw, 1.5rem) !important;
-        line-height: 1;
-        font-weight: 900 !important;
-        letter-spacing: 0;
-    }
-
-    .dashboard-page-heading p {
-        flex: 1 1 auto;
-        min-width: 160px;
-        color: #64748b !important;
-        font-size: 0.76rem;
-        line-height: 1.32;
-        max-width: 720px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .dashboard-header-meta {
-        flex: 0 0 auto;
-        display: flex;
-        align-items: center;
-        flex-wrap: nowrap;
-        gap: 0.32rem;
-    }
-
-    .dashboard-header-meta span {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        min-height: 0;
-        padding: 0;
-        border-radius: 0;
-        background: transparent;
-        border: 0;
-        color: #475569;
-        font-size: 0.68rem;
-        font-weight: 850;
-        white-space: nowrap;
-        box-shadow: none;
-    }
-
-    .dashboard-header-meta span i {
-        color: #2563eb;
-        font-size: 0.82rem;
-    }
-
-    .dashboard-header-actions {
-        justify-content: flex-end;
-        align-self: center;
-        gap: 0.42rem !important;
-        flex: 0 0 auto;
-        flex-wrap: nowrap !important;
-        padding-top: 0;
-    }
-
-    .dashboard-header-actions > .dashboard-datepicker-wrapper {
-        flex: 0 0 clamp(235px, 21vw, 310px);
-        min-width: 0;
-    }
-
-    .dashboard-datepicker-wrapper :deep(.dp__input_wrap) {
-        width: 100%;
-    }
-
-    .dashboard-datepicker-wrapper :deep(.dp__input) {
-        width: 100%;
-        min-height: 34px;
-        border-radius: 999px;
-        border: 1px solid rgba(191, 219, 254, 0.9);
-        background: rgba(255, 255, 255, 0.94);
-        color: #0f172a;
-        font-size: 0.7rem;
-        font-weight: 850;
-        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.07);
-    }
-
-    .dashboard-datepicker-wrapper :deep(.dp__input:hover),
-    .dashboard-datepicker-wrapper :deep(.dp__input:focus) {
-        border-color: rgba(37, 99, 235, 0.55);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-    }
-
-    .dashboard-header-actions :deep(.dw-quick-actions) {
-        gap: 0.5rem;
-        flex-wrap: nowrap;
-    }
-
-    .dashboard-header-actions :deep(.dw-quick-btn),
-    .dashboard-alt-btn {
-        min-height: 34px;
-        padding: 0 0.72rem;
-        border-radius: 10px;
-        font-size: 0.68rem;
-        font-weight: 900;
-        line-height: 1;
-        white-space: nowrap;
-        transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
-    }
-
-    .dashboard-header-actions :deep(.dw-quick-btn) {
-        border: 1px solid rgba(226, 232, 240, 0.95);
-        background: #ffffff;
-        color: #334155;
-        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.045);
-    }
-
-    .dashboard-header-actions :deep(.dw-quick-btn:hover) {
-        border-color: rgba(37, 99, 235, 0.36);
-        color: #1d4ed8;
-        transform: translateY(-1px);
-        box-shadow: 0 10px 22px rgba(37, 99, 235, 0.1);
-    }
-
-    .dashboard-alt-btn {
-        border: 1px solid rgba(30, 64, 175, 0.16);
-        background: linear-gradient(135deg, #1d4ed8 0%, #0f4fbf 100%);
-        color: #ffffff;
-        box-shadow: 0 10px 22px rgba(29, 78, 216, 0.2);
-    }
-
-    .dashboard-alt-btn:hover,
-    .dashboard-alt-btn:focus {
-        color: #ffffff;
-        border-color: rgba(147, 197, 253, 0.6);
-        transform: translateY(-1px);
-        box-shadow: 0 12px 26px rgba(29, 78, 216, 0.28);
-    }
-
-    :global(html[data-theme-mode="dark"]) .dashboard-page-header,
-    :global(html.dark) .dashboard-page-header {
-        background: transparent;
-        border-color: transparent;
-        box-shadow: none;
-    }
-
-    :global(html[data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
-    :global(html.dark) .dashboard-page-heading > .page-title {
-        color: #eef4ff;
-    }
-
-    :global(html[data-theme-mode="dark"]) .dashboard-header-meta span,
-    :global(html.dark) .dashboard-header-meta span {
-        background: transparent;
-        border-color: transparent;
-        color: #94a3b8;
-    }
-
-    :global(html[data-theme-mode="dark"]) .dashboard-header-actions :deep(.dw-quick-btn),
-    :global(html.dark) .dashboard-header-actions :deep(.dw-quick-btn) {
-        background: rgba(15, 23, 42, 0.74);
-        border-color: rgba(147, 197, 253, 0.22);
-        color: #dbeafe;
-    }
-
-    .monitoring-overview {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .monitoring-kpi,
-    .monitoring-panel {
-        background: #ffffff;
-        border: 1px solid rgba(219, 234, 254, 0.92);
-        border-radius: 8px;
-        box-shadow: none;
-    }
-
-    .monitoring-panel-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 30px;
-        padding: 5px 9px;
-        border-radius: 8px;
-        background: rgba(239, 246, 255, 0.92);
-        border: 1px solid rgba(191, 219, 254, 0.88);
-        color: #1d4ed8;
-        font-size: 0.72rem;
-        font-weight: 850;
-        white-space: nowrap;
-    }
-
-    .monitoring-alert {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        padding: 0.75rem 0.85rem;
-        border-radius: 8px;
-        background: rgba(230, 83, 60, 0.08);
-        border: 1px solid rgba(230, 83, 60, 0.2);
-        color: #b42318;
-        font-size: 0.82rem;
-        font-weight: 700;
-    }
-
-    .monitoring-alert button {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-left: auto;
-        border: 1px solid rgba(230, 83, 60, 0.26);
-        background: #ffffff;
-        color: #b42318;
-        border-radius: 8px;
-        padding: 6px 10px;
-        font-size: 0.76rem;
-        font-weight: 850;
-    }
-
-    .monitoring-hero {
-        display: grid;
-        grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
-        gap: 0.55rem;
-        align-items: center;
-        background:
-            linear-gradient(135deg, rgba(248, 251, 255, 0.98) 0%, rgba(255, 255, 255, 0.96) 46%, rgba(240, 253, 250, 0.92) 100%);
-        border: 1px solid rgba(219, 234, 254, 0.95);
-        border-radius: 10px;
-        padding: 0.52rem 0.62rem;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.055);
-    }
-
-    .monitoring-hero-main {
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 0.42rem;
-        padding: 0.1rem 0.15rem;
-    }
-
-    .monitoring-hero-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        width: max-content;
-        max-width: 100%;
-        color: #0f766e;
-        background: rgba(240, 253, 250, 0.94);
-        border: 1px solid rgba(153, 246, 228, 0.86);
-        border-radius: 999px;
-        padding: 5px 10px;
-        font-size: 0.68rem;
-        font-weight: 900;
-        text-transform: uppercase;
-        line-height: 1.1;
-    }
-
-    .monitoring-hero-main h2 {
-        color: #0f172a;
-        font-size: clamp(1.35rem, 2.2vw, 2.15rem);
-        line-height: 1.08;
-        font-weight: 950;
-        margin: 0;
-    }
-
-    .monitoring-hero-main p {
-        color: #475569;
-        max-width: 760px;
-        font-size: 0.86rem;
-        line-height: 1.5;
-        margin: 0;
-    }
-
-    .monitoring-hero-highlights {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.55rem;
-        margin-top: 0.15rem;
-    }
-
-    .monitoring-hero-highlight {
-        display: grid;
-        grid-template-columns: 30px minmax(0, 1fr);
-        align-items: center;
-        gap: 0.2rem 0.55rem;
-        min-height: 58px;
-        padding: 0.55rem 0.62rem;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.82);
-        border: 1px solid rgba(226, 232, 240, 0.94);
-    }
-
-    .monitoring-hero-highlight i {
-        grid-row: span 2;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        color: #2563eb;
-        background: rgba(239, 246, 255, 0.94);
-        border: 1px solid rgba(191, 219, 254, 0.9);
-        font-size: 0.98rem;
-    }
-
-    .monitoring-hero-highlight span {
-        color: #64748b;
-        font-size: 0.66rem;
-        font-weight: 850;
-        line-height: 1.15;
-        text-transform: uppercase;
-    }
-
-    .monitoring-hero-highlight strong {
-        color: #0f172a;
-        min-width: 0;
-        font-size: 0.86rem;
-        font-weight: 950;
-        line-height: 1.15;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .monitoring-readiness-card {
-        display: flex;
-        flex-direction: column;
-        gap: 0.42rem;
-        min-width: 0;
-        padding: 0.42rem;
-        border-radius: 8px;
-        background: #ffffff;
-        border: 1px solid rgba(203, 213, 225, 0.78);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
-    }
-
-    .monitoring-readiness-top {
-        display: flex;
-        align-items: center;
-        gap: 0.58rem;
-        min-width: 0;
-    }
-
-    .monitoring-readiness-ring {
-        width: 54px;
-        height: 54px;
-        flex: 0 0 54px;
-        border-radius: 50%;
-        display: grid;
-        place-items: center;
-        background:
-            radial-gradient(circle at center, #ffffff 0 56%, transparent 57%),
-            conic-gradient(#2563eb var(--readiness-score), #e2e8f0 0);
-        border: 1px solid rgba(219, 234, 254, 0.98);
-    }
-
-    .monitoring-readiness-ring span {
-        color: #0f172a;
-        font-size: 0.76rem;
-        font-weight: 950;
-    }
-
-    .monitoring-readiness-top > div:last-child {
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.12rem;
-    }
-
-    .monitoring-readiness-top span {
-        color: #2563eb;
-        font-size: 0.62rem;
-        font-weight: 900;
-        text-transform: uppercase;
-    }
-
-    .monitoring-readiness-top strong {
-        color: #0f172a;
-        font-size: 0.9rem;
-        line-height: 1.15;
-        font-weight: 950;
-    }
-
-    .monitoring-readiness-top small {
-        color: #64748b;
-        font-size: 0.62rem;
-        line-height: 1.25;
-        font-weight: 700;
-    }
-
-    .monitoring-readiness-list {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0.36rem;
-    }
-
-    .monitoring-readiness-row {
-        min-width: 0;
-        border-radius: 7px;
-        padding: 0.38rem 0.42rem;
-        background: #f8fbff;
-        border: 1px solid rgba(219, 234, 254, 0.92);
-    }
-
-    .monitoring-readiness-row > div:first-child {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.42rem;
-        margin-bottom: 0.26rem;
-    }
-
-    .monitoring-readiness-row span {
-        color: #334155;
-        font-size: 0.6rem;
-        line-height: 1.15;
-        font-weight: 850;
-        overflow-wrap: anywhere;
-    }
-
-    .monitoring-readiness-row strong {
-        color: var(--readiness-color);
-        font-size: 0.68rem;
-        font-weight: 950;
-        white-space: nowrap;
-    }
-
-    .monitoring-readiness-track,
-    .monitoring-kpi-progress {
-        height: 5px;
-        overflow: hidden;
-        border-radius: 999px;
-        background: rgba(226, 232, 240, 0.88);
-    }
-
-    .monitoring-readiness-track i,
-    .monitoring-kpi-progress i {
-        display: block;
-        height: 100%;
-        border-radius: inherit;
-        transition: width 0.45s ease;
-    }
-
-    .monitoring-readiness-track i {
-        background: var(--readiness-color);
-    }
-
-    .monitoring-readiness-row small {
-        display: block;
-        color: #64748b;
-        font-size: 0.57rem;
-        line-height: 1.2;
-        margin-top: 0.24rem;
-        font-weight: 700;
-        overflow-wrap: anywhere;
-    }
-
-    .monitoring-summary-row {
-        display: grid;
-        grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-        gap: 0.55rem;
-        align-items: stretch;
-    }
-
-    .monitoring-readiness-summary {
-        display: flex;
-        align-items: center;
-        min-width: 0;
-        min-height: 96px;
-        padding: 0.82rem 0.9rem;
-        background:
-            linear-gradient(135deg, rgba(248, 251, 255, 0.98) 0%, rgba(255, 255, 255, 0.96) 54%, rgba(240, 253, 250, 0.9) 100%);
-        border: 1px solid rgba(219, 234, 254, 0.95);
-        border-radius: 8px;
-        box-shadow: none;
-    }
-
-    .monitoring-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 0.55rem;
-    }
-
-    .monitoring-summary-row > .monitoring-kpi-grid:only-child {
-        grid-column: 1 / -1;
-    }
-
-    .monitoring-kpi {
-        min-height: 96px;
-        padding: 0.82rem 0.9rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.78rem;
-        position: relative;
-        overflow: hidden;
-        cursor: default;
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--monitoring-accent) 10%, #ffffff) 0%, #ffffff 62%),
-            #ffffff;
-        border-color: color-mix(in srgb, var(--monitoring-accent) 28%, rgba(226, 232, 240, 0.96));
-        transition:
-            background-color 0.16s ease,
-            border-color 0.16s ease,
-            transform 0.18s ease;
-        transform-origin: center;
-    }
-
-    .monitoring-kpi::before {
-        content: "";
-        position: absolute;
-        inset: 0 0 auto 0;
-        height: 4px;
-        background: var(--monitoring-accent);
-        opacity: 1;
-    }
-
-    .monitoring-kpi:hover {
-        background:
-            linear-gradient(180deg, color-mix(in srgb, var(--monitoring-accent) 15%, #ffffff) 0%, #ffffff 64%),
-            #ffffff;
-        border-color: color-mix(in srgb, var(--monitoring-accent) 58%, rgba(226, 232, 240, 0.96));
-        transform: translateY(-4px) scale(1.01);
-    }
-
-    .monitoring-kpi:hover::before {
-        height: 5px;
-    }
-
-    .monitoring-kpi:hover .monitoring-kpi-icon {
-        opacity: 1;
-        transform: translateX(2px) scale(1.05);
-    }
-
-    .monitoring-kpi-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 38px;
-        height: 38px;
-        border-radius: 0;
-        background: transparent;
-        color: var(--monitoring-accent);
-        font-size: 1.72rem;
-        opacity: 0.78;
-        position: relative;
-        flex: 0 0 38px;
-        align-self: center;
-        pointer-events: none;
-        z-index: 1;
-        transition:
-            opacity 0.16s ease,
-            transform 0.18s ease;
-    }
-
-    .monitoring-kpi-donut {
-        width: 42px;
-        height: 42px;
-        flex: 0 0 42px;
-        border-radius: 50%;
-        display: grid;
-        place-items: center;
-        background:
-            radial-gradient(circle at center, #ffffff 0 55%, transparent 56%),
-            conic-gradient(var(--monitoring-accent) var(--kpi-rate), color-mix(in srgb, var(--monitoring-accent) 14%, #e2e8f0) 0);
-        border: 1px solid color-mix(in srgb, var(--monitoring-accent) 20%, #e2e8f0);
-        position: relative;
-        z-index: 1;
-    }
-
-    .monitoring-kpi-donut span {
-        color: var(--monitoring-accent);
-        font-size: 0.64rem;
-        line-height: 1;
-        font-weight: 950;
-    }
-
-    .monitoring-kpi-copy {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 0.28rem;
-        min-width: 0;
-        padding-right: 0;
-        position: relative;
-        z-index: 1;
-    }
-
-    .monitoring-kpi-copy span {
-        color: color-mix(in srgb, var(--monitoring-accent) 72%, #334155);
-        font-size: 0.7rem;
-        line-height: 1.18;
-        font-weight: 700;
-        overflow-wrap: anywhere;
-    }
-
-    .monitoring-kpi-copy strong {
-        color: #0f172a;
-        font-size: clamp(1.28rem, 1.46vw, 1.68rem);
-        line-height: 1.05;
-        font-weight: 850;
-        letter-spacing: 0;
-    }
-
-    .monitoring-kpi-value {
-        display: inline-flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 0.12rem;
-    }
-
-    .monitoring-kpi-total {
-        color: #64748b !important;
-        font-size: 0.54em !important;
-        font-weight: 800;
-        line-height: 1;
-    }
-
-    .monitoring-kpi-copy small {
-        color: #64748b;
-        font-size: 0.65rem;
-        line-height: 1.24;
-        overflow-wrap: anywhere;
-    }
-
-    .monitoring-kpi-progress {
-        width: min(100%, 190px);
-        margin-top: 0.1rem;
-        height: 5px;
-        background: color-mix(in srgb, var(--monitoring-accent) 14%, #e2e8f0);
-    }
-
-    .monitoring-kpi-progress i {
-        background: var(--monitoring-accent);
-    }
-
-    .monitoring-grid {
-        display: grid;
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        gap: 0.75rem;
-    }
-
-    .monitoring-panel {
-        grid-column: span 4;
-        min-height: 380px;
-        padding: 0;
-        overflow: hidden;
-    }
-
-    .monitoring-panel-wide {
-        grid-column: span 8;
-    }
-
-    .monitoring-panel-ikas-bars,
-    .monitoring-panel-ikas-pie {
-        grid-column: span 3;
-    }
-
-    .dashboard-distribution-panel-full {
-        grid-column: span 6;
-        min-height: 0;
-    }
-
-    .dashboard-distribution-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.85rem;
-        padding: 0.8rem 1rem;
-        border-bottom: 1px solid rgba(219, 234, 254, 0.95);
-        background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), #ffffff);
-    }
-
-    .dashboard-distribution-header > div {
-        display: flex;
-        align-items: center;
-        gap: 0.7rem;
-        min-width: 0;
-    }
-
-    .dashboard-distribution-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        flex: 0 0 auto;
-        border-radius: 8px;
-        color: #2563eb;
-        background: rgba(239, 246, 255, 0.96);
-        border: 1px solid rgba(191, 219, 254, 0.9);
-        font-size: 1rem;
-    }
-
-    .dashboard-distribution-header h3 {
-        color: #0f172a;
-        font-size: 0.92rem;
-        line-height: 1.25;
-        margin: 0;
-        font-weight: 900;
-    }
-
-    .dashboard-distribution-header p {
-        color: #64748b;
-        font-size: 0.72rem;
-        line-height: 1.35;
-        margin: 3px 0 0;
-    }
-
-    .dashboard-distribution-scroll {
-        max-height: 340px;
-        overflow: auto;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(148, 163, 184, 0.72) transparent;
-    }
-
-    .dashboard-distribution-scroll--subsector {
-        max-height: 570px;
-    }
-
-    .dashboard-distribution-scroll::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-
-    .dashboard-distribution-scroll::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.62);
-        border-radius: 999px;
-    }
-
-    .dashboard-distribution-chart-frame {
-        min-width: 720px;
-        padding: 1rem 1.35rem 1.1rem;
-    }
-
-    .dashboard-distribution-empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        min-height: 260px;
-        color: #64748b;
-        font-size: 0.8rem;
-        font-weight: 800;
-    }
-
-    .monitoring-panel-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.85rem;
-        padding: 0.85rem 0.95rem 0.55rem;
-        border-bottom: 1px solid rgba(219, 234, 254, 0.9);
-        background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), #ffffff);
-    }
-
-    .monitoring-panel-header h3 {
-        color: #172554;
-        font-size: 0.92rem;
-        line-height: 1.25;
-        margin: 0.42rem 0 0;
-        font-weight: 900;
-    }
-
-    .monitoring-panel-header p {
-        color: #64748b;
-        font-size: 0.72rem;
-        line-height: 1.35;
-        margin: 3px 0 0;
-    }
-
-    .monitoring-panel-header > strong {
-        flex: 0 0 auto;
-        color: #1d4ed8;
-        background: rgba(239, 246, 255, 0.92);
-        border: 1px solid rgba(191, 219, 254, 0.82);
-        border-radius: 8px;
-        padding: 6px 9px;
-        font-size: 0.75rem;
-        font-weight: 900;
-        white-space: nowrap;
-    }
-
-    .monitoring-legend {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.45rem;
-        padding: 0 0.95rem 0.85rem;
-    }
-
-    .monitoring-legend span {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        color: #334155;
-        font-size: 0.72rem;
-        font-weight: 750;
-    }
-
-    .monitoring-legend i,
-    .monitoring-top-row i {
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        flex: 0 0 auto;
-    }
-
-    .monitoring-mini-stats {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.5rem;
-        padding: 0 0.95rem 0.85rem;
-    }
-
-    .monitoring-mini-stats div,
-    .monitoring-top-row {
-        background: #f8fbff;
-        border: 1px solid rgba(219, 234, 254, 0.92);
-        border-radius: 8px;
-    }
-
-    .monitoring-mini-stats div {
-        padding: 0.62rem;
-    }
-
-    .monitoring-mini-stats strong {
-        display: block;
-        color: #172554;
-        font-size: 1rem;
-        line-height: 1.1;
-        font-weight: 900;
-    }
-
-    .monitoring-mini-stats span {
-        color: #64748b;
-        display: block;
-        font-size: 0.7rem;
-        margin-top: 3px;
-        font-weight: 700;
-    }
-
-    .monitoring-risk-body {
-        display: flex;
-        flex-direction: column;
-        gap: 0.85rem;
-        padding: 1rem;
-    }
-
-    .monitoring-risk-meter {
-        position: relative;
-        height: 10px;
-        border-radius: 999px;
-        overflow: hidden;
-        background: rgba(8, 145, 178, 0.12);
-    }
-
-    .monitoring-risk-meter span {
-        display: block;
-        width: var(--risk-rate, 0%);
-        height: 100%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, #0891b2, #06b6d4);
-        transition: width 0.45s ease;
-    }
-
-    .monitoring-risk-body .monitoring-mini-stats {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        padding: 0;
-    }
-
-    .monitoring-risk-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        width: 100%;
-        min-height: 34px;
-        border: 1px solid rgba(8, 145, 178, 0.2);
-        border-radius: 8px;
-        background: rgba(8, 145, 178, 0.08);
-        color: #0e7490;
-        font-size: 0.74rem;
-        font-weight: 900;
-        transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    .monitoring-risk-action:hover {
-        transform: translateY(-2px);
-        background: rgba(8, 145, 178, 0.14);
-    }
-
-    .monitoring-panel-ikas-bars .ki-domain-grid {
-        padding: 0.85rem 0.95rem 0.95rem;
-    }
-
-    .ki-domain-pie-panel-body {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        padding: 0.7rem 0.85rem 0.8rem;
-        min-height: calc(100% - 72px);
-    }
-
-    .ki-domain-pie-wrap {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .ki-domain-pie-wrap :deep(.apexcharts-canvas) {
-        margin: 0 auto;
-    }
-
-    .ki-domain-pie-legend {
-        justify-content: center;
-        padding: 0;
-    }
-
-    .monitoring-top-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.45rem;
-        padding: 0.85rem 0.95rem 0.95rem;
-    }
-
-    .monitoring-top-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto 42px;
-        align-items: center;
-        gap: 0.6rem;
-        min-height: 36px;
-        padding: 0.5rem 0.55rem;
-    }
-
-    .monitoring-top-row span {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: #334155;
-        font-size: 0.74rem;
-        font-weight: 800;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .monitoring-top-row strong {
-        color: #172554;
-        font-size: 0.8rem;
-        font-weight: 900;
-    }
-
-    .monitoring-top-row small {
-        color: #1d4ed8;
-        font-size: 0.72rem;
-        font-weight: 900;
-        text-align: right;
-    }
-
-    .monitoring-panel :deep(.apexcharts-canvas),
-    .monitoring-panel :deep(.apexcharts-svg) {
-        background: transparent !important;
-    }
-
-    /* Compact monitoring layout: keep the dashboard summary readable in one viewport. */
-    .dashboard-page-header {
-        margin-bottom: 0.72rem !important;
-        padding: 0;
-    }
-
-    .dashboard-page-heading,
-    .monitoring-kpi-copy {
-        gap: 0.5rem;
-    }
-
-    .dashboard-header-meta span {
-        min-height: 0;
-        padding: 0;
-        font-size: 0.68rem;
-    }
-
-    .monitoring-overview {
-        gap: 0.62rem;
-    }
-
-    .monitoring-summary-row,
-    .monitoring-grid,
-    .monitoring-kpi-grid {
-        gap: 0.62rem;
-    }
-
-    .monitoring-readiness-summary,
-    .monitoring-kpi {
-        min-height: 82px;
-        padding: 0.7rem 0.78rem 0.65rem;
-        gap: 0.58rem;
-    }
-
-    .monitoring-kpi::before {
-        height: 3px;
-    }
-
-    .monitoring-kpi:hover {
-        transform: translateY(-2px);
-    }
-
-    .monitoring-kpi-icon {
-        width: 34px;
-        height: 34px;
-        flex-basis: 34px;
-        font-size: 1.48rem;
-    }
-
-    .monitoring-kpi-copy span {
-        font-size: 0.68rem;
-        line-height: 1.14;
-    }
-
-    .monitoring-kpi-copy strong {
-        font-size: clamp(1.32rem, 1.46vw, 1.68rem);
-        line-height: 1;
-    }
-
-    .monitoring-kpi-total {
-        font-size: 0.54em !important;
-    }
-
-    .monitoring-kpi-copy small {
-        font-size: 0.63rem;
-        line-height: 1.16;
-    }
-
-    .monitoring-panel {
-        grid-column: span 3;
-        min-height: 300px;
-        border-radius: 9px;
-    }
-
-    .monitoring-panel-wide {
-        grid-column: span 6;
-        order: 2;
-    }
-
-    .monitoring-panel-ikas-bars,
-    .monitoring-panel-ikas-pie {
-        order: 2;
-    }
-
-    .monitoring-panel-status {
-        order: 1;
-    }
-
-    .monitoring-panel-risk,
-    .monitoring-panel-top {
-        order: 2;
-    }
-
-    .dashboard-distribution-panel-full {
-        grid-column: span 6;
-    }
-
-    .dashboard-distribution-header,
-    .monitoring-panel-header {
-        gap: 0.65rem;
-        padding: 0.65rem 0.78rem 0.5rem;
-    }
-
-    .dashboard-distribution-header > div {
-        gap: 0.58rem;
-    }
-
-    .dashboard-distribution-icon {
-        width: 30px;
-        height: 30px;
-        flex-basis: 30px;
-        font-size: 0.96rem;
-    }
-
-    .dashboard-distribution-header h3,
-    .monitoring-panel-header h3 {
-        font-size: 0.88rem;
-        line-height: 1.22;
-        margin-top: 0.32rem;
-    }
-
-    .dashboard-distribution-header p,
-    .monitoring-panel-header p {
-        font-size: 0.68rem;
-        line-height: 1.24;
-        margin-top: 2px;
-    }
-
-    .dashboard-distribution-scroll,
-    .dashboard-distribution-scroll--subsector {
-        max-height: 310px;
-    }
-
-    .dashboard-distribution-chart-frame {
-        min-width: 700px;
-        padding: 0.68rem 0.95rem 0.78rem;
-    }
-
-    .dashboard-distribution-empty {
-        min-height: 180px;
-    }
-
-    .monitoring-panel-badge {
-        gap: 5px;
-        min-height: 27px;
-        padding: 4px 8px;
-        border-radius: 7px;
-        font-size: 0.68rem;
-    }
-
-    .monitoring-panel-header > strong {
-        padding: 4px 8px;
-        font-size: 0.7rem;
-    }
-
-    .monitoring-legend,
-    .monitoring-mini-stats {
-        gap: 0.45rem;
-        padding: 0 0.78rem 0.62rem;
-    }
-
-    .monitoring-legend span {
-        gap: 5px;
-        font-size: 0.68rem;
-    }
-
-    .monitoring-legend i,
-    .monitoring-top-row i {
-        width: 8px;
-        height: 8px;
-    }
-
-    .monitoring-mini-stats div {
-        padding: 0.52rem;
-    }
-
-    .monitoring-mini-stats strong {
-        font-size: 0.95rem;
-        line-height: 1;
-    }
-
-    .monitoring-mini-stats span {
-        margin-top: 2px;
-        font-size: 0.64rem;
-    }
-
-    .monitoring-risk-body {
-        gap: 0.62rem;
-        padding: 0.78rem;
-    }
-
-    .monitoring-panel-ikas-bars .ki-domain-grid {
-        padding: 0.68rem 0.78rem 0.78rem;
-    }
-
-    .ki-domain-pie-panel-body {
-        padding: 0.62rem 0.72rem 0.72rem;
-        min-height: calc(100% - 64px);
-    }
-
-    .monitoring-risk-meter {
-        height: 9px;
-    }
-
-    .monitoring-risk-action {
-        min-height: 32px;
-        font-size: 0.68rem;
-    }
-
-    .monitoring-top-list {
-        gap: 0.4rem;
-        padding: 0.68rem 0.78rem 0.78rem;
-    }
-
-    .monitoring-top-row {
-        grid-template-columns: minmax(0, 1fr) auto 40px;
-        gap: 0.5rem;
-        min-height: 32px;
-        padding: 0.42rem 0.52rem;
-    }
-
-    .monitoring-top-row span {
-        gap: 0.42rem;
-        font-size: 0.7rem;
-    }
-
-    .monitoring-top-row strong {
-        font-size: 0.76rem;
-    }
-
-    .monitoring-top-row small {
-        font-size: 0.68rem;
-    }
-
-    .dashboard-capture.is-dark .monitoring-hero {
-        background: linear-gradient(135deg, #151a2b 0%, #111827 54%, #0f172a 100%) !important;
-        border-color: rgba(148, 163, 184, 0.22) !important;
-        box-shadow: none !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-readiness-summary,
-    .dashboard-capture.is-dark .monitoring-readiness-card,
-    .dashboard-capture.is-dark .monitoring-hero-highlight,
-    .dashboard-capture.is-dark .monitoring-kpi,
-    .dashboard-capture.is-dark .monitoring-panel {
-        background: linear-gradient(180deg, #151a2b 0%, #111827 100%) !important;
-        border-color: rgba(148, 163, 184, 0.22) !important;
-        box-shadow: none !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-panel-header {
-        background: rgba(15, 23, 42, 0.54) !important;
-        border-color: rgba(148, 163, 184, 0.18) !important;
-    }
-
-    .dashboard-capture.is-dark .dashboard-distribution-header {
-        background: rgba(15, 23, 42, 0.54) !important;
-        border-color: rgba(148, 163, 184, 0.18) !important;
-    }
-
-    .dashboard-capture.is-dark .dashboard-distribution-icon {
-        color: #93c5fd !important;
-        background: rgba(30, 41, 59, 0.78) !important;
-        border-color: rgba(147, 197, 253, 0.22) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-hero-eyebrow {
-        color: #a7f3d0 !important;
-        background: rgba(6, 95, 70, 0.22) !important;
-        border-color: rgba(45, 212, 191, 0.22) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-hero-highlight i {
-        color: #93c5fd !important;
-        background: rgba(30, 41, 59, 0.78) !important;
-        border-color: rgba(147, 197, 253, 0.22) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-kpi-copy strong,
-    .dashboard-capture.is-dark .monitoring-hero-main h2,
-    .dashboard-capture.is-dark .monitoring-hero-highlight strong,
-    .dashboard-capture.is-dark .monitoring-readiness-ring span,
-    .dashboard-capture.is-dark .monitoring-readiness-top strong,
-    .dashboard-capture.is-dark .monitoring-panel-header h3,
-    .dashboard-capture.is-dark .dashboard-distribution-header h3,
-    .dashboard-capture.is-dark .monitoring-mini-stats strong,
-    .dashboard-capture.is-dark .monitoring-top-row strong {
-        color: #eef4ff !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-kpi-copy span,
-    .dashboard-capture.is-dark .monitoring-kpi-copy small,
-    .dashboard-capture.is-dark .monitoring-kpi-total,
-    .dashboard-capture.is-dark .monitoring-hero-main p,
-    .dashboard-capture.is-dark .monitoring-hero-highlight span,
-    .dashboard-capture.is-dark .monitoring-readiness-top small,
-    .dashboard-capture.is-dark .monitoring-readiness-row span,
-    .dashboard-capture.is-dark .monitoring-readiness-row small,
-    .dashboard-capture.is-dark .monitoring-panel-header p,
-    .dashboard-capture.is-dark .dashboard-distribution-header p,
-    .dashboard-capture.is-dark .monitoring-mini-stats span {
-        color: #94a3b8 !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-readiness-ring {
-        background:
-            radial-gradient(circle at center, #111827 0 56%, transparent 57%),
-            conic-gradient(#60a5fa var(--readiness-score), rgba(51, 65, 85, 0.92) 0) !important;
-        border-color: rgba(147, 197, 253, 0.22) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-panel-badge,
-    .dashboard-capture.is-dark .monitoring-panel-header > strong {
-        background: rgba(15, 23, 42, 0.82) !important;
-        border-color: rgba(147, 197, 253, 0.24) !important;
-        color: #dbeafe !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-readiness-row,
-    .dashboard-capture.is-dark .monitoring-mini-stats div,
-    .dashboard-capture.is-dark .monitoring-top-row {
-        background: rgba(15, 23, 42, 0.66) !important;
-        border-color: rgba(148, 163, 184, 0.18) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-readiness-track,
-    .dashboard-capture.is-dark .monitoring-kpi-progress {
-        background: rgba(51, 65, 85, 0.88) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-legend span,
-    .dashboard-capture.is-dark .monitoring-top-row span {
-        color: #dbeafe !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-top-row small {
-        color: #93c5fd !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-risk-meter {
-        background: rgba(8, 145, 178, 0.18) !important;
-    }
-
-    .dashboard-capture.is-dark .monitoring-risk-action {
-        background: rgba(8, 145, 178, 0.18) !important;
-        border-color: rgba(34, 211, 238, 0.28) !important;
-        color: #a5f3fc !important;
-    }
-
     /*  Responsive  */
-
-    /* ── Large tablets / small laptops (≤1399px) ── */
-    @media (max-width: 1399px) {
-        .monitoring-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .monitoring-hero-highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .sa-stats-row { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
-        .ki-metric-body { padding: 0.75rem 0.85rem; }
-        .ki-metric-value { font-size: 1.3rem; }
-        .dashboard-header-actions > .dashboard-datepicker-wrapper {
-            flex: 0 0 clamp(210px, 18vw, 280px);
-        }
-        .fs-section-header { padding: 12px 16px; gap: 10px; }
-        .fs-header-icon { width: 38px; height: 38px; font-size: 18px; }
-        .summary-mode-switcher { padding: 3px; }
-        .summary-mode-btn { padding: 5px 14px; font-size: 0.72rem; }
-    }
-
-    /* ── Tablets / small laptops (≤1199px) ── */
     @media (max-width: 1199px) {
-        .monitoring-summary-row { grid-template-columns: 1fr; }
-        .monitoring-hero { grid-template-columns: 1fr; }
-        .monitoring-readiness-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        .monitoring-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .monitoring-panel,
-        .monitoring-panel-wide { grid-column: span 6; }
-        .dashboard-distribution-panel-full { grid-column: span 12; }
-        .ki-chart-split-grid { grid-template-columns: 1fr; min-height: 0; }
+        .ki-chart-split-grid { grid-template-columns: 1fr; }
         .ki-hero-inner { gap: 0.9rem; }
         .ki-ring-wrap { width: 76px; height: 76px; }
         .ki-ring-value { font-size: 1.15rem; }
         .ki-chart-body { min-height: 280px !important; }
-        .sa-stats-row { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
-        .ki-segmented-control { padding: 3px; }
-        .ki-seg-btn { padding: 6px 12px; font-size: 0.7rem; }
-        .ki-filter-pill { padding: 5px 10px; font-size: 0.65rem; }
-        .ki-header-title { font-size: 0.95rem; }
-        .fs-section-header { flex-direction: column; align-items: flex-start; }
-        .monitoring-grid { gap: 0.55rem; }
+        .ki-chart-split-grid { min-height: 0; }
     }
-
-    /* ── Tablets (≤991px) ── */
-    @media (max-width: 991px) {
-        .monitoring-hero-highlights,
-        .monitoring-readiness-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .monitoring-panel,
-        .monitoring-panel-wide { grid-column: span 12; }
-        .monitoring-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .monitoring-grid { grid-template-columns: 1fr; }
-        .monitoring-panel { grid-column: span 1; min-height: 280px; }
-        .monitoring-panel-wide { grid-column: span 1; }
-        .dashboard-distribution-panel-full { grid-column: span 1; }
-        .ki-main-header { gap: 10px; padding: 12px 14px; }
-        .ki-header-right { flex-wrap: wrap; }
-        .ki-inline-filters { gap: 4px; }
-        .ki-view-toggles { gap: 3px; }
-        .sa-stats-row { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
-        .sa-section-header { flex-wrap: wrap; gap: 10px; }
-        .sa-section-title { font-size: 1rem; }
-        .ki-hero-stats { min-width: 160px; }
-        .ki-hero-title { font-size: 0.9rem; }
-        .ki-hero-desc { font-size: 0.65rem; }
-        .ki-breakdown { padding: 0.85rem; }
-        .ki-insight-box { padding: 0.85rem; }
-        .dashboard-page-heading { min-width: 180px; flex: 1 1 auto; }
-        .dashboard-header-actions { flex-wrap: wrap !important; }
-        .dashboard-header-actions > .dashboard-datepicker-wrapper {
-            flex: 1 1 200px;
-            min-width: 180px;
-        }
-    }
-
-    /* ── Mobile landscape / small tablets (≤767px) ── */
     @media (max-width: 767px) {
-        .monitoring-hero {
-            padding: 0.78rem;
-            border-radius: 10px;
-        }
-        .monitoring-hero-main { padding: 0; }
-        .monitoring-hero-main h2 { font-size: 1.35rem !important; }
-        .monitoring-hero-main p { font-size: 0.78rem; }
-        .monitoring-hero-highlights,
-        .monitoring-readiness-list { grid-template-columns: 1fr; }
-        .monitoring-readiness-top { align-items: flex-start; }
-        .monitoring-readiness-ring {
-            width: 56px; height: 56px; flex-basis: 56px;
-        }
-        .monitoring-readiness-ring span { font-size: 0.68rem; }
-        .monitoring-kpi,
-        .monitoring-panel-header { padding: 0.8rem; }
-        .monitoring-kpi-grid { grid-template-columns: 1fr; }
-        .monitoring-kpi-donut { width: 38px; height: 38px; flex-basis: 38px; }
-        .monitoring-kpi-donut span { font-size: 0.58rem; }
-
-        .dashboard-page-header {
-            align-items: flex-start !important;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        .dashboard-page-heading {
-            width: 100%;
-            min-width: 0;
-            min-height: 0;
-            align-items: flex-start;
-            flex-direction: column;
-            gap: 0.35rem;
-            overflow: visible;
-        }
-        .dashboard-page-heading > .page-title { font-size: 1.25rem !important; }
-        .dashboard-page-heading p {
-            max-width: 100%;
-            font-size: 0.74rem;
-            overflow: visible;
-            text-overflow: clip;
-            white-space: normal;
-        }
-        .dashboard-header-meta {
-            width: 100%;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .dashboard-header-meta span {
-            flex: 0 1 auto;
-            min-width: 0;
-            width: auto;
-            justify-content: center;
-            padding-inline: 0.5rem;
-            font-size: 0.64rem;
-        }
-        .dashboard-header-actions {
-            width: 100%;
-            display: flex !important;
-            flex-direction: column;
-            gap: 0.5rem;
-            padding-top: 0.1rem;
-        }
-        .dashboard-header-actions > .dashboard-datepicker-wrapper {
-            width: 100%;
-            flex: unset;
-        }
-        .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input_wrap),
-        .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
-            width: 100%;
-            min-width: 0;
-        }
-        .dashboard-header-actions > div:last-child {
-            display: flex;
-            gap: 0.5rem;
-        }
-        .dashboard-header-actions > div:last-child .btn {
-            min-width: 56px;
-            flex: 1;
-        }
-
-        .monitoring-panel-header { flex-direction: column; align-items: flex-start; }
-        .monitoring-top-row { grid-template-columns: minmax(0, 1fr) auto; }
-        .monitoring-top-row small { display: none; }
-        .monitoring-mini-stats { grid-template-columns: 1fr 1fr; }
-        .monitoring-risk-body .monitoring-mini-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-
-        .ki-main-header { align-items: stretch; padding: 10px; flex-direction: column; }
+        .ki-main-header { align-items: stretch; padding: 10px; }
         .ki-header-left,
         .ki-header-right { width: 100%; }
-        .ki-header-right { justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-        .ki-inline-filters { justify-content: flex-start; width: 100%; }
+        .ki-header-right { justify-content: space-between; }
+        .ki-inline-filters { justify-content: flex-start; }
         .ki-divider { display: none; }
-        .ki-segmented-control { width: 100%; justify-content: center; }
-        .ki-seg-btn { flex: 1; text-align: center; padding: 6px 8px; }
         .ki-hero-banner { padding: 0.9rem; }
         .ki-hero-inner { flex-direction: column; align-items: flex-start; }
-        .ki-ring-wrap { width: 64px; height: 64px; }
-        .ki-ring-value { font-size: 1rem; }
+        .ki-ring-wrap { width: 72px; height: 72px; }
         .ki-hero-pills { width: 100%; }
-        .ki-pill { flex: 1 1 80px; justify-content: center; min-width: 0; padding: 5px 8px; }
-        .ki-pill span { font-size: 0.8rem; }
-        .ki-pill small { font-size: 0.5rem; }
+        .ki-pill { flex: 1 1 92px; justify-content: center; }
         .ki-hero-cta { width: 100%; justify-content: center; }
-        .ki-chart-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+        .ki-chart-header { flex-direction: column; align-items: flex-start; }
         .ki-chart-controls { width: 100%; justify-content: space-between; }
         .ki-chart-type-toggle { width: 100%; justify-content: center; }
         .ki-view-toggle { flex: 1; }
         .ki-vt-btn { flex: 1; }
-        .ki-chart-pane + .ki-chart-pane {
-            border-left: 0;
-            border-top: 1px solid rgba(219,234,254,0.9);
-            padding-top: 0.85rem;
-        }
+        .ki-chart-pane + .ki-chart-pane { border-left: 0; border-top: 1px solid rgba(219,234,254,0.9); padding-top: 0.85rem; }
         .ki-chart-pane-title { align-items: flex-start; flex-direction: column; gap: 2px; }
         .ki-bp-row { align-items: flex-start; flex-direction: column; gap: 7px; }
         .ki-bp-bar-wrap { width: 100%; }
-        .ki-metric-card { min-width: 0; }
-        .ki-metric-body { padding: 0.7rem 0.8rem; }
-        .ki-metric-value { font-size: 1.25rem; }
-        .ki-breakdown { border-radius: 14px; padding: 0.8rem; }
-        .ki-insight-box { border-radius: 14px; padding: 0.8rem; }
-        .ki-command-center { border-radius: 14px; }
-
-        .sa-stats-row { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-        .sa-stat-value { font-size: 1.4rem; }
-        .sa-section-header { padding: 0.65rem 0.85rem; border-radius: 10px; }
-        .sa-section-icon { width: 36px; height: 36px; border-radius: 10px; }
-        .sa-section-icon i { font-size: 1.2rem; }
-        .sa-section-title { font-size: 0.95rem; }
-        .sa-view-toggles { gap: 3px; padding: 2px; }
-        .sa-view-btn { width: 32px; height: 32px; }
-
-        .fs-section-header { padding: 10px 14px; border-radius: 10px; gap: 8px; }
-        .fs-header-icon { width: 34px; height: 34px; border-radius: 9px; font-size: 16px; }
-        .fs-header-title { font-size: 1rem; }
-        .summary-mode-switcher { flex-wrap: wrap; border-radius: 12px; }
-        .summary-mode-btn { padding: 5px 12px; font-size: 0.7rem; flex: 1; text-align: center; }
-
-        .full-summary-section { margin-bottom: 0.3rem; }
-        .dashboard-distribution-chart-frame { min-width: 500px; padding: 0.6rem 0.8rem; }
     }
 
-    /* ── Mobile portrait (≤575px) ── */
-    @media (max-width: 575px) {
-        .monitoring-summary-row { gap: 0.45rem; }
-        .monitoring-kpi-grid { gap: 0.45rem; }
-        .monitoring-overview { gap: 0.5rem; }
-        .monitoring-readiness-summary { padding: 0.6rem 0.7rem; min-height: 72px; }
-        .monitoring-readiness-top > div:last-child { gap: 0.08rem; }
-        .monitoring-readiness-top strong { font-size: 0.82rem; }
-        .monitoring-readiness-top span { font-size: 0.58rem; }
-        .monitoring-readiness-top small { font-size: 0.56rem; }
-        .monitoring-kpi { min-height: 68px; padding: 0.6rem 0.7rem; gap: 0.45rem; }
-        .monitoring-kpi-icon { width: 28px; height: 28px; flex-basis: 28px; font-size: 1.2rem; }
-        .monitoring-kpi-copy strong { font-size: 1.15rem !important; }
-        .monitoring-kpi-copy span { font-size: 0.62rem; }
-        .monitoring-kpi-copy small { font-size: 0.58rem; }
-
-        .dashboard-page-heading > .page-title { font-size: 1.15rem !important; }
-        .dashboard-header-meta span { font-size: 0.6rem; gap: 3px; }
-        .dashboard-header-meta span i { font-size: 0.72rem; }
-
-        .ki-main-header { padding: 8px; gap: 8px; }
-        .ki-header-icon { width: 32px; height: 32px; border-radius: 9px; font-size: 0.95rem; }
-        .ki-header-title { font-size: 0.88rem; }
-        .ki-filter-pill { padding: 5px 8px; font-size: 0.62rem; }
-        .ki-view-btn { width: 30px; height: 30px; }
-        .ki-hero-banner { padding: 0.72rem; }
-        .ki-ring-wrap { width: 56px; height: 56px; }
-        .ki-ring-value { font-size: 0.88rem; }
-        .ki-ring-sub { font-size: 0.42rem; }
-        .ki-hero-title { font-size: 0.85rem; }
-        .ki-hero-desc { font-size: 0.62rem; }
-        .ki-pill { padding: 4px 7px; font-size: 0.6rem; min-height: 28px; }
-        .ki-pill i { font-size: 0.72rem; }
-        .ki-pill span { font-size: 0.76rem; }
-        .ki-hero-cta { padding: 7px 12px; font-size: 0.68rem; border-radius: 9px; }
-        .ki-chart-title { font-size: 0.88rem; }
-        .ki-chart-sub { font-size: 0.65rem; }
-        .ki-chart-icon-wrap { width: 34px; height: 34px; border-radius: 9px; font-size: 0.95rem; }
-        .ki-vt-btn { padding: 5px 10px; font-size: 0.68rem; }
-        .ki-ct-btn { width: 30px; height: 30px; font-size: 0.85rem; }
-        .ki-metric-value { font-size: 1.15rem; }
-        .ki-metric-label { font-size: 0.6rem; }
-        .ki-metric-icon-wrap { width: 30px; height: 30px; border-radius: 8px; font-size: 0.95rem; }
-        .ki-bp-label { font-size: 0.68rem; }
-        .ki-bp-count { font-size: 0.6rem; }
-        .ki-bp-icon { width: 28px; height: 28px; border-radius: 8px; font-size: 0.85rem; }
-        .ki-bp-badge { font-size: 0.6rem; padding: 5px 8px; border-radius: 7px; }
-        .ki-insight-icon-wrap { width: 36px; height: 36px; border-radius: 10px; }
-        .ki-insight-icon-wrap i { font-size: 1.05rem; }
-        .ki-insight-title { font-size: 0.75rem; }
-        .ki-insight-text { font-size: 0.65rem; }
-        .ki-insight-tip { padding: 6px 8px; border-radius: 7px; }
-        .ki-insight-tip i { font-size: 0.75rem; }
-        .ki-insight-tip span { font-size: 0.6rem; }
-        .ki-export-btn { padding: 8px 10px; font-size: 0.7rem; border-radius: 10px; }
-        .ki-domain-item { padding: 7px; gap: 7px; }
-        .ki-domain-icon { width: 24px; height: 24px; border-radius: 6px; font-size: 0.75rem; }
-        .ki-domain-label { font-size: 0.6rem; }
-        .ki-domain-val { font-size: 0.85rem; }
-
-        .sa-stats-row { grid-template-columns: 1fr; gap: 0.5rem; }
-        .sa-stat-card { padding: 1rem; }
-        .sa-stat-value { font-size: 1.3rem; }
-        .sa-stat-label { font-size: 11.5px; }
-        .sa-section-header { padding: 0.55rem 0.7rem; }
-        .sa-section-icon { width: 32px; height: 32px; }
-        .sa-section-icon i { font-size: 1rem; }
-        .sa-section-title { font-size: 0.88rem; }
-
-        .fs-section-header { padding: 8px 12px; }
-        .fs-header-icon { width: 30px; height: 30px; font-size: 14px; }
-        .fs-header-title { font-size: 0.9rem; }
-        .summary-mode-switcher { border-radius: 10px; }
-        .summary-mode-btn { padding: 4px 8px; font-size: 0.65rem; border-radius: 8px; }
-        .fs-filter-pill { padding: 4px 10px; font-size: 0.68rem; }
-
-        .monitoring-risk-body .monitoring-mini-stats { grid-template-columns: 1fr; }
-        .monitoring-mini-stats strong { font-size: 0.88rem; }
-        .monitoring-mini-stats span { font-size: 0.6rem; }
-        .monitoring-risk-action { font-size: 0.65rem; min-height: 30px; }
-        .monitoring-top-list { padding: 0.6rem; gap: 0.35rem; }
-        .monitoring-top-row { min-height: 28px; padding: 0.35rem 0.45rem; }
-        .monitoring-top-row span { font-size: 0.65rem; gap: 0.35rem; }
-        .monitoring-top-row strong { font-size: 0.7rem; }
-        .monitoring-panel-badge { font-size: 0.62rem; padding: 3px 7px; min-height: 24px; }
-        .monitoring-panel-header h3 { font-size: 0.82rem; }
-        .monitoring-panel-header p { font-size: 0.62rem; }
-        .monitoring-alert { font-size: 0.74rem; padding: 0.6rem; flex-wrap: wrap; }
-        .monitoring-alert button { font-size: 0.68rem; padding: 5px 8px; }
-
-        .dashboard-distribution-chart-frame { min-width: 400px; padding: 0.5rem 0.6rem; }
-        .dashboard-distribution-header h3 { font-size: 0.82rem; }
-        .dashboard-distribution-header p { font-size: 0.62rem; }
-        .dashboard-distribution-icon { width: 26px; height: 26px; font-size: 0.88rem; }
-    }
-
-    /* ── Very small mobile (≤400px) ── */
-    @media (max-width: 400px) {
-        .dashboard-page-heading > .page-title { font-size: 1.05rem !important; }
-        .monitoring-readiness-ring { width: 46px; height: 46px; flex-basis: 46px; }
-        .monitoring-readiness-ring span { font-size: 0.62rem; }
-        .monitoring-kpi { flex-direction: column; align-items: flex-start; }
-        .monitoring-kpi-donut { align-self: flex-end; }
-        .ki-hero-pills { flex-direction: column; }
-        .ki-pill { flex: unset; width: 100%; }
-        .ki-seg-btn { padding: 5px 6px; font-size: 0.63rem; }
-        .ki-filter-pill { font-size: 0.58rem; padding: 4px 6px; }
-        .ki-inline-filters { gap: 3px; }
-        .sa-stat-value { font-size: 1.15rem; }
-        .summary-mode-btn { padding: 3px 6px; font-size: 0.6rem; }
-        .dashboard-distribution-chart-frame { min-width: 320px; }
-    }
     </style>

@@ -27,8 +27,8 @@
   --dw-bg: #f8f9fc;
   --dw-card-bg: #ffffff;
   --dw-card-border: rgba(0, 0, 0, 0.04);
-  --dw-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
-  --dw-card-shadow-hover: 0 8px 32px rgba(30, 64, 175, 0.12);
+  --dw-card-shadow: none;
+  --dw-card-shadow-hover: none;
   --dw-card-radius: 16px;
   --dw-card-radius-sm: 12px;
 
@@ -44,7 +44,7 @@
   /* ── Glassmorphism ── */
   --dw-glass-bg: rgba(255, 255, 255, 0.7);
   --dw-glass-border: rgba(255, 255, 255, 0.3);
-  --dw-glass-blur: 12px;
+  --dw-glass-blur: 0px;
 }
 
 /* ── Dark Mode ── */
@@ -54,8 +54,8 @@
   --dw-bg: #0f172a;
   --dw-card-bg: #1e293b;
   --dw-card-border: rgba(255, 255, 255, 0.06);
-  --dw-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
-  --dw-card-shadow-hover: 0 8px 32px rgba(132, 90, 223, 0.2);
+  --dw-card-shadow: none;
+  --dw-card-shadow-hover: none;
   --dw-text: #e2e8f0;
   --dw-text-secondary: #94a3b8;
   --dw-text-muted: #64748b;
@@ -122,8 +122,8 @@
 /* ═══════ GLASSMORPHISM CARD ═══════ */
 .dw-glass {
   background: var(--dw-glass-bg);
-  backdrop-filter: blur(var(--dw-glass-blur));
-  -webkit-backdrop-filter: blur(var(--dw-glass-blur));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--dw-glass-border);
 }
 
@@ -547,8 +547,8 @@
   position: fixed;
   inset: 0;
   background: rgba(2, 10, 40, 0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   z-index: 1050;
   display: flex;
   align-items: center;
@@ -1358,13 +1358,13 @@
 /* Interesting Hover Effect */
 .card.custom-card.dashboard-main-card:hover {
   transform: translateY(-6px) !important;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: none !important;
   border-color: rgba(var(--dw-primary-rgb), 0.2) !important;
 }
 
 .card.custom-card.dashboard-main-card:hover::before {
   width: 8px !important; /* Wider bar on hover */
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05) !important;
+  box-shadow: none !important;
 }
 
 /* Glow effect inside on hover */
@@ -1380,7 +1380,7 @@
 }
 
 .card.custom-card.dashboard-main-card:hover::after {
-  opacity: 0.05;
+  opacity: 0;
 }
 
 /* Color Mapping System - High Specificity */
@@ -1406,7 +1406,7 @@
 .card.custom-card.dashboard-main-card.sektor-card-active {
   transform: translateY(-8px) scale(1.03) !important;
   z-index: 20 !important;
-  box-shadow: 0 16px 48px rgba(var(--dw-primary-rgb), 0.18) !important;
+  box-shadow: none !important;
   border-color: var(--card-accent) !important;
 }
 
@@ -1417,7 +1417,6 @@
 /* Muted State: Dimmed when a different sector is selection */
 .card.custom-card.dashboard-main-card.sektor-card-muted {
   opacity: 0.25 !important;
-  filter: grayscale(0.95) !important;
   transform: scale(0.96) !important;
   pointer-events: none !important;
   box-shadow: none !important;
@@ -1428,3 +1427,61 @@
 .card.custom-card.dashboard-main-card.sektor-card-muted .apexcharts-canvas {
   opacity: 0.3 !important;
 }
+
+/* ═══════ RESPONSIVE ═══════ */
+
+@media (max-width: 991px) {
+  .dw-card-body { padding: 1rem; }
+  .dw-card-header { padding: 0.85rem 1rem; gap: 10px; }
+  .dw-card-header-title { font-size: 0.88rem; gap: 8px; }
+  .dw-card-header-icon { width: 32px; height: 32px; border-radius: 8px; font-size: 16px; }
+  .dw-kpi-value { font-size: 1.5rem; }
+  .dw-section-header { padding: 12px 16px; gap: 10px; }
+  .dw-section-icon { width: 34px; height: 34px; border-radius: 8px; font-size: 16px; }
+  .dw-section-title { font-size: 1rem; }
+  .ddm-panel { max-width: 95vw; border-radius: 16px; }
+  .ddm-header-inner { padding: 14px 18px 10px; }
+  .ddm-header-icon { width: 38px; height: 38px; border-radius: 12px; font-size: 18px; }
+  .ddm-body { padding: 12px 18px 8px; }
+}
+
+@media (max-width: 767px) {
+  .dw-card-body { padding: 0.85rem; }
+  .dw-card-header { padding: 0.72rem 0.85rem; }
+  .dw-card-header-title { font-size: 0.82rem; }
+  .dw-card-header-icon { width: 28px; height: 28px; font-size: 14px; }
+  .dw-kpi-value { font-size: 1.35rem; letter-spacing: -0.3px; }
+  .dw-kpi-label { font-size: 0.65rem; }
+  .dw-section-header { padding: 10px 14px; flex-direction: column; align-items: flex-start; }
+  .dw-section-icon { width: 30px; height: 30px; }
+  .dw-section-title { font-size: 0.92rem; }
+  .dw-quick-actions { gap: 6px; }
+  .dw-quick-btn { padding: 6px 12px; font-size: 0.72rem; border-radius: 8px; }
+  .dw-insight-item { padding: 10px 12px; gap: 10px; }
+  .dw-insight-icon { width: 30px; height: 30px; border-radius: 8px; font-size: 14px; }
+  .dw-action-item { padding: 10px 12px; gap: 10px; }
+  .dw-action-severity { height: 28px; }
+  .dw-activity-avatar { width: 30px; height: 30px; border-radius: 8px; font-size: 0.6rem; }
+  .dw-activity-item { gap: 10px; padding: 10px 0; }
+  .ddm-panel { max-width: 100vw; max-height: 94vh; border-radius: 14px; }
+  .ddm-header-inner { padding: 12px 14px 8px; gap: 8px; }
+  .ddm-header-icon { width: 34px; height: 34px; border-radius: 10px; font-size: 16px; }
+  .ddm-header-title { font-size: 0.88rem; }
+  .ddm-body { padding: 10px 14px 6px; }
+  .ddm-search-input { padding: 8px 36px 8px 38px !important; font-size: 0.78rem !important; }
+  .ddm-close-btn { width: 30px; height: 30px; border-radius: 8px; font-size: 16px; }
+  .ddm-table { min-width: 800px; }
+}
+
+@media (max-width: 575px) {
+  .dw-card-body { padding: 0.72rem; }
+  .dw-kpi-value { font-size: 1.2rem; }
+  .dw-badge { padding: 3px 8px; font-size: 0.65rem; }
+  .dw-delta { font-size: 0.65rem; padding: 2px 6px; }
+  .dw-filter-pill { padding: 3px 8px; font-size: 0.65rem; }
+  .ddm-overlay { padding: 0.5rem; }
+  .ddm-panel { border-radius: 12px; }
+  .ddm-header-inner { padding: 10px 12px 8px; }
+  .ddm-body { padding: 8px 12px 6px; }
+}
+

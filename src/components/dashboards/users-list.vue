@@ -11,7 +11,6 @@ import { roleService, type Role } from "../../services/role.service";
 import { useListPage } from "../../composables/useListPage";
 import { formatImageUrl } from "../../utils/media";
 import type { User } from "../../types/user.types";
-import type { Stakeholder } from "../../types/stakeholders.types";
 
 export default {
   data() {
@@ -31,6 +30,7 @@ export default {
     const usersStore = useUsersStore();
     const stakeholdersStore = useStakeholdersStore();
     const searchInput = ref<HTMLInputElement | null>(null);
+    const searchMode = ref<"user" | "company">("user");
 
     const {
       searchQuery, currentPage, itemsPerPage, sortField, sortOrder,
@@ -53,14 +53,66 @@ export default {
     const showEditRoleModal = ref(false);
     const currentEditItem = ref<User | null>(null);
     const selectedRole = ref('');
+    const selectedStatus = ref('Aktif');
 
-    // Computed items from API data
-    const items = computed(() => {
-      // Get current logged-in user info
+    const getUserStatusText = (status?: string) => {
+      const s = String(status || '').toLowerCase().trim();
+      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
+      return 'Aktif';
+    };
+
+    const getRoleBadgeClass = (role: string) => {
+      const r = String(role || '').toLowerCase();
+      if (r === 'admin') return 'badge-sektor-red';
+      if (r === 'staff') return 'badge-sektor-green';
+      if (r === 'user_pic') return 'badge-sektor-orange';
+      return 'badge-sektor-sky';
+    };
+
+    const getRoleIcon = (role: string) => {
+      const r = String(role || '').toLowerCase();
+      if (r === 'admin') return 'ri-shield-star-line';
+      if (r === 'staff') return 'ri-shield-user-line';
+      return 'ri-user-line';
+    };
+
+    const companyNameMap = computed(() => {
+      const map = new Map<string, string>();
+      stakeholdersData.value.forEach((stakeholder) => {
+        if (stakeholder.id) map.set(String(stakeholder.id), stakeholder.nama_perusahaan || '-');
+      });
+      return map;
+    });
+
+    const makeUserSearchText = (user: User) => [
+      user.name,
+      user.display_name,
+      user.username,
+      user.email,
+      user.jabatan,
+      user.role,
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    type UserListItem = User & {
+      companyName: string;
+      displayName: string;
+      statusText: string;
+      statusBadgeClass: string;
+      roleBadgeClass: string;
+      roleIcon: string;
+      avatarLetter: string;
+      avatarClass: string;
+      userSearchText: string;
+      companySearchText: string;
+    };
+
+    // Computed items from API data. Keep row-ready fields here so the table
+    // doesn't repeatedly normalize status, role, avatar, and company lookup.
+    const items = computed<UserListItem[]>(() => {
       const currentUser = authStore.currentUser;
-      
-      // Map users from API
-      return usersData.value.map(u => {
+      const companies = companyNameMap.value;
+
+      return usersData.value.map((u) => {
         const userObj: User = {
           id: (u as any).id?.toString() || '',
           slug: (u as any).slug || (u as any).username || (u as any).id?.toString() || '',
@@ -86,16 +138,33 @@ export default {
           foto_profile: (u as any).foto_profile || undefined
         };
 
-        // If this is the current logged-in user, use profile store data
-        if (currentUser && userObj.id === currentUser.id) {
-          return {
+        const mergedUser = currentUser && userObj.id === currentUser.id
+          ? {
             ...userObj,
             jabatan: profileStore.jabatan || userObj.jabatan,
             name: profileStore.name || userObj.name,
             photo: profileStore.fotoProfileUrl || userObj.photo,
-          };
-        }
-        return userObj;
+          }
+          : userObj;
+
+        const displayName = mergedUser.display_name || mergedUser.name || mergedUser.username || 'User';
+        const avatarLetter = displayName.charAt(0).toUpperCase() || 'U';
+        const companyName = mergedUser.id_perusahaan ? (companies.get(String(mergedUser.id_perusahaan)) || '-') : '-';
+        const statusText = getUserStatusText(mergedUser.status);
+
+        return {
+          ...mergedUser,
+          companyName,
+          displayName,
+          statusText,
+          statusBadgeClass: statusText === 'Aktif' ? 'badge-sektor-teal' : 'badge-sektor-amber',
+          roleBadgeClass: getRoleBadgeClass(mergedUser.role),
+          roleIcon: getRoleIcon(mergedUser.role),
+          avatarLetter,
+          avatarClass: getAvatarColorClass(avatarLetter),
+          userSearchText: makeUserSearchText(mergedUser),
+          companySearchText: companyName.toLowerCase(),
+        };
       });
     });
 
@@ -128,13 +197,10 @@ export default {
       let data = items.value;
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
-        data = data.filter(
-          (i) =>
-            i.name.toLowerCase().includes(q) ||
-            (i.display_name || '').toLowerCase().includes(q) ||
-            i.username.toLowerCase().includes(q) ||
-            i.jabatan.toLowerCase().includes(q) ||
-            i.role.toLowerCase().includes(q)
+        data = data.filter((i) =>
+          searchMode.value === "company"
+            ? i.companySearchText.includes(q)
+            : i.userSearchText.includes(q)
         );
       }
       return [...data].sort((a, b) => {
@@ -147,17 +213,42 @@ export default {
 
     const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
 
-    // Helper function to get company name by ID
-    const getCompanyName = (companyId: string | undefined): string => {
-      if (!companyId) return '-';
-      const company = stakeholdersData.value.find(s => s.id === companyId);
-      return company?.nama_perusahaan || '-';
+    const paginationCopy = computed(() => {
+      const total = filteredData.value.length;
+      const start = displayData.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0;
+      const end = Math.min(currentPage.value * itemsPerPage.value, total);
+      return `Showing ${start}-${end} of ${total} users`;
+    });
+
+    const searchPlaceholder = computed(() =>
+      searchMode.value === "company"
+        ? "Cari nama perusahaan..."
+        : "Cari nama user, email, jabatan, atau role..."
+    );
+
+    const fallbackRoles = ['admin', 'staff', 'user_pic', 'user'];
+    const roleOptions = computed(() => rolesData.value.length ? rolesData.value : fallbackRoles.map((name, index) => ({ id: -(index + 1), name })));
+
+    const getStatusPayload = (status: string) => {
+      const isAktif = status === 'Aktif';
+      const statusVal = isAktif ? 'Aktif' : 'Suspend';
+      return {
+        status: isAktif ? 'Aktif' : 'Nonaktif',
+        status_akun: isAktif ? '1' : '0',
+        aktif: isAktif ? 1 : 0,
+        is_active: isAktif ? 1 : 0,
+        is_suspended: isAktif ? 0 : 1,
+        dedicatedStatus: statusVal,
+      };
     };
 
-    // EDIT ROLE
+    const getDisplayName = (item: User | null) => item?.display_name || item?.name || item?.username || 'User';
+
+    // EDIT ACCESS
     const openEditRoleModal = (item: User) => {
       currentEditItem.value = item;
       selectedRole.value = item.role || 'user';
+      selectedStatus.value = getUserStatusText(item.status);
       showEditRoleModal.value = true;
     };
 
@@ -165,22 +256,68 @@ export default {
       if (!currentEditItem.value) return;
       loading.value = true;
       try {
-        await usersService.update(currentEditItem.value.id, {
-          role: selectedRole.value
-        });
+        const current = currentEditItem.value;
+        const roleObj = rolesData.value.find(r => r.name.toLowerCase() === selectedRole.value.toLowerCase());
+        if (!roleObj) {
+          showNotification("Data role belum tersedia, coba refresh halaman.", "error");
+          return;
+        }
+
+        const statusPayload = getStatusPayload(selectedStatus.value);
+        const updatePayload: any = {
+          id: current.id,
+          username: current.username || current.email || '',
+          name: current.name || current.display_name || current.username || '',
+          email: current.email || current.username || '',
+          status: statusPayload.status,
+          status_akun: statusPayload.status_akun,
+          aktif: statusPayload.aktif,
+          is_active: statusPayload.is_active,
+          is_suspended: statusPayload.is_suspended,
+          role_id: roleObj.id,
+        };
+
+        if (current.display_name) updatePayload.display_name = current.display_name;
+        if (current.phone) {
+          updatePayload.phone = current.phone;
+          updatePayload.telepon = current.phone;
+        }
+        if (current.location) {
+          updatePayload.location = current.location;
+          updatePayload.alamat = current.location;
+        }
+        updatePayload.id_jabatan = current.id_jabatan || null;
+
+        await usersService.update(current.id, updatePayload);
+        try {
+          await usersService.updateStatus(current.id, {
+            id: current.id,
+            status: statusPayload.dedicatedStatus,
+            status_akun: statusPayload.dedicatedStatus,
+            aktif: statusPayload.aktif,
+            is_active: statusPayload.is_active,
+          });
+        } catch (statusErr) {
+          console.warn("Dedicated status endpoint failed:", statusErr);
+        }
         
         // Update local data
-        const index = usersData.value.findIndex((u: any) => u.id?.toString() === currentEditItem.value?.id);
+        const index = usersData.value.findIndex((u: any) => u.id?.toString() === current.id);
         if (index !== -1) {
           (usersData.value[index] as any).role = selectedRole.value;
           (usersData.value[index] as any).role_name = selectedRole.value;
+          (usersData.value[index] as any).status = statusPayload.status;
+          (usersData.value[index] as any).status_akun = statusPayload.status_akun;
+          (usersData.value[index] as any).aktif = statusPayload.aktif;
+          (usersData.value[index] as any).is_active = statusPayload.is_active;
+          (usersData.value[index] as any).is_suspended = statusPayload.is_suspended;
         }
         
         showEditRoleModal.value = false;
-        showNotification("Role berhasil diupdate!", "success");
+        showNotification("Akses user berhasil diupdate!", "success");
       } catch (error) {
-        console.error('Failed to update role:', error);
-        showNotification("Gagal mengupdate role!", "error");
+        console.error('Failed to update user access:', error);
+        showNotification("Gagal mengupdate akses user!", "error");
       } finally {
         loading.value = false;
       }
@@ -213,7 +350,7 @@ export default {
         }
         
         // Remove from local data
-        usersData.value = usersData.value.filter((u: any) => 
+        usersStore.users = usersData.value.filter((u: any) => 
           u.id?.toString() !== currentDeleteItem.value?.id
         );
         
@@ -228,25 +365,17 @@ export default {
       }
     };
 
-    // User status badges
-    const getUserStatusText = (status?: string) => {
-      const s = String(status || '').toLowerCase();
-      if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
-      return 'Aktif';
-    };
-
-    const countAdmin   = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'admin').length);
-    const countStaff   = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'staff').length);
-    const countUserPic = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'user_pic' || u.role?.toLowerCase() === 'pic').length);
-    const countUser    = computed(() => items.value.filter(u => u.role?.toLowerCase() === 'user').length);
-
-    const getRoleBadgeClass = (role: string) => {
-      const r = String(role || '').toLowerCase();
-      if (r === 'admin') return 'badge-sektor-red';
-      if (r === 'staff') return 'badge-sektor-green';
-      if (r === 'user_pic') return 'badge-sektor-orange';
-      return 'badge-sektor-sky';
-    };
+    const userStats = computed(() => items.value.reduce(
+      (stats, user) => {
+        const role = user.role?.toLowerCase();
+        if (role === 'admin') stats.admin += 1;
+        else if (role === 'staff') stats.staff += 1;
+        else if (role === 'user_pic' || role === 'pic') stats.userPic += 1;
+        else if (role === 'user') stats.user += 1;
+        return stats;
+      },
+      { admin: 0, staff: 0, userPic: 0, user: 0 },
+    ));
 
     onMounted(() => {
       loadUsers();
@@ -257,14 +386,14 @@ export default {
 
     return {
       authStore, items, loading, isInitialLoading, searchInput,
-      searchQuery, sortField, sortOrder, currentPage, itemsPerPage,
-      totalPages, displayData, paginationInfo, filteredData,
+      searchQuery, searchMode, searchPlaceholder, sortField, sortOrder, currentPage, itemsPerPage,
+      totalPages, displayData, paginationInfo, paginationCopy, filteredData,
       showDeleteModal, currentDeleteItem,
-      showEditRoleModal, currentEditItem, selectedRole,
+      showEditRoleModal, currentEditItem, selectedRole, selectedStatus,
       showToast, toastMessage, toastType,
-      rolesData, countAdmin, countStaff, countUserPic, countUser,
+      rolesData, roleOptions, userStats,
       openDeleteModal, deleteUser, openEditRoleModal, updateRole,
-      getUserStatusText, getRoleBadgeClass, clearSearch, toggleSort, getAvatarColorClass, getCompanyName,
+      getUserStatusText, getRoleBadgeClass, getDisplayName, clearSearch, toggleSort, getAvatarColorClass,
     };
   },
 };
@@ -288,68 +417,108 @@ export default {
     </div>
   </transition>
 
-  <div class="row">
-    <div class="col-xl-12">
-      <!-- Premium UI like Stakeholders/LMS -->
-      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header">
-          <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
-              <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboards <span>/</span> Users</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Daftar User</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Manajemen data pengguna sistem dan hak akses</div>
-              </div>
-              <div class="stakeholders-meta-stack">
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total User</span>
-                  <strong><i class="ri-group-line text-primary"></i> {{ items.length }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Admin</span>
-                  <strong><i class="ri-shield-star-line text-danger"></i> {{ countAdmin }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Staff</span>
-                  <strong><i class="ri-shield-user-line text-success"></i> {{ countStaff }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">User PIC</span>
-                  <strong><i class="ri-user-settings-line text-warning"></i> {{ countUserPic }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">User</span>
-                  <strong><i class="ri-user-line text-info"></i> {{ countUser }}</strong>
-                </div>
-              </div>
-            </div>
-            
-            <div class="stakeholders-hero-tools">
-              <div class="stakeholders-search position-relative">
-                <i class="ri-search-line header-search-icon"></i>
-                <input ref="searchInput" v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
-                  placeholder="Cari nama, email, jabatan, atau role..." />
-                <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
-                  <i class="ri-close-circle-fill"></i>
-                </button>
-              </div>
-            </div>
-          </div>
+  <div class="role-page-shell">
+    <section class="role-hero-card">
+      <div class="role-hero-copy">
+        <div class="role-breadcrumb">Dashboards <span>/</span> Users</div>
+        <h2 class="role-hero-title">Manajemen User</h2>
+        <p class="role-hero-desc">Kelola data pengguna, status akun, dan hak akses dalam tampilan yang ringkas.</p>
+      </div>
+      <div class="role-hero-summary">
+        <span class="role-summary-kicker">User Tampil</span>
+        <strong>{{ filteredData.length }}</strong>
+        <span>dari {{ items.length }} user</span>
+      </div>
+    </section>
 
-          <!-- Rows Selector at Absolute Bottom Right -->
-          <div class="header-rows-selector d-flex align-items-center gap-2">
-            <span class="text-white opacity-75 fs-11 fw-bold text-uppercase">Rows</span>
-            <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
-              <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-            </select>
-          </div>
+    <section class="role-stats-grid">
+      <div class="role-stat-card role-stat-total">
+        <span class="role-stat-icon"><i class="ri-team-line"></i></span>
+        <div>
+          <span class="role-stat-label">Total Users</span>
+          <strong>{{ items.length }}</strong>
         </div>
+      </div>
+      <div class="role-stat-card role-stat-admin">
+        <span class="role-stat-icon"><i class="ri-shield-star-line"></i></span>
+        <div>
+          <span class="role-stat-label">Admin</span>
+          <strong>{{ userStats.admin }}</strong>
+        </div>
+      </div>
+      <div class="role-stat-card role-stat-staff">
+        <span class="role-stat-icon"><i class="ri-briefcase-line"></i></span>
+        <div>
+          <span class="role-stat-label">Staff</span>
+          <strong>{{ userStats.staff }}</strong>
+        </div>
+      </div>
+      <div class="role-stat-card role-stat-pic">
+        <span class="role-stat-icon"><i class="ri-user-settings-line"></i></span>
+        <div>
+          <span class="role-stat-label">User / PIC</span>
+          <strong>{{ userStats.userPic }}</strong>
+        </div>
+      </div>
+      <div class="role-stat-card role-stat-user">
+        <span class="role-stat-icon"><i class="ri-user-line"></i></span>
+        <div>
+          <span class="role-stat-label">User</span>
+          <strong>{{ userStats.user }}</strong>
+        </div>
+      </div>
+    </section>
 
-        <div class="card-body p-4 stakeholders-premium-body">
+    <section class="role-toolbar-card users-toolbar-card">
+      <div class="users-toolbar-left">
+        <div class="users-search-tabs" role="tablist" aria-label="Mode pencarian user">
+          <button
+            type="button"
+            class="users-search-tab"
+            :class="{ active: searchMode === 'user' }"
+            @click="searchMode = 'user'; currentPage = 1"
+          >
+            <i class="ri-user-search-line"></i>
+            User
+          </button>
+          <button
+            type="button"
+            class="users-search-tab"
+            :class="{ active: searchMode === 'company' }"
+            @click="searchMode = 'company'; currentPage = 1"
+          >
+            <i class="ri-building-4-line"></i>
+            Perusahaan
+          </button>
+        </div>
+        <div class="stakeholders-search role-search users-toolbar-search position-relative">
+          <i class="ri-search-line header-search-icon"></i>
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="text"
+            class="form-control form-control-sm header-search-input"
+            :placeholder="searchPlaceholder"
+          />
+          <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
+            <i class="ri-close-circle-fill"></i>
+          </button>
+        </div>
+      </div>
+      <div class="users-toolbar-right">
+        <div class="role-rows-selector">
+          <span>Rows</span>
+          <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
+            <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </div>
+      </div>
+    </section>
 
-
-          <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
-            <table class="table stakeholder-table mb-0">
+    <section class="role-table-card">
+      <div class="card-body p-0 stakeholders-premium-body">
+        <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+          <table class="table stakeholder-table mb-0">
               <thead class="stakeholder-thead">
                 <tr>
                   <th class="th-no" style="width: 50px;">No</th>
@@ -406,12 +575,12 @@ export default {
                   </td>
                   <td class="align-middle">
                     <div class="stakeholder-company-cell">
-                      <div class="company-avatar" :class="getAvatarColorClass(item.name.charAt(0))">
-                        <img v-if="item.photo" :src="item.photo" :alt="item.name" class="company-avatar-img" />
-                        <span v-else class="company-avatar-letter">{{ item.name.charAt(0).toUpperCase() }}</span>
+                      <div class="company-avatar" :class="item.avatarClass">
+                        <img v-if="item.photo" :src="item.photo" :alt="item.displayName" class="company-avatar-img" />
+                        <span v-else class="company-avatar-letter">{{ item.avatarLetter }}</span>
                       </div>
                       <div class="company-name-wrap">
-                        <span class="company-name d-block fw-bold">{{ item.display_name || item.name }}</span>
+                        <span class="company-name d-block fw-bold">{{ item.displayName }}</span>
                         <span class="text-muted fs-12">@{{ item.username }}</span>
                       </div>
                     </div>
@@ -425,17 +594,17 @@ export default {
                     </span>
                   </td>
                   <td class="align-middle">
-                    <span class="text-muted fs-13">{{ getCompanyName(item.id_perusahaan) }}</span>
+                    <span class="text-muted fs-13">{{ item.companyName }}</span>
                   </td>
                   <td class="align-middle text-center">
-                    <span class="badge-sektor" :class="getUserStatusText(item.status) === 'Aktif' ? 'badge-sektor-teal' : 'badge-sektor-amber'">
-                      <i :class="getUserStatusText(item.status) === 'Aktif' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
-                      {{ getUserStatusText(item.status) }}
+                    <span class="badge-sektor" :class="item.statusBadgeClass">
+                      <i :class="item.statusText === 'Aktif' ? 'ri-checkbox-circle-line me-1' : 'ri-close-circle-line me-1'"></i>
+                      {{ item.statusText }}
                     </span>
                   </td>
                   <td class="align-middle text-center">
-                    <span class="badge-sektor" :class="getRoleBadgeClass(item.role)">
-                      <i :class="item.role === 'admin' ? 'ri-shield-star-line me-1' : (item.role === 'staff' ? 'ri-shield-user-line me-1' : 'ri-user-line me-1')"></i>
+                    <span class="badge-sektor" :class="item.roleBadgeClass">
+                      <i :class="`${item.roleIcon} me-1`"></i>
                       {{ item.role }}
                     </span>
                   </td>
@@ -463,10 +632,9 @@ export default {
             </table>
           </div>
 
-          <!-- Pagination -->
-          <div class="pagination-container stakeholders-pagination mt-4">
+          <div class="pagination-container stakeholders-pagination">
             <div class="stakeholders-pagination-copy">
-              Showing {{ displayData.length ? (currentPage - 1) * itemsPerPage + 1 : 0 }}-{{ Math.min(currentPage * itemsPerPage, filteredData.length) }} of {{ filteredData.length }} users
+              {{ paginationCopy }}
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
               <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages || 1 }}</span>
@@ -505,8 +673,7 @@ export default {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </section>
   </div>
 
   <!-- Delete Modal -->
@@ -539,42 +706,93 @@ export default {
     </div>
   </Teleport>
 
-  <!-- Edit Role Modal -->
+  <!-- Edit Access Modal -->
   <Teleport to="body">
     <div v-if="showEditRoleModal" class="modal-overlay" @click.self="showEditRoleModal = false">
-      <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
+      <div class="modal-dialog modal-dialog-centered user-access-modal-dialog">
         <div class="modal-content border-0 bg-transparent">
-          <div class="kse-modal-box kse-modal-sm w-100">
-            <div class="kse-modal-header pb-3 mb-2" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-              <div class="d-flex align-items-center gap-3">
-                <div class="kse-modal-icon-wrap" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+          <div class="user-access-modal w-100">
+            <div class="user-access-header">
+              <div class="d-flex align-items-center gap-3 min-w-0">
+                <div class="user-access-header-icon">
                   <i class="ri-shield-user-line"></i>
                 </div>
-                <div>
-                  <div class="kse-modal-title">Ubah Role User</div>
+                <div class="min-w-0">
+                  <div class="user-access-title">Edit Akses User</div>
+                  <div class="user-access-subtitle">Role dan status akun pengguna</div>
+                </div>
+              </div>
+              <button type="button" class="user-access-close" @click="showEditRoleModal = false" title="Tutup">
+                <i class="ri-close-line"></i>
+              </button>
+            </div>
+
+            <div class="user-access-body" v-if="currentEditItem">
+              <div class="user-access-summary">
+                <div class="user-access-avatar" :class="getAvatarColorClass(getDisplayName(currentEditItem).charAt(0))">
+                  <img v-if="currentEditItem.photo" :src="currentEditItem.photo" :alt="getDisplayName(currentEditItem)" />
+                  <span v-else>{{ getDisplayName(currentEditItem).charAt(0).toUpperCase() }}</span>
+                </div>
+                <div class="min-w-0 flex-grow-1">
+                  <div class="user-access-name">{{ getDisplayName(currentEditItem) }}</div>
+                  <div class="user-access-meta">
+                    <span>@{{ currentEditItem.username }}</span>
+                    <span v-if="currentEditItem.email">{{ currentEditItem.email }}</span>
+                  </div>
+                </div>
+                <div class="user-access-current">
+                  <span class="badge-sektor" :class="getRoleBadgeClass(currentEditItem.role)">{{ currentEditItem.role }}</span>
+                  <span class="badge-sektor" :class="getUserStatusText(currentEditItem.status) === 'Aktif' ? 'badge-sektor-teal' : 'badge-sektor-amber'">
+                    {{ getUserStatusText(currentEditItem.status) }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="user-access-form-grid">
+                <div class="user-access-field">
+                  <label class="user-access-label">
+                    <i class="ri-shield-keyhole-line"></i>
+                    Role Akses
+                  </label>
+                  <select v-model="selectedRole" class="form-select user-access-select">
+                    <option v-for="role in roleOptions" :key="role.id" :value="role.name">{{ role.name }}</option>
+                  </select>
+                </div>
+
+                <div class="user-access-field">
+                  <label class="user-access-label">
+                    <i class="ri-toggle-line"></i>
+                    Status Akun
+                  </label>
+                  <div class="user-status-segment" role="group" aria-label="Status akun">
+                    <button
+                      type="button"
+                      class="user-status-option"
+                      :class="{ active: selectedStatus === 'Aktif' }"
+                      @click="selectedStatus = 'Aktif'"
+                    >
+                      <i class="ri-checkbox-circle-line"></i>
+                      <span>Aktif</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="user-status-option"
+                      :class="{ active: selectedStatus === 'Nonaktif' }"
+                      @click="selectedStatus = 'Nonaktif'"
+                    >
+                      <i class="ri-close-circle-line"></i>
+                      <span>Nonaktif</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="kse-modal-body text-start" v-if="currentEditItem">
-              <div class="mb-3">
-                <label class="form-label fs-13 text-muted">User</label>
-                <div class="fw-semibold">{{ currentEditItem.name }}</div>
-              </div>
-              <div class="mb-3">
-                <label class="form-label fs-13 text-muted">Role Akses</label>
-                <select v-model="selectedRole" class="form-select">
-                  <option v-for="role in rolesData" :key="role.id" :value="role.name">{{ role.name }}</option>
-                  <option v-if="!rolesData.length" value="admin">admin</option>
-                  <option v-if="!rolesData.length" value="staff">staff</option>
-                  <option v-if="!rolesData.length" value="user_pic">user_pic</option>
-                  <option v-if="!rolesData.length" value="user">user</option>
-                </select>
-              </div>
-            </div>
-            <div class="kse-modal-footer">
-              <button class="btn btn-light kse-modal-cancel" @click="showEditRoleModal = false">Batal</button>
-              <button class="btn btn-primary" @click="updateRole" :disabled="loading">
-                <span v-if="loading" class="spinner-border spinner-border-sm me-1"></span>Simpan
+            <div class="user-access-footer">
+              <button class="btn btn-light user-access-cancel" @click="showEditRoleModal = false">Batal</button>
+              <button class="btn btn-primary user-access-save" @click="updateRole" :disabled="loading">
+                <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
+                <i v-else class="ri-save-3-line me-1"></i>
+                Simpan Akses
               </button>
             </div>
           </div>
@@ -603,6 +821,293 @@ export default {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
   border-radius: 16px !important;
   overflow: hidden;
+}
+
+.user-access-modal-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow: visible !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.user-access-modal-dialog .modal-content {
+  width: 100%;
+  overflow: visible;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.user-access-modal {
+  overflow: hidden;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.34);
+}
+
+.user-access-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.45rem 1.75rem;
+  background: linear-gradient(135deg, #0f3d91 0%, #2563eb 56%, #14b8a6 100%);
+  color: #ffffff;
+}
+
+.user-access-header-icon {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 1.35rem;
+}
+
+.user-access-title {
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.user-access-subtitle {
+  margin-top: 0.15rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.user-access-close {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  transition: all 0.2s ease;
+}
+
+.user-access-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.user-access-body {
+  padding: 1.55rem 1.75rem 1.45rem;
+}
+
+.user-access-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.15rem;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.user-access-avatar {
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 16px;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.user-access-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-access-name {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-access-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.user-access-current {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  max-width: 190px;
+}
+
+.user-access-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.2rem;
+  margin-top: 1.2rem;
+}
+
+.user-access-field {
+  min-width: 0;
+}
+
+.user-access-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.user-access-label i {
+  color: #2563eb;
+  font-size: 0.95rem;
+}
+
+.user-access-select {
+  min-height: 48px;
+  border-radius: 12px !important;
+  border-color: #dbeafe !important;
+  background-color: #f8fbff !important;
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+.user-access-select:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12) !important;
+}
+
+.user-status-segment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.35rem;
+  min-height: 48px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.user-status-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+  transition: all 0.2s ease;
+}
+
+.user-status-option.active {
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.user-status-option:not(.active):hover {
+  color: #1e293b;
+}
+
+.user-status-option:last-child.active {
+  color: #b45309;
+}
+
+.user-access-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  padding: 1.15rem 1.75rem 1.45rem;
+  border-top: 1px solid #e2e8f0;
+  background: #fbfdff;
+}
+
+.user-access-cancel,
+.user-access-save {
+  min-height: 44px;
+  border-radius: 10px !important;
+  font-weight: 800 !important;
+}
+
+.user-access-save {
+  min-width: 160px;
+}
+
+@media (max-width: 576px) {
+  .user-access-modal-dialog {
+    width: calc(100vw - 1rem);
+  }
+
+  .user-access-header,
+  .user-access-body,
+  .user-access-footer {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .user-access-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .user-access-current {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-start;
+    padding-left: 62px;
+  }
+
+  .user-access-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-access-footer {
+    flex-direction: column-reverse;
+  }
+
+  .user-access-cancel,
+  .user-access-save {
+    width: 100%;
+  }
 }
 
 /* Skeleton Loading */
@@ -942,6 +1447,17 @@ export default {
   color: #1e293b !important; /* Elegant black/dark navy */
 }
 
+.stakeholder-table .th-no,
+.stakeholder-table .stakeholder-row td:first-child,
+.stakeholder-table .stakeholder-row:hover td:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.stakeholder-table .row-number {
+  background: transparent !important;
+}
+
 /* --- DARK MODE SUPPORT --- */
 [data-theme-mode='dark'] .header-search-input {
   background-color: rgba(255, 255, 255, 0.1) !important;
@@ -1060,6 +1576,638 @@ export default {
 [data-theme-mode='dark'] .badge-sektor-orange { color: #fb923c !important; background: rgba(251, 146, 60, 0.1) !important; }
 [data-theme-mode='dark'] .badge-sektor-sky { color: #38bdf8 !important; background: rgba(56, 189, 248, 0.1) !important; }
 
+.role-page-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.role-hero-card {
+  align-items: center;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.24), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.16), transparent 24%),
+    linear-gradient(135deg, #071b4f 0%, #173783 46%, #2563eb 100%);
+  border: 1px solid rgba(147, 197, 253, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 22px 55px rgba(37, 99, 235, 0.2), 0 8px 18px rgba(15, 23, 42, 0.08);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 21px 26px;
+  position: relative;
+}
+
+.role-hero-card::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent);
+  content: "";
+  height: 1px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.role-hero-card::after {
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.78), rgba(255, 255, 255, 0));
+  bottom: 0;
+  content: "";
+  height: 3px;
+  left: 26px;
+  position: absolute;
+  width: min(360px, 48%);
+}
+
+.role-breadcrumb {
+  color: rgba(219, 234, 254, 0.9);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.role-breadcrumb span {
+  color: rgba(219, 234, 254, 0.58);
+  margin: 0 6px;
+}
+
+.role-hero-copy h2 {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.role-hero-copy p {
+  color: rgba(239, 246, 255, 0.88);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 0;
+  max-width: 58ch;
+}
+
+.role-hero-summary {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  color: #e2e8f0;
+  display: grid;
+  justify-items: center;
+  min-width: 132px;
+  padding: 14px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.role-summary-kicker {
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.role-hero-summary strong {
+  color: #fff;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1.05;
+  margin-top: 3px;
+}
+
+.role-hero-summary span:last-child {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.role-stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.role-stat-card {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 13px;
+  min-height: 86px;
+  overflow: hidden;
+  padding: 16px;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.role-stat-card::before {
+  background: var(--stat-accent, #2563eb);
+  content: "";
+  height: 100%;
+  left: 0;
+  opacity: 0.85;
+  position: absolute;
+  top: 0;
+  width: 4px;
+}
+
+.role-stat-card::after {
+  background: radial-gradient(circle, var(--stat-soft, rgba(37, 99, 235, 0.1)), transparent 64%);
+  content: "";
+  height: 92px;
+  opacity: 0.72;
+  position: absolute;
+  right: -32px;
+  top: -36px;
+  width: 92px;
+}
+
+.role-stat-card:hover {
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.11);
+  transform: translateY(-2px);
+}
+
+.role-stat-icon {
+  align-items: center;
+  border-radius: 14px;
+  display: inline-flex;
+  flex: 0 0 44px;
+  height: 44px;
+  justify-content: center;
+  position: relative;
+  width: 44px;
+  z-index: 1;
+}
+
+.role-stat-icon i {
+  font-size: 22px;
+}
+
+.role-stat-label {
+  color: #64748b;
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.role-stat-card strong {
+  color: #0f172a;
+  display: block;
+  font-size: 25px;
+  font-weight: 950;
+  line-height: 1.1;
+  margin-top: 3px;
+}
+
+.role-stat-card > div {
+  position: relative;
+  z-index: 1;
+}
+
+.role-stat-total { --stat-accent: #2563eb; --stat-soft: rgba(37, 99, 235, 0.14); }
+.role-stat-admin { --stat-accent: #dc2626; --stat-soft: rgba(220, 38, 38, 0.14); }
+.role-stat-staff { --stat-accent: #16a34a; --stat-soft: rgba(22, 163, 74, 0.14); }
+.role-stat-pic { --stat-accent: #ea580c; --stat-soft: rgba(234, 88, 12, 0.14); }
+.role-stat-user { --stat-accent: #0284c7; --stat-soft: rgba(2, 132, 199, 0.14); }
+
+.role-stat-total .role-stat-icon { background: rgba(37, 99, 235, 0.11); color: #2563eb; }
+.role-stat-admin .role-stat-icon { background: rgba(220, 38, 38, 0.11); color: #dc2626; }
+.role-stat-staff .role-stat-icon { background: rgba(22, 163, 74, 0.11); color: #16a34a; }
+.role-stat-pic .role-stat-icon { background: rgba(234, 88, 12, 0.11); color: #ea580c; }
+.role-stat-user .role-stat-icon { background: rgba(2, 132, 199, 0.11); color: #0284c7; }
+
+.role-toolbar-card {
+  align-items: center;
+  background: linear-gradient(180deg, #fff, #fbfdff);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.users-toolbar-card {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.users-toolbar-left,
+.users-toolbar-right {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.users-toolbar-left {
+  flex: 1 1 560px;
+  flex-wrap: wrap;
+}
+
+.users-toolbar-right {
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.users-search-tabs {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+}
+
+.users-search-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 14px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.users-search-tab:hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: #0f172a;
+}
+
+.users-search-tab.active {
+  background: #ffffff;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+.role-search.users-toolbar-search {
+  max-width: 360px;
+}
+
+.role-toolbar-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.role-toolbar-copy span {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-toolbar-copy strong {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.role-toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.role-search {
+  flex: 1 1 420px;
+  max-width: 460px;
+  min-width: 280px;
+}
+
+.role-search .header-search-input {
+  background: #f8fafc !important;
+  border: 1px solid #dbe5f0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  height: 42px !important;
+  padding-left: 42px !important;
+  padding-right: 42px !important;
+  width: 100% !important;
+}
+
+.role-search .header-search-input:focus {
+  background: #fff !important;
+  border-color: rgba(37, 99, 235, 0.48) !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08) !important;
+}
+
+.role-search .header-search-icon {
+  color: #64748b !important;
+  font-size: 16px;
+  left: 16px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.role-search .clear-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  z-index: 2;
+}
+
+.role-rows-selector {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe5f0;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 7px 5px 14px;
+}
+
+.role-rows-selector span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-rows-selector .header-rows-select {
+  background-color: #fff !important;
+  border: 1px solid #dbe5f0 !important;
+  border-radius: 999px !important;
+  color: #1e293b !important;
+  font-size: 12px !important;
+  font-weight: 850;
+  height: 30px !important;
+  min-width: 72px;
+}
+
+.role-table-card {
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.role-table-card .stakeholders-table-shell {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.role-table-card .stakeholder-table-wrap {
+  margin: 0;
+  width: 100%;
+}
+
+.role-table-card .stakeholder-thead th {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 14px 16px;
+  text-transform: uppercase;
+}
+
+.role-table-card .stakeholder-row td {
+  padding: 15px 16px;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.role-table-card .stakeholder-row:hover td {
+  background: #f8fbff !important;
+}
+
+.role-table-card .th-no,
+.role-table-card .stakeholder-row td:first-child,
+.role-table-card .stakeholder-row:hover td:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.role-table-card .row-number {
+  background: transparent !important;
+}
+
+.role-table-card .stakeholders-pagination {
+  border-top: 1px solid #eef2f7;
+  margin-top: 0 !important;
+  padding: 16px 18px;
+}
+
+.badge-sektor {
+  border-radius: 50px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 4px 12px;
+  text-transform: uppercase;
+}
+
+.company-avatar {
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  height: 46px;
+  width: 46px;
+}
+
+.company-avatar-img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+@media (max-width: 1199.98px) {
+  .role-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .role-hero-card,
+  .role-toolbar-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .role-hero-summary {
+    align-items: start;
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .role-toolbar-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .users-toolbar-left,
+  .users-toolbar-right {
+    width: 100%;
+  }
+
+  .role-search {
+    max-width: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .role-page-shell {
+    gap: 12px;
+  }
+
+  .role-hero-card {
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .role-hero-copy h2 {
+    font-size: 20px;
+  }
+
+  .role-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-stat-card {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 124px;
+  }
+
+  .role-toolbar-actions {
+    flex-direction: column;
+  }
+
+  .users-search-tabs,
+  .users-toolbar-search,
+  .users-toolbar-right,
+  .role-rows-selector {
+    width: 100%;
+  }
+
+  .users-search-tab {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .role-search,
+  .role-rows-selector {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .role-rows-selector {
+    justify-content: space-between;
+  }
+
+  .role-table-card {
+    border-radius: 14px;
+  }
+
+  .role-table-card .stakeholder-table-wrap {
+    margin: 0;
+    width: 100%;
+  }
+
+  .role-table-card .stakeholders-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+[data-theme-mode='dark'] .role-hero-card {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
+    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+}
+
+[data-theme-mode='dark'] .role-toolbar-card,
+[data-theme-mode='dark'] .role-table-card,
+[data-theme-mode='dark'] .role-stat-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28) !important;
+}
+
+[data-theme-mode='dark'] .role-stat-card strong,
+[data-theme-mode='dark'] .role-toolbar-copy strong {
+  color: #e5edf7 !important;
+}
+
+[data-theme-mode='dark'] .role-stat-label,
+[data-theme-mode='dark'] .role-rows-selector span {
+  color: #9fb0c5 !important;
+}
+
+[data-theme-mode='dark'] .role-search .header-search-input,
+[data-theme-mode='dark'] .role-rows-selector,
+[data-theme-mode='dark'] .role-rows-selector .header-rows-select,
+[data-theme-mode='dark'] .users-search-tabs {
+  background: rgba(17, 24, 39, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5edf7 !important;
+}
+
+[data-theme-mode='dark'] .users-search-tab {
+  color: #9fb0c5 !important;
+}
+
+[data-theme-mode='dark'] .users-search-tab:hover,
+[data-theme-mode='dark'] .users-search-tab.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e5edf7 !important;
+}
+
+[data-theme-mode='dark'] .role-table-card .stakeholder-row td {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode='dark'] .role-table-card .stakeholder-row:hover td {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+[data-theme-mode='dark'] .role-table-card .stakeholders-pagination {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
+}
+
 </style>
 
 <style>
@@ -1094,6 +2242,168 @@ html[data-theme-mode="dark"] .form-select:focus {
 }
 html[data-theme-mode="dark"] .kse-modal-header {
   border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+html[data-theme-mode="dark"] .user-access-modal {
+  background: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45) !important;
+}
+
+html[data-theme-mode="dark"] .user-access-summary {
+  background: rgba(15, 23, 42, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme-mode="dark"] .user-access-name,
+html[data-theme-mode="dark"] .user-status-option:not(.active):hover {
+  color: #f8fafc !important;
+}
+
+html[data-theme-mode="dark"] .user-access-meta,
+html[data-theme-mode="dark"] .user-access-label {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .user-access-select {
+  background-color: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #e2e8f0 !important;
+}
+
+html[data-theme-mode="dark"] .user-status-segment {
+  background: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-theme-mode="dark"] .user-status-option {
+  color: #94a3b8 !important;
+}
+
+html[data-theme-mode="dark"] .user-status-option.active {
+  background: #1e293b !important;
+  color: #2dd4bf !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24) !important;
+}
+
+html[data-theme-mode="dark"] .user-status-option:last-child.active {
+  color: #fbbf24 !important;
+}
+
+html[data-theme-mode="dark"] .user-access-footer {
+  background: #172033 !important;
+  border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme-mode="dark"] .role-hero-card,
+html.dark .role-hero-card,
+.dark-mode .role-hero-card {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
+    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+}
+
+html[data-theme-mode="dark"] .role-toolbar-card,
+html.dark .role-toolbar-card,
+.dark-mode .role-toolbar-card,
+html[data-theme-mode="dark"] .role-table-card,
+html.dark .role-table-card,
+.dark-mode .role-table-card,
+html[data-theme-mode="dark"] .role-stat-card,
+html.dark .role-stat-card,
+.dark-mode .role-stat-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28) !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-card strong,
+html.dark .role-stat-card strong,
+.dark-mode .role-stat-card strong,
+html[data-theme-mode="dark"] .role-toolbar-copy strong,
+html.dark .role-toolbar-copy strong,
+.dark-mode .role-toolbar-copy strong {
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-label,
+html.dark .role-stat-label,
+.dark-mode .role-stat-label,
+html[data-theme-mode="dark"] .role-rows-selector span,
+html.dark .role-rows-selector span,
+.dark-mode .role-rows-selector span {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .role-search .header-search-input,
+html.dark .role-search .header-search-input,
+.dark-mode .role-search .header-search-input,
+html[data-theme-mode="dark"] .role-rows-selector,
+html.dark .role-rows-selector,
+.dark-mode .role-rows-selector,
+html[data-theme-mode="dark"] .role-rows-selector .header-rows-select,
+html.dark .role-rows-selector .header-rows-select,
+.dark-mode .role-rows-selector .header-rows-select,
+html[data-theme-mode="dark"] .users-search-tabs,
+html.dark .users-search-tabs,
+.dark-mode .users-search-tabs {
+  background: rgba(17, 24, 39, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .users-search-tab,
+html.dark .users-search-tab,
+.dark-mode .users-search-tab {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .users-search-tab:hover,
+html.dark .users-search-tab:hover,
+.dark-mode .users-search-tab:hover,
+html[data-theme-mode="dark"] .users-search-tab.active,
+html.dark .users-search-tab.active,
+.dark-mode .users-search-tab.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .role-search .header-search-input::placeholder,
+html.dark .role-search .header-search-input::placeholder,
+.dark-mode .role-search .header-search-input::placeholder {
+  color: rgba(203, 213, 225, 0.72) !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-thead th,
+html.dark .role-table-card .stakeholder-thead th,
+.dark-mode .role-table-card .stakeholder-thead th {
+  background: rgba(30, 41, 59, 0.96) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.2) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row td,
+html.dark .role-table-card .stakeholder-row td,
+.dark-mode .role-table-card .stakeholder-row td {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row:hover td,
+html.dark .role-table-card .stakeholder-row:hover td,
+.dark-mode .role-table-card .stakeholder-row:hover td {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholders-pagination,
+html.dark .role-table-card .stakeholders-pagination,
+.dark-mode .role-table-card .stakeholders-pagination {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
 }
 </style>
 

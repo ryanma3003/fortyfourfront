@@ -64,6 +64,7 @@ export interface LmsMateri {
     konten?: string;
     konten_html?: string;
     url_video?: string;
+    durasi_detik?: number;
     urutan?: number;            // ordering within kelas
     file_pendukung?: LmsFilePendukung[];
     created_at?: string;
@@ -78,6 +79,7 @@ export interface CreateMateriPayload {
     konten?: string;
     konten_html?: string;
     url_video?: string;
+    durasi_detik?: number;
     urutan?: number;
 }
 
@@ -89,6 +91,7 @@ export interface UpdateMateriPayload {
     konten?: string;
     konten_html?: string;
     url_video?: string;
+    durasi_detik?: number;
     urutan?: number;
 }
 

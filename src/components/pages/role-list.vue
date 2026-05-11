@@ -1,5 +1,22 @@
+<script lang="ts">
+import type { Role as CachedRole } from "../../services/role.service";
+import type { CasbinPolicy as CachedCasbinPolicy } from "../../services/casbin.service";
+import type { User as CachedUser } from "../../types/user.types";
+
+type RolePageCachedData = {
+  roles: CachedRole[];
+  users: CachedUser[];
+  policies: CachedCasbinPolicy[];
+  loadedAt: number;
+};
+
+let rolePageCache: RolePageCachedData | null = null;
+let rolePageCachePromise: Promise<RolePageCachedData> | null = null;
+</script>
+
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { roleService, type Role } from "../../services/role.service";
 import { usersService } from "../../services/users.service";
@@ -24,6 +41,10 @@ const sortField = ref<"name">("name");
 const sortOrder = ref<"asc" | "desc">("asc");
 const currentPage = ref(1);
 const itemsPerPage = ref(10);
+const rolePageRoot = ref<HTMLElement | null>(null);
+const roleSearchInput = ref<HTMLInputElement | null>(null);
+let roleGsapContext: gsap.Context | null = null;
+const pageHasEntered = ref(false);
 
 const showToast = ref(false);
 const toastMessage = ref("");
@@ -75,24 +96,16 @@ const displayData = computed(() => {
 
 const userStats = computed(() => {
   const total = users.value.length;
-  const admin = users.value.filter((u) => {
+  let admin = 0, staff = 0, user = 0, userPic = 0;
+  for (const u of users.value) {
     const r = (u.role || u.role_name)?.toLowerCase();
-    return r === "admin";
-  }).length;
-  const staff = users.value.filter((u) => {
-    const r = (u.role || u.role_name)?.toLowerCase();
-    return r === "staff";
-  }).length;
-  const standardUser = users.value.filter((u) => {
-    const r = (u.role || u.role_name)?.toLowerCase();
-    return r === "user";
-  }).length;
-  const userPic = users.value.filter((u) => {
-    const r = (u.role || u.role_name)?.toLowerCase();
-    return r === "user_pic" || r === "pic";
-  }).length;
+    if (r === "admin") admin++;
+    else if (r === "staff") staff++;
+    else if (r === "user") user++;
+    else if (r === "user_pic" || r === "pic") userPic++;
+  }
 
-  return { total, admin, staff, user: standardUser, userPic };
+  return { total, admin, staff, user, userPic };
 });
 
 const paginationInfo = computed(() => {
@@ -173,23 +186,61 @@ const syncSelectedPermissionsFromPolicies = (roleName: string) => {
   quickAddPermissionKey.value = "";
 };
 
-const loadRoles = async () => {
-  loading.value = true;
+const applyRolePageData = (data: RolePageCachedData) => {
+  items.value = data.roles;
+  users.value = data.users;
+  policies.value = data.policies;
+};
+
+const fetchRolePageData = () => {
+  if (!rolePageCachePromise) {
+    rolePageCachePromise = (async () => {
+      const [rolesData, usersData, policiesData] = await Promise.all([
+        roleService.getAll(),
+        usersService.getAll(),
+        casbinService.getPolicies(),
+      ]);
+
+      rolePageCache = {
+        roles: rolesData,
+        users: usersData,
+        policies: policiesData,
+        loadedAt: Date.now(),
+      };
+
+      return rolePageCache;
+    })().finally(() => {
+      rolePageCachePromise = null;
+    });
+  }
+
+  return rolePageCachePromise;
+};
+
+const hydrateRolePageFromCache = () => {
+  if (!rolePageCache) return false;
+  applyRolePageData(rolePageCache);
+  loading.value = false;
+  return true;
+};
+
+const loadRoles = async (showLoader = true) => {
+  const hasCachedData = Boolean(rolePageCache);
+  if (showLoader) {
+    loading.value = true;
+  }
+
   try {
-    const [rolesData, usersData, policiesData] = await Promise.all([
-      roleService.getAll(),
-      usersService.getAll(),
-      casbinService.getPolicies(),
-    ]);
-    items.value = rolesData;
-    users.value = usersData;
-    policies.value = policiesData;
+    const freshData = await fetchRolePageData();
+    applyRolePageData(freshData);
   } catch (error) {
     console.error("Failed to load role page data:", error);
-    items.value = [];
-    users.value = [];
-    permissions.value = [];
-    policies.value = [];
+    if (!hasCachedData) {
+      items.value = [];
+      users.value = [];
+      permissions.value = [];
+      policies.value = [];
+    }
     showNotification("Gagal memuat data role dan permission.", "error");
   } finally {
     loading.value = false;
@@ -199,6 +250,13 @@ const loadRoles = async () => {
 const reloadPolicies = async () => {
   const latestPolicies = await casbinService.getPolicies();
   policies.value = latestPolicies;
+  if (rolePageCache) {
+    rolePageCache = {
+      ...rolePageCache,
+      policies: latestPolicies,
+      loadedAt: Date.now(),
+    };
+  }
   if (selectedRole.value) {
     syncSelectedPermissionsFromPolicies(selectedRole.value.name);
   }
@@ -350,6 +408,12 @@ const handleRemovePermission = async (obj: string, act: string) => {
 
 const clearSearch = () => {
   searchQuery.value = "";
+  currentPage.value = 1;
+  nextTick(() => roleSearchInput.value?.focus());
+};
+
+const focusRoleSearch = () => {
+  roleSearchInput.value?.focus();
 };
 
 const toggleSort = (field: "name") => {
@@ -358,6 +422,100 @@ const toggleSort = (field: "name") => {
   } else {
     sortField.value = field;
     sortOrder.value = "asc";
+  }
+};
+
+const shouldReduceMotion = () =>
+  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+const runEntranceAnimations = () => {
+  nextTick(() => {
+    const root = rolePageRoot.value;
+    if (!root || shouldReduceMotion()) return;
+
+    roleGsapContext?.revert();
+    roleGsapContext = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+      tl.from(".role-breadcrumb", { y: -10, opacity: 0, duration: 0.45 })
+        .from(".role-hero-title", { y: 22, opacity: 0, duration: 0.58 }, "-=0.2")
+        .from(".role-hero-desc", { y: 16, opacity: 0, duration: 0.5 }, "-=0.32")
+        .from(".role-hero-summary", { opacity: 0, duration: 0.62, ease: "power3.out" }, "-=0.34")
+        .from(".role-stat-card", {
+        y: 18,
+        opacity: 0,
+        scale: 0.94,
+        duration: 0.42,
+        stagger: 0.08,
+        ease: "back.out(1.4)",
+      }).from(".role-toolbar-card, .role-table-card", {
+        y: 26,
+        opacity: 0,
+        duration: 0.55,
+      }, "-=0.18");
+    }, root);
+  });
+};
+
+
+
+const animateRows = (quick = false) => {
+  nextTick(() => {
+    const root = rolePageRoot.value;
+    if (!root || shouldReduceMotion()) return;
+
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".stakeholder-row"));
+    if (!rows.length) return;
+
+    gsap.killTweensOf(rows);
+    rows.forEach((row, index) => {
+      gsap.fromTo(
+        row,
+        { y: quick ? 12 : 18, opacity: 0, scale: quick ? 0.992 : 0.985, force3D: true },
+        {
+          y: 0,
+          opacity: 1,
+          scale: 1,
+          duration: quick ? 0.32 : 0.38,
+          delay: index * (quick ? 0.05 : 0.055),
+          ease: "power2.out",
+          clearProps: "transform,opacity",
+        },
+      );
+    });
+  });
+};
+
+const animateHover = (
+  event: Event,
+  active: boolean,
+  type: "card" | "row" = "card"
+) => {
+  if (shouldReduceMotion()) return;
+  const target = event.currentTarget as HTMLElement | null;
+  if (!target) return;
+
+  const icon = target.querySelector<HTMLElement>(".role-stat-icon, .company-avatar");
+  const values = {
+    card: { y: -5, scale: 1.018, duration: 0.2 },
+    row: { y: -1, scale: 1.002, duration: 0.16 },
+  }[type];
+
+  gsap.to(target, {
+    y: active ? values.y : 0,
+    scale: active ? values.scale : 1,
+    duration: values.duration,
+    ease: active ? "power2.out" : "power2.inOut",
+    overwrite: "auto",
+  });
+
+  if (icon) {
+    gsap.to(icon, {
+      rotate: active ? (type === "row" ? 0 : -2) : 0,
+      scale: active ? 1.08 : 1,
+      duration: values.duration,
+      ease: "power2.out",
+      overwrite: "auto",
+    });
   }
 };
 
@@ -371,7 +529,34 @@ watch(totalPages, (pageCount) => {
   }
 });
 
-onMounted(loadRoles);
+watch([displayData, loading], (newVals, oldVals) => {
+  if (!pageHasEntered.value || loading.value) return;
+  
+  const wasLoading = oldVals ? oldVals[1] : false;
+  const isNowLoading = newVals[1];
+  const quick = !(wasLoading && !isNowLoading);
+  
+  animateRows(quick);
+}, { flush: "post" });
+
+onMounted(() => {
+  runEntranceAnimations();
+  
+  const hasCachedData = hydrateRolePageFromCache();
+  if (hasCachedData) {
+    void loadRoles(false);
+    animateRows();
+  } else {
+    void loadRoles();
+  }
+  
+  pageHasEntered.value = true;
+});
+
+onUnmounted(() => {
+  roleGsapContext?.revert();
+  roleGsapContext = null;
+});
 </script>
 
 <template>
@@ -391,68 +576,111 @@ onMounted(loadRoles);
     </div>
   </transition>
 
-  <div class="row">
-    <div class="col-xl-12">
-      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header">
-          <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
-              <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboards <span>/</span> Role List</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Manajemen Role</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Kelola tingkatan akses dan permission di tiap role</div>
-              </div>
-              <div class="stakeholders-meta-stack">
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total Users</span>
-                  <strong><i class="ri-team-line text-primary"></i> {{ userStats.total }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Admin</span>
-                  <strong><i class="ri-shield-star-line text-danger"></i> {{ userStats.admin }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Staff</span>
-                  <strong><i class="ri-shield-user-line text-success"></i> {{ userStats.staff }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">User / PIC</span>
-                  <strong><i class="ri-user-settings-line text-warning"></i> {{ userStats.userPic }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">User</span>
-                  <strong><i class="ri-user-line text-info"></i> {{ userStats.user }}</strong>
-                </div>
-              </div>
-            </div>
+  <div ref="rolePageRoot" class="role-page-shell">
+    <section class="role-hero-card">
+      <div class="role-hero-copy">
+        <div class="role-breadcrumb">Dashboards <span>/</span> Role List</div>
+        <h2 class="role-hero-title">Manajemen Role</h2>
+        <p class="role-hero-desc">Kelola akses, permission, dan cakupan pengguna dalam tampilan yang ringkas.</p>
+      </div>
+      <div class="role-hero-summary">
+        <span class="role-summary-kicker">Role Aktif</span>
+        <strong>{{ filteredData.length }}</strong>
+        <span>dari {{ items.length }} role</span>
+      </div>
+    </section>
 
-            <div class="stakeholders-hero-tools">
-              <div class="stakeholders-search position-relative">
-                <i class="ri-search-line header-search-icon"></i>
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  class="form-control form-control-sm header-search-input"
-                  placeholder="Cari nama role atau deskripsi..."
-                />
-                <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
-                  <i class="ri-close-circle-fill"></i>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="header-rows-selector d-flex align-items-center gap-2">
-            <span class="text-white opacity-75 fs-11 fw-bold text-uppercase">Rows</span>
-            <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
-              <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
-            </select>
-          </div>
+    <section class="role-stats-grid">
+      <div
+        class="role-stat-card role-stat-total"
+        @mouseenter="animateHover($event, true, 'card')"
+        @mouseleave="animateHover($event, false, 'card')"
+      >
+        <span class="role-stat-icon"><i class="ri-team-line"></i></span>
+        <div>
+          <span class="role-stat-label">Total Users</span>
+          <strong>{{ userStats.total }}</strong>
         </div>
+      </div>
+      <div
+        class="role-stat-card role-stat-admin"
+        @mouseenter="animateHover($event, true, 'card')"
+        @mouseleave="animateHover($event, false, 'card')"
+      >
+        <span class="role-stat-icon"><i class="ri-shield-star-line"></i></span>
+        <div>
+          <span class="role-stat-label">Admin</span>
+          <strong>{{ userStats.admin }}</strong>
+        </div>
+      </div>
+      <div
+        class="role-stat-card role-stat-staff"
+        @mouseenter="animateHover($event, true, 'card')"
+        @mouseleave="animateHover($event, false, 'card')"
+      >
+        <span class="role-stat-icon"><i class="ri-briefcase-line"></i></span>
+        <div>
+          <span class="role-stat-label">Staff</span>
+          <strong>{{ userStats.staff }}</strong>
+        </div>
+      </div>
+      <div
+        class="role-stat-card role-stat-pic"
+        @mouseenter="animateHover($event, true, 'card')"
+        @mouseleave="animateHover($event, false, 'card')"
+      >
+        <span class="role-stat-icon"><i class="ri-user-settings-line"></i></span>
+        <div>
+          <span class="role-stat-label">User / PIC</span>
+          <strong>{{ userStats.userPic }}</strong>
+        </div>
+      </div>
+      <div
+        class="role-stat-card role-stat-user"
+        @mouseenter="animateHover($event, true, 'card')"
+        @mouseleave="animateHover($event, false, 'card')"
+      >
+        <span class="role-stat-icon"><i class="ri-user-line"></i></span>
+        <div>
+          <span class="role-stat-label">User</span>
+          <strong>{{ userStats.user }}</strong>
+        </div>
+      </div>
+    </section>
 
-        <div class="card-body p-4 stakeholders-premium-body">
-          <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
-            <table class="table stakeholder-table mb-0">
+    <section class="role-toolbar-card users-toolbar-card">
+      <div class="users-toolbar-left">
+        <div class="stakeholders-search role-search users-toolbar-search position-relative" @click="focusRoleSearch">
+          <i class="ri-search-line header-search-icon"></i>
+          <input
+            ref="roleSearchInput"
+            v-model="searchQuery"
+            type="text"
+            class="form-control form-control-sm header-search-input"
+            placeholder="Cari nama role atau deskripsi..."
+            autocomplete="off"
+            @click.stop
+            @keydown.stop
+          />
+          <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
+            <i class="ri-close-circle-fill"></i>
+          </button>
+        </div>
+      </div>
+      <div class="users-toolbar-right">
+        <div class="role-rows-selector">
+          <span>Rows</span>
+          <select v-model="itemsPerPage" class="form-select form-select-sm header-rows-select">
+            <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="role-table-card">
+      <div class="card-body p-0 stakeholders-premium-body">
+        <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+          <table class="table stakeholder-table mb-0">
               <thead class="stakeholder-thead">
                 <tr>
                   <th class="th-no" style="width: 60px;">No</th>
@@ -498,7 +726,13 @@ onMounted(loadRoles);
                 </tr>
 
                 <template v-else>
-                  <tr v-for="(role, i) in displayData" :key="role.id" class="stakeholder-row">
+                  <tr
+                    v-for="(role, i) in displayData"
+                    :key="role.id"
+                    class="stakeholder-row"
+                    @mouseenter="animateHover($event, true, 'row')"
+                    @mouseleave="animateHover($event, false, 'row')"
+                  >
                     <td class="align-middle text-center">
                       <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
@@ -524,7 +758,7 @@ onMounted(loadRoles);
                       </span>
                     </td>
                     <td class="align-middle text-center">
-                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-semibold">
+                      <span class="role-permission-badge">
                         {{ rolePermissionCount(role.name) }} permission
                       </span>
                     </td>
@@ -536,42 +770,41 @@ onMounted(loadRoles);
                   </tr>
                 </template>
               </tbody>
-            </table>
-          </div>
+          </table>
+        </div>
 
-          <div class="pagination-container stakeholders-pagination mt-4">
-            <div class="stakeholders-pagination-copy">
-              {{ paginationInfo }}
-            </div>
-            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-              <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages }}</span>
-              <nav v-if="totalPages > 1">
-                <ul class="pagination pagination-sm mb-0 gap-1">
-                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1"><i class="ri-skip-back-mini-line"></i></a>
+        <div class="pagination-container stakeholders-pagination">
+          <div class="stakeholders-pagination-copy">
+            {{ paginationInfo }}
+          </div>
+          <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages }}</span>
+            <nav v-if="totalPages > 1">
+              <ul class="pagination pagination-sm mb-0 gap-1">
+                <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1"><i class="ri-skip-back-mini-line"></i></a>
+                </li>
+                <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--"><i class="ri-arrow-left-s-line"></i></a>
+                </li>
+                <template v-for="p in totalPages" :key="p">
+                  <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
                   </li>
-                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--"><i class="ri-arrow-left-s-line"></i></a>
-                  </li>
-                  <template v-for="p in totalPages" :key="p">
-                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
-                      <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
-                    </li>
-                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled"><span class="page-link border-0 bg-transparent">...</span></li>
-                  </template>
-                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a>
-                  </li>
-                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages"><i class="ri-skip-forward-mini-line"></i></a>
-                  </li>
-                </ul>
-              </nav>
-            </div>
+                  <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled"><span class="page-link border-0 bg-transparent">...</span></li>
+                </template>
+                <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a>
+                </li>
+                <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages"><i class="ri-skip-forward-mini-line"></i></a>
+                </li>
+              </ul>
+            </nav>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   </div>
 
   <Teleport to="body">
@@ -740,6 +973,445 @@ onMounted(loadRoles);
 </template>
 
 <style scoped>
+.role-page-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.role-hero-card {
+  align-items: center;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.24), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.16), transparent 24%),
+    linear-gradient(135deg, #071b4f 0%, #173783 46%, #2563eb 100%);
+  border: 1px solid rgba(147, 197, 253, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 22px 55px rgba(37, 99, 235, 0.2), 0 8px 18px rgba(15, 23, 42, 0.08);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 21px 26px;
+  position: relative;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.role-hero-card::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent);
+  content: "";
+  height: 1px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.role-hero-card::after {
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.78), rgba(255, 255, 255, 0));
+  bottom: 0;
+  content: "";
+  height: 3px;
+  left: 26px;
+  position: absolute;
+  width: min(360px, 48%);
+}
+
+.role-breadcrumb {
+  color: rgba(219, 234, 254, 0.9);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.role-breadcrumb span {
+  color: rgba(219, 234, 254, 0.58);
+  margin: 0 6px;
+}
+
+.role-hero-copy h2 {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.role-hero-copy p {
+  color: rgba(239, 246, 255, 0.88);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 0;
+  max-width: 58ch;
+}
+
+.role-hero-summary {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  color: #e2e8f0;
+  display: grid;
+  justify-items: center;
+  min-width: 132px;
+  padding: 14px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 12px 24px rgba(15, 23, 42, 0.14);
+  transform-origin: center;
+}
+
+.role-summary-kicker {
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.role-hero-summary strong {
+  color: #fff;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1.05;
+  margin-top: 3px;
+}
+
+.role-hero-summary span:last-child {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.role-stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.role-stat-card {
+  align-items: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 13px;
+  min-height: 86px;
+  padding: 16px;
+  overflow: hidden;
+  position: relative;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.role-stat-card::before {
+  background: var(--stat-accent, #2563eb);
+  content: "";
+  height: 100%;
+  left: 0;
+  opacity: 0.85;
+  position: absolute;
+  top: 0;
+  width: 4px;
+}
+
+.role-stat-card::after {
+  background: radial-gradient(circle, var(--stat-soft, rgba(37, 99, 235, 0.1)), transparent 64%);
+  content: "";
+  height: 92px;
+  opacity: 0.72;
+  position: absolute;
+  right: -32px;
+  top: -36px;
+  width: 92px;
+}
+
+.role-stat-card:hover {
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.11);
+}
+
+.role-stat-icon {
+  align-items: center;
+  border-radius: 14px;
+  display: inline-flex;
+  flex: 0 0 44px;
+  height: 44px;
+  justify-content: center;
+  position: relative;
+  width: 44px;
+  z-index: 1;
+}
+
+.role-stat-icon i {
+  font-size: 22px;
+}
+
+.role-stat-label {
+  color: #64748b;
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.role-stat-card strong {
+  color: #0f172a;
+  display: block;
+  font-size: 25px;
+  font-weight: 950;
+  line-height: 1.1;
+  margin-top: 3px;
+}
+
+.role-stat-card > div {
+  position: relative;
+  z-index: 1;
+}
+
+.role-stat-total { --stat-accent: #2563eb; --stat-soft: rgba(37, 99, 235, 0.14); }
+.role-stat-admin { --stat-accent: #dc2626; --stat-soft: rgba(220, 38, 38, 0.14); }
+.role-stat-staff { --stat-accent: #16a34a; --stat-soft: rgba(22, 163, 74, 0.14); }
+.role-stat-pic { --stat-accent: #ea580c; --stat-soft: rgba(234, 88, 12, 0.14); }
+.role-stat-user { --stat-accent: #0284c7; --stat-soft: rgba(2, 132, 199, 0.14); }
+
+.role-stat-total .role-stat-icon { background: rgba(37, 99, 235, 0.11); color: #2563eb; }
+.role-stat-admin .role-stat-icon { background: rgba(220, 38, 38, 0.11); color: #dc2626; }
+.role-stat-staff .role-stat-icon { background: rgba(22, 163, 74, 0.11); color: #16a34a; }
+.role-stat-pic .role-stat-icon { background: rgba(234, 88, 12, 0.11); color: #ea580c; }
+.role-stat-user .role-stat-icon { background: rgba(2, 132, 199, 0.11); color: #0284c7; }
+
+.role-toolbar-card {
+  align-items: center;
+  background:
+    linear-gradient(180deg, #fff, #fbfdff);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.users-toolbar-card {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.users-toolbar-left,
+.users-toolbar-right {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.users-toolbar-left {
+  flex: 1 1 560px;
+  flex-wrap: wrap;
+}
+
+.users-toolbar-right {
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.role-toolbar-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.role-toolbar-copy span {
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-toolbar-copy strong {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.role-toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.role-search {
+  flex: 1 1 420px;
+  max-width: 460px;
+  min-width: 280px;
+  position: relative;
+  z-index: 3;
+}
+
+.role-search.users-toolbar-search {
+  max-width: 360px;
+  cursor: text;
+}
+
+.role-search .header-search-input {
+  background: #f8fafc !important;
+  border: 1px solid #dbe5f0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  height: 42px;
+  padding-left: 42px !important;
+  padding-right: 42px !important;
+  pointer-events: auto !important;
+  position: relative;
+  width: 100% !important;
+  z-index: 1;
+}
+
+.role-search .header-search-input:focus {
+  background: #fff !important;
+  border-color: rgba(37, 99, 235, 0.48) !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08) !important;
+}
+
+.role-search .header-search-icon {
+  color: #64748b;
+  font-size: 16px;
+  left: 16px;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.role-search .clear-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  z-index: 4;
+}
+
+.role-rows-selector {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe5f0;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 7px 5px 14px;
+}
+
+.role-rows-selector span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-rows-selector .header-rows-select {
+  background-color: #fff;
+  border: 1px solid #dbe5f0;
+  border-radius: 999px;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 850;
+  height: 30px;
+  min-width: 72px;
+}
+
+.role-table-card {
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.role-table-card .stakeholders-table-shell {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.role-table-card .stakeholder-table {
+  margin-bottom: 0;
+}
+
+.role-table-card .stakeholder-thead th {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 14px 16px;
+  text-transform: uppercase;
+}
+
+.role-table-card .stakeholder-row td {
+  padding: 15px 16px;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.role-table-card .th-no,
+.role-table-card .stakeholder-row td:first-child,
+.role-table-card .stakeholder-row:hover td:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.role-table-card .row-number {
+  background: transparent !important;
+}
+
+.role-permission-badge {
+  align-items: center;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 850;
+  justify-content: center;
+  line-height: 1;
+  min-height: 26px;
+  min-width: 92px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.role-table-card .stakeholder-row:hover td {
+  background: #f8fbff !important;
+}
+
+.role-table-card .stakeholders-pagination {
+  border-top: 1px solid #eef2f7;
+  margin-top: 0 !important;
+  padding: 16px 18px;
+}
+
 /* Skeleton Loading Animation */
 .skel {
   background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
@@ -1198,7 +1870,39 @@ onMounted(loadRoles);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+@media (max-width: 1199.98px) {
+  .role-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 991.98px) {
+  .role-hero-card,
+  .role-toolbar-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .role-hero-summary {
+    align-items: start;
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .role-toolbar-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .users-toolbar-left,
+  .users-toolbar-right {
+    width: 100%;
+  }
+
+  .role-search {
+    max-width: none;
+  }
+
   .permission-modal {
     width: 96%;
     max-width: 96%;
@@ -1206,6 +1910,55 @@ onMounted(loadRoles);
 }
 
 @media (max-width: 767.98px) {
+  .role-page-shell {
+    gap: 12px;
+  }
+
+  .role-hero-card {
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .role-hero-copy h2 {
+    font-size: 20px;
+  }
+
+  .role-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-stat-card {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 124px;
+  }
+
+  .role-toolbar-actions {
+    flex-direction: column;
+  }
+
+  .users-toolbar-search,
+  .users-toolbar-right,
+  .role-search,
+  .role-rows-selector {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .role-rows-selector {
+    justify-content: space-between;
+  }
+
+  .role-table-card {
+    border-radius: 14px;
+  }
+
+  .role-table-card .stakeholders-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .modal-overlay {
     padding: 12px;
     align-items: flex-start;
@@ -1296,3 +2049,363 @@ onMounted(loadRoles);
 }
 </style>
 
+<style>
+html[data-theme-mode="dark"] .role-hero-card,
+html.dark .role-hero-card,
+.dark-mode .role-hero-card {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
+    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
+  border-color: rgba(147, 197, 253, 0.2) !important;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+}
+
+html[data-theme-mode="dark"] .role-toolbar-card,
+html.dark .role-toolbar-card,
+.dark-mode .role-toolbar-card,
+html[data-theme-mode="dark"] .role-table-card,
+html.dark .role-table-card,
+.dark-mode .role-table-card,
+html[data-theme-mode="dark"] .role-stat-card,
+html.dark .role-stat-card,
+.dark-mode .role-stat-card {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92)) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28) !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-card::after,
+html.dark .role-stat-card::after,
+.dark-mode .role-stat-card::after {
+  opacity: 0.18;
+}
+
+html[data-theme-mode="dark"] .role-breadcrumb,
+html.dark .role-breadcrumb,
+.dark-mode .role-breadcrumb {
+  color: rgba(219, 234, 254, 0.9) !important;
+}
+
+html[data-theme-mode="dark"] .role-breadcrumb span,
+html.dark .role-breadcrumb span,
+.dark-mode .role-breadcrumb span {
+  color: rgba(219, 234, 254, 0.52) !important;
+}
+
+html[data-theme-mode="dark"] .role-hero-copy h2,
+html.dark .role-hero-copy h2,
+.dark-mode .role-hero-copy h2 {
+  color: #fff !important;
+}
+
+html[data-theme-mode="dark"] .role-hero-copy p,
+html.dark .role-hero-copy p,
+.dark-mode .role-hero-copy p {
+  color: rgba(239, 246, 255, 0.84) !important;
+}
+
+html[data-theme-mode="dark"] .role-hero-summary,
+html.dark .role-hero-summary,
+.dark-mode .role-hero-summary {
+  background: rgba(255, 255, 255, 0.09) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-card strong,
+html.dark .role-stat-card strong,
+.dark-mode .role-stat-card strong,
+html[data-theme-mode="dark"] .role-toolbar-copy strong,
+html.dark .role-toolbar-copy strong,
+.dark-mode .role-toolbar-copy strong {
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .role-stat-label,
+html.dark .role-stat-label,
+.dark-mode .role-stat-label,
+html[data-theme-mode="dark"] .role-rows-selector span,
+html.dark .role-rows-selector span,
+.dark-mode .role-rows-selector span,
+html[data-theme-mode="dark"] .role-toolbar-copy strong,
+html.dark .role-toolbar-copy strong,
+.dark-mode .role-toolbar-copy strong {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .role-search .header-search-input,
+html.dark .role-search .header-search-input,
+.dark-mode .role-search .header-search-input,
+html[data-theme-mode="dark"] .role-rows-selector,
+html.dark .role-rows-selector,
+.dark-mode .role-rows-selector,
+html[data-theme-mode="dark"] .role-rows-selector .header-rows-select,
+html.dark .role-rows-selector .header-rows-select,
+.dark-mode .role-rows-selector .header-rows-select {
+  background: rgba(17, 24, 39, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .role-search .header-search-input::placeholder,
+html.dark .role-search .header-search-input::placeholder,
+.dark-mode .role-search .header-search-input::placeholder {
+  color: rgba(203, 213, 225, 0.72) !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-thead th,
+html.dark .role-table-card .stakeholder-thead th,
+.dark-mode .role-table-card .stakeholder-thead th {
+  background: rgba(30, 41, 59, 0.96) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.2) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row td,
+html.dark .role-table-card .stakeholder-row td,
+.dark-mode .role-table-card .stakeholder-row td {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+
+html[data-theme-mode="dark"] .role-permission-badge,
+html.dark .role-permission-badge,
+.dark-mode .role-permission-badge {
+  background: rgba(37, 99, 235, 0.22) !important;
+  border-color: rgba(96, 165, 250, 0.32) !important;
+  color: #bfdbfe !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row:hover td,
+html.dark .role-table-card .stakeholder-row:hover td,
+.dark-mode .role-table-card .stakeholder-row:hover td {
+  background: rgba(30, 41, 59, 0.72) !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .th-no,
+html.dark .role-table-card .th-no,
+.dark-mode .role-table-card .th-no,
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row td:first-child,
+html.dark .role-table-card .stakeholder-row td:first-child,
+.dark-mode .role-table-card .stakeholder-row td:first-child,
+html[data-theme-mode="dark"] .role-table-card .stakeholder-row:hover td:first-child,
+html.dark .role-table-card .stakeholder-row:hover td:first-child,
+.dark-mode .role-table-card .stakeholder-row:hover td:first-child {
+  box-shadow: none !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholders-pagination,
+html.dark .role-table-card .stakeholders-pagination,
+.dark-mode .role-table-card .stakeholders-pagination {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-content,
+html.dark .permission-modal-content,
+body[data-theme-mode="dark"] .permission-modal-content,
+.dark-mode .permission-modal-content {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 32px 88px rgba(0, 0, 0, 0.48) !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-header,
+html.dark .permission-modal-header,
+body[data-theme-mode="dark"] .permission-modal-header,
+.dark-mode .permission-modal-header {
+  background:
+    radial-gradient(circle at 8% 10%, rgba(96, 165, 250, 0.22), transparent 28%),
+    linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-header .text-white,
+html.dark .permission-modal-header .text-white,
+body[data-theme-mode="dark"] .permission-modal-header .text-white,
+.dark-mode .permission-modal-header .text-white,
+html[data-theme-mode="dark"] .permission-modal-header h4,
+html.dark .permission-modal-header h4,
+body[data-theme-mode="dark"] .permission-modal-header h4,
+.dark-mode .permission-modal-header h4 {
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-body,
+html.dark .permission-modal-body,
+body[data-theme-mode="dark"] .permission-modal-body,
+.dark-mode .permission-modal-body,
+html[data-theme-mode="dark"] .permission-modal-scroll-body,
+html.dark .permission-modal-scroll-body,
+body[data-theme-mode="dark"] .permission-modal-scroll-body,
+.dark-mode .permission-modal-scroll-body {
+  background: #0f172a !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-footer,
+html.dark .permission-modal-footer,
+body[data-theme-mode="dark"] .permission-modal-footer,
+.dark-mode .permission-modal-footer {
+  background: #111827 !important;
+  border-top-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+html[data-theme-mode="dark"] .permission-toolbar-card,
+html.dark .permission-toolbar-card,
+body[data-theme-mode="dark"] .permission-toolbar-card,
+.dark-mode .permission-toolbar-card,
+html[data-theme-mode="dark"] .manual-permission-entry,
+html.dark .manual-permission-entry,
+body[data-theme-mode="dark"] .manual-permission-entry,
+.dark-mode .manual-permission-entry,
+html[data-theme-mode="dark"] .permission-table-shell,
+html.dark .permission-table-shell,
+body[data-theme-mode="dark"] .permission-table-shell,
+.dark-mode .permission-table-shell {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: none !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-toolbar-copy h6,
+html.dark .permission-toolbar-copy h6,
+body[data-theme-mode="dark"] .permission-toolbar-copy h6,
+.dark-mode .permission-toolbar-copy h6,
+html[data-theme-mode="dark"] .permission-table .fw-semibold,
+html.dark .permission-table .fw-semibold,
+body[data-theme-mode="dark"] .permission-table .fw-semibold,
+.dark-mode .permission-table .fw-semibold {
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-toolbar-copy p,
+html.dark .permission-toolbar-copy p,
+body[data-theme-mode="dark"] .permission-toolbar-copy p,
+.dark-mode .permission-toolbar-copy p,
+html[data-theme-mode="dark"] .permission-modal-body .text-muted,
+html.dark .permission-modal-body .text-muted,
+body[data-theme-mode="dark"] .permission-modal-body .text-muted,
+.dark-mode .permission-modal-body .text-muted,
+html[data-theme-mode="dark"] .manual-permission-entry label,
+html.dark .manual-permission-entry label,
+body[data-theme-mode="dark"] .manual-permission-entry label,
+.dark-mode .manual-permission-entry label {
+  color: #9fb0c5 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal .form-select,
+html.dark .permission-modal .form-select,
+body[data-theme-mode="dark"] .permission-modal .form-select,
+.dark-mode .permission-modal .form-select,
+html[data-theme-mode="dark"] .permission-modal .form-control,
+html.dark .permission-modal .form-control,
+body[data-theme-mode="dark"] .permission-modal .form-control,
+.dark-mode .permission-modal .form-control {
+  background-color: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal .form-control::placeholder,
+html.dark .permission-modal .form-control::placeholder,
+body[data-theme-mode="dark"] .permission-modal .form-control::placeholder,
+.dark-mode .permission-modal .form-control::placeholder {
+  color: #7b8ca5 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal .form-select option,
+html.dark .permission-modal .form-select option,
+body[data-theme-mode="dark"] .permission-modal .form-select option,
+.dark-mode .permission-modal .form-select option {
+  background: #111827 !important;
+  color: #e5edf7 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table,
+html.dark .permission-table,
+body[data-theme-mode="dark"] .permission-table,
+.dark-mode .permission-table {
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table thead th,
+html.dark .permission-table thead th,
+body[data-theme-mode="dark"] .permission-table thead th,
+.dark-mode .permission-table thead th {
+  background: #1e2d40 !important;
+  border-bottom-color: rgba(148, 163, 184, 0.22) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table tbody tr td,
+html.dark .permission-table tbody tr td,
+body[data-theme-mode="dark"] .permission-table tbody tr td,
+.dark-mode .permission-table tbody tr td {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row):hover td,
+html.dark .permission-table tbody tr:not(.permission-group-row):hover td,
+body[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row):hover td,
+.dark-mode .permission-table tbody tr:not(.permission-group-row):hover td {
+  background: #172235 !important;
+}
+
+html[data-theme-mode="dark"] .permission-group-row td,
+html.dark .permission-group-row td,
+body[data-theme-mode="dark"] .permission-group-row td,
+.dark-mode .permission-group-row td {
+  background: #1a3154 !important;
+  color: #bfdbfe !important;
+  border-color: rgba(191, 219, 254, 0.2) !important;
+}
+
+html[data-theme-mode="dark"] .permission-table code,
+html.dark .permission-table code,
+body[data-theme-mode="dark"] .permission-table code,
+.dark-mode .permission-table code {
+  color: #f472b6 !important;
+}
+
+html[data-theme-mode="dark"] .permission-table .badge.bg-light,
+html.dark .permission-table .badge.bg-light,
+body[data-theme-mode="dark"] .permission-table .badge.bg-light,
+.dark-mode .permission-table .badge.bg-light {
+  background: rgba(148, 163, 184, 0.12) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-close-btn,
+html.dark .permission-modal-close-btn,
+body[data-theme-mode="dark"] .permission-modal-close-btn,
+.dark-mode .permission-modal-close-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light,
+html.dark .permission-modal-footer .btn-primary-light,
+body[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light,
+.dark-mode .permission-modal-footer .btn-primary-light {
+  background: rgba(148, 163, 184, 0.1) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #dbe7f3 !important;
+}
+
+html[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light:hover,
+html.dark .permission-modal-footer .btn-primary-light:hover,
+body[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light:hover,
+.dark-mode .permission-modal-footer .btn-primary-light:hover {
+  background: rgba(37, 99, 235, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  color: #ffffff !important;
+}
+</style>

@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
+import gsap from 'gsap';
 import { ikasService } from '../../services/ikas.service';
 
 const props = defineProps({
@@ -27,6 +28,47 @@ const comparisonPickerOpen = ref(false);
 const allIkasRecords = ref([]);
 const loading = ref(false);
 const error = ref('');
+const comparisonRoot = ref(null);
+let comparisonAnimationCtx = null;
+
+const animateComparison = async (quick = false) => {
+  await nextTick();
+  const root = comparisonRoot.value;
+  if (!root || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  comparisonAnimationCtx?.revert();
+  comparisonAnimationCtx = gsap.context(() => {
+    const elements = gsap.utils.toArray('.comparison-animate, .total-bar-row, .domain-comparison-card');
+    const fills = gsap.utils.toArray('.total-bar-fill, .domain-bar-fill');
+
+    gsap.fromTo(
+      elements,
+      { y: quick ? 8 : 14, opacity: 0, scale: 0.99 },
+      {
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        duration: quick ? 0.34 : 0.52,
+        stagger: quick ? 0.025 : 0.045,
+        ease: 'power3.out',
+        overwrite: 'auto',
+      },
+    );
+
+    gsap.fromTo(
+      fills,
+      { scaleX: 0, transformOrigin: 'left center' },
+      {
+        scaleX: 1,
+        duration: quick ? 0.45 : 0.68,
+        stagger: 0.018,
+        ease: 'power3.out',
+        overwrite: 'auto',
+        delay: quick ? 0.06 : 0.12,
+      },
+    );
+  }, root);
+};
 
 // Color palette for year bars
 const yearColors = [
@@ -105,6 +147,7 @@ const hasRecordForYear = (year) => {
 
 const activeYearNumber = computed(() => toYearNumber(props.activeYear) ?? currentYear);
 const hasAnyComparableData = computed(() => availableYears.value.some((year) => hasRecordForYear(year)));
+const comparableYearCount = computed(() => availableYears.value.filter((year) => hasRecordForYear(year)).length);
 
 // Get the latest record for a given year
 const getRecordForYear = (year) => {
@@ -381,16 +424,18 @@ const fetchAllRecords = async () => {
     selectedYears.value = [];
   } finally {
     loading.value = false;
+    await animateComparison(true);
   }
 };
 
-onMounted(() => {
-  fetchAllRecords();
+onMounted(async () => {
+  await fetchAllRecords();
   window.addEventListener('ikas-requests-updated', fetchAllRecords);
 });
 
 onUnmounted(() => {
   window.removeEventListener('ikas-requests-updated', fetchAllRecords);
+  comparisonAnimationCtx?.revert();
 });
 
 watch(() => props.perusahaanId, () => {
@@ -421,9 +466,9 @@ watch(availableYears, (years) => {
 </script>
 
 <template>
-  <div class="ikas-comparison-section">
+  <div ref="comparisonRoot" class="ikas-comparison-section">
     <!-- Year Selector Pill Bar -->
-    <div class="year-selector-bar">
+    <div class="year-selector-bar comparison-animate">
       <div class="year-selector-label">
         <i class="ri-calendar-line"></i>
         <span>TAHUN DATA</span>
@@ -444,7 +489,7 @@ watch(availableYears, (years) => {
     </div>
 
     <!-- Comparison Card -->
-    <div class="comparison-card">
+    <div class="comparison-card comparison-animate">
       <!-- Header -->
       <div class="comparison-header">
         <div class="comparison-header-inner">
@@ -452,20 +497,17 @@ watch(availableYears, (years) => {
             <i class="ri-line-chart-line"></i>
           </div>
           <div>
+            <div class="comparison-header-eyebrow">Insight lintas tahun</div>
             <div class="comparison-header-title">Perbandingan Data Antar Tahun</div>
-            <div class="comparison-header-sub">Visualisasi tren nilai kematangan keamanan siber</div>
+            <div class="comparison-header-sub">Bandingkan performa domain dan tren nilai kematangan keamanan siber.</div>
           </div>
         </div>
         <div class="comparison-header-actions" v-if="hasAnyComparableData">
-          <button type="button" class="comparison-picker-btn" @click="toggleComparisonPicker">
-            <i class="ri-git-compare-line"></i>
-            <span>Pilih Perbandingan</span>
-          </button>
-          <div class="year-legend">
-            <span v-for="(item, idx) in comparisonData" :key="item.year" class="legend-chip" :style="{ background: item.color.light, color: item.color.solid }">
-              <span class="legend-dot" :style="{ background: item.color.solid }"></span>
-              {{ item.year }}
-            </span>
+          <div class="comparison-header-tools">
+            <button type="button" class="comparison-picker-btn" @click="toggleComparisonPicker">
+              <i class="ri-git-compare-line"></i>
+              <span>Pilih Perbandingan</span>
+            </button>
           </div>
         </div>
       </div>
@@ -474,6 +516,22 @@ watch(availableYears, (years) => {
         <div class="comparison-picker-copy">
           <strong>Tahun perbandingan</strong>
           <span>Pilih maksimal 4 tahun yang punya data.</span>
+        </div>
+        <div class="comparison-picker-summary">
+          <span class="comparison-summary-chip">
+            <strong>{{ selectedYears.length }}</strong>
+            dipilih
+          </span>
+          <span class="comparison-summary-chip">
+            <strong>{{ comparableYearCount }}</strong>
+            tersedia
+          </span>
+          <div class="year-legend" v-if="hasData">
+            <span v-for="item in comparisonData" :key="item.year" class="legend-chip" :style="{ background: item.color.light, color: item.color.solid }">
+              <span class="legend-dot" :style="{ background: item.color.solid }"></span>
+              {{ item.year }}
+            </span>
+          </div>
         </div>
         <div class="comparison-picker-years">
           <button
@@ -628,7 +686,7 @@ watch(availableYears, (years) => {
                         'ri-subtract-line': getTrend(domain.key) === 'stable'
                       }"></i>
                     </span>
-                    <span v-else class="text-muted">—</span>
+                    <span v-else class="text-muted">-</span>
                   </td>
                 </tr>
                 <!-- Total row -->
@@ -647,7 +705,7 @@ watch(availableYears, (years) => {
                         'ri-subtract-line': getTotalTrend() === 'stable'
                       }"></i>
                     </span>
-                    <span v-else class="text-muted">—</span>
+                    <span v-else class="text-muted">-</span>
                   </td>
                 </tr>
               </tbody>
@@ -665,11 +723,12 @@ watch(availableYears, (years) => {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: linear-gradient(135deg, #f0f4ff 0%, #f8faff 50%, #f0f7ff 100%);
-  border: 1px solid #dbeafe;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+  border: 1px solid #d7e6f7;
   border-radius: 16px;
-  padding: 12px 20px;
-  margin-bottom: 20px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+  padding: 12px 16px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
@@ -702,8 +761,8 @@ watch(availableYears, (years) => {
   gap: 6px;
   padding: 8px 18px;
   border-radius: 50px;
-  border: 1.5px solid #cbd5e1;
-  background: #fff;
+  border: 1px solid #d8e2ef;
+  background: rgba(255, 255, 255, 0.92);
   color: #475569;
   font-size: 14px;
   font-weight: 700;
@@ -756,17 +815,19 @@ watch(availableYears, (years) => {
 
 /* ── Comparison Card ───────────────────────────────────── */
 .comparison-card {
-  border-radius: 16px;
+  border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 12px 50px rgba(99, 51, 228, 0.08), 0 4px 16px rgba(37, 99, 235, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.07), 0 4px 16px rgba(37, 99, 235, 0.05);
   background: #fff;
-  border: 1px solid #e8eef6;
+  border: 1px solid #e1eaf5;
 }
 
 /* ── Header ────────────────────────────────────────────── */
 .comparison-header {
-  background: #fff;
-  padding: 1.25rem 1.5rem;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.14), transparent 32%),
+    linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+  padding: 1rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -778,14 +839,15 @@ watch(availableYears, (years) => {
 .comparison-header-inner {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .comparison-header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #3b82f6; /* blue avatar */
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25), 0 2px 4px rgba(59, 130, 246, 0.15);
   display: flex;
   align-items: center;
@@ -794,30 +856,143 @@ watch(availableYears, (years) => {
 }
 
 .comparison-header-icon i {
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   color: #fff;
 }
 
+.comparison-header-eyebrow {
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
 .comparison-header-title {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 900;
   color: #1e293b;
   line-height: 1.2;
 }
 
 .comparison-header-sub {
-  font-size: 13px;
-  font-weight: 500;
-  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 550;
+  color: #64748b;
   margin-top: 4px;
+  max-width: 52ch;
+}
+
+[data-theme-mode="dark"] .year-selector-bar,
+[data-theme-mode="dark"] .comparison-card,
+.dark-mode .year-selector-bar,
+.dark-mode .comparison-card,
+html.dark .year-selector-bar,
+html.dark .comparison-card {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme-mode="dark"] .comparison-header,
+[data-theme-mode="dark"] .comparison-picker-panel,
+.dark-mode .comparison-header,
+.dark-mode .comparison-picker-panel,
+html.dark .comparison-header,
+html.dark .comparison-picker-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.96));
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+[data-theme-mode="dark"] .comparison-header-title,
+[data-theme-mode="dark"] .comparison-picker-copy strong,
+[data-theme-mode="dark"] .total-comparison-label,
+[data-theme-mode="dark"] .domain-comp-name,
+[data-theme-mode="dark"] .trend-chart-title,
+[data-theme-mode="dark"] .comparison-table th,
+[data-theme-mode="dark"] .comparison-table td,
+.dark-mode .comparison-header-title,
+.dark-mode .comparison-picker-copy strong,
+.dark-mode .total-comparison-label,
+.dark-mode .domain-comp-name,
+.dark-mode .trend-chart-title,
+.dark-mode .comparison-table th,
+.dark-mode .comparison-table td,
+html.dark .comparison-header-title,
+html.dark .comparison-picker-copy strong,
+html.dark .total-comparison-label,
+html.dark .domain-comp-name,
+html.dark .trend-chart-title,
+html.dark .comparison-table th,
+html.dark .comparison-table td {
+  color: #e5edf7;
+}
+
+[data-theme-mode="dark"] .comparison-header-sub,
+[data-theme-mode="dark"] .year-selector-label,
+[data-theme-mode="dark"] .comparison-picker-copy span,
+[data-theme-mode="dark"] .total-bar-label,
+[data-theme-mode="dark"] .domain-bar-year,
+.dark-mode .comparison-header-sub,
+.dark-mode .year-selector-label,
+.dark-mode .comparison-picker-copy span,
+.dark-mode .total-bar-label,
+.dark-mode .domain-bar-year,
+html.dark .comparison-header-sub,
+html.dark .year-selector-label,
+html.dark .comparison-picker-copy span,
+html.dark .total-bar-label,
+html.dark .domain-bar-year {
+  color: #9fb0c5;
+}
+
+[data-theme-mode="dark"] .year-pill,
+[data-theme-mode="dark"] .comparison-year-btn,
+[data-theme-mode="dark"] .domain-comparison-card,
+[data-theme-mode="dark"] .total-comparison-strip,
+[data-theme-mode="dark"] .trend-chart-wrapper,
+[data-theme-mode="dark"] .comparison-table-wrapper,
+.dark-mode .year-pill,
+.dark-mode .comparison-year-btn,
+.dark-mode .domain-comparison-card,
+.dark-mode .total-comparison-strip,
+.dark-mode .trend-chart-wrapper,
+.dark-mode .comparison-table-wrapper,
+html.dark .year-pill,
+html.dark .comparison-year-btn,
+html.dark .domain-comparison-card,
+html.dark .total-comparison-strip,
+html.dark .trend-chart-wrapper,
+html.dark .comparison-table-wrapper {
+  background: rgba(17, 24, 39, 0.82);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #dbe7f3;
+}
+
+[data-theme-mode="dark"] .total-bar-track,
+[data-theme-mode="dark"] .domain-bar-track,
+.dark-mode .total-bar-track,
+.dark-mode .domain-bar-track,
+html.dark .total-bar-track,
+html.dark .domain-bar-track {
+  background: rgba(148, 163, 184, 0.18);
 }
 
 .comparison-header-actions {
-  display: flex;
   align-items: center;
+  display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  justify-items: end;
+  min-width: 0;
+}
+
+.comparison-header-tools {
+  align-items: center;
+  display: flex;
+  gap: 8px;
   justify-content: flex-end;
+  width: 100%;
 }
 
 .comparison-picker-btn {
@@ -845,11 +1020,11 @@ watch(availableYears, (years) => {
   align-items: center;
   background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%);
   border-bottom: 1px solid #dbeafe;
-  display: flex;
-  gap: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   justify-content: space-between;
-  padding: 14px 24px;
-  flex-wrap: wrap;
+  padding: 12px 20px;
 }
 
 .comparison-picker-copy {
@@ -869,10 +1044,43 @@ watch(availableYears, (years) => {
   font-weight: 700;
 }
 
+.comparison-picker-summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  justify-self: center;
+  min-width: max-content;
+}
+
+.comparison-summary-chip {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 999px;
+  color: #64748b;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  text-transform: uppercase;
+}
+
+.comparison-summary-chip strong {
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .comparison-picker-years {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+  justify-self: end;
 }
 
 .comparison-year-btn {
@@ -902,6 +1110,7 @@ watch(availableYears, (years) => {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .legend-chip {
@@ -1279,6 +1488,104 @@ watch(availableYears, (years) => {
 }
 
 /* ── Responsive ────────────────────────────────────────── */
+:global(html[data-theme-mode="dark"]) .year-selector-bar,
+:global(html.dark) .year-selector-bar,
+:global(.dark-mode) .year-selector-bar,
+:global(html[data-theme-mode="dark"]) .comparison-card,
+:global(html.dark) .comparison-card,
+:global(.dark-mode) .comparison-card {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-header,
+:global(html.dark) .comparison-header,
+:global(.dark-mode) .comparison-header,
+:global(html[data-theme-mode="dark"]) .comparison-picker-panel,
+:global(html.dark) .comparison-picker-panel,
+:global(.dark-mode) .comparison-picker-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.96));
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-header-title,
+:global(html.dark) .comparison-header-title,
+:global(.dark-mode) .comparison-header-title,
+:global(html[data-theme-mode="dark"]) .comparison-picker-copy strong,
+:global(html.dark) .comparison-picker-copy strong,
+:global(.dark-mode) .comparison-picker-copy strong,
+:global(html[data-theme-mode="dark"]) .total-comparison-label,
+:global(html.dark) .total-comparison-label,
+:global(.dark-mode) .total-comparison-label,
+:global(html[data-theme-mode="dark"]) .domain-comp-name,
+:global(html.dark) .domain-comp-name,
+:global(.dark-mode) .domain-comp-name,
+:global(html[data-theme-mode="dark"]) .trend-chart-title,
+:global(html.dark) .trend-chart-title,
+:global(.dark-mode) .trend-chart-title,
+:global(html[data-theme-mode="dark"]) .comparison-table th,
+:global(html.dark) .comparison-table th,
+:global(.dark-mode) .comparison-table th,
+:global(html[data-theme-mode="dark"]) .comparison-table td,
+:global(html.dark) .comparison-table td,
+:global(.dark-mode) .comparison-table td {
+  color: #e5edf7;
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-header-sub,
+:global(html.dark) .comparison-header-sub,
+:global(.dark-mode) .comparison-header-sub,
+:global(html[data-theme-mode="dark"]) .year-selector-label,
+:global(html.dark) .year-selector-label,
+:global(.dark-mode) .year-selector-label,
+:global(html[data-theme-mode="dark"]) .comparison-picker-copy span,
+:global(html.dark) .comparison-picker-copy span,
+:global(.dark-mode) .comparison-picker-copy span,
+:global(html[data-theme-mode="dark"]) .total-bar-label,
+:global(html.dark) .total-bar-label,
+:global(.dark-mode) .total-bar-label,
+:global(html[data-theme-mode="dark"]) .domain-bar-year,
+:global(html.dark) .domain-bar-year,
+:global(.dark-mode) .domain-bar-year {
+  color: #9fb0c5;
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill,
+:global(html.dark) .year-pill,
+:global(.dark-mode) .year-pill,
+:global(html[data-theme-mode="dark"]) .comparison-year-btn,
+:global(html.dark) .comparison-year-btn,
+:global(.dark-mode) .comparison-year-btn,
+:global(html[data-theme-mode="dark"]) .domain-comparison-card,
+:global(html.dark) .domain-comparison-card,
+:global(.dark-mode) .domain-comparison-card,
+:global(html[data-theme-mode="dark"]) .total-comparison-strip,
+:global(html.dark) .total-comparison-strip,
+:global(.dark-mode) .total-comparison-strip,
+:global(html[data-theme-mode="dark"]) .trend-chart-wrapper,
+:global(html.dark) .trend-chart-wrapper,
+:global(.dark-mode) .trend-chart-wrapper,
+:global(html[data-theme-mode="dark"]) .comparison-table-wrapper,
+:global(html.dark) .comparison-table-wrapper,
+:global(.dark-mode) .comparison-table-wrapper,
+:global(html[data-theme-mode="dark"]) .comparison-summary-chip,
+:global(html.dark) .comparison-summary-chip,
+:global(.dark-mode) .comparison-summary-chip {
+  background: rgba(17, 24, 39, 0.82);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #dbe7f3;
+}
+
+:global(html[data-theme-mode="dark"]) .total-bar-track,
+:global(html.dark) .total-bar-track,
+:global(.dark-mode) .total-bar-track,
+:global(html[data-theme-mode="dark"]) .domain-bar-track,
+:global(html.dark) .domain-bar-track,
+:global(.dark-mode) .domain-bar-track {
+  background: rgba(148, 163, 184, 0.18);
+}
+
 @media (max-width: 768px) {
   .year-selector-bar {
     flex-direction: column;
@@ -1296,8 +1603,32 @@ watch(availableYears, (years) => {
     gap: 8px;
   }
 
+  .comparison-header-actions {
+    justify-items: start;
+    width: 100%;
+  }
+
+  .comparison-header-tools {
+    justify-content: flex-start;
+    justify-items: start;
+  }
+
+  .comparison-picker-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-picker-btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .year-legend {
+    justify-content: flex-start;
+  }
+
   .total-bar-label {
     display: none;
   }
 }
 </style>
+

@@ -451,7 +451,6 @@ export default {
     <div class="row">
       <div class="col-xl-12">
         <header class="ikas-hero-header ev-hero mb-4">
-          <div class="ev-hero-grid"></div>
           <div class="ev-hero-tiles" aria-hidden="true">
             <span class="ev-hero-tile tile-a"></span>
             <span class="ev-hero-tile tile-b"></span>
@@ -1831,18 +1830,6 @@ html.dark .kelas-thumbnail-preview {
   position: absolute;
   top: -140px;
   width: 310px;
-}
-
-.lms-kelas-page .ev-hero-grid {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 28px 28px;
-  inset: 0;
-  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.44) 62%, transparent 100%);
-  opacity: 0.34;
-  pointer-events: none;
-  position: absolute;
 }
 
 .lms-kelas-page .ev-hero-tiles {

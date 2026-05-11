@@ -24,7 +24,6 @@ import type {
     JawabanIdentifikasiPayload,
     JawabanProteksiPayload,
     JawabanDeteksiPayload,
-    JawabanGulihPayload,
     IkasAuditLogListResponse,
     JawabanResponse,
     JawabanGulihResponse,
@@ -66,7 +65,7 @@ export const ikasService = {
         if (normalized === 'identifikasi' || normalized === 'proteksi' || normalized === 'deteksi' || normalized === 'gulih') {
             return normalized;
         }
-        if (normalized === 'tanggulih' || normalized === 'pemulihan') {
+        if (normalized === 'gulih' || normalized === 'tanggulih' || normalized === 'pemulihan') {
             return 'gulih';
         }
         throw new Error(`Kategori maturity tidak dikenali: ${kategori}`);
@@ -536,11 +535,11 @@ export const ikasService = {
         return api.get<any>(`/api/maturity/jawaban-gulih/${id}`);
     },
 
-    async createJawabanGulih(payload: JawabanGulihPayload): Promise<JawabanGulihResponse> {
+    async createJawabanGulih(payload: JawabanPayload): Promise<JawabanGulihResponse> {
         return api.post<JawabanGulihResponse>('/api/maturity/jawaban-gulih', payload, undefined, { skipQueue: true });
     },
 
-    async updateJawabanGulih(id: string, payload: JawabanGulihPayload): Promise<JawabanGulihResponse> {
+    async updateJawabanGulih(id: string, payload: JawabanPayload): Promise<JawabanGulihResponse> {
         return api.put<JawabanGulihResponse>(`/api/maturity/jawaban-gulih/${id}`, payload, undefined, { skipQueue: true });
     },
 

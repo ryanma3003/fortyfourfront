@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
@@ -24,10 +24,12 @@ const loading = ref(true);
 const isCurrentUser = ref(false);
 const isEditMode = ref(false);
 const isSaving = ref(false);
+const isUserProfileDarkMode = ref(false);
 const userCompanyName = ref('');
 const userSubSektor = ref('');
 const rolesData = ref<Role[]>([]);
 const jabatanList = ref<Jabatan[]>([]);
+let userProfileThemeObserver: MutationObserver | null = null;
 
 const isAdmin = computed(() => authStore.isAdmin);
 const slug = computed(() => route.params.slug as string);
@@ -90,6 +92,17 @@ const getUserStatusText = (status?: any) => {
   const s = String(status).toLowerCase().trim();
   if (['suspend', 'suspended', 'nonaktif', 'inactive', '0', 'false'].includes(s)) return 'Nonaktif';
   return 'Aktif';
+};
+
+const syncUserProfileTheme = () => {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const body = document.body;
+  isUserProfileDarkMode.value =
+    root.getAttribute("data-theme-mode") === "dark" ||
+    body?.getAttribute("data-theme-mode") === "dark" ||
+    root.classList.contains("dark") ||
+    body?.classList.contains("dark");
 };
 
 const loadUser = async () => {
@@ -237,7 +250,26 @@ const loadUser = async () => {
 };
 
 watch(slug, loadUser);
-onMounted(loadUser);
+onMounted(() => {
+  syncUserProfileTheme();
+  userProfileThemeObserver = new MutationObserver(syncUserProfileTheme);
+  userProfileThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme-mode", "class"],
+  });
+  if (document.body) {
+    userProfileThemeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-theme-mode", "class"],
+    });
+  }
+
+  loadUser();
+});
+
+onUnmounted(() => {
+  userProfileThemeObserver?.disconnect();
+});
 
 // Sync from profile store if it updates (e.g. after background fetch)
 watch(() => profileStore.fotoProfileUrl, (newVal) => {
@@ -391,6 +423,29 @@ const dataURLtoBlob = (dataurl: string) => {
   return new Blob([u8arr], {type: mime});
 };
 
+const syncFormWithDisplayData = () => {
+  if (!user.value) return;
+  formData.value = {
+    ...formData.value,
+    id: user.value.id || "",
+    username: displayUsername.value || user.value.username || "",
+    display_name: displayName.value || "",
+    email: displayEmail.value || "",
+    phone: displayPhone.value || "",
+    location: displayLocation.value || "",
+    jabatan: displayJabatan.value || "",
+    id_jabatan: (user.value as any).id_jabatan || formData.value.id_jabatan || "",
+    role: displayRole.value || user.value.role || "user",
+    status: displayStatus.value || getUserStatusText(user.value.status),
+    namaPerusahaan: displayPerusahaan.value || "",
+  };
+};
+
+const toggleEditMode = () => {
+  syncFormWithDisplayData();
+  isEditMode.value = true;
+};
+
 const saveProfile = async () => {
   if (!user.value) return;
   isSaving.value = true;
@@ -478,7 +533,7 @@ const getRoleBadgeClass = (role: string) => {
 </script>
 
 <template>
-  <div class="row">
+  <div class="row profile-user-page" :class="{ 'is-dark': isUserProfileDarkMode }">
     <div class="col-xl-12">
       <!-- Ultra-Premium Detailed Skeleton -->
       <div v-if="loading" class="skeleton-wrapper mb-5">
@@ -943,6 +998,283 @@ const getRoleBadgeClass = (role: string) => {
   background: linear-gradient(90deg, #f1f5f9 25%, #f8fafc 50%, #f1f5f9 75%);
   background-size: 200% 100%;
   animation: skel-shimmer-anim 1.5s infinite;
+}
+
+/* Dark mode: support both global theme attributes and the local observer fallback. */
+:global(html[data-theme-mode="dark"]) .profile-user-page,
+:global(html.dark) .profile-user-page,
+.profile-user-page.is-dark {
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholders-shell-card,
+:global(html.dark) .profile-user-page .stakeholders-shell-card,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholder-profile-shell,
+:global(html.dark) .profile-user-page .stakeholder-profile-shell,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-card,
+:global(html.dark) .profile-user-page .skel-card,
+.profile-user-page.is-dark .stakeholders-shell-card,
+.profile-user-page.is-dark .stakeholder-profile-shell,
+.profile-user-page.is-dark .skel-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-content-body--premium,
+:global(html.dark) .profile-user-page .profile-content-body--premium,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholders-shell-card .card-header,
+:global(html.dark) .profile-user-page .stakeholders-shell-card .card-header,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholders-shell-card .card-body,
+:global(html.dark) .profile-user-page .stakeholders-shell-card .card-body,
+:global(html[data-theme-mode="dark"]) .profile-user-page .bg-white,
+:global(html.dark) .profile-user-page .bg-white,
+.profile-user-page.is-dark .profile-content-body--premium,
+.profile-user-page.is-dark .stakeholders-shell-card .card-header,
+.profile-user-page.is-dark .stakeholders-shell-card .card-body,
+.profile-user-page.is-dark .bg-white {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-banner::after,
+:global(html.dark) .profile-user-page .profile-banner::after,
+.profile-user-page.is-dark .profile-banner::after {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.18) 0%, rgba(15, 23, 42, 0.84) 100%);
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-foto-profile-wrap,
+:global(html.dark) .profile-user-page .profile-foto-profile-wrap,
+.profile-user-page.is-dark .profile-foto-profile-wrap {
+  background: #111827 !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34), 0 0 0 8px #0f172a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-user-name,
+:global(html.dark) .profile-user-page .profile-user-name,
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-user-name-input,
+:global(html.dark) .profile-user-page .profile-user-name-input,
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-value,
+:global(html.dark) .profile-user-page .contact-value,
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-value,
+:global(html.dark) .profile-user-page .form-item-value,
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-input,
+:global(html.dark) .profile-user-page .form-item-input,
+:global(html[data-theme-mode="dark"]) .profile-user-page .card-title,
+:global(html.dark) .profile-user-page .card-title,
+.profile-user-page.is-dark .profile-user-name,
+.profile-user-page.is-dark .profile-user-name-input,
+.profile-user-page.is-dark .contact-value,
+.profile-user-page.is-dark .form-item-value,
+.profile-user-page.is-dark .form-item-input,
+.profile-user-page.is-dark .card-title {
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .text-muted,
+:global(html.dark) .profile-user-page .text-muted,
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-label,
+:global(html.dark) .profile-user-page .contact-label,
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-label,
+:global(html.dark) .profile-user-page .form-item-label,
+.profile-user-page.is-dark .text-muted,
+.profile-user-page.is-dark .contact-label,
+.profile-user-page.is-dark .form-item-label {
+  color: #94a3b8 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-item,
+:global(html.dark) .profile-user-page .contact-item,
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split,
+:global(html.dark) .profile-user-page .form-group-split,
+.profile-user-page.is-dark .contact-item,
+.profile-user-page.is-dark .form-group-split {
+  background: linear-gradient(145deg, #1a2535 0%, #1e2d40 100%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #c7d9f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-item:hover,
+:global(html.dark) .profile-user-page .contact-item:hover,
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split:hover,
+:global(html.dark) .profile-user-page .form-group-split:hover,
+.profile-user-page.is-dark .contact-item:hover,
+.profile-user-page.is-dark .form-group-split:hover {
+  background: linear-gradient(145deg, #1d2b3d 0%, #24364d 100%) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split-label-card,
+:global(html.dark) .profile-user-page .form-group-split-label-card,
+.profile-user-page.is-dark .form-group-split-label-card {
+  background: #1a2535 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split-input-card,
+:global(html.dark) .profile-user-page .form-group-split-input-card,
+:global(html[data-theme-mode="dark"]) .profile-user-page .bg-light,
+:global(html.dark) .profile-user-page .bg-light,
+.profile-user-page.is-dark .form-group-split-input-card,
+.profile-user-page.is-dark .bg-light {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-value.text-muted,
+:global(html.dark) .profile-user-page .form-item-value.text-muted,
+.profile-user-page.is-dark .form-item-value.text-muted {
+  color: #a8c2e5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-input::placeholder,
+:global(html.dark) .profile-user-page .form-item-input::placeholder,
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-user-name-input::placeholder,
+:global(html.dark) .profile-user-page .profile-user-name-input::placeholder,
+.profile-user-page.is-dark .form-item-input::placeholder,
+.profile-user-page.is-dark .profile-user-name-input::placeholder {
+  color: #64748b !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-input option,
+:global(html.dark) .profile-user-page .form-item-input option,
+.profile-user-page.is-dark .form-item-input option {
+  background: #111827;
+  color: #e5eefb;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .badge.bg-light,
+:global(html.dark) .profile-user-page .badge.bg-light,
+:global(html[data-theme-mode="dark"]) .profile-user-page .badge-source-info,
+:global(html.dark) .profile-user-page .badge-source-info,
+.profile-user-page.is-dark .badge.bg-light,
+.profile-user-page.is-dark .badge-source-info {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.22) !important;
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--jabatan,
+:global(html.dark) .profile-user-page .p-badge--jabatan,
+.profile-user-page.is-dark .p-badge--jabatan {
+  background: rgba(139, 92, 246, 0.13) !important;
+  border-color: rgba(167, 139, 250, 0.24) !important;
+  color: #c4b5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--company,
+:global(html.dark) .profile-user-page .p-badge--company,
+.profile-user-page.is-dark .p-badge--company {
+  background: rgba(249, 115, 22, 0.13) !important;
+  border-color: rgba(251, 146, 60, 0.24) !important;
+  color: #fdba74 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--sector,
+:global(html.dark) .profile-user-page .p-badge--sector,
+.profile-user-page.is-dark .p-badge--sector {
+  background: rgba(14, 165, 233, 0.13) !important;
+  border-color: rgba(56, 189, 248, 0.24) !important;
+  color: #7dd3fc !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--role-red,
+:global(html.dark) .profile-user-page .p-badge--role-red,
+.profile-user-page.is-dark .p-badge--role-red {
+  color: #f87171 !important;
+  background: rgba(248, 113, 113, 0.1) !important;
+  border-color: rgba(248, 113, 113, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--role-green,
+:global(html.dark) .profile-user-page .p-badge--role-green,
+.profile-user-page.is-dark .p-badge--role-green {
+  color: #4ade80 !important;
+  background: rgba(74, 222, 128, 0.1) !important;
+  border-color: rgba(74, 222, 128, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--role-orange,
+:global(html.dark) .profile-user-page .p-badge--role-orange,
+.profile-user-page.is-dark .p-badge--role-orange {
+  color: #fb923c !important;
+  background: rgba(251, 146, 60, 0.1) !important;
+  border-color: rgba(251, 146, 60, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge--role-sky,
+:global(html.dark) .profile-user-page .p-badge--role-sky,
+.profile-user-page.is-dark .p-badge--role-sky {
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.1) !important;
+  border-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-profile-body,
+:global(html.dark) .profile-user-page .skel-profile-body,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-card-header,
+:global(html.dark) .profile-user-page .skel-card-header,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-card-body,
+:global(html.dark) .profile-user-page .skel-card-body,
+.profile-user-page.is-dark .skel-profile-body,
+.profile-user-page.is-dark .skel-card-header,
+.profile-user-page.is-dark .skel-card-body {
+  background: #0f172a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-avatar-wrap,
+:global(html.dark) .profile-user-page .skel-avatar-wrap,
+.profile-user-page.is-dark .skel-avatar-wrap {
+  border-color: #0f172a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-banner-main,
+:global(html.dark) .profile-user-page .skel-banner-main,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-breadcrumb-h,
+:global(html.dark) .profile-user-page .skel-breadcrumb-h,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-h-title,
+:global(html.dark) .profile-user-page .skel-h-title,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-h-sub,
+:global(html.dark) .profile-user-page .skel-h-sub,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-btn-round,
+:global(html.dark) .profile-user-page .skel-btn-round,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-avatar-wrap,
+:global(html.dark) .profile-user-page .skel-avatar-wrap,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-tag-h,
+:global(html.dark) .profile-user-page .skel-tag-h,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-name-h,
+:global(html.dark) .profile-user-page .skel-name-h,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-chip-h,
+:global(html.dark) .profile-user-page .skel-chip-h,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-meta-item,
+:global(html.dark) .profile-user-page .skel-meta-item,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-icon-box,
+:global(html.dark) .profile-user-page .skel-icon-box,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-line-h,
+:global(html.dark) .profile-user-page .skel-line-h,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-btn-h,
+:global(html.dark) .profile-user-page .skel-btn-h,
+:global(html[data-theme-mode="dark"]) .profile-user-page .skel-field-box,
+:global(html.dark) .profile-user-page .skel-field-box,
+.profile-user-page.is-dark .skel-banner-main,
+.profile-user-page.is-dark .skel-breadcrumb-h,
+.profile-user-page.is-dark .skel-h-title,
+.profile-user-page.is-dark .skel-h-sub,
+.profile-user-page.is-dark .skel-btn-round,
+.profile-user-page.is-dark .skel-avatar-wrap,
+.profile-user-page.is-dark .skel-tag-h,
+.profile-user-page.is-dark .skel-name-h,
+.profile-user-page.is-dark .skel-chip-h,
+.profile-user-page.is-dark .skel-meta-item,
+.profile-user-page.is-dark .skel-icon-box,
+.profile-user-page.is-dark .skel-line-h,
+.profile-user-page.is-dark .skel-btn-h,
+.profile-user-page.is-dark .skel-field-box {
+  background: linear-gradient(90deg, #1e293b 25%, #263449 50%, #1e293b 75%) !important;
+  background-size: 200% 100% !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
 }
 
 @media (max-width: 768px) {
