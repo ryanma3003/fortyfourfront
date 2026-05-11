@@ -66,6 +66,7 @@ const isLoadingAktivitas = ref(false);
 const isLoadingIkasAuditLogs = ref(false);
 const isSavingAktivitas = ref(false);
 const isActivityFormVisible = ref(false);
+const selectedAktivitasDetail = ref<Aktivitas | null>(null);
 const isProfileDarkMode = ref(false);
 const selectedIkasYear = ref("");
 const isIkasYearMenuOpen = ref(false);
@@ -166,6 +167,16 @@ const getHtmlDescription = (value: string | null | undefined, fallback = "Tidak 
   return value && value.trim() ? value : fallback;
 };
 
+const getPlainDescription = (value: string | null | undefined, fallback = "Tidak ada deskripsi."): string => {
+  if (!value || !value.trim()) return fallback;
+  if (typeof document !== "undefined") {
+    const parser = document.createElement("div");
+    parser.innerHTML = value;
+    return parser.textContent?.replace(/\s+/g, " ").trim() || fallback;
+  }
+  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || fallback;
+};
+
 const toDateInputValue = (value: string | null | undefined): string => {
   const date = parseActivityDate(value);
   if (!date) return "";
@@ -212,6 +223,8 @@ const filteredAktivitasByYear = computed(() => {
 const selectedActivityCount = computed(() => {
   return filteredAktivitasByYear.value.reduce((total, group) => total + group.items.length, 0);
 });
+
+const totalActivityCount = computed(() => sortedAktivitas.value.length);
 
 const resetActivityYearToPresent = () => {
   selectedActivityYear.value = currentActivityYear.value;
@@ -634,6 +647,14 @@ const openEditAktivitas = (item: Aktivitas) => {
   };
   editingAktivitasId.value = item.id;
   isActivityFormVisible.value = true;
+};
+
+const openAktivitasDetail = (item: Aktivitas) => {
+  selectedAktivitasDetail.value = item;
+};
+
+const closeAktivitasDetail = () => {
+  selectedAktivitasDetail.value = null;
 };
 
 const closeAktivitasForm = () => {
@@ -1750,18 +1771,48 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   background: linear-gradient(180deg, #ffffff 0%, rgba(255,255,255,0.96) 72%, rgba(255,255,255,0));
 }
 .activity-year-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 220px;
+}
+
+.activity-year-filter-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  color: #64748b;
-  font-size: 11.5px;
-  font-weight: 850;
-  text-transform: uppercase;
-  letter-spacing: 0;
-  white-space: nowrap;
-}
-.activity-year-filter-label i {
+  justify-content: center;
+  background: #eff6ff;
   color: #2563eb;
+  flex: 0 0 auto;
+}
+
+.activity-year-filter-icon i {
+  color: #2563eb;
+  font-size: 17px;
+}
+
+.activity-year-filter-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.activity-year-filter-copy strong {
+  color: #000000;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.activity-year-filter-copy small {
+  color: #000000;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.35;
 }
 .activity-year-filter-chips {
   display: flex;
@@ -1770,6 +1821,24 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   flex-wrap: wrap;
   gap: 0.45rem;
   min-width: 0;
+}
+.activity-year-filter-select {
+  min-width: 118px;
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid #dbe7f5;
+  background-color: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  padding: 0.42rem 2rem 0.42rem 0.85rem;
+  cursor: pointer;
+  box-shadow: none;
+}
+.activity-year-filter-select:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.14);
 }
 .activity-year-filter-chip,
 .activity-year-filter-reset {
@@ -1897,6 +1966,12 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   border-radius: 12px;
   background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
   box-shadow: 0 6px 18px rgba(15,23,42,0.04);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.activity-timeline-content:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 3px;
 }
 .activity-timeline-top {
   display: flex;
@@ -1927,6 +2002,29 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   line-height: 1.7;
   margin: 0.65rem 0 0;
   word-break: break-word;
+}
+.activity-description-preview {
+  display: -webkit-box;
+  margin: 0.6rem 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.activity-open-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 850;
+}
+.activity-open-hint i {
+  font-size: 14px;
 }
 .activity-description :deep(p) {
   margin-bottom: 0.55rem;
@@ -1972,6 +2070,32 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 .activity-description :deep(th) {
   border: 1px solid #e2e8f0;
   padding: 0.45rem 0.6rem;
+}
+.activity-detail-modal {
+  width: min(920px, 100%);
+}
+.activity-detail-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-detail-body {
+  padding: 1.35rem;
+}
+.activity-detail-tags {
+  margin-bottom: 1rem;
+}
+.activity-detail-description {
+  margin-top: 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.activity-detail-description :deep(img) {
+  max-height: 520px;
+  object-fit: contain;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 .activity-tags {
   display: flex;
@@ -3626,13 +3750,19 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card > .card-body,
 :global(html.dark) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-timeline-card > .card-body,
+:global(body.dark) .profile-stakeholder-page .activity-timeline-card > .card-body,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .pic-card-list,
-:global(html.dark) .profile-stakeholder-page .pic-card-list {
+:global(html.dark) .profile-stakeholder-page .pic-card-list,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .pic-card-list,
+:global(body.dark) .profile-stakeholder-page .pic-card-list {
   background: #111827 !important;
 }
 
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter,
-:global(html.dark) .profile-stakeholder-page .activity-year-filter {
+:global(html.dark) .profile-stakeholder-page .activity-year-filter,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter {
   background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(17, 24, 39, 0.88) 72%, rgba(17, 24, 39, 0)) !important;
 }
 
@@ -3644,6 +3774,8 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 :global(html.dark) .activity-form-panel,
 :global(html[data-theme-mode="dark"]) .activity-timeline-content,
 :global(html.dark) .activity-timeline-content,
+:global(body[data-theme-mode="dark"]) .activity-timeline-content,
+:global(body.dark) .activity-timeline-content,
 :global(html[data-theme-mode="dark"]) .pic-contact-card,
 :global(html.dark) .pic-contact-card,
 :global(html[data-theme-mode="dark"]) .ikas-audit-log-item,
@@ -3661,6 +3793,8 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 :global(html.dark) .info-grid-item:hover,
 :global(html[data-theme-mode="dark"]) .activity-timeline-content:hover,
 :global(html.dark) .activity-timeline-content:hover,
+:global(body[data-theme-mode="dark"]) .activity-timeline-content:hover,
+:global(body.dark) .activity-timeline-content:hover,
 :global(html[data-theme-mode="dark"]) .pic-contact-card:hover,
 :global(html.dark) .pic-contact-card:hover {
   border-color: rgba(37, 99, 235, 0.3) !important;
@@ -3673,6 +3807,8 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 :global(html.dark) .profile-stakeholder-page .company-name,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-title,
 :global(html.dark) .profile-stakeholder-page .activity-title,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-title,
+:global(body.dark) .profile-stakeholder-page .activity-title,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .info-grid-value,
 :global(html.dark) .profile-stakeholder-page .info-grid-value,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-top h6,
@@ -3696,6 +3832,12 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 :global(html.dark) .profile-stakeholder-page .info-grid-label,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description,
 :global(html.dark) .profile-stakeholder-page .activity-description,
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description-preview,
+:global(html.dark) .profile-stakeholder-page .activity-description-preview,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description,
+:global(body.dark) .profile-stakeholder-page .activity-description,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-description-preview,
+:global(body.dark) .profile-stakeholder-page .activity-description-preview,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-date,
 :global(html.dark) .profile-stakeholder-page .activity-date,
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .ikas-audit-log-meta,
@@ -3746,6 +3888,10 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 :global(html.dark) .activity-year-chip,
 :global(html[data-theme-mode="dark"]) .activity-tags span,
 :global(html.dark) .activity-tags span,
+:global(body[data-theme-mode="dark"]) .activity-year-chip,
+:global(body.dark) .activity-year-chip,
+:global(body[data-theme-mode="dark"]) .activity-tags span,
+:global(body.dark) .activity-tags span,
 :global(html[data-theme-mode="dark"]) .pic-count-badge,
 :global(html.dark) .pic-count-badge,
 :global(html[data-theme-mode="dark"]) .pic-index,
@@ -3773,30 +3919,138 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   color: #fff !important;
 }
 
+:global(html[data-theme-mode="dark"]) .activity-year-filter-icon,
+:global(html.dark) .activity-year-filter-icon {
+  background: rgba(37, 99, 235, 0.16) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-icon i,
+:global(html.dark) .activity-year-filter-icon i {
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-copy strong,
+:global(html.dark) .activity-year-filter-copy strong {
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-year-filter-copy small,
+:global(html.dark) .activity-year-filter-copy small {
+  color: #ffffff !important;
+}
+
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-copy strong,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-copy strong,
+.profile-stakeholder-page.is-dark .activity-year-filter-copy strong,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-copy small,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-copy small,
+.profile-stakeholder-page.is-dark .activity-year-filter-copy small {
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select,
+:global(html.dark) .profile-stakeholder-page .activity-year-filter-select,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-select,
+.profile-stakeholder-page.is-dark .activity-year-filter-select {
+  background-color: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select option,
+:global(html.dark) .profile-stakeholder-page .activity-year-filter-select option,
+:global(body[data-theme-mode="dark"]) .profile-stakeholder-page .activity-year-filter-select option,
+:global(body.dark) .profile-stakeholder-page .activity-year-filter-select option,
+.profile-stakeholder-page.is-dark .activity-year-filter-select option {
+  background-color: #0f172a;
+  color: #ffffff;
+}
+
 :global(html[data-theme-mode="dark"]) .activity-modal,
 :global(html.dark) .activity-modal,
+:global(body[data-theme-mode="dark"]) .activity-modal,
+:global(body.dark) .activity-modal,
+.activity-modal-backdrop.is-dark .activity-modal,
 :global(html[data-theme-mode="dark"]) .activity-modal-header,
 :global(html.dark) .activity-modal-header,
+:global(body[data-theme-mode="dark"]) .activity-modal-header,
+:global(body.dark) .activity-modal-header,
+.activity-modal-backdrop.is-dark .activity-modal-header,
 :global(html[data-theme-mode="dark"]) .activity-modal-body,
 :global(html.dark) .activity-modal-body,
+:global(body[data-theme-mode="dark"]) .activity-modal-body,
+:global(body.dark) .activity-modal-body,
+.activity-modal-backdrop.is-dark .activity-modal-body,
 :global(html[data-theme-mode="dark"]) .activity-modal-footer,
-:global(html.dark) .activity-modal-footer {
+:global(html.dark) .activity-modal-footer,
+:global(body[data-theme-mode="dark"]) .activity-modal-footer,
+:global(body.dark) .activity-modal-footer,
+.activity-modal-backdrop.is-dark .activity-modal-footer {
   background: #162131 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   color: #e2e8f0 !important;
 }
 
 :global(html[data-theme-mode="dark"]) .activity-modal h6,
-:global(html.dark) .activity-modal h6 {
+:global(html.dark) .activity-modal h6,
+:global(body[data-theme-mode="dark"]) .activity-modal h6,
+:global(body.dark) .activity-modal h6,
+.activity-modal-backdrop.is-dark .activity-modal h6 {
   color: #dde8f5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-detail-description,
+:global(html.dark) .activity-detail-description,
+:global(body[data-theme-mode="dark"]) .activity-detail-description,
+:global(body.dark) .activity-detail-description,
+.activity-modal-backdrop.is-dark .activity-detail-description,
+:global(html[data-theme-mode="dark"]) .activity-detail-description :deep(p),
+:global(html.dark) .activity-detail-description :deep(p),
+:global(body[data-theme-mode="dark"]) .activity-detail-description :deep(p),
+:global(body.dark) .activity-detail-description :deep(p),
+.activity-modal-backdrop.is-dark .activity-detail-description :deep(p),
+:global(html[data-theme-mode="dark"]) .activity-detail-description :deep(li),
+:global(html.dark) .activity-detail-description :deep(li),
+:global(body[data-theme-mode="dark"]) .activity-detail-description :deep(li),
+:global(body.dark) .activity-detail-description :deep(li),
+.activity-modal-backdrop.is-dark .activity-detail-description :deep(li) {
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-open-hint,
+:global(html.dark) .activity-open-hint,
+:global(body[data-theme-mode="dark"]) .activity-open-hint,
+:global(body.dark) .activity-open-hint,
+.profile-stakeholder-page.is-dark .activity-open-hint {
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .activity-detail-description :deep(img),
+:global(html.dark) .activity-detail-description :deep(img),
+:global(body[data-theme-mode="dark"]) .activity-detail-description :deep(img),
+:global(body.dark) .activity-detail-description :deep(img),
+.activity-modal-backdrop.is-dark .activity-detail-description :deep(img) {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
 }
 
 :global(html[data-theme-mode="dark"]) .activity-kind-check,
 :global(html.dark) .activity-kind-check,
+:global(body[data-theme-mode="dark"]) .activity-kind-check,
+:global(body.dark) .activity-kind-check,
+.activity-modal-backdrop.is-dark .activity-kind-check,
 :global(html[data-theme-mode="dark"]) .activity-modal .form-control,
 :global(html.dark) .activity-modal .form-control,
+:global(body[data-theme-mode="dark"]) .activity-modal .form-control,
+:global(body.dark) .activity-modal .form-control,
+.activity-modal-backdrop.is-dark .activity-modal .form-control,
 :global(html[data-theme-mode="dark"]) .activity-modal .form-select,
-:global(html.dark) .activity-modal .form-select {
+:global(html.dark) .activity-modal .form-select,
+:global(body[data-theme-mode="dark"]) .activity-modal .form-select,
+:global(body.dark) .activity-modal .form-select,
+.activity-modal-backdrop.is-dark .activity-modal .form-select {
   background: #1a2535 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   color: #dde8f5 !important;
@@ -3973,6 +4227,7 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 .profile-stakeholder-page.is-dark .text-muted,
 .profile-stakeholder-page.is-dark .info-grid-label,
 .profile-stakeholder-page.is-dark .activity-description,
+.profile-stakeholder-page.is-dark .activity-description-preview,
 .profile-stakeholder-page.is-dark .activity-date,
 .profile-stakeholder-page.is-dark .ikas-audit-log-meta,
 .profile-stakeholder-page.is-dark .ikas-audit-log-content p,
@@ -3981,6 +4236,10 @@ watch(() => ikasStore.apiLoading, async (loading) => {
 .profile-stakeholder-page.is-dark .ikas-domain-row-meta span,
 .profile-stakeholder-page.is-dark .ikas-domain-summary span {
   color: #94a3b8 !important;
+}
+
+.profile-stakeholder-page.is-dark .activity-open-hint {
+  color: #93c5fd !important;
 }
 
 .profile-stakeholder-page.is-dark .ikas-audit-log-changes span,
@@ -4334,64 +4593,6 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                         </div>
                       </div>
 
-                      <div class="col-12 mb-3">
-                        <div class="card custom-card profile-side-card border-0 shadow-sm">
-                          <div class="card-header profile-section-header d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-2 border-bottom">
-                            <div class="d-flex align-items-center gap-2">
-                              <div class="header-icon-ring bg-danger-transparent me-1 flex-shrink-0">
-                                <i class="ri-shield-flash-line text-danger fs-16"></i>
-                              </div>
-                              <div>
-                                <h6 class="card-title mb-0 fw-bold header-card-title text-dark">Profil Risiko</h6>
-                                <p class="text-muted fs-11 mb-0">Responden dan status survey manajemen risiko perusahaan</p>
-                              </div>
-                            </div>
-                            <span class="badge" :class="riskStatus === 'Sudah Diisi' ? 'bg-success-transparent text-success' : 'bg-warning-transparent text-warning'">
-                              {{ riskStatus }}
-                            </span>
-                          </div>
-                          <div class="card-body">
-                            <div v-if="resikoStore.surveyResultLoading" class="placeholder-glow">
-                              <span class="placeholder col-4 mb-3"></span>
-                              <span class="placeholder col-12 mb-2"></span>
-                              <span class="placeholder col-10"></span>
-                            </div>
-                            <div v-else-if="currentRiskRespondent" class="row g-3">
-                              <div v-for="fact in currentRiskFacts" :key="fact.label" class="col-xl-4 col-md-6">
-                                <div class="border rounded-2 p-3 h-100 bg-light bg-opacity-50">
-                                  <div class="text-muted fs-11 fw-semibold text-uppercase mb-1">{{ fact.label }}</div>
-                                  <div class="fw-bold text-dark text-break">{{ fact.value }}</div>
-                                </div>
-                              </div>
-                              <div class="col-12" v-if="currentRiskRows.length">
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                  <i class="ri-file-list-3-line text-danger"></i>
-                                  <span class="fw-bold text-dark">Data Risiko</span>
-                                  <span class="badge bg-danger-transparent text-danger">{{ currentRiskRows.length }}</span>
-                                </div>
-                                <div class="table-responsive">
-                                  <table class="table table-sm align-middle mb-0">
-                                    <tbody>
-                                      <tr v-for="(row, idx) in currentRiskRows.slice(0, 5)" :key="'risk-row-' + idx">
-                                        <td class="fw-semibold text-muted" style="width: 56px;">#{{ idx + 1 }}</td>
-                                        <td class="text-break">{{ row?.nama_risiko || row?.risiko || row?.pertanyaan || row?.question || JSON.stringify(row) }}</td>
-                                      </tr>
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            </div>
-                            <div v-else class="empty-state py-4 text-center">
-                              <div class="empty-icon-ring mb-3">
-                                <div class="empty-icon-inner"><i class="ri-shield-flash-line"></i></div>
-                              </div>
-                              <h6 class="fw-bold mb-1 text-dark">Survey Risiko Belum Ada</h6>
-                              <p class="text-muted fs-12 mb-0">Belum ditemukan responden manajemen risiko untuk stakeholder ini.</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
                       <div class="col-xl-7 col-12 mb-3 profile-activity-column">
                         <div class="card custom-card activity-timeline-card profile-side-card overflow-hidden">
                           <div class="card-header profile-section-header d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-3 border-bottom">
@@ -4418,20 +4619,26 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                           <div class="card-body">
                             <div v-if="activityYearOptions.length" class="activity-year-filter">
                               <div class="activity-year-filter-label">
-                                <i class="ri-calendar-2-line"></i>
-                                <span>Tahun Aktivitas</span>
+                                <span class="activity-year-filter-icon"><i class="ri-calendar-2-line"></i></span>
+                                <span class="activity-year-filter-copy">
+                                  <strong>Tahun Aktivitas</strong>
+                                  <small>{{ selectedActivityCount }} aktivitas di {{ selectedActivityYear }} dari total {{ totalActivityCount }} aktivitas</small>
+                                </span>
                               </div>
                               <div class="activity-year-filter-chips">
-                                <button
-                                  v-for="year in activityYearOptions"
-                                  :key="year"
-                                  type="button"
-                                  class="activity-year-filter-chip"
-                                  :class="{ active: selectedActivityYear === year }"
-                                  @click="selectedActivityYear = year"
+                                <select
+                                  v-model="selectedActivityYear"
+                                  class="form-select activity-year-filter-select"
+                                  aria-label="Pilih tahun aktivitas"
                                 >
-                                  {{ year }}
-                                </button>
+                                  <option
+                                    v-for="year in activityYearOptions"
+                                    :key="year"
+                                    :value="year"
+                                  >
+                                    {{ year }}
+                                  </option>
+                                </select>
                                 <button
                                   type="button"
                                   class="activity-year-filter-reset"
@@ -4482,7 +4689,14 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                                   <div class="activity-timeline-marker">
                                     <span>{{ String(index + 1).padStart(2, '0') }}</span>
                                   </div>
-                                  <div class="activity-timeline-content">
+                                  <div
+                                    class="activity-timeline-content"
+                                    role="button"
+                                    tabindex="0"
+                                    @click="openAktivitasDetail(item)"
+                                    @keydown.enter.prevent="openAktivitasDetail(item)"
+                                    @keydown.space.prevent="openAktivitasDetail(item)"
+                                  >
                                     <div class="activity-timeline-top">
                                       <div>
                                         <div class="activity-date">
@@ -4492,17 +4706,23 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                                         <h6 class="activity-title">{{ item.judul }}</h6>
                                       </div>
                                       <div v-if="isAdmin" class="activity-actions">
-                                        <button type="button" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Aktivitas" @click="openEditAktivitas(item)">
+                                        <button type="button" class="btn btn-sm btn-icon btn-warning rounded-3 hover-lift" title="Edit Aktivitas" @click.stop="openEditAktivitas(item)">
                                           <i class="ri-pencil-fill"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Aktivitas" @click="deleteAktivitas(item)">
+                                        <button type="button" class="btn btn-sm btn-icon btn-danger rounded-3 hover-lift" title="Hapus Aktivitas" @click.stop="deleteAktivitas(item)">
                                           <i class="ri-delete-bin-5-line"></i>
                                         </button>
                                       </div>
                                     </div>
-                                    <div class="activity-description" v-html="getHtmlDescription(item.deskripsi)"></div>
+                                    <p class="activity-description-preview">
+                                      {{ getPlainDescription(item.deskripsi) }}
+                                    </p>
                                     <div v-if="item.jenis_aktivitas?.length" class="activity-tags">
                                       <span v-for="jenis in item.jenis_aktivitas" :key="`${item.id}-${jenis}`">{{ jenis }}</span>
+                                    </div>
+                                    <div class="activity-open-hint">
+                                      <i class="ri-eye-line"></i>
+                                      <span>Lihat detail aktivitas</span>
                                     </div>
                                   </div>
                                 </div>
@@ -4840,8 +5060,54 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   </div>
 
   <div
+    v-if="selectedAktivitasDetail"
+    class="activity-modal-backdrop"
+    :class="{ 'is-dark': isProfileDarkMode }"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeAktivitasDetail"
+  >
+    <div class="activity-modal activity-detail-modal">
+      <div class="activity-modal-header">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+          <div class="header-icon-ring bg-primary-transparent me-1 flex-shrink-0">
+            <i class="ri-file-list-3-line text-primary fs-16"></i>
+          </div>
+          <div class="min-w-0">
+            <h6 class="mb-0 fw-bold text-dark activity-detail-title">
+              {{ selectedAktivitasDetail.judul }}
+            </h6>
+            <p class="text-muted fs-11 mb-0">
+              {{ formatActivityDate(selectedAktivitasDetail.tanggal_mulai) }} - {{ formatActivityDate(selectedAktivitasDetail.tanggal_selesai) }}
+            </p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-icon btn-light rounded-3" @click="closeAktivitasDetail">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="activity-modal-body activity-detail-body">
+        <div v-if="selectedAktivitasDetail.jenis_aktivitas?.length" class="activity-tags activity-detail-tags">
+          <span v-for="jenis in selectedAktivitasDetail.jenis_aktivitas" :key="`detail-${selectedAktivitasDetail.id}-${jenis}`">{{ jenis }}</span>
+        </div>
+        <div class="activity-description activity-detail-description" v-html="getHtmlDescription(selectedAktivitasDetail.deskripsi)"></div>
+      </div>
+
+      <div v-if="isAdmin" class="activity-modal-footer">
+        <button type="button" class="btn btn-light" @click="closeAktivitasDetail">Tutup</button>
+        <button type="button" class="btn btn-warning text-white" @click="openEditAktivitas(selectedAktivitasDetail); closeAktivitasDetail();">
+          <i class="ri-pencil-fill me-1"></i>
+          Edit Aktivitas
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div
     v-if="isActivityFormVisible"
     class="activity-modal-backdrop"
+    :class="{ 'is-dark': isProfileDarkMode }"
     role="dialog"
     aria-modal="true"
     @click.self="closeAktivitasForm"

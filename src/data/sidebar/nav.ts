@@ -51,7 +51,7 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
       {
         path: "/dashboard/analytics",
         icon: '<i class="ri-line-chart-line"></i>',
-        title: "Enterprise Analytics",
+        title: "Analytics",
         type: "link",
         active: true,
         dirchange: false,

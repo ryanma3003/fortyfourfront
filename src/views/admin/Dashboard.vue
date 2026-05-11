@@ -1,5 +1,5 @@
     <script setup>
-    import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent } from "vue";
+    import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent, provide } from "vue";
     import { useRouter, useRoute } from "vue-router";
     import gsap from "gsap";
 
@@ -23,7 +23,6 @@
     import { sektorService, subSektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "@/services/sektor.service";
 
     const SpkReusebleJobs = defineAsyncComponent(() => import("@/shared/components/@spk/dashboards/jobs/dashboard/spk-reuseble-jobs.vue"));
-    const RadarChartIkas = defineAsyncComponent(() => import('@/shared/components/@spk/charts/ikas-charts.vue'));
     const SektorAnalytics = defineAsyncComponent(() => import('@/components/dashboards/sektor-analytics.vue'));
     const InsightCard = defineAsyncComponent(() => import('@/components/dashboard-widgets/InsightCard.vue'));
     const ActionCenter = defineAsyncComponent(() => import('@/components/dashboard-widgets/ActionCenter.vue'));
@@ -60,6 +59,8 @@
     const resikoStore = useResikoStore();
     const filterStore = useDashboardFilterStore();
     const notifStore = useNotificationStore();
+    provide('dashboardFilterStore', filterStore);
+    const DASHBOARD_IGNORES_GLOBAL_FILTER = true;
     
     // Analytics Chart States
     const kseChartType = ref('donut'); // 'donut' or 'bar'
@@ -266,6 +267,7 @@
 
     // Watch datepicker changes †’ push to filterStore
     watch(date, (newVal) => {
+        if (DASHBOARD_IGNORES_GLOBAL_FILTER) return;
         if (isSyncingDateFromStore) return;
         if (!newVal || !Array.isArray(newVal) || newVal.length < 2) return;
         filterStore.updateDateRange(newVal[0], newVal[1]);
@@ -804,34 +806,45 @@
         
         // Filter by date range if active
         const filtered = (range && (range[0] || range[1]))
-            ? stakeholders.filter(s => isInDateRange(s.updated_at || s.created_at, range))
+            ? stakeholders.filter(s => isInDateRange(getStakeholderIkasDate(s), range))
             : stakeholders;
 
         let level1 = 0, level2 = 0, level3 = 0, level4 = 0, level5 = 0;
         let idenTotal = 0, protTotal = 0, detTotal = 0, tangTotal = 0;
-        let count = 0;
+        let scoreTotal = 0, scoreCount = 0;
+        let idenCount = 0, protCount = 0, detCount = 0, tangCount = 0;
+        const addDomainValue = (value, addTotal, addCount) => {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue) || numericValue <= 0) return [addTotal, addCount];
+            return [addTotal + numericValue, addCount + 1];
+        };
 
         filtered.forEach(s => {
             const data = ikasStore.ikasDataMap[s.slug];
             if (!data) return;
             
             const score = Number(data.total_rata_rata || 0);
+            if (Number.isFinite(score) && score > 0) {
+                scoreTotal += score;
+                scoreCount++;
+            }
             if (score < 1.5) level1++;
             else if (score < 2.5) level2++;
             else if (score < 3.5) level3++;
             else if (score < 4.5) level4++;
             else level5++;
 
-            idenTotal += Number(data.identifikasi?.nilai_identifikasi || 0);
-            protTotal += Number(data.proteksi?.nilai_proteksi || 0);
-            detTotal += Number(data.deteksi?.nilai_deteksi || 0);
-            tangTotal += Number(data.tanggulih?.nilai_tanggulih || 0);
-            count++;
+            [idenTotal, idenCount] = addDomainValue(data.identifikasi?.nilai_identifikasi, idenTotal, idenCount);
+            [protTotal, protCount] = addDomainValue(data.proteksi?.nilai_proteksi, protTotal, protCount);
+            [detTotal, detCount] = addDomainValue(data.deteksi?.nilai_deteksi, detTotal, detCount);
+            [tangTotal, tangCount] = addDomainValue(data.tanggulih?.nilai_tanggulih, tangTotal, tangCount);
         });
+
+        const localAverageScore = scoreCount > 0 ? Number((scoreTotal / scoreCount).toFixed(2)) : 0;
 
         return {
             total: apiIkasData.value.total_ikas || filtered.length,
-            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan,
+            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan || localAverageScore,
             avgTargetNilai: apiIkasData.value.avg_target_nilai,
             levels: { 
                 level1: { count: level1, label: 'Level 1 - Awal', color: '#e6533c', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)' },
@@ -841,10 +854,10 @@
                 level5: { count: level5, label: 'Level 5 - Inovatif', color: '#26bf94', gradient: 'linear-gradient(135deg, #26bf94 0%, #6ee7b7 100%)' }
             },
             averages: {
-                identifikasi: count > 0 ? (idenTotal / count).toFixed(2) : 0,
-                proteksi: count > 0 ? (protTotal / count).toFixed(2) : 0,
-                deteksi: count > 0 ? (detTotal / count).toFixed(2) : 0,
-                tanggulih: count > 0 ? (tangTotal / count).toFixed(2) : 0,
+                identifikasi: idenCount > 0 ? (idenTotal / idenCount).toFixed(2) : 0,
+                proteksi: protCount > 0 ? (protTotal / protCount).toFixed(2) : 0,
+                deteksi: detCount > 0 ? (detTotal / detCount).toFixed(2) : 0,
+                tanggulih: tangCount > 0 ? (tangTotal / tangCount).toFixed(2) : 0,
             }
         };
     });
@@ -1650,6 +1663,7 @@
 
         // 3. Count items into buckets
         function getField(obj, path) {
+            if (typeof path === 'function') return path(obj);
             return path.split('.').reduce((o, k) => o && o[k], obj);
         }
         
@@ -1697,9 +1711,56 @@
 
     const isLatestDashboardLoad = (token) => token === dashboardLoadSeq;
 
+    let isResettingFilter = false;
+
+    const resetDashboardFilterState = () => {
+        if (isResettingFilter) return;
+        isResettingFilter = true;
+        try {
+            filterStore.$patch({
+                dateRange: [null, null],
+                year: '',
+                quarter: '',
+                sektorId: '',
+                subSektorId: '',
+                kategoriSe: '',
+            });
+        } finally {
+            isResettingFilter = false;
+        }
+    };
+
+    const isDashboardFilterNeutral = () => (
+        !filterStore.dateRange?.[0]
+        && !filterStore.dateRange?.[1]
+        && !filterStore.year
+        && !filterStore.quarter
+        && !filterStore.sektorId
+        && !filterStore.subSektorId
+        && !filterStore.kategoriSe
+    );
+
+    watch(
+        () => [
+            filterStore.dateRange?.[0],
+            filterStore.dateRange?.[1],
+            filterStore.year,
+            filterStore.quarter,
+            filterStore.sektorId,
+            filterStore.subSektorId,
+            filterStore.kategoriSe,
+        ],
+        () => {
+            if (DASHBOARD_IGNORES_GLOBAL_FILTER && !isDashboardFilterNeutral()) {
+                resetDashboardFilterState();
+            }
+        },
+        { flush: 'post' },
+    );
+
     const initializeDashboardFilter = () => {
         if (dashboardFilterInitialized) return;
-        filterStore.loadFromStorage();
+        resetDashboardFilterState();
         initDateFromStore();
         dashboardFilterInitialized = true;
     };
@@ -2144,10 +2205,16 @@
         if (!range || (!range[0] && !range[1])) return baseSdm.value;
         return baseSdm.value.filter(s => isInDateRange(s.created_at, range));
     });
+    const getStakeholderIkasDate = (stakeholder) => (
+        ikasStore.ikasSummaryMap[stakeholder?.slug]?.updated_at ||
+        stakeholder?.updated_at ||
+        stakeholder?.created_at ||
+        ''
+    );
     const datedIkasStakeholders = computed(() => {
         const range = filterStore.dateRange;
         if (!range || (!range[0] && !range[1])) return baseIkasStakeholders.value;
-        return baseIkasStakeholders.value.filter(s => isInDateRange(s.updated_at || s.created_at, range));
+        return baseIkasStakeholders.value.filter(s => isInDateRange(getStakeholderIkasDate(s), range));
     });
     const datedSeList = computed(() => {
         const range = filterStore.dateRange;
@@ -2334,7 +2401,7 @@
 
         const useDetailedTrends = dashboardDetailsReady.value;
         const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(displayFilteredCsirt);
-        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(displayFilteredIkas);
+        const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, getStakeholderIkasDate) : fallbackTrendData(displayFilteredIkas);
         const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(displayFilteredSe);
         const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(displayFilteredStakeholder);
 
@@ -3139,6 +3206,8 @@
         const csirtStatusData = csirtStatus.value;
         const ikas = ikasSummaryData.value;
         const risk = monitoringRiskSummary.value;
+        const lengkapCount = monitoringDataCompleteCount.value;
+        const lengkapRate = monitoringDataCompleteRate.value;
         const kseFilled = kseStatusData.sudah_mengisi_kse || kse.total_se;
         const csirtFormed = csirtStatusData.sudah_membentuk_csirt || csirt.total_csirt;
         const ikasFilled = ikasFilledCount.value || ikas.total;
@@ -3147,9 +3216,11 @@
             {
                 label: 'Total Stakeholder',
                 value: totalStakeholders.value,
-                sub: `${totalSektors.value} sektor, ${totalSubSektors.value} sub-sektor`,
+                total: totalStakeholders.value,
+                sub: `${formatChartNumber(lengkapCount)} data lengkap, ${totalSektors.value} sektor, ${totalSubSektors.value} sub-sektor`,
                 icon: 'ri-building-4-line',
                 color: '#2563eb',
+                rate: lengkapRate,
             },
             {
                 label: 'Total KSE',
@@ -3245,7 +3316,35 @@
         { label: 'CSIRT belum', value: csirtStatus.value.belum_membentuk_csirt, color: '#64748b' },
     ]);
 
-    const monitoringTrendBase = computed(() => getTrendData(datedStakeholders.value));
+    const monitoringIkasDomainItems = computed(() => [
+        { key: 'identifikasi', label: 'Identifikasi', value: Number(ikasSummaryData.value.averages.identifikasi || 0), color: '#2563eb', icon: 'ri-search-eye-line' },
+        { key: 'proteksi', label: 'Proteksi', value: Number(ikasSummaryData.value.averages.proteksi || 0), color: '#16a34a', icon: 'ri-shield-check-line' },
+        { key: 'deteksi', label: 'Deteksi', value: Number(ikasSummaryData.value.averages.deteksi || 0), color: '#d97706', icon: 'ri-radar-line' },
+        { key: 'tanggulih', label: 'Penanggulangan & Pemulihan', value: Number(ikasSummaryData.value.averages.tanggulih || 0), color: '#0891b2', icon: 'ri-lifebuoy-line' },
+    ]);
+
+    const monitoringIkasLevelDonutData = computed(() => {
+        const levels = ikasSummaryData.value.levels;
+        return {
+            labels: ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'],
+            series: [levels.level1.count, levels.level2.count, levels.level3.count, levels.level4.count, levels.level5.count],
+            colors: ['#e6533c', '#f5b849', '#0ea5e9', '#23b7e5', '#26bf94'],
+        };
+    });
+
+    const monitoringIkasDomainPieData = computed(() => {
+        const avg = ikasSummaryData.value.averages;
+        return {
+            labels: ['Identifikasi', 'Proteksi', 'Deteksi', 'Penanggulangan'],
+            series: [
+                Number(avg.identifikasi || 0),
+                Number(avg.proteksi || 0),
+                Number(avg.deteksi || 0),
+                Number(avg.tanggulih || 0),
+            ],
+            colors: ['#2563eb', '#16a34a', '#d97706', '#0891b2'],
+        };
+    });
 
     const chartThemeTokens = () => {
         const isDark = isDashboardDarkMode.value;
@@ -3470,6 +3569,45 @@
         };
     };
 
+    const buildMonitoringPieOptions = (data) => {
+        const t = chartThemeTokens();
+
+        return {
+            chart: {
+                background: 'transparent',
+                fontFamily: 'Inter, sans-serif',
+                toolbar: { show: false },
+                parentHeightOffset: 0,
+                animations: { enabled: true, speed: 520 },
+            },
+            theme: { mode: t.isDark ? 'dark' : 'light' },
+            labels: data.labels,
+            colors: data.colors,
+            stroke: { width: 3, colors: [t.stroke] },
+            dataLabels: {
+                enabled: true,
+                formatter: (val) => val > 5 ? val.toFixed(0) + '%' : '',
+                style: {
+                    fontSize: '11px',
+                    fontWeight: 900,
+                    colors: ['#ffffff'],
+                },
+                dropShadow: { enabled: false },
+            },
+            legend: { show: false },
+            plotOptions: {
+                pie: {
+                    customScale: 0.88,
+                    expandOnClick: false,
+                },
+            },
+            tooltip: {
+                theme: t.isDark ? 'dark' : 'light',
+                y: { formatter: (value) => Number(value || 0).toFixed(2) },
+            },
+        };
+    };
+
     const monitoringSektorChartOptions = computed(() => buildDistributionBarOptions(monitoringSektorItems.value));
     const monitoringSektorChartSeries = computed(() => [{ name: 'Stakeholder', data: monitoringSektorItems.value.map((item) => item.value) }]);
     const monitoringSektorChartHeight = computed(() => getDistributionChartHeight(monitoringSektorItems.value.length, 255, 40));
@@ -3485,57 +3623,13 @@
     const monitoringCsirtChartOptions = computed(() => buildMonitoringDonutOptions(monitoringCsirtData.value, 'CSIRT'));
     const monitoringCsirtChartSeries = computed(() => monitoringCsirtData.value.series);
 
-    const monitoringTrendChartOptions = computed(() => {
-        const t = chartThemeTokens();
+    // IKAS Donut Chart (Level Distribution)
+    const monitoringIkasDonutOptions = computed(() => buildMonitoringDonutOptions(monitoringIkasLevelDonutData.value, 'Total IKAS'));
+    const monitoringIkasDonutSeries = computed(() => monitoringIkasLevelDonutData.value.series);
 
-        return {
-            chart: {
-                type: 'line',
-                background: 'transparent',
-                fontFamily: 'Inter, sans-serif',
-                toolbar: { show: false },
-                zoom: { enabled: false },
-                parentHeightOffset: 0,
-                animations: { enabled: true, speed: 520 },
-            },
-            theme: { mode: t.isDark ? 'dark' : 'light' },
-            colors: ['#2563eb', '#f5b849', '#16a34a', '#0891b2'],
-            grid: { borderColor: t.grid, strokeDashArray: 4, padding: { top: 4, right: 14, bottom: 0, left: 4 } },
-            stroke: { curve: 'smooth', width: 2.8 },
-            markers: { size: 0, hover: { size: 5 } },
-            dataLabels: { enabled: false },
-            xaxis: {
-                categories: monitoringTrendBase.value.labels,
-                labels: { style: { colors: t.axis, fontSize: '11px', fontWeight: 700 } },
-                axisBorder: { show: false },
-                axisTicks: { show: false },
-            },
-            yaxis: {
-                labels: {
-                    style: { colors: t.axis, fontSize: '11px', fontWeight: 700 },
-                    formatter: (value) => formatChartNumber(value),
-                },
-            },
-            legend: {
-                position: 'bottom',
-                fontSize: '11px',
-                fontWeight: 700,
-                labels: { colors: t.axis },
-                itemMargin: { horizontal: 7, vertical: 2 },
-            },
-            tooltip: {
-                theme: t.isDark ? 'dark' : 'light',
-                y: { formatter: (value) => formatChartNumber(value) },
-            },
-        };
-    });
-
-    const monitoringTrendChartSeries = computed(() => [
-        { name: 'Stakeholder', data: monitoringTrendBase.value.data },
-        { name: 'KSE', data: getTrendData(firstKseByCompany.value).data },
-        { name: 'IKAS', data: getTrendData(baseIkasStakeholders.value, 'updated_at').data },
-        { name: 'CSIRT', data: getTrendData(baseCsirts.value, 'perusahaan.created_at').data },
-    ]);
+    // IKAS Pie Chart (Domain Averages)
+    const monitoringIkasPieOptions = computed(() => buildMonitoringPieOptions(monitoringIkasDomainPieData.value));
+    const monitoringIkasPieSeries = computed(() => monitoringIkasDomainPieData.value.series);
 
     </script>
 
@@ -3707,24 +3801,6 @@
                     </div>
 
                     <div class="monitoring-summary-row">
-                        <section class="monitoring-readiness-summary">
-                            <div class="monitoring-readiness-top">
-                                <div
-                                    class="monitoring-readiness-ring"
-                                    :style="{ '--readiness-score': monitoringDataCompleteRate + '%' }"
-                                >
-                                    <span>{{ monitoringDataCompleteRate }}%</span>
-                                </div>
-                                <div>
-                                    <span>Kesiapan Data</span>
-                                    <strong>
-                                        {{ formatChartNumber(monitoringDataCompleteCount) }}/{{ formatChartNumber(totalStakeholders) }} stakeholder
-                                    </strong>
-                                    <small>Stakeholder dengan data lengkap.</small>
-                                </div>
-                            </div>
-                        </section>
-
                         <div class="monitoring-kpi-grid">
                             <div
                                 v-for="card in monitoringKpiCards"
@@ -3848,12 +3924,18 @@
                                 <strong>{{ Number(ikasSummaryData.avgNilaiKematangan || 0).toFixed(2) }}</strong>
                             </div>
                             <apexchart
-                                height="260"
+                                height="255"
                                 width="100%"
-                                type="bar"
-                                :options="monitoringIkasChartOptions"
-                                :series="monitoringIkasChartSeries"
+                                type="donut"
+                                :options="monitoringIkasDonutOptions"
+                                :series="monitoringIkasDonutSeries"
                             />
+                            <div class="monitoring-legend">
+                                <span v-for="(item, index) in monitoringIkasItems" :key="'monitoring-ikas-lvl-' + item.label">
+                                    <i :style="{ background: item.color }"></i>
+                                    {{ item.label }} {{ formatChartNumber(item.value) }}
+                                </span>
+                            </div>
                         </section>
 
                         <section class="monitoring-panel">
@@ -3884,22 +3966,61 @@
                             </div>
                         </section>
 
-                        <section class="monitoring-panel monitoring-panel-wide">
+                        <section class="monitoring-panel monitoring-panel-ikas-bars">
                             <div class="monitoring-panel-header">
                                 <div>
-                                    <span class="monitoring-panel-badge"><i class="ri-line-chart-line"></i> Tren</span>
-                                    <h3>Tren Data</h3>
-                                    <p>Pergerakan stakeholder, KSE, IKAS, dan CSIRT.</p>
+                                    <span class="monitoring-panel-badge"><i class="ri-focus-3-line"></i> IKAS</span>
+                                    <h3>Bar IKAS per Domain</h3>
+                                    <p>Nilai rata-rata domain utama IKAS saat ini.</p>
                                 </div>
-                                <strong>{{ dateRangeLabel }}</strong>
+                                <strong>{{ Number(ikasSummaryData.avgNilaiKematangan || 0).toFixed(2) }}</strong>
                             </div>
-                            <apexchart
-                                height="270"
-                                width="100%"
-                                type="line"
-                                :options="monitoringTrendChartOptions"
-                                :series="monitoringTrendChartSeries"
-                            />
+                            <div class="ki-domain-grid">
+                                <div
+                                    v-for="domain in monitoringIkasDomainItems"
+                                    :key="'monitoring-domain-' + domain.key"
+                                    class="ki-domain-item"
+                                >
+                                    <div class="ki-domain-icon" :style="{ background: domain.color + '15', color: domain.color }">
+                                        <i :class="domain.icon"></i>
+                                    </div>
+                                    <div class="ki-domain-info">
+                                        <span class="ki-domain-label">{{ domain.label }}</span>
+                                        <div class="ki-domain-score-bar">
+                                            <div class="ki-domain-fill" :style="{ width: Math.min(100, (domain.value / 5) * 100) + '%', background: domain.color }"></div>
+                                        </div>
+                                    </div>
+                                    <span class="ki-domain-val" :style="{ color: domain.color }">{{ domain.value.toFixed(2) }}</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="monitoring-panel monitoring-panel-ikas-pie">
+                            <div class="monitoring-panel-header">
+                                <div>
+                                    <span class="monitoring-panel-badge"><i class="ri-pie-chart-2-line"></i> IKAS</span>
+                                    <h3>Pie IKAS per Domain</h3>
+                                    <p>Proporsi rata-rata nilai domain IKAS.</p>
+                                </div>
+                                <strong>{{ monitoringIkasDomainItems.length }}</strong>
+                            </div>
+                            <div class="ki-domain-pie-panel-body">
+                                <div class="ki-domain-pie-wrap">
+                                    <apexchart
+                                        height="210"
+                                        width="100%"
+                                        type="pie"
+                                        :options="monitoringIkasPieOptions"
+                                        :series="monitoringIkasPieSeries"
+                                    />
+                                </div>
+                                <div class="monitoring-legend ki-domain-pie-legend">
+                                    <span v-for="domain in monitoringIkasDomainItems" :key="'monitoring-pie-legend-' + domain.key">
+                                        <i :style="{ background: domain.color }"></i>
+                                        {{ domain.label }}
+                                    </span>
+                                </div>
+                            </div>
                         </section>
 
                         <section class="monitoring-panel monitoring-panel-status">
@@ -4709,17 +4830,7 @@
                 </template>
                 </template>
 
-                <!-- ANALISIS STAKEHOLDER PER SEKTOR -->
-                <SektorAnalytics
-                    v-if="lowerSectionsReady"
-                    :sektor-list="sektorList"
-                    :sub-sektor-list="subSektorList"
-                />
-
-                <!-- RADAR CHARTS -->
-                <div v-if="lowerSectionsReady" class="animate-show-up" :style="{ animationDelay: isFirstLoad ? '3.6s' : '0s' }">
-                    <RadarChartIkas />
-                </div>
+               
 
             </template>
         </div>
@@ -7103,6 +7214,10 @@
         gap: 0.55rem;
     }
 
+    .monitoring-summary-row > .monitoring-kpi-grid:only-child {
+        grid-column: 1 / -1;
+    }
+
     .monitoring-kpi {
         min-height: 96px;
         padding: 0.82rem 0.9rem;
@@ -7267,6 +7382,11 @@
 
     .monitoring-panel-wide {
         grid-column: span 8;
+    }
+
+    .monitoring-panel-ikas-bars,
+    .monitoring-panel-ikas-pie {
+        grid-column: span 3;
     }
 
     .dashboard-distribution-panel-full {
@@ -7502,6 +7622,36 @@
         background: rgba(8, 145, 178, 0.14);
     }
 
+    .monitoring-panel-ikas-bars .ki-domain-grid {
+        padding: 0.85rem 0.95rem 0.95rem;
+    }
+
+    .ki-domain-pie-panel-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.7rem 0.85rem 0.8rem;
+        min-height: calc(100% - 72px);
+    }
+
+    .ki-domain-pie-wrap {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .ki-domain-pie-wrap :deep(.apexcharts-canvas) {
+        margin: 0 auto;
+    }
+
+    .ki-domain-pie-legend {
+        justify-content: center;
+        padding: 0;
+    }
+
     .monitoring-top-list {
         display: flex;
         flex-direction: column;
@@ -7628,6 +7778,11 @@
         order: 2;
     }
 
+    .monitoring-panel-ikas-bars,
+    .monitoring-panel-ikas-pie {
+        order: 2;
+    }
+
     .monitoring-panel-status {
         order: 1;
     }
@@ -7733,6 +7888,15 @@
     .monitoring-risk-body {
         gap: 0.62rem;
         padding: 0.78rem;
+    }
+
+    .monitoring-panel-ikas-bars .ki-domain-grid {
+        padding: 0.68rem 0.78rem 0.78rem;
+    }
+
+    .ki-domain-pie-panel-body {
+        padding: 0.62rem 0.72rem 0.72rem;
+        min-height: calc(100% - 64px);
     }
 
     .monitoring-risk-meter {
@@ -7885,6 +8049,24 @@
     }
 
     /*  Responsive  */
+
+    /* ── Large tablets / small laptops (≤1399px) ── */
+    @media (max-width: 1399px) {
+        .monitoring-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .monitoring-hero-highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .sa-stats-row { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+        .ki-metric-body { padding: 0.75rem 0.85rem; }
+        .ki-metric-value { font-size: 1.3rem; }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper {
+            flex: 0 0 clamp(210px, 18vw, 280px);
+        }
+        .fs-section-header { padding: 12px 16px; gap: 10px; }
+        .fs-header-icon { width: 38px; height: 38px; font-size: 18px; }
+        .summary-mode-switcher { padding: 3px; }
+        .summary-mode-btn { padding: 5px 14px; font-size: 0.72rem; }
+    }
+
+    /* ── Tablets / small laptops (≤1199px) ── */
     @media (max-width: 1199px) {
         .monitoring-summary-row { grid-template-columns: 1fr; }
         .monitoring-hero { grid-template-columns: 1fr; }
@@ -7892,40 +8074,79 @@
         .monitoring-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .monitoring-panel,
         .monitoring-panel-wide { grid-column: span 6; }
-        .ki-chart-split-grid { grid-template-columns: 1fr; }
+        .dashboard-distribution-panel-full { grid-column: span 12; }
+        .ki-chart-split-grid { grid-template-columns: 1fr; min-height: 0; }
         .ki-hero-inner { gap: 0.9rem; }
         .ki-ring-wrap { width: 76px; height: 76px; }
         .ki-ring-value { font-size: 1.15rem; }
         .ki-chart-body { min-height: 280px !important; }
-        .ki-chart-split-grid { min-height: 0; }
+        .sa-stats-row { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+        .ki-segmented-control { padding: 3px; }
+        .ki-seg-btn { padding: 6px 12px; font-size: 0.7rem; }
+        .ki-filter-pill { padding: 5px 10px; font-size: 0.65rem; }
+        .ki-header-title { font-size: 0.95rem; }
+        .fs-section-header { flex-direction: column; align-items: flex-start; }
+        .monitoring-grid { gap: 0.55rem; }
     }
+
+    /* ── Tablets (≤991px) ── */
     @media (max-width: 991px) {
         .monitoring-hero-highlights,
         .monitoring-readiness-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .monitoring-panel,
         .monitoring-panel-wide { grid-column: span 12; }
+        .monitoring-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .monitoring-grid { grid-template-columns: 1fr; }
+        .monitoring-panel { grid-column: span 1; min-height: 280px; }
+        .monitoring-panel-wide { grid-column: span 1; }
+        .dashboard-distribution-panel-full { grid-column: span 1; }
+        .ki-main-header { gap: 10px; padding: 12px 14px; }
+        .ki-header-right { flex-wrap: wrap; }
+        .ki-inline-filters { gap: 4px; }
+        .ki-view-toggles { gap: 3px; }
+        .sa-stats-row { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+        .sa-section-header { flex-wrap: wrap; gap: 10px; }
+        .sa-section-title { font-size: 1rem; }
+        .ki-hero-stats { min-width: 160px; }
+        .ki-hero-title { font-size: 0.9rem; }
+        .ki-hero-desc { font-size: 0.65rem; }
+        .ki-breakdown { padding: 0.85rem; }
+        .ki-insight-box { padding: 0.85rem; }
+        .dashboard-page-heading { min-width: 180px; flex: 1 1 auto; }
+        .dashboard-header-actions { flex-wrap: wrap !important; }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper {
+            flex: 1 1 200px;
+            min-width: 180px;
+        }
     }
+
+    /* ── Mobile landscape / small tablets (≤767px) ── */
     @media (max-width: 767px) {
         .monitoring-hero {
             padding: 0.78rem;
             border-radius: 10px;
         }
-        .monitoring-hero-main {
-            padding: 0;
-        }
+        .monitoring-hero-main { padding: 0; }
+        .monitoring-hero-main h2 { font-size: 1.35rem !important; }
+        .monitoring-hero-main p { font-size: 0.78rem; }
         .monitoring-hero-highlights,
         .monitoring-readiness-list { grid-template-columns: 1fr; }
-        .monitoring-readiness-top {
-            align-items: flex-start;
-        }
+        .monitoring-readiness-top { align-items: flex-start; }
         .monitoring-readiness-ring {
-            width: 66px;
-            height: 66px;
-            flex-basis: 66px;
+            width: 56px; height: 56px; flex-basis: 56px;
         }
+        .monitoring-readiness-ring span { font-size: 0.68rem; }
         .monitoring-kpi,
         .monitoring-panel-header { padding: 0.8rem; }
-        .dashboard-page-header { align-items: flex-start !important; }
+        .monitoring-kpi-grid { grid-template-columns: 1fr; }
+        .monitoring-kpi-donut { width: 38px; height: 38px; flex-basis: 38px; }
+        .monitoring-kpi-donut span { font-size: 0.58rem; }
+
+        .dashboard-page-header {
+            align-items: flex-start !important;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
         .dashboard-page-heading {
             width: 100%;
             min-width: 0;
@@ -7935,7 +8156,7 @@
             gap: 0.35rem;
             overflow: visible;
         }
-        .dashboard-page-heading > .page-title { font-size: 1.34rem !important; }
+        .dashboard-page-heading > .page-title { font-size: 1.25rem !important; }
         .dashboard-page-heading p {
             max-width: 100%;
             font-size: 0.74rem;
@@ -7943,64 +8164,216 @@
             text-overflow: clip;
             white-space: normal;
         }
-        .dashboard-header-meta { width: 100%; gap: 0.5rem; }
+        .dashboard-header-meta {
+            width: 100%;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
         .dashboard-header-meta span {
             flex: 0 1 auto;
             min-width: 0;
             width: auto;
             justify-content: center;
-            padding-inline: 0.7rem;
+            padding-inline: 0.5rem;
+            font-size: 0.64rem;
         }
         .dashboard-header-actions {
             width: 100%;
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, max-content));
-            gap: 0.55rem;
-            justify-content: flex-start;
-            align-items: start;
+            display: flex !important;
+            flex-direction: column;
+            gap: 0.5rem;
             padding-top: 0.1rem;
         }
         .dashboard-header-actions > .dashboard-datepicker-wrapper {
-            grid-column: 1 / -1;
             width: 100%;
+            flex: unset;
         }
-        .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input_wrap) {
-            width: 100%;
-        }
+        .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input_wrap),
         .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
             width: 100%;
             min-width: 0;
         }
-        .dashboard-header-actions > .dashboard-datepicker-wrapper + * {
-            min-width: 50px;
+        .dashboard-header-actions > div:last-child {
+            display: flex;
+            gap: 0.5rem;
         }
         .dashboard-header-actions > div:last-child .btn {
             min-width: 56px;
+            flex: 1;
         }
-        .monitoring-kpi-grid { grid-template-columns: 1fr; }
+
         .monitoring-panel-header { flex-direction: column; align-items: flex-start; }
         .monitoring-top-row { grid-template-columns: minmax(0, 1fr) auto; }
         .monitoring-top-row small { display: none; }
-        .ki-main-header { align-items: stretch; padding: 10px; }
+        .monitoring-mini-stats { grid-template-columns: 1fr 1fr; }
+        .monitoring-risk-body .monitoring-mini-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+        .ki-main-header { align-items: stretch; padding: 10px; flex-direction: column; }
         .ki-header-left,
         .ki-header-right { width: 100%; }
-        .ki-header-right { justify-content: space-between; }
-        .ki-inline-filters { justify-content: flex-start; }
+        .ki-header-right { justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .ki-inline-filters { justify-content: flex-start; width: 100%; }
         .ki-divider { display: none; }
+        .ki-segmented-control { width: 100%; justify-content: center; }
+        .ki-seg-btn { flex: 1; text-align: center; padding: 6px 8px; }
         .ki-hero-banner { padding: 0.9rem; }
         .ki-hero-inner { flex-direction: column; align-items: flex-start; }
-        .ki-ring-wrap { width: 72px; height: 72px; }
+        .ki-ring-wrap { width: 64px; height: 64px; }
+        .ki-ring-value { font-size: 1rem; }
         .ki-hero-pills { width: 100%; }
-        .ki-pill { flex: 1 1 92px; justify-content: center; }
+        .ki-pill { flex: 1 1 80px; justify-content: center; min-width: 0; padding: 5px 8px; }
+        .ki-pill span { font-size: 0.8rem; }
+        .ki-pill small { font-size: 0.5rem; }
         .ki-hero-cta { width: 100%; justify-content: center; }
-        .ki-chart-header { flex-direction: column; align-items: flex-start; }
+        .ki-chart-header { flex-direction: column; align-items: flex-start; gap: 8px; }
         .ki-chart-controls { width: 100%; justify-content: space-between; }
         .ki-chart-type-toggle { width: 100%; justify-content: center; }
         .ki-view-toggle { flex: 1; }
         .ki-vt-btn { flex: 1; }
-        .ki-chart-pane + .ki-chart-pane { border-left: 0; border-top: 1px solid rgba(219,234,254,0.9); padding-top: 0.85rem; }
+        .ki-chart-pane + .ki-chart-pane {
+            border-left: 0;
+            border-top: 1px solid rgba(219,234,254,0.9);
+            padding-top: 0.85rem;
+        }
         .ki-chart-pane-title { align-items: flex-start; flex-direction: column; gap: 2px; }
         .ki-bp-row { align-items: flex-start; flex-direction: column; gap: 7px; }
         .ki-bp-bar-wrap { width: 100%; }
+        .ki-metric-card { min-width: 0; }
+        .ki-metric-body { padding: 0.7rem 0.8rem; }
+        .ki-metric-value { font-size: 1.25rem; }
+        .ki-breakdown { border-radius: 14px; padding: 0.8rem; }
+        .ki-insight-box { border-radius: 14px; padding: 0.8rem; }
+        .ki-command-center { border-radius: 14px; }
+
+        .sa-stats-row { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+        .sa-stat-value { font-size: 1.4rem; }
+        .sa-section-header { padding: 0.65rem 0.85rem; border-radius: 10px; }
+        .sa-section-icon { width: 36px; height: 36px; border-radius: 10px; }
+        .sa-section-icon i { font-size: 1.2rem; }
+        .sa-section-title { font-size: 0.95rem; }
+        .sa-view-toggles { gap: 3px; padding: 2px; }
+        .sa-view-btn { width: 32px; height: 32px; }
+
+        .fs-section-header { padding: 10px 14px; border-radius: 10px; gap: 8px; }
+        .fs-header-icon { width: 34px; height: 34px; border-radius: 9px; font-size: 16px; }
+        .fs-header-title { font-size: 1rem; }
+        .summary-mode-switcher { flex-wrap: wrap; border-radius: 12px; }
+        .summary-mode-btn { padding: 5px 12px; font-size: 0.7rem; flex: 1; text-align: center; }
+
+        .full-summary-section { margin-bottom: 0.3rem; }
+        .dashboard-distribution-chart-frame { min-width: 500px; padding: 0.6rem 0.8rem; }
+    }
+
+    /* ── Mobile portrait (≤575px) ── */
+    @media (max-width: 575px) {
+        .monitoring-summary-row { gap: 0.45rem; }
+        .monitoring-kpi-grid { gap: 0.45rem; }
+        .monitoring-overview { gap: 0.5rem; }
+        .monitoring-readiness-summary { padding: 0.6rem 0.7rem; min-height: 72px; }
+        .monitoring-readiness-top > div:last-child { gap: 0.08rem; }
+        .monitoring-readiness-top strong { font-size: 0.82rem; }
+        .monitoring-readiness-top span { font-size: 0.58rem; }
+        .monitoring-readiness-top small { font-size: 0.56rem; }
+        .monitoring-kpi { min-height: 68px; padding: 0.6rem 0.7rem; gap: 0.45rem; }
+        .monitoring-kpi-icon { width: 28px; height: 28px; flex-basis: 28px; font-size: 1.2rem; }
+        .monitoring-kpi-copy strong { font-size: 1.15rem !important; }
+        .monitoring-kpi-copy span { font-size: 0.62rem; }
+        .monitoring-kpi-copy small { font-size: 0.58rem; }
+
+        .dashboard-page-heading > .page-title { font-size: 1.15rem !important; }
+        .dashboard-header-meta span { font-size: 0.6rem; gap: 3px; }
+        .dashboard-header-meta span i { font-size: 0.72rem; }
+
+        .ki-main-header { padding: 8px; gap: 8px; }
+        .ki-header-icon { width: 32px; height: 32px; border-radius: 9px; font-size: 0.95rem; }
+        .ki-header-title { font-size: 0.88rem; }
+        .ki-filter-pill { padding: 5px 8px; font-size: 0.62rem; }
+        .ki-view-btn { width: 30px; height: 30px; }
+        .ki-hero-banner { padding: 0.72rem; }
+        .ki-ring-wrap { width: 56px; height: 56px; }
+        .ki-ring-value { font-size: 0.88rem; }
+        .ki-ring-sub { font-size: 0.42rem; }
+        .ki-hero-title { font-size: 0.85rem; }
+        .ki-hero-desc { font-size: 0.62rem; }
+        .ki-pill { padding: 4px 7px; font-size: 0.6rem; min-height: 28px; }
+        .ki-pill i { font-size: 0.72rem; }
+        .ki-pill span { font-size: 0.76rem; }
+        .ki-hero-cta { padding: 7px 12px; font-size: 0.68rem; border-radius: 9px; }
+        .ki-chart-title { font-size: 0.88rem; }
+        .ki-chart-sub { font-size: 0.65rem; }
+        .ki-chart-icon-wrap { width: 34px; height: 34px; border-radius: 9px; font-size: 0.95rem; }
+        .ki-vt-btn { padding: 5px 10px; font-size: 0.68rem; }
+        .ki-ct-btn { width: 30px; height: 30px; font-size: 0.85rem; }
+        .ki-metric-value { font-size: 1.15rem; }
+        .ki-metric-label { font-size: 0.6rem; }
+        .ki-metric-icon-wrap { width: 30px; height: 30px; border-radius: 8px; font-size: 0.95rem; }
+        .ki-bp-label { font-size: 0.68rem; }
+        .ki-bp-count { font-size: 0.6rem; }
+        .ki-bp-icon { width: 28px; height: 28px; border-radius: 8px; font-size: 0.85rem; }
+        .ki-bp-badge { font-size: 0.6rem; padding: 5px 8px; border-radius: 7px; }
+        .ki-insight-icon-wrap { width: 36px; height: 36px; border-radius: 10px; }
+        .ki-insight-icon-wrap i { font-size: 1.05rem; }
+        .ki-insight-title { font-size: 0.75rem; }
+        .ki-insight-text { font-size: 0.65rem; }
+        .ki-insight-tip { padding: 6px 8px; border-radius: 7px; }
+        .ki-insight-tip i { font-size: 0.75rem; }
+        .ki-insight-tip span { font-size: 0.6rem; }
+        .ki-export-btn { padding: 8px 10px; font-size: 0.7rem; border-radius: 10px; }
+        .ki-domain-item { padding: 7px; gap: 7px; }
+        .ki-domain-icon { width: 24px; height: 24px; border-radius: 6px; font-size: 0.75rem; }
+        .ki-domain-label { font-size: 0.6rem; }
+        .ki-domain-val { font-size: 0.85rem; }
+
+        .sa-stats-row { grid-template-columns: 1fr; gap: 0.5rem; }
+        .sa-stat-card { padding: 1rem; }
+        .sa-stat-value { font-size: 1.3rem; }
+        .sa-stat-label { font-size: 11.5px; }
+        .sa-section-header { padding: 0.55rem 0.7rem; }
+        .sa-section-icon { width: 32px; height: 32px; }
+        .sa-section-icon i { font-size: 1rem; }
+        .sa-section-title { font-size: 0.88rem; }
+
+        .fs-section-header { padding: 8px 12px; }
+        .fs-header-icon { width: 30px; height: 30px; font-size: 14px; }
+        .fs-header-title { font-size: 0.9rem; }
+        .summary-mode-switcher { border-radius: 10px; }
+        .summary-mode-btn { padding: 4px 8px; font-size: 0.65rem; border-radius: 8px; }
+        .fs-filter-pill { padding: 4px 10px; font-size: 0.68rem; }
+
+        .monitoring-risk-body .monitoring-mini-stats { grid-template-columns: 1fr; }
+        .monitoring-mini-stats strong { font-size: 0.88rem; }
+        .monitoring-mini-stats span { font-size: 0.6rem; }
+        .monitoring-risk-action { font-size: 0.65rem; min-height: 30px; }
+        .monitoring-top-list { padding: 0.6rem; gap: 0.35rem; }
+        .monitoring-top-row { min-height: 28px; padding: 0.35rem 0.45rem; }
+        .monitoring-top-row span { font-size: 0.65rem; gap: 0.35rem; }
+        .monitoring-top-row strong { font-size: 0.7rem; }
+        .monitoring-panel-badge { font-size: 0.62rem; padding: 3px 7px; min-height: 24px; }
+        .monitoring-panel-header h3 { font-size: 0.82rem; }
+        .monitoring-panel-header p { font-size: 0.62rem; }
+        .monitoring-alert { font-size: 0.74rem; padding: 0.6rem; flex-wrap: wrap; }
+        .monitoring-alert button { font-size: 0.68rem; padding: 5px 8px; }
+
+        .dashboard-distribution-chart-frame { min-width: 400px; padding: 0.5rem 0.6rem; }
+        .dashboard-distribution-header h3 { font-size: 0.82rem; }
+        .dashboard-distribution-header p { font-size: 0.62rem; }
+        .dashboard-distribution-icon { width: 26px; height: 26px; font-size: 0.88rem; }
+    }
+
+    /* ── Very small mobile (≤400px) ── */
+    @media (max-width: 400px) {
+        .dashboard-page-heading > .page-title { font-size: 1.05rem !important; }
+        .monitoring-readiness-ring { width: 46px; height: 46px; flex-basis: 46px; }
+        .monitoring-readiness-ring span { font-size: 0.62rem; }
+        .monitoring-kpi { flex-direction: column; align-items: flex-start; }
+        .monitoring-kpi-donut { align-self: flex-end; }
+        .ki-hero-pills { flex-direction: column; }
+        .ki-pill { flex: unset; width: 100%; }
+        .ki-seg-btn { padding: 5px 6px; font-size: 0.63rem; }
+        .ki-filter-pill { font-size: 0.58rem; padding: 4px 6px; }
+        .ki-inline-filters { gap: 3px; }
+        .sa-stat-value { font-size: 1.15rem; }
+        .summary-mode-btn { padding: 3px 6px; font-size: 0.6rem; }
+        .dashboard-distribution-chart-frame { min-width: 320px; }
     }
     </style>

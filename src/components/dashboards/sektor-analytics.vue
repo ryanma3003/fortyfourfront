@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, inject, onMounted, watch } from "vue";
 import {
   sektorService,
   subSektorService,
@@ -10,6 +10,8 @@ import {
 import { useRouter } from "vue-router";
 import { useStakeholdersStore } from "@/stores/stakeholders";
 import { useDashboardFilterStore } from "@/stores/dashboardFilter";
+import { useKonversiStore } from "@/stores/konversi";
+import { getKonversiProgress } from "@/services/konversi.service";
 
 // ─── State ──────────────────────────────────────────────
 const props = defineProps({
@@ -22,7 +24,8 @@ const subSektorList = ref([]);
 const loading = ref(true);
 const error = ref(null);
 const stakeholdersStore = useStakeholdersStore();
-const filterStore = useDashboardFilterStore();
+const konversiStore = useKonversiStore();
+const filterStore = inject("dashboardFilterStore", useDashboardFilterStore());
 const router = useRouter();
 
 // ─── Filters ────────────────────────────────────────────
@@ -98,6 +101,7 @@ const fetchData = async () => {
     await Promise.all([
       optionsPromise,
       stakeholdersStore.initialized ? Promise.resolve() : stakeholdersStore.initialize(),
+      konversiStore.initialized ? Promise.resolve() : konversiStore.initialize(),
     ]);
   } catch (e) {
     console.error("Failed to fetch sektor data:", e);
@@ -218,6 +222,28 @@ const getStakeholdersBySubSektorId = (subSektorId, q = "") => {
   });
 };
 
+const getStakeholderKonversiRecord = (stakeholder) => {
+  if (!stakeholder?.id) return null;
+  return konversiStore.getByPerusahaanId(stakeholder.id);
+};
+
+const getStakeholderCompletionMeta = (stakeholder) => {
+  const progress = getKonversiProgress(getStakeholderKonversiRecord(stakeholder));
+  const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+  const statusLabel = progress.isComplete
+    ? "Lengkap"
+    : percent > 0
+      ? `${percent}% lengkap`
+      : "Belum lengkap";
+
+  return {
+    percent,
+    statusLabel,
+    completed: progress.completed,
+    total: progress.total,
+  };
+};
+
 const enrichedSektors = computed(() => {
   const allStakeholders = analyticsStakeholders.value;
   const allSubSektors = subSektorList.value;
@@ -262,24 +288,22 @@ const enrichedSektors = computed(() => {
 
 
 // ─── Computed: Filtered & Sorted Data ───────────────────
-const filteredSektors = computed(() => {
+const buildFilteredSektors = ({ includeSelectedSubSektor }) => {
   let data = enrichedSektors.value;
 
-  // Filter by selected sektor
   if (selectedSektorId.value) {
     data = data.filter(
       (s) => String(s.id) === String(selectedSektorId.value)
     );
   }
 
-  // Filter by selected sub sektor (show only the parent sektor containing that sub)
-  if (selectedSubSektorId.value) {
+  if (includeSelectedSubSektor && selectedSubSektorId.value) {
     data = data.filter((s) =>
       s.subSektors.some(
         (ss) => String(ss.id) === String(selectedSubSektorId.value)
       )
     );
-    // Also filter the sub sektors within each sektor to only the selected one
+
     data = data.map((s) => {
       const subSektors = s.subSektors.filter(
         (ss) => String(ss.id) === String(selectedSubSektorId.value)
@@ -294,7 +318,6 @@ const filteredSektors = computed(() => {
     });
   }
 
-  // Filter by search, including stakeholder names inside sub sectors.
   if (normalizedSearchQuery.value) {
     const q = normalizedSearchQuery.value;
     data = data
@@ -328,17 +351,18 @@ const filteredSektors = computed(() => {
       .filter((sektor) => sektor.subSektors.length || sektor.displayName.toLowerCase().includes(q));
   }
 
-  // Sort
-  data = [...data].sort((a, b) => {
+  return [...data].sort((a, b) => {
     const mod = sortOrder.value === "asc" ? 1 : -1;
     if (sortBy.value === "count") {
       return (a.stakeholderCount - b.stakeholderCount) * mod;
     }
     return a.displayName.localeCompare(b.displayName) * mod;
   });
+};
 
-  return data;
-});
+const filteredSektors = computed(() => buildFilteredSektors({ includeSelectedSubSektor: true }));
+
+const sektorChartSektors = computed(() => buildFilteredSektors({ includeSelectedSubSektor: false }));
 
 const maxFilteredStakeholderCount = computed(() => {
   if (!filteredSektors.value.length) return 1;
@@ -450,6 +474,56 @@ const groupedSubSektorStakeholders = computed(() => {
     .filter((group) => group.stakeholders.length || selectedSubSektorId.value);
 });
 
+const selectedSubSektorStakeholders = computed(() => {
+  if (!selectedSubSektorId.value) return [];
+
+  return groupedSubSektorStakeholders.value
+    .flatMap((group) =>
+      group.stakeholders.map((stakeholder, index) => ({
+        ...stakeholder,
+        displayName: stakeholder.nama_perusahaan || stakeholder.nama || `Stakeholder ${index + 1}`,
+        subSektorName: group.displayName,
+        parentName: group.parentName,
+        completion: getStakeholderCompletionMeta(stakeholder),
+      }))
+    )
+    .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
+});
+
+const isStakeholderBarMode = computed(() => (
+  chartLevel.value === "subsektor" && Boolean(selectedSubSektorId.value)
+));
+
+const isStakeholderDonutMode = computed(() => Boolean(selectedSubSektorId.value));
+
+const chartTitle = computed(() => {
+  if (isStakeholderBarMode.value) return "Distribusi Stakeholder pada Sub Sektor";
+  return `Distribusi Stakeholder per ${chartLevel.value === "sektor" ? "Sektor" : "Sub Sektor"}`;
+});
+
+const chartSubtitle = computed(() => {
+  if (isStakeholderBarMode.value) {
+    return `Daftar stakeholder yang berada di sub sektor ${selectedSubSektorName.value}`;
+  }
+  return `Jumlah stakeholder pada masing-masing ${chartLevel.value === "sektor" ? "sektor" : "sub sektor"}`;
+});
+
+const donutSubtitle = computed(() => {
+  if (isStakeholderDonutMode.value) {
+    return `Proporsi stakeholder di sub sektor ${selectedSubSektorName.value}`;
+  }
+  return `Distribusi stakeholder antar ${chartLevel.value === "sektor" ? "sektor" : "sub sektor"} industri`;
+});
+
+const chartSummaryText = computed(() => {
+  if (isStakeholderBarMode.value) {
+    return `${selectedSubSektorStakeholders.value.length} stakeholder`;
+  }
+  return chartLevel.value === "sektor"
+    ? `${sektorChartSektors.value.length} sektor`
+    : `${flattenedSubSektors.value.length} sub sektor`;
+});
+
 const openStakeholder = (stakeholder) => {
   if (stakeholder?.slug) {
     router.push(`/stakeholders/${stakeholder.slug}`);
@@ -458,25 +532,65 @@ const openStakeholder = (stakeholder) => {
 
 // ─── Computed: Chart Data Source (sektor or sub-sektor level) ───
 const chartData = computed(() => {
+  if (isStakeholderBarMode.value) {
+    return {
+      labels: selectedSubSektorStakeholders.value.map((stakeholder) => stakeholder.displayName),
+      values: selectedSubSektorStakeholders.value.map((stakeholder) => stakeholder.completion.percent),
+      colors: selectedSubSektorStakeholders.value.map((_, index) => sektorColors[index % sektorColors.length]),
+      tooltipSuffix: selectedSubSektorStakeholders.value.map((stakeholder) => {
+        const meta = stakeholder.completion.statusLabel || stakeholder.email || stakeholder.telepon || stakeholder.parentName || "";
+        return meta ? ` (${meta})` : "";
+      }),
+      detailLabels: selectedSubSektorStakeholders.value.map((stakeholder) => stakeholder.completion.statusLabel),
+      count: selectedSubSektorStakeholders.value.length,
+      totalLabel: selectedSubSektorName.value || "Sub Sektor",
+    };
+  }
+
   if (chartLevel.value === 'subsektor') {
     return {
       labels: flattenedSubSektors.value.map(ss => ss.displayName),
       values: flattenedSubSektors.value.map(ss => ss.stakeholderCount),
       colors: flattenedSubSektors.value.map(ss => ss.chartColor),
       tooltipSuffix: flattenedSubSektors.value.map(ss => ` (${ss.parentName})`),
+      detailLabels: flattenedSubSektors.value.map(ss => `${ss.stakeholderCount} stakeholder`),
       count: flattenedSubSektors.value.length,
+      totalLabel: "Total Stakeholder",
     };
   }
   return {
-    labels: filteredSektors.value.map(s => s.displayName),
-    values: filteredSektors.value.map(s => s.stakeholderCount),
-    colors: filteredSektors.value.map(s => s.color),
-    tooltipSuffix: filteredSektors.value.map(() => ''),
-    count: filteredSektors.value.length,
+    labels: sektorChartSektors.value.map(s => s.displayName),
+    values: sektorChartSektors.value.map(s => s.stakeholderCount),
+    colors: sektorChartSektors.value.map(s => s.color),
+    tooltipSuffix: sektorChartSektors.value.map(() => ''),
+    detailLabels: sektorChartSektors.value.map(s => `${s.stakeholderCount} stakeholder`),
+    count: sektorChartSektors.value.length,
+    totalLabel: "Total Stakeholder",
   };
 });
 
+const donutChartData = computed(() => {
+  if (isStakeholderDonutMode.value) {
+    return {
+      labels: selectedSubSektorStakeholders.value.map((stakeholder) => stakeholder.displayName),
+      values: selectedSubSektorStakeholders.value.map((stakeholder) => stakeholder.completion.percent),
+      colors: selectedSubSektorStakeholders.value.map((_, index) => sektorColors[index % sektorColors.length]),
+      tooltipSuffix: selectedSubSektorStakeholders.value.map((stakeholder) => {
+        const meta = stakeholder.completion.statusLabel || stakeholder.email || stakeholder.telepon || stakeholder.parentName || "";
+        return meta ? ` (${meta})` : "";
+      }),
+      count: selectedSubSektorStakeholders.value.length,
+      totalLabel: selectedSubSektorName.value || "Sub Sektor",
+    };
+  }
+
+  return chartData.value;
+});
+
 const barChartHeight = computed(() => {
+  if (isStakeholderBarMode.value) {
+    return Math.max(320, chartData.value.count * 34);
+  }
   if (chartLevel.value === "subsektor") {
     return Math.max(720, chartData.value.count * 24);
   }
@@ -484,7 +598,7 @@ const barChartHeight = computed(() => {
 });
 
 const donutChartHeight = computed(() =>
-  chartLevel.value === "subsektor" ? 420 : 330
+  isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? 420 : 330
 );
 
 // ─── Chart Options: Bar Chart ───────────────────────────
@@ -499,41 +613,47 @@ const barChartOptions = computed(() => ({
     bar: {
       horizontal: true,
       borderRadius: 5,
-      barHeight: chartLevel.value === "subsektor" ? "72%" : "58%",
+      barHeight: isStakeholderBarMode.value ? "56%" : (chartLevel.value === "subsektor" ? "72%" : "58%"),
       distributed: true,
     },
   },
   colors: chartData.value.colors,
   dataLabels: {
     enabled: true,
-    formatter: (val) => val + " stakeholder",
+    formatter: (val, opts) => {
+      if (isStakeholderBarMode.value) {
+        return chartData.value.detailLabels?.[opts?.dataPointIndex] || `${val}%`;
+      }
+      return chartData.value.detailLabels?.[opts?.dataPointIndex] || `${val} stakeholder`;
+    },
     style: { fontSize: "10px", fontWeight: 700, colors: ["#fff"] },
     offsetX: 4,
   },
   xaxis: {
     categories: chartData.value.labels,
+    ...(isStakeholderBarMode.value ? { min: 0, max: 100, tickAmount: 4 } : {}),
     labels: { style: { fontSize: "10px", colors: "#64748b" } },
   },
   yaxis: {
     labels: {
       style: {
-        fontSize: chartLevel.value === "subsektor" ? "11px" : "10px",
+        fontSize: isStakeholderBarMode.value || chartLevel.value === "subsektor" ? "11px" : "10px",
         colors: "#475569",
       },
-      maxWidth: chartLevel.value === "subsektor" ? 230 : 190,
+      maxWidth: isStakeholderBarMode.value ? 240 : (chartLevel.value === "subsektor" ? 230 : 190),
     },
   },
   grid: { borderColor: "#f1f5f9", strokeDashArray: 4 },
   tooltip: {
     fixed: {
-      enabled: chartLevel.value === "subsektor",
+      enabled: isStakeholderBarMode.value || chartLevel.value === "subsektor",
       position: "topRight",
       offsetX: -24,
       offsetY: 12,
     },
     y: { formatter: (val, opts) => {
       const suffix = chartData.value.tooltipSuffix[opts?.dataPointIndex] || '';
-      return val + " stakeholder" + suffix;
+      return isStakeholderBarMode.value ? `${val}%` + suffix : val + " stakeholder" + suffix;
     }},
     theme: "dark",
   },
@@ -554,29 +674,32 @@ const donutChartOptions = computed(() => ({
     fontFamily: "Inter, sans-serif",
     parentHeightOffset: 0,
   },
-  labels: chartData.value.labels,
-  colors: chartData.value.colors,
+  labels: donutChartData.value.labels,
+  colors: donutChartData.value.colors,
   plotOptions: {
     pie: {
-      customScale: chartLevel.value === "subsektor" ? 1.3 : 1,
-      offsetY: chartLevel.value === "subsektor" ? 24 : 0,
+      customScale: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? 1.3 : 1,
+      offsetY: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? 24 : 0,
       donut: {
-        size: chartLevel.value === "subsektor" ? "58%" : "64%",
+        size: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? "58%" : "64%",
         labels: {
           show: true,
           name: { fontSize: "11px", fontWeight: 700 },
           value: {
             fontSize: "18px",
             fontWeight: 800,
-            formatter: (val) => val,
+            formatter: (val) => isStakeholderDonutMode.value ? `${val}%` : val,
           },
           total: {
             show: true,
-            label: "Total Stakeholder",
+            label: donutChartData.value.totalLabel,
             fontSize: "11px",
             color: "#94a3b8",
-            formatter: (w) =>
-              w.globals.seriesTotals.reduce((a, b) => a + b, 0),
+            formatter: (w) => (
+              isStakeholderDonutMode.value
+                ? donutChartData.value.count
+                : w.globals.seriesTotals.reduce((a, b) => a + b, 0)
+            ),
           },
         },
       },
@@ -591,14 +714,17 @@ const donutChartOptions = computed(() => ({
     fontWeight: 600,
     markers: { width: 8, height: 8, radius: 3 },
     itemMargin: { horizontal: 6, vertical: 3 },
-    offsetY: chartLevel.value === "subsektor" ? -8 : 0,
+    offsetY: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? -8 : 0,
   },
   tooltip: {
-    y: { formatter: (val) => val + " stakeholder" },
+    y: { formatter: (val, opts) => {
+      const suffix = donutChartData.value.tooltipSuffix?.[opts?.seriesIndex] || "";
+      return isStakeholderDonutMode.value ? `${val}% kelengkapan${suffix}` : `${val} stakeholder${suffix}`;
+    } },
   },
 }));
 
-const donutChartSeries = computed(() => chartData.value.values);
+const donutChartSeries = computed(() => donutChartData.value.values);
 
 
 
@@ -881,10 +1007,7 @@ watch(selectedSektorId, (newSektorId) => {
           </div>
           <span class="sa-level-info">
             <i class="ri-information-line"></i>
-            {{ chartLevel === 'sektor'
-              ? filteredSektors.length + ' sektor'
-              : flattenedSubSektors.length + ' sub sektor'
-            }}
+            {{ chartSummaryText }}
           </span>
         </div>
 
@@ -901,19 +1024,15 @@ watch(selectedSektorId, (newSektorId) => {
                     <i class="ri-bar-chart-horizontal-fill"></i>
                   </div>
                   <div>
-                    <div class="sa-chart-title">
-                      Distribusi Stakeholder per {{ chartLevel === 'sektor' ? 'Sektor' : 'Sub Sektor' }}
-                    </div>
-                    <div class="sa-chart-sub">
-                      Jumlah stakeholder pada masing-masing {{ chartLevel === 'sektor' ? 'sektor' : 'sub sektor' }}
-                    </div>
+                    <div class="sa-chart-title">{{ chartTitle }}</div>
+                    <div class="sa-chart-sub">{{ chartSubtitle }}</div>
                   </div>
                 </div>
               </div>
-              <div class="sa-chart-body" :class="{ 'sa-chart-body--scroll': chartLevel === 'subsektor' }">
+              <div class="sa-chart-body" :class="{ 'sa-chart-body--scroll': isStakeholderBarMode || chartLevel === 'subsektor' }">
                 <apexchart
                   v-if="chartData.count"
-                  :key="'bar-' + chartLevel"
+                  :key="'bar-' + (isStakeholderBarMode ? 'stakeholder' : chartLevel)"
                   type="bar"
                   :height="barChartHeight"
                   :options="barChartOptions"
@@ -940,22 +1059,20 @@ watch(selectedSektorId, (newSektorId) => {
                   </div>
                   <div>
                     <div class="sa-chart-title">Proporsi Stakeholder</div>
-                    <div class="sa-chart-sub">
-                      Distribusi stakeholder antar {{ chartLevel === 'sektor' ? 'sektor' : 'sub sektor' }} industri
-                    </div>
+                    <div class="sa-chart-sub">{{ donutSubtitle }}</div>
                   </div>
                 </div>
               </div>
               <div class="sa-chart-body sa-chart-body--donut">
                 <apexchart
-                  v-if="chartData.count"
-                  :key="'donut-' + chartLevel"
+                  v-if="donutChartData.count"
+                  :key="'donut-' + (isStakeholderDonutMode ? 'stakeholder' : chartLevel)"
                   type="donut"
                   :height="donutChartHeight"
                   :options="donutChartOptions"
                   :series="donutChartSeries"
                 />
-                <div v-if="!chartData.count" class="sa-empty-chart">
+                <div v-if="!donutChartData.count" class="sa-empty-chart">
                   <i class="ri-donut-chart-line"></i>
                   <span>Tidak ada data</span>
                 </div>

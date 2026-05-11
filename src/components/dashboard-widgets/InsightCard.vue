@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, inject, ref, onMounted, onUnmounted } from 'vue';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useCsirtStore } from '@/stores/csirt';
 import { useIkasStore } from '@/stores/ikas';
@@ -12,7 +12,7 @@ import { useNotificationStore } from '@/stores/notifications';
 const stakeholdersStore = useStakeholdersStore();
 const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
-const filterStore = useDashboardFilterStore();
+const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const kseStore = useKseStore();
 const konversiStore = useKonversiStore();
 const notifStore = useNotificationStore();

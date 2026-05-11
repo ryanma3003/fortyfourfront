@@ -353,8 +353,8 @@ export interface JawabanDeteksiPayload {
 
 export interface JawabanGulihPayload {
     perusahaan_id: string;
-    pertanyaan_gulih_id: number;
-    jawaban_gulih: number;
+    pertanyaan_gulih_id?: number;
+    jawaban_gulih?: number;
     keterangan?: string;
     evidence?: string;
     validasi?: string;

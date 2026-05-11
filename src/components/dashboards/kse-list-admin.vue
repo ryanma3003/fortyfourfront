@@ -435,7 +435,6 @@ const runEntranceAnimations = async () => {
             .from('.kse-inline-breadcrumb', { y: -8, opacity: 0, duration: 0.28, clearProps: 'transform,opacity' }, '-=0.25')
             .from('.kse-hero-copy h1', { y: 16, opacity: 0, duration: 0.38, clearProps: 'transform,opacity' }, '-=0.18')
             .from('.kse-hero-copy p', { y: 12, opacity: 0, duration: 0.3, clearProps: 'transform,opacity' }, '-=0.24')
-            .from('.kse-hero-tools', { y: 16, opacity: 0, duration: 0.36, clearProps: 'transform,opacity' }, '-=0.24')
             .from('.kse-kpi-card', { y: 16, opacity: 0, scale: 0.96, duration: 0.34, stagger: 0.05, ease: 'back.out(1.35)', clearProps: 'transform,opacity' }, '-=0.12')
             .from('.stakeholders-toolbar', { y: 18, opacity: 0, duration: 0.34, clearProps: 'transform,opacity' }, '-=0.08')
             .from('.kse-list-shell', { y: 18, opacity: 0, duration: 0.4, clearProps: 'transform,opacity' }, '-=0.12');
@@ -479,28 +478,6 @@ onBeforeUnmount(() => {
                             <div class="kse-inline-breadcrumb">Dashboard <span>/</span> KSE <span>/</span> Management</div>
                             <h1>KSE Management</h1>
                             <p>Pusat kendali sistem elektronik untuk memantau kategori, kelengkapan penilaian, dan request perubahan dari stakeholder.</p>
-                        </div>
-                    </div>
-
-                    <div class="kse-hero-tools" aria-label="KSE category completion">
-                        <div class="kse-hero-summary-card">
-                            <div class="kse-hero-summary-title">
-                                <span>Klasifikasi KSE</span>
-                                <strong>{{ categoryCoverage }}%</strong>
-                            </div>
-                            <div class="kse-hero-summary-stats">
-                                <div>
-                                    <span>Terkategori</span>
-                                    <strong>{{ categorizedCount }}</strong>
-                                </div>
-                                <div>
-                                    <span>Review</span>
-                                    <strong>{{ pendingRequests.length }}</strong>
-                                </div>
-                            </div>
-                            <div class="kse-hero-progress" aria-hidden="true">
-                                <span :style="{ width: `${categoryCoverage}%` }"></span>
-                            </div>
                         </div>
                     </div>
                 </header>
@@ -572,7 +549,7 @@ onBeforeUnmount(() => {
                 <div class="card-body p-4 stakeholders-premium-body">
                     <section class="kse-kpi-grid mb-4" aria-label="KSE summary">
                         <article class="kse-kpi-card tone-total">
-                            <div class="kse-kpi-icon"><i class="ri-computer-line"></i></div>
+                            <div class="kse-kpi-icon"><i class="ri-server-line"></i></div>
                             <div>
                                 <span>Total Sistem</span>
                                 <strong v-if="!loading || seList.length">{{ seList.length }}</strong>
@@ -581,7 +558,7 @@ onBeforeUnmount(() => {
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-danger">
-                            <div class="kse-kpi-icon"><i class="ri-shield-flash-fill"></i></div>
+                            <div class="kse-kpi-icon"><i class="ri-shield-keyhole-fill"></i></div>
                             <div>
                                 <span>Strategis</span>
                                 <strong v-if="!loading || seList.length">{{ countStrategis }}</strong>
@@ -590,7 +567,7 @@ onBeforeUnmount(() => {
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-warning">
-                            <div class="kse-kpi-icon"><i class="ri-shield-fill"></i></div>
+                            <div class="kse-kpi-icon"><i class="ri-alarm-warning-fill"></i></div>
                             <div>
                                 <span>Tinggi</span>
                                 <strong v-if="!loading || seList.length">{{ countTinggi }}</strong>
@@ -599,7 +576,7 @@ onBeforeUnmount(() => {
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-success">
-                            <div class="kse-kpi-icon"><i class="ri-shield-line"></i></div>
+                            <div class="kse-kpi-icon"><i class="ri-shield-check-line"></i></div>
                             <div>
                                 <span>Rendah</span>
                                 <strong v-if="!loading || seList.length">{{ countRendah }}</strong>
@@ -608,7 +585,7 @@ onBeforeUnmount(() => {
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-review" :class="{ 'is-hot': pendingRequests.length > 0 }">
-                            <div class="kse-kpi-icon"><i class="ri-edit-2-line" :class="{ 'pulse-icon': pendingRequests.length > 0 }"></i></div>
+                            <div class="kse-kpi-icon"><i class="ri-file-edit-line" :class="{ 'pulse-icon': pendingRequests.length > 0 }"></i></div>
                             <div>
                                 <span>Antrian Review</span>
                                 <strong v-if="!loading || editRequests.length">{{ pendingRequests.length }}</strong>
@@ -1047,8 +1024,8 @@ onBeforeUnmount(() => {
                     <!-- Modal Header -->
                     <div class="modal-header-premium review-modal-header p-4 d-flex align-items-center justify-content-between" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white;">
                         <div class="d-flex align-items-center gap-3 review-modal-header-main">
-                            <div class="header-icon-box bg-white bg-opacity-20 rounded-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
-                                <i class="ri-edit-box-line fs-24 text-white"></i>
+                            <div class="header-icon-box review-modal-icon-box rounded-3 d-flex align-items-center justify-content-center shadow-sm">
+                                <i class="ri-edit-box-line fs-24"></i>
                             </div>
                             <div class="review-modal-header-copy">
                                 <div class="review-modal-kicker">Review Pengajuan Perubahan</div>
@@ -1135,7 +1112,7 @@ onBeforeUnmount(() => {
                                 </div>
                                 <textarea 
                                     v-model="adminNotes" 
-                                    class="form-control review-feedback-input bo    rder-2 shadow-sm focus-ring-primary" 
+                                    class="form-control review-feedback-input border-2 shadow-sm focus-ring-primary" 
                                     rows="3" 
                                     placeholder="Masukkan alasan persetujuan, penolakan, atau instruksi tambahan untuk stakeholder..."
                                     style="font-size: 13px;"
@@ -1194,15 +1171,13 @@ onBeforeUnmount(() => {
     align-items: center;
     background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
     border: 1px solid rgba(255, 255, 255, 0.28);
-    border-radius: 22px;
-    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+    border-radius: 20px;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
     color: #ffffff;
     display: flex;
-    gap: 28px;
-    justify-content: space-between;
-    min-height: 152px;
+    min-height: 112px;
     overflow: hidden;
-    padding: 24px 26px;
+    padding: 18px 26px;
     position: relative;
 }
 
@@ -1221,7 +1196,7 @@ onBeforeUnmount(() => {
 }
 
 .kse-hero-copy {
-    max-width: 820px;
+    max-width: 920px;
 }
 
 .kse-inline-breadcrumb {
@@ -1229,7 +1204,7 @@ onBeforeUnmount(() => {
     font-size: 12px;
     font-weight: 800;
     line-height: 1.2;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .kse-inline-breadcrumb span {
@@ -1239,7 +1214,7 @@ onBeforeUnmount(() => {
 
 .kse-hero-copy h1 {
     color: #ffffff;
-    font-size: 32px;
+    font-size: 30px;
     font-weight: 850;
     line-height: 1.05;
     margin: 0;
@@ -1247,9 +1222,9 @@ onBeforeUnmount(() => {
 
 .kse-hero-copy p {
     color: rgba(255, 255, 255, 0.86);
-    font-size: 16px;
-    line-height: 1.45;
-    margin: 10px 0 0;
+    font-size: 15px;
+    line-height: 1.4;
+    margin: 8px 0 0;
 }
 
 .kse-hero-tools {
@@ -1354,9 +1329,16 @@ onBeforeUnmount(() => {
     border-radius: 14px;
     display: inline-flex;
     flex: 0 0 42px;
+    font-size: 20px;
     height: 42px;
     justify-content: center;
+    line-height: 1;
     width: 42px;
+}
+
+.kse-kpi-icon i {
+    display: inline-flex;
+    line-height: 1;
 }
 
 .kse-kpi-card span {
@@ -1705,6 +1687,19 @@ onBeforeUnmount(() => {
 
 .review-modal-header-copy {
     min-width: 0;
+}
+
+.review-modal-icon-box {
+    width: 48px;
+    height: 48px;
+    background: rgba(15, 23, 42, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    color: #ffffff;
+}
+
+.review-modal-icon-box i {
+    color: currentColor;
+    line-height: 1;
 }
 
 .review-modal-kicker {
@@ -2475,6 +2470,60 @@ html.dark .review-modal-footer,
     color: #e2e8f0 !important;
 }
 
+[data-theme-mode="dark"] .review-modal-header,
+html.dark .review-modal-header {
+    background: linear-gradient(135deg, #10265a 0%, #1d4ed8 100%) !important;
+    color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .review-modal-header h4,
+[data-theme-mode="dark"] .review-modal-header .text-white,
+html.dark .review-modal-header h4,
+html.dark .review-modal-header .text-white {
+    color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .review-modal-icon-box,
+html.dark .review-modal-icon-box {
+    background: rgba(15, 23, 42, 0.48) !important;
+    border: 1px solid rgba(191, 219, 254, 0.22);
+    color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .review-modal-icon-box i,
+html.dark .review-modal-icon-box i {
+    color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .review-modal-kicker,
+html.dark .review-modal-kicker {
+    color: #bfdbfe !important;
+}
+
+[data-theme-mode="dark"] .review-modal-meta-pill,
+html.dark .review-modal-meta-pill {
+    background: rgba(219, 234, 254, 0.14) !important;
+    color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .review-user-note,
+html.dark .review-user-note {
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.18) 0%, rgba(8, 17, 31, 0.96) 100%) !important;
+    border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+[data-theme-mode="dark"] .review-user-note-text,
+html.dark .review-user-note-text {
+    color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .review-grid-header,
+html.dark .review-grid-header,
+[data-theme-mode="dark"] .review-mobile-label,
+html.dark .review-mobile-label {
+    color: #94a3b8 !important;
+}
+
 [data-theme-mode="dark"] .review-comparison-container,
 [data-theme-mode="dark"] .review-comparison-row,
 [data-theme-mode="dark"] .review-feedback-card,
@@ -2485,11 +2534,54 @@ html.dark .review-feedback-card {
     border-color: rgba(148, 163, 184, 0.18) !important;
 }
 
+[data-theme-mode="dark"] .review-comparison-label .fw-bold,
+[data-theme-mode="dark"] .review-feedback-card h6,
+html.dark .review-comparison-label .fw-bold,
+html.dark .review-feedback-card h6 {
+    color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .review-value-old,
+html.dark .review-value-old {
+    color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .review-value-new,
+html.dark .review-value-new {
+    color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .review-value-badge,
+html.dark .review-value-badge {
+    background: rgba(37, 99, 235, 0.2) !important;
+    color: #bfdbfe !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
 [data-theme-mode="dark"] .review-feedback-input,
 html.dark .review-feedback-input {
     background: #111c2e !important;
     border-color: rgba(148, 163, 184, 0.24) !important;
     color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .review-feedback-input::placeholder,
+html.dark .review-feedback-input::placeholder {
+    color: #7f8ea3 !important;
+}
+
+[data-theme-mode="dark"] .review-modal-footer .btn-primary-light,
+html.dark .review-modal-footer .btn-primary-light {
+    background: rgba(37, 99, 235, 0.12) !important;
+    border-color: rgba(37, 99, 235, 0.18) !important;
+    color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .review-modal-footer .btn-danger-light,
+html.dark .review-modal-footer .btn-danger-light {
+    background: rgba(239, 68, 68, 0.14) !important;
+    border-color: rgba(239, 68, 68, 0.2) !important;
+    color: #f87171 !important;
 }
 
 .custom-modal-size {

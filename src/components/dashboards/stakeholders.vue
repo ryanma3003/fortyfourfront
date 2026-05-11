@@ -137,6 +137,15 @@ export default {
       }
     });
 
+    watch(selectedSektorId, (newId) => {
+      if (!newId || !selectedSubSektorId.value || !subSektorList.value.length) return;
+      const matched = subSektorList.value.find(ss => String(ss.id) === String(selectedSubSektorId.value));
+      const parentId = matched ? getSubSektorParentId(matched) : undefined;
+      if (parentId === undefined || String(parentId) !== String(newId)) {
+        selectedSubSektorId.value = "";
+      }
+    });
+
     const loadAllSubSektors = async () => {
       loadingSubSektors.value = true;
       try {
@@ -337,6 +346,11 @@ export default {
 
       if (!formData.value.nama_perusahaan?.trim()) {
         formErrors.value.nama_perusahaan = "Nama perusahaan wajib diisi";
+        isValid = false;
+      }
+
+      if (!selectedSektorId.value) {
+        formErrors.value.sektor_induk = "Sektor wajib dipilih";
         isValid = false;
       }
 
@@ -1478,181 +1492,184 @@ getSektorBadgeStyle: (subSektorName: string) => {
   </div>
 
   <!-- ===================== CREATE MODAL ===================== -->
-  <div v-if="showCreateModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header">
-            <div class="d-flex align-items-center gap-3">
-              <div class="header-icon-box">
-                <i class="ri-add-circle-line"></i>
+  <div v-if="showCreateModal" class="modal fade show d-block modal-overlay stakeholder-create-overlay" tabindex="-1" @click.self="showCreateModal = false">
+    <div class="modal-dialog modal-dialog-centered custom-modal stakeholder-create-modal">
+      <div class="modal-content border-0 stakeholder-create-content">
+        <div class="stakeholder-create-shell w-100">
+          <div class="stakeholder-create-header">
+            <div class="stakeholder-create-title-row">
+              <div class="stakeholder-create-icon">
+                <i class="ri-building-4-line"></i>
               </div>
-              <div>
-                <div class="card-title mb-0 text-white fw-bold header-card-title">Tambah Data Stakeholder Baru</div>
-                <div class="header-subtitle mt-1">Isi data perusahaan stakeholder baru</div>
+              <div class="min-w-0">
+                <div class="stakeholder-create-kicker">Data Stakeholder</div>
+                <div class="stakeholder-create-title">Tambah Stakeholder Baru</div>
+                <div class="stakeholder-create-subtitle">Lengkapi identitas, kontak, dan alamat perusahaan dalam satu form ringkas.</div>
               </div>
             </div>
-            <button type="button" class="btn-close btn-close-white" @click="showCreateModal = false"></button>
+            <div class="stakeholder-create-header-actions">
+              <span class="stakeholder-create-pill"><i class="ri-asterisk"></i> Wajib diisi</span>
+              <button type="button" class="stakeholder-create-close" @click="showCreateModal = false" title="Tutup">
+                <i class="ri-close-line"></i>
+              </button>
+            </div>
           </div>
-          <div class="card-body p-4 bg-white">
+          <div class="stakeholder-create-body">
             <form @submit.prevent="createStakeholder">
-              <div class="row gy-3">
-                <!-- Photo Section -->
-                <div class="col-xl-12">
-                  <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
-                    <div 
-                      class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
-                      :style="{ 
+              <div class="stakeholder-create-layout">
+                <aside class="stakeholder-create-aside">
+                  <div class="stakeholder-photo-panel">
+                    <div class="stakeholder-photo-preview"
+                      :class="{ 'has-image': formData.photo }"
+                      :style="{
                         backgroundImage: formData.photo ? `url(${formData.photo})` : 'none',
-                        backgroundColor: formData.photo ? 'transparent' : '#e9ecef',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
-                      }"
-                    >
-                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
-                        <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
-                        <span class="fs-11">Belum ada foto</span>
+                      }">
+                      <div v-if="!formData.photo" class="stakeholder-photo-empty">
+                        <i class="ri-image-add-line"></i>
+                        <span>Logo atau foto perusahaan</span>
                       </div>
                     </div>
                     <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
-                    <div class="flex-grow-1">
-                      <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
-                        <i class="ri-image-2-line text-primary"></i>
-                        Foto Perusahaan
-                      </h6>
-                      <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button type="button" class="btn btn-primary btn-sm" @click="triggerFileInput">
-                          <i class="ri-upload-2-line me-1"></i>
-                          {{ formData.photo ? 'Ganti Gambar' : 'Upload Gambar' }}
-                        </button>
-                        <button v-if="formData.photo" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
-                          <i class="ri-delete-bin-line me-1"></i>Hapus
-                        </button>
-                      </div>
-                      <div class="d-flex align-items-center gap-3 fs-11 text-muted">
-                        <span><i class="ri-file-type-line me-1"></i>{{ ALLOWED_EXTENSIONS }}</span>
-                        <span><i class="ri-upload-cloud-line me-1"></i>Maks {{ MAX_FILE_SIZE_MB }}MB</span>
-                      </div>
+                    <div class="stakeholder-photo-copy">
+                      <strong>Foto Perusahaan</strong>
+                      <span>{{ ALLOWED_EXTENSIONS }} - Maks {{ MAX_FILE_SIZE_MB }}MB</span>
+                    </div>
+                    <div class="stakeholder-photo-actions">
+                      <button type="button" class="btn stakeholder-photo-upload" @click="triggerFileInput">
+                        <i class="ri-upload-cloud-2-line"></i>
+                        {{ formData.photo ? 'Ganti Foto' : 'Upload Foto' }}
+                      </button>
+                      <button v-if="formData.photo" type="button" class="btn stakeholder-photo-remove" @click="removeImage" title="Hapus foto">
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
                     </div>
                   </div>
-                </div>
 
-                <!-- Nama Perusahaan -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('nama_perusahaan')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px">
-                        <i class="ri-building-line" style="font-size:0.95rem"></i>
-                      </div>
-                      <label class="form-item-label mb-0">Nama Perusahaan <span class="text-danger ms-1">*</span></label>
-                    </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.nama_perusahaan }">
-                      <input ref="input_nama_perusahaan" type="text" class="form-item-input" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
-                      <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">{{ formErrors.nama_perusahaan }}</div>
+                  <div class="stakeholder-create-note">
+                    <div class="stakeholder-create-note-icon"><i class="ri-information-line"></i></div>
+                    <div>
+                      <strong>Tips input</strong>
+                      <span>Gunakan nama legal perusahaan dan URL website dengan awalan https:// agar validasi lolos.</span>
                     </div>
                   </div>
-                </div>
 
-                <!-- ? SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px">
-                        <i class="ri-pie-chart-line" style="font-size:0.95rem"></i>
-                      </div>
-                      <label class="form-item-label mb-0">Sub Sektor <span class="text-danger ms-1">*</span></label>
-                    </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.sektor }">
-                      <select
-                        v-model="selectedSubSektorId"
-                        class="form-item-input form-item-select"
-                        :class="{ 'is-invalid': formErrors.sektor }"
-                        :disabled="loadingSubSektors"
-                      >
-                        <option value="" disabled>
-                          {{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}
-                        </option>
-                        <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">
-                          {{ getSubSektorName(ss) }}
-                        </option>
-                      </select>
-                      <div v-if="formErrors.sektor" class="invalid-feedback">{{ formErrors.sektor }}</div>
-                      <small v-if="loadingSubSektors" class="text-muted mt-1 d-block">Memuat data sektor...</small>
+                  <div class="stakeholder-create-progress">
+                    <span>Data utama</span>
+                    <div>
+                      <i class="ri-building-line"></i>
+                      <i class="ri-mail-line"></i>
+                      <i class="ri-map-pin-line"></i>
                     </div>
                   </div>
-                </div>
+                </aside>
 
-                <!-- Email -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('email')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-indigo" style="width:32px;height:32px">
-                        <i class="ri-mail-line" style="font-size:0.95rem"></i>
+                <div class="stakeholder-create-fields">
+                  <section class="stakeholder-form-section">
+                    <div class="stakeholder-form-section-head">
+                      <span><i class="ri-id-card-line"></i></span>
+                      <div>
+                        <strong>Identitas Perusahaan</strong>
+                        <small>Nama dan klasifikasi sektor</small>
                       </div>
-                      <label class="form-item-label mb-0">Email <span class="text-danger ms-1">*</span></label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.email }">
-                      <input ref="input_email" type="email" class="form-item-input" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
-                      <div v-if="formErrors.email" class="invalid-feedback">{{ formErrors.email }}</div>
-                    </div>
-                  </div>
-                </div>
+                    <div class="stakeholder-form-grid">
+                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.nama_perusahaan }" @click="focusInput('nama_perusahaan')">
+                        <span class="stakeholder-field-label"><i class="ri-building-line"></i> Nama Perusahaan <b>*</b></span>
+                        <input ref="input_nama_perusahaan" type="text" class="stakeholder-field-control" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
+                        <span v-if="formErrors.nama_perusahaan" class="stakeholder-field-error">{{ formErrors.nama_perusahaan }}</span>
+                      </label>
 
-                <!-- Phone -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('telepon')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-violet" style="width:32px;height:32px">
-                        <i class="ri-phone-line" style="font-size:0.95rem"></i>
-                      </div>
-                      <label class="form-item-label mb-0">Nomor Telepon <span class="text-danger ms-1">*</span></label>
-                    </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.telepon }">
-                      <input ref="input_telepon" type="tel" class="form-item-input" v-model="formData.telepon" placeholder="Masukkan nomor telepon" :class="{ 'is-invalid': formErrors.telepon }" />
-                      <div v-if="formErrors.telepon" class="invalid-feedback d-block">{{ formErrors.telepon }}</div>
-                    </div>
-                  </div>
-                </div>
+                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.sektor_induk }">
+                        <span class="stakeholder-field-label"><i class="ri-government-line"></i> Sektor <b>*</b></span>
+                        <select
+                          v-model="selectedSektorId"
+                          class="stakeholder-field-control stakeholder-field-select"
+                          :class="{ 'is-invalid': formErrors.sektor_induk }"
+                          :disabled="loadingSubSektors"
+                        >
+                          <option value="" disabled>
+                            {{ loadingSubSektors ? 'Memuat sektor...' : 'Pilih sektor' }}
+                          </option>
+                          <option v-for="s in sektorList" :key="s.id" :value="s.id">
+                            {{ getSektorName(s) }}
+                          </option>
+                        </select>
+                        <span v-if="formErrors.sektor_induk" class="stakeholder-field-error">{{ formErrors.sektor_induk }}</span>
+                      </label>
 
-                <!-- Website -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('website')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px">
-                        <i class="ri-global-line" style="font-size:0.95rem"></i>
-                      </div>
-                      <label class="form-item-label mb-0">Website <span class="text-danger ms-1">*</span></label>
+                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.sektor }">
+                        <span class="stakeholder-field-label"><i class="ri-pie-chart-line"></i> Sub Sektor <b>*</b></span>
+                        <select
+                          v-model="selectedSubSektorId"
+                          class="stakeholder-field-control stakeholder-field-select"
+                          :class="{ 'is-invalid': formErrors.sektor }"
+                          :disabled="loadingSubSektors || !selectedSektorId"
+                        >
+                          <option value="" disabled>
+                            {{ loadingSubSektors ? 'Memuat sub sektor...' : (selectedSektorId ? 'Pilih sub sektor' : 'Pilih sektor terlebih dahulu') }}
+                          </option>
+                          <option v-for="ss in filteredSubSektorList" :key="ss.id" :value="ss.id">
+                            {{ getSubSektorName(ss) }}
+                          </option>
+                        </select>
+                        <span v-if="formErrors.sektor" class="stakeholder-field-error">{{ formErrors.sektor }}</span>
+                        <span v-else-if="loadingSubSektors" class="stakeholder-field-hint">Memuat data sektor...</span>
+                      </label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.website }">
-                      <input ref="input_website" type="url" class="form-item-input" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="https://contoh.com" />
-                      <div v-if="formErrors.website" class="invalid-feedback">{{ formErrors.website }}</div>
-                    </div>
-                  </div>
-                </div>
+                  </section>
 
-                <!-- Alamat -->
-                <div class="col-12">
-                  <div class="form-group-split" @click="focusInput('alamat')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-red" style="width:32px;height:32px">
-                        <i class="ri-map-pin-line" style="font-size:0.95rem"></i>
+                  <section class="stakeholder-form-section">
+                    <div class="stakeholder-form-section-head">
+                      <span><i class="ri-customer-service-2-line"></i></span>
+                      <div>
+                        <strong>Kontak Resmi</strong>
+                        <small>Email, telepon, dan website</small>
                       </div>
-                      <label class="form-item-label mb-0">Alamat <span class="text-danger ms-1">*</span></label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.alamat }">
-                      <textarea ref="input_alamat" class="form-item-input" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
-                      <div v-if="formErrors.alamat" class="invalid-feedback">{{ formErrors.alamat }}</div>
+                    <div class="stakeholder-form-grid">
+                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.email }" @click="focusInput('email')">
+                        <span class="stakeholder-field-label"><i class="ri-mail-line"></i> Email <b>*</b></span>
+                        <input ref="input_email" type="email" class="stakeholder-field-control" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="nama@perusahaan.go.id" />
+                        <span v-if="formErrors.email" class="stakeholder-field-error">{{ formErrors.email }}</span>
+                      </label>
+
+                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.telepon }" @click="focusInput('telepon')">
+                        <span class="stakeholder-field-label"><i class="ri-phone-line"></i> Nomor Telepon <b>*</b></span>
+                        <input ref="input_telepon" type="tel" class="stakeholder-field-control" v-model="formData.telepon" placeholder="Masukkan nomor telepon" :class="{ 'is-invalid': formErrors.telepon }" />
+                        <span v-if="formErrors.telepon" class="stakeholder-field-error">{{ formErrors.telepon }}</span>
+                      </label>
+
+                      <label class="stakeholder-field stakeholder-field-wide" :class="{ 'has-error': formErrors.website }" @click="focusInput('website')">
+                        <span class="stakeholder-field-label"><i class="ri-global-line"></i> Website <b>*</b></span>
+                        <input ref="input_website" type="url" class="stakeholder-field-control" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="https://contoh.com" />
+                        <span v-if="formErrors.website" class="stakeholder-field-error">{{ formErrors.website }}</span>
+                      </label>
                     </div>
-                  </div>
+                  </section>
+
+                  <section class="stakeholder-form-section">
+                    <div class="stakeholder-form-section-head">
+                      <span><i class="ri-map-pin-line"></i></span>
+                      <div>
+                        <strong>Alamat Perusahaan</strong>
+                        <small>Alamat lengkap untuk kebutuhan administrasi</small>
+                      </div>
+                    </div>
+                    <label class="stakeholder-field stakeholder-field-textarea" :class="{ 'has-error': formErrors.alamat }" @click="focusInput('alamat')">
+                      <span class="stakeholder-field-label"><i class="ri-map-pin-2-line"></i> Alamat Lengkap <b>*</b></span>
+                      <textarea ref="input_alamat" class="stakeholder-field-control" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
+                      <span v-if="formErrors.alamat" class="stakeholder-field-error">{{ formErrors.alamat }}</span>
+                    </label>
+                  </section>
                 </div>
               </div>
             </form>
           </div>
-          <div class="card-footer bg-light d-flex flex-wrap justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-danger flex-fill flex-sm-grow-0" @click="showCreateModal = false">
+          <div class="stakeholder-create-footer">
+            <button type="button" class="btn stakeholder-create-cancel" @click="showCreateModal = false">
               <i class="ri-close-line me-1"></i>Batal
             </button>
-            <button type="button" class="btn btn-secondary flex-fill flex-sm-grow-0" @click="createStakeholder">
+            <button type="button" class="btn stakeholder-create-save" @click="createStakeholder">
               <i class="ri-save-line me-1"></i>Simpan
             </button>
           </div>
@@ -2316,6 +2333,490 @@ getSektorBadgeStyle: (subSektorName: string) => {
   background: #cffafe;
 }
 
+.stakeholder-create-modal {
+  max-width: 980px !important;
+  width: min(980px, calc(100vw - 32px)) !important;
+}
+
+.stakeholder-create-overlay {
+  background: rgba(15, 23, 42, 0.72) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.stakeholder-create-overlay::before,
+.stakeholder-create-overlay::after,
+.stakeholder-create-modal::before,
+.stakeholder-create-modal::after,
+.stakeholder-create-content::before,
+.stakeholder-create-content::after {
+  display: none !important;
+  content: none !important;
+}
+
+.modal.show .modal-dialog.stakeholder-create-modal,
+.stakeholder-create-overlay .stakeholder-create-modal {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.stakeholder-create-content {
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none;
+}
+
+.stakeholder-create-shell {
+  background: #ffffff;
+  border: 0;
+  border-radius: 22px;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.26);
+  max-height: min(90vh, 900px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.stakeholder-create-header {
+  align-items: center;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(147, 197, 253, 0.2), transparent 34%),
+    linear-gradient(135deg, #0f172a 0%, #1d4ed8 58%, #2563eb 100%);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+}
+
+.stakeholder-create-title-row,
+.stakeholder-create-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.stakeholder-create-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+  flex: 0 0 auto;
+}
+
+.stakeholder-create-icon i {
+  color: #ffffff;
+  font-size: 24px;
+}
+
+.stakeholder-create-kicker {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.stakeholder-create-title {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.stakeholder-create-subtitle {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.stakeholder-create-pill {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.stakeholder-create-close {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  color: #ffffff;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.stakeholder-create-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.stakeholder-create-body {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 42%);
+  overflow: auto;
+  padding: 20px;
+}
+
+.stakeholder-create-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.stakeholder-create-aside,
+.stakeholder-create-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.stakeholder-create-aside {
+  align-content: start;
+}
+
+.stakeholder-photo-panel,
+.stakeholder-create-note,
+.stakeholder-create-progress,
+.stakeholder-form-section {
+  background: #ffffff;
+  border: 1px solid #dbe7f5;
+  border-radius: 16px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06);
+}
+
+.stakeholder-photo-panel {
+  padding: 14px;
+}
+
+.stakeholder-photo-preview {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(14, 165, 233, 0.04)),
+    #f1f5f9;
+  background-position: center;
+  background-size: cover;
+  border: 1px dashed #bfd2ea;
+  border-radius: 14px;
+  display: flex;
+  height: 164px;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.stakeholder-photo-preview.has-image {
+  border-style: solid;
+}
+
+.stakeholder-photo-empty {
+  align-items: center;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  text-align: center;
+}
+
+.stakeholder-photo-empty i {
+  color: #2563eb;
+  font-size: 34px;
+  opacity: 0.72;
+}
+
+.stakeholder-photo-empty span,
+.stakeholder-photo-copy span,
+.stakeholder-create-note span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.stakeholder-photo-copy {
+  display: grid;
+  gap: 2px;
+  margin: 12px 0;
+}
+
+.stakeholder-photo-copy strong,
+.stakeholder-create-note strong,
+.stakeholder-form-section-head strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.stakeholder-photo-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.stakeholder-photo-upload,
+.stakeholder-photo-remove,
+.stakeholder-create-cancel,
+.stakeholder-create-save {
+  align-items: center;
+  border-radius: 12px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 7px;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.stakeholder-photo-upload {
+  background: #1d4ed8;
+  color: #ffffff;
+  flex: 1;
+}
+
+.stakeholder-photo-upload:hover,
+.stakeholder-create-save:hover {
+  background: #1e40af;
+  color: #ffffff;
+}
+
+.stakeholder-photo-remove {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #e11d48;
+  width: 42px;
+}
+
+.stakeholder-create-note {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+.stakeholder-create-note-icon {
+  align-items: center;
+  background: #eff6ff;
+  border-radius: 10px;
+  color: #2563eb;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+  flex: 0 0 auto;
+}
+
+.stakeholder-create-note div:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.stakeholder-create-progress {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.stakeholder-create-progress span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.stakeholder-create-progress div {
+  display: flex;
+  gap: 6px;
+}
+
+.stakeholder-create-progress i {
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 999px;
+  color: #1d4ed8;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.stakeholder-form-section {
+  padding: 14px;
+}
+
+.stakeholder-form-section-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.stakeholder-form-section-head > span {
+  align-items: center;
+  background: #eff6ff;
+  border-radius: 12px;
+  color: #2563eb;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+  flex: 0 0 auto;
+}
+
+.stakeholder-form-section-head small {
+  color: #64748b;
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  margin-top: 1px;
+}
+
+.stakeholder-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stakeholder-field {
+  background: #f8fafc;
+  border: 1px solid #dbe7f5;
+  border-radius: 14px;
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+  padding: 11px 12px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.stakeholder-field:focus-within {
+  background: #ffffff;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.09);
+}
+
+.stakeholder-field.has-error {
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+
+.stakeholder-field-wide,
+.stakeholder-field-textarea {
+  grid-column: 1 / -1;
+}
+
+.stakeholder-field-label {
+  align-items: center;
+  color: #475569;
+  display: flex;
+  font-size: 10px;
+  font-weight: 900;
+  gap: 7px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.stakeholder-field-label i {
+  color: #2563eb;
+  font-size: 14px;
+}
+
+.stakeholder-field-label b {
+  color: #ef4444;
+}
+
+.stakeholder-field-control {
+  background: transparent;
+  border: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  min-height: 30px;
+  outline: none;
+  padding: 0;
+  width: 100%;
+}
+
+.stakeholder-field-control::placeholder {
+  color: #94a3b8;
+  font-weight: 650;
+}
+
+.stakeholder-field-select {
+  cursor: pointer;
+}
+
+.stakeholder-field-textarea .stakeholder-field-control {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.stakeholder-field-error,
+.stakeholder-field-hint {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.stakeholder-field-error {
+  color: #dc2626;
+}
+
+.stakeholder-field-hint {
+  color: #64748b;
+}
+
+.stakeholder-create-footer {
+  align-items: center;
+  background: #ffffff;
+  border-top: 1px solid #e5edf7;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+}
+
+.stakeholder-create-cancel {
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 0 16px;
+}
+
+.stakeholder-create-cancel:hover {
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.stakeholder-create-save {
+  background: #f59e0b;
+  border: 1px solid #f59e0b;
+  color: #ffffff;
+  min-width: 118px;
+  padding: 0 18px;
+  box-shadow: 0 12px 24px rgba(245, 158, 11, 0.24);
+}
+
 [data-theme-mode='dark'] .conversion-top strong {
   color: #f8fafc;
 }
@@ -2730,6 +3231,78 @@ getSektorBadgeStyle: (subSektorName: string) => {
   color: #e5e7eb;
 }
 
+[data-theme-mode='dark'] .stakeholder-create-shell {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+[data-theme-mode='dark'] .stakeholder-create-body {
+  background: linear-gradient(180deg, #0b1220 0%, #0f172a 44%);
+}
+
+[data-theme-mode='dark'] .stakeholder-photo-panel,
+[data-theme-mode='dark'] .stakeholder-create-note,
+[data-theme-mode='dark'] .stakeholder-create-progress,
+[data-theme-mode='dark'] .stakeholder-form-section,
+[data-theme-mode='dark'] .stakeholder-create-footer {
+  background: #111827;
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+[data-theme-mode='dark'] .stakeholder-photo-preview,
+[data-theme-mode='dark'] .stakeholder-field {
+  background: #0b1220;
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+[data-theme-mode='dark'] .stakeholder-field:focus-within {
+  background: #0f172a;
+  border-color: rgba(96, 165, 250, 0.62);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+}
+
+[data-theme-mode='dark'] .stakeholder-field.has-error {
+  background: rgba(127, 29, 29, 0.16);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+[data-theme-mode='dark'] .stakeholder-photo-copy strong,
+[data-theme-mode='dark'] .stakeholder-create-note strong,
+[data-theme-mode='dark'] .stakeholder-form-section-head strong,
+[data-theme-mode='dark'] .stakeholder-field-control,
+[data-theme-mode='dark'] .stakeholder-create-progress span {
+  color: #f8fafc;
+}
+
+[data-theme-mode='dark'] .stakeholder-photo-empty span,
+[data-theme-mode='dark'] .stakeholder-photo-copy span,
+[data-theme-mode='dark'] .stakeholder-create-note span,
+[data-theme-mode='dark'] .stakeholder-form-section-head small,
+[data-theme-mode='dark'] .stakeholder-field-label,
+[data-theme-mode='dark'] .stakeholder-field-hint {
+  color: #94a3b8;
+}
+
+[data-theme-mode='dark'] .stakeholder-create-note-icon,
+[data-theme-mode='dark'] .stakeholder-form-section-head > span,
+[data-theme-mode='dark'] .stakeholder-create-progress i {
+  background: rgba(37, 99, 235, 0.16);
+  color: #93c5fd;
+}
+
+[data-theme-mode='dark'] .stakeholder-create-cancel {
+  background: rgba(127, 29, 29, 0.14);
+  border-color: rgba(248, 113, 113, 0.32);
+  color: #fecaca;
+}
+
+[data-theme-mode='dark'] .stakeholder-create-cancel:hover {
+  background: rgba(127, 29, 29, 0.22);
+  color: #fee2e2;
+}
+
 @media (max-width: 575.98px) {
   .stakeholders-premium-header {
     padding: 18px;
@@ -2810,6 +3383,66 @@ getSektorBadgeStyle: (subSektorName: string) => {
     word-break: break-word;
     line-height: 1.4;
   }
+
+  .stakeholder-create-modal {
+    width: calc(100% - 20px) !important;
+  }
+
+  .stakeholder-create-header,
+  .stakeholder-create-title-row,
+  .stakeholder-create-header-actions,
+  .stakeholder-create-footer {
+    align-items: stretch;
+  }
+
+  .stakeholder-create-header {
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .stakeholder-create-title-row {
+    gap: 10px;
+  }
+
+  .stakeholder-create-icon {
+    height: 42px;
+    width: 42px;
+  }
+
+  .stakeholder-create-title {
+    font-size: 17px;
+  }
+
+  .stakeholder-create-header-actions {
+    justify-content: space-between;
+  }
+
+  .stakeholder-create-body {
+    padding: 12px;
+  }
+
+  .stakeholder-create-layout,
+  .stakeholder-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholder-photo-preview {
+    height: 130px;
+  }
+
+  .stakeholder-form-section,
+  .stakeholder-photo-panel {
+    padding: 12px;
+  }
+
+  .stakeholder-create-footer {
+    flex-direction: column-reverse;
+    padding: 12px;
+  }
+
+  .stakeholder-create-footer > .btn {
+    width: 100%;
+  }
 }
 
 @media (min-width: 992px) {
@@ -2819,7 +3452,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
   }
 }
 
-@media (max-width: 991.98px) {
+@media (min-width: 576px) and (max-width: 991.98px) {
   .stakeholders-header-main {
     grid-template-columns: 1fr;
   }
@@ -2838,6 +3471,18 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
   .stakeholders-workbar-filters {
     grid-template-columns: 1fr;
+  }
+
+  .stakeholder-create-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholder-create-aside {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .stakeholder-photo-panel {
+    grid-row: span 2;
   }
 }
 </style>

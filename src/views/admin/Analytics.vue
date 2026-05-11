@@ -1,5 +1,5 @@
     <script setup>
-    import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent } from "vue";
+    import { ref, computed, onMounted, onActivated, watch, onUnmounted, nextTick, defineAsyncComponent, provide } from "vue";
     import { useRouter, useRoute } from "vue-router";
     import gsap from "gsap";
 
@@ -16,7 +16,7 @@
     import { useCsirtStore } from "@/stores/csirt";
     import { useKonversiStore } from "@/stores/konversi";
     import { useResikoStore } from "@/stores/resiko";
-    import { useDashboardFilterStore } from "@/stores/dashboardFilter";
+    import { useAnalyticsDashboardFilterStore } from "@/stores/dashboardFilter";
     import { useNotificationStore } from "@/stores/notifications";
     import { getKonversiProgress, isKonversiComplete } from "@/services/konversi.service";
 
@@ -59,8 +59,9 @@
     const csirtStore = useCsirtStore();
     const konversiStore = useKonversiStore();
     const resikoStore = useResikoStore();
-    const filterStore = useDashboardFilterStore();
+    const filterStore = useAnalyticsDashboardFilterStore();
     const notifStore = useNotificationStore();
+    provide('dashboardFilterStore', filterStore);
     
     // Analytics Chart States
     const kseChartType = ref('donut'); // 'donut' or 'bar'

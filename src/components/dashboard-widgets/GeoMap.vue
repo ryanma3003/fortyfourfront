@@ -1,11 +1,11 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, inject, onMounted, nextTick } from 'vue';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import { sektorService, subSektorService, getSektorName, getSubSektorParentId } from '@/services/sektor.service';
 
 const stakeholdersStore = useStakeholdersStore();
-const filterStore = useDashboardFilterStore();
+const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const emit = defineEmits(['sektor-click']);
 
 const mapReady = ref(false);

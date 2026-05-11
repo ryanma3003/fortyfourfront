@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, inject, ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { useCsirtStore } from '@/stores/csirt';
@@ -12,7 +12,7 @@ const stakeholdersStore = useStakeholdersStore();
 const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
-const filterStore = useDashboardFilterStore();
+const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const props = defineProps({
     loading: { type: Boolean, default: false },
 });

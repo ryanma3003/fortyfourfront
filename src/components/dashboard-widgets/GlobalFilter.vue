@@ -1,7 +1,7 @@
 <script setup>
 import { computed, watch, nextTick, ref, onMounted, onUnmounted } from 'vue';
 import gsap from 'gsap';
-import { useDashboardFilterStore } from '@/stores/dashboardFilter';
+import { useAnalyticsDashboardFilterStore } from '@/stores/dashboardFilter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 
@@ -10,7 +10,7 @@ const props = defineProps({
     subSektorList: { type: Array, default: () => [] },
 });
 
-const filterStore = useDashboardFilterStore();
+const filterStore = useAnalyticsDashboardFilterStore();
 const isDarkMode = ref(false);
 const isFilterBodyHidden = ref(false);
 let themeObserver;

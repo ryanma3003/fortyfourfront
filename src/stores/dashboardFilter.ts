@@ -9,7 +9,7 @@ function debounce(fn: Function, delay: number) {
   };
 }
 
-export const useDashboardFilterStore = defineStore('dashboardFilter', {
+const createDashboardFilterStore = (storeId: string, storageKey: string) => defineStore(storeId, {
   state: () => ({
     // Using string "YYYY-MM-DD" or null to easily pass to API
     dateRange: [null, null] as [string | null, string | null],
@@ -199,13 +199,13 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
           subSektorId: this.subSektorId,
           kategoriSe: this.kategoriSe
         };
-        localStorage.setItem('dashboard_filter', JSON.stringify(persistState));
+        localStorage.setItem(storageKey, JSON.stringify(persistState));
       } catch(e) { }
     },
 
     loadFromStorage() {
       try {
-        const val = localStorage.getItem('dashboard_filter');
+        const val = localStorage.getItem(storageKey);
         if (val) {
           const parsed = JSON.parse(val);
           if (parsed.year) this.year = parsed.year;
@@ -222,3 +222,6 @@ export const useDashboardFilterStore = defineStore('dashboardFilter', {
     }
   }
 });
+
+export const useDashboardFilterStore = createDashboardFilterStore('dashboardFilter', 'dashboard_page_filter');
+export const useAnalyticsDashboardFilterStore = createDashboardFilterStore('analyticsDashboardFilter', 'dashboard_filter');
