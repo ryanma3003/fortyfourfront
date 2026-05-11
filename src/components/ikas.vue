@@ -41,12 +41,16 @@ const getRecordMeasurementYear = (record) => {
 };
 
 const hydrateCurrentStakeholderIkas = async () => {
-    await ikasStore.initialize();
-    await assessmentStore.initialize();
+    // Start store initializations in parallel
+    const initPromises = [
+        ikasStore.initialize(),
+        assessmentStore.initialize()
+    ];
     
     if (!stakeholdersStore.initialized) {
-        await stakeholdersStore.initialize();
+        initPromises.push(stakeholdersStore.initialize());
     }
+    await Promise.all(initPromises);
 
     const slug = String(route.query.slug || '');
     if (!slug) return;
@@ -56,16 +60,19 @@ const hydrateCurrentStakeholderIkas = async () => {
 
     if (stakeholder?.id) {
         const requestedYear = String(route.query.year || '');
-        const result = await ikasStore.fetchFromBackend(slug, stakeholder.id, requestedYear);
+        // Fetch IKAS record and answers in parallel
+        const [ikasResult] = await Promise.all([
+            ikasStore.fetchFromBackend(slug, stakeholder.id, requestedYear),
+            assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id)
+        ]);
+        
         activeMeasurementYear.value =
-            result.respondentData?.tahun_pengukuran ||
-            getRecordMeasurementYear(result.ikasRecord) ||
+            ikasResult.respondentData?.tahun_pengukuran ||
+            getRecordMeasurementYear(ikasResult.ikasRecord) ||
             requestedYear ||
             currentMeasurementYear;
 
-        if (result.exists) {
-            await assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id);
-        } else {
+        if (!ikasResult.exists) {
             assessmentStore.resetStakeholderData(slug);
         }
     }
@@ -166,6 +173,19 @@ const ikasCompletionPercentage = computed(() => {
     return Math.min(100, Math.round((ikasAnsweredQuestions.value / total) * 100));
 });
 const ikasPendingQuestions = computed(() => Math.max(ikasTotalQuestions.value - ikasAnsweredQuestions.value, 0));
+
+const currentTargetScore = computed(() => {
+    const slug = currentSlug.value;
+    const summary = ikasStore.ikasSummaryMap[slug];
+    const raw = summary?.raw;
+    return Number(raw?.target_nilai || 0);
+});
+
+const isBelowTarget = computed(() => {
+    if (!currentTargetScore.value || currentTargetScore.value <= 0) return false;
+    const score = Number(ikasDataDynamic.value.total_rata_rata || 0);
+    return score < currentTargetScore.value;
+});
 
 const editRequestReasonLabel = computed(() => {
     if (ikasDataDynamic.value.edit_request_status === 'rejected') {
@@ -695,6 +715,42 @@ const exportToPdf = async () => {
   border:1px solid rgba(255,255,255,0.3);
   text-transform:uppercase;
   text-align:center;
+}
+
+/* ── Below Target Warning ───────────────────────────────── */
+.ikas-target-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  animation: warningFadeIn 0.4s ease;
+}
+.ikas-target-warning > i {
+  font-size: 1.5rem;
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.ikas-target-warning strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 800;
+  margin-bottom: 2px;
+  color: #78350f;
+}
+.ikas-target-warning b {
+  font-weight: 700;
+  color: #b45309;
+}
+@keyframes warningFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Action buttons area ────────────────────────────────── */
@@ -1570,6 +1626,19 @@ const exportToPdf = async () => {
           <div class="ikas-header-right">
             <span class="ikas-header-kat-badge">{{ ikasDataDynamic.total_kategori }}</span>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Below Target Warning -->
+  <div v-if="isBelowTarget" class="row mb-3">
+    <div class="col-12">
+      <div class="ikas-target-warning">
+        <i class="ri-alarm-warning-line"></i>
+        <div>
+          <strong>Skor IKAS di Bawah Target</strong>
+          <span>Skor saat ini <b>{{ Number(ikasDataDynamic.total_rata_rata || 0).toFixed(2) }}</b> lebih rendah dari target <b>{{ currentTargetScore.toFixed(2) }}</b> — selisih <b>{{ (currentTargetScore - Number(ikasDataDynamic.total_rata_rata || 0)).toFixed(2) }}</b> poin.</span>
         </div>
       </div>
     </div>

@@ -55,6 +55,11 @@ const routes: RouteRecordRaw[] = [
           meta: { requiresAdmin: true },
           children: [
             {
+              path: 'stakeholders/sektor-setup',
+              name: 'Sektor Setup',
+              component: () => import("../components/stakeholder/sektor-setup.vue"),
+            },
+            {
               path: 'dashboard',
               name: 'Admin Dashboard',
               component: () => import("../views/admin/Dashboard.vue"),
@@ -206,6 +211,11 @@ const routes: RouteRecordRaw[] = [
               path: 'ikas-list',
               name: 'Admin IKAS List',
               component: () => import("../components/dashboards/ikas-list.vue"),
+            },
+            {
+              path: 'dashboard/ikasview',
+              name: 'Admin IKAS View',
+              component: () => import("../views/admin/ikasview.vue"),
             },
           ]
         },

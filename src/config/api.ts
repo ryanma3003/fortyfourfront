@@ -4,6 +4,7 @@ import type { HttpMethod } from '@/types/api.types';
 type RequestOptions = {
     skipQueue?: boolean;
     suppressErrorStatuses?: number[];
+    skipNotificationSync?: boolean;
 };
 
 /**
@@ -38,7 +39,7 @@ class ApiClient {
     private baseUrl: string;
     private defaultHeaders: Record<string, string>;
     private requestQueue: Promise<void> = Promise.resolve();
-    private readonly minRequestGapMs = 500;
+    private readonly minRequestGapMs = 100;
     private readonly maxRetries = 3;
     private readonly maxRetryDelayMs = 30_000;
     private readonly retryableStatuses = new Set([429, 502, 503, 504]);
@@ -402,7 +403,9 @@ class ApiClient {
 
             // Handle 204 No Content
             if (response.status === 204) {
-                this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+                if (!requestOptions.skipNotificationSync) {
+                    this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+                }
                 return {} as T;
             }
 
@@ -410,12 +413,16 @@ class ApiClient {
             // HTTP-only cookies and return an empty body.
             const text = await response.text();
             if (!text) {
-                this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+                if (!requestOptions.skipNotificationSync) {
+                    this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+                }
                 return {} as T;
             }
 
             const parsed = JSON.parse(text);
-            this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+            if (!requestOptions.skipNotificationSync) {
+                this.syncNotificationsAfterMutation(cleanEndpoint, method, body);
+            }
             return parsed;
         } catch (error) {
             if (error instanceof ApiRequestError) {

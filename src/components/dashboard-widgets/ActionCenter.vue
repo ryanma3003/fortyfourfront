@@ -91,7 +91,16 @@ const actions = computed(() => {
 
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInGlobalRange(s.created_at);
-        const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
+        const inSector = (() => {
+            if (!filterStore.sektorId) return true;
+            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
+            if (!matchSektor) return false;
+            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                return String(subSektorId) === String(filterStore.subSektorId);
+            }
+            return true;
+        })();
         return inDate && inSector;
     });
     const items = [];
@@ -225,7 +234,16 @@ const actionStats = computed(() => {
 const completionRate = computed(() => {
     const total = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInGlobalRange(s.created_at);
-        const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
+        const inSector = (() => {
+            if (!filterStore.sektorId) return true;
+            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
+            if (!matchSektor) return false;
+            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                return String(subSektorId) === String(filterStore.subSektorId);
+            }
+            return true;
+        })();
         return inDate && inSector;
     }).length;
 
@@ -233,7 +251,16 @@ const completionRate = computed(() => {
 
     const complete = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInGlobalRange(s.created_at);
-        const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
+        const inSector = (() => {
+            if (!filterStore.sektorId) return true;
+            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
+            if (!matchSektor) return false;
+            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                return String(subSektorId) === String(filterStore.subSektorId);
+            }
+            return true;
+        })();
         const ikas = ikasStore.ikasDataMap[s.slug];
         const hasIkas = ikas && ikas.total_rata_rata && ikas.total_rata_rata !== 'NA' && ikas.total_rata_rata !== 0;
         return inDate && inSector && csirtStore.hasCompleteCsirt(s.id) && hasIkas && stakeholderHasKse(s);

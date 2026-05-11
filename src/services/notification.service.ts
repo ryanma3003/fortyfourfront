@@ -163,18 +163,18 @@ class NotificationService {
 
         const url = this.buildUrl('/api/events');
         try {
-            console.info('[NotifService] opening SSE:', url);
+            // console.info('[NotifService] opening SSE:', url);
             this.eventSource = new EventSource(url, { withCredentials: true });
             this.openTimeoutTimer = setTimeout(() => {
                 if (!this.eventSource || this._connected) return;
-                console.warn('[NotifService] SSE did not open in time; switching to polling.');
+                // console.warn('[NotifService] SSE did not open in time; switching to polling.');
                 this.closeConnection();
                 this.setConnected(false);
                 this.scheduleReconnect();
             }, SSE_OPEN_TIMEOUT_MS);
 
             this.eventSource.onopen = () => {
-                console.info('[NotifService] SSE connected');
+                // console.info('[NotifService] SSE connected');
                 this.clearOpenTimeout();
                 this.reconnectAttempt = 0;
                 this.ssePausedUntil = 0;
@@ -200,7 +200,7 @@ class NotificationService {
             this.eventSource.onerror = () => {
                 this.clearOpenTimeout();
                 if (this.reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
-                    console.warn('[NotifService] SSE error, reconnecting...');
+                    // console.warn('[NotifService] SSE error, reconnecting...');
                 }
                 this.closeConnection();
                 this.setConnected(false);
@@ -220,7 +220,7 @@ class NotificationService {
 
         if (this.reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
             this.ssePausedUntil = Date.now() + RECONNECT_COOLDOWN_MS;
-            console.warn('[NotifService] SSE unavailable; falling back to polling for now.');
+            // console.warn('[NotifService] SSE unavailable; falling back to polling for now.');
             this.reconnectTimer = setTimeout(() => {
                 this.reconnectTimer = null;
                 this.reconnectAttempt = 0;

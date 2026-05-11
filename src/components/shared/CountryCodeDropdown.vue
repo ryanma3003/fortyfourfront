@@ -75,27 +75,8 @@ const priorityList = computed(() => filteredCountries.value.filter(c => c.priori
 const otherList = computed(() => filteredCountries.value.filter(c => !c.priority));
 
 const fetchCountryCodes = async () => {
-  isLoading.value = true;
-  try {
-    const response = await fetch("https://restcountries.com/v3.1/all");
-    const data = await response.json();
-    
-    const codes = data
-      .filter((c: any) => c.idd?.root)
-      .map((c: any) => ({
-        code: c.idd.root + (c.idd.suffixes?.[0] || ""),
-        country: c.name.common,
-        flag: c.flag || "🏳️",
-        priority: priorityCountryCodes.includes(c.idd.root + (c.idd.suffixes?.[0] || ""))
-      }))
-      .filter((c: CountryCode) => c.code !== "+" && c.code.length > 1);
-    
-    if (codes.length > 0) countryCodes.value = codes;
-  } catch (error) {
-    console.error("Failed to fetch country codes:", error);
-  } finally {
-    isLoading.value = false;
-  }
+  // Use hardcoded defaults to avoid unstable external API dependencies and 400 errors
+  countryCodes.value = defaultCountryCodes;
 };
 
 const selectCountry = (country: CountryCode) => {
@@ -111,7 +92,7 @@ const handleClickOutside = (event: MouseEvent) => {
 };
 
 onMounted(() => {
-  fetchCountryCodes();
+  // Removed external fetch to stop 400 errors and data.filter crashes
   document.addEventListener("click", handleClickOutside);
 });
 

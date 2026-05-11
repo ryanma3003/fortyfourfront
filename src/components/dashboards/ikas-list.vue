@@ -1696,6 +1696,18 @@ const IkasTableRow = defineComponent({
         ]),
       ]),
       h('td', [h(IkasScore, { score: props.item.score })]),
+      h('td', [
+        h('div', { class: 'ikas-target-cell' }, [
+          h('span', props.item.targetScore > 0 ? props.item.targetScore.toFixed(2) : '-'),
+          props.item.targetScore > 0 && props.item.score < props.item.targetScore
+            ? h('i', { 
+                class: 'ri-error-warning-fill ms-1 text-warning', 
+                style: 'font-size: 1.1rem;',
+                title: `Di bawah target! Selisih ${(props.item.targetScore - props.item.score).toFixed(2)}` 
+              })
+            : null
+        ])
+      ]),
       h('td', [statusBadge()]),
       h('td', [
         h('div', { class: 'ikas-updated' }, [
@@ -1777,6 +1789,12 @@ const IkasCard = defineComponent({
       h('div', { class: 'ikas-mobile-card-content' }, [
         h('div', { class: 'ikas-mobile-score' }, [
           h(IkasScore, { score: props.item.score }),
+          props.item.targetScore > 0 && props.item.score < props.item.targetScore
+            ? h('span', { class: 'ikas-below-target-badge', title: `Di bawah target ${props.item.targetScore.toFixed(2)}` }, [
+                h('i', { class: 'ri-alarm-warning-line', 'aria-hidden': 'true' }),
+                h('span', `Target ${props.item.targetScore.toFixed(2)}`),
+              ])
+            : null,
         ]),
         h('div', { class: 'ikas-mobile-meta' }, [
           h('span', `${formatRelativeTime(props.item.updatedAt)} - ${formatDate(props.item.updatedAt)}`),
@@ -1804,6 +1822,11 @@ const IkasCard = defineComponent({
           <div class="ikas-inline-breadcrumb">Dashboard <span>/</span> IKAS <span>/</span> Management</div>
           <h1>IKAS Management</h1>
           <p>Monitoring penilaian keamanan siber perusahaan dengan ringkasan skor, status validasi, dan rincian domain.</p>
+          <div class="mt-3">
+            <button class="btn btn-primary btn-wave" @click="router.push('/dashboard/ikasview')">
+              <i class="ri-eye-line me-1"></i> Lihat Template IKAS
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2001,6 +2024,7 @@ const IkasCard = defineComponent({
                 <colgroup>
                   <col class="ikas-col-company" />
                   <col class="ikas-col-score" />
+                  <col class="ikas-col-target" />
                   <col class="ikas-col-status" />
                   <col class="ikas-col-updated" />
                   <col class="ikas-col-actions" />
@@ -2010,6 +2034,7 @@ const IkasCard = defineComponent({
                   <tr>
                     <th scope="col">Company Name</th>
                     <th scope="col">IKAS Score</th>
+                    <th scope="col">Target</th>
                     <th scope="col">Status</th>
                     <th scope="col">Last Updated</th>
                     <th scope="col">Tindakan</th>
@@ -2084,6 +2109,18 @@ const IkasCard = defineComponent({
             <p>{{ selectedRecord.sector }} / {{ selectedRecord.subSector }}</p>
           </div>
           <span class="ikas-panel-status" :class="selectedRecord.status">{{ selectedRecord.statusLabel }}</span>
+        </div>
+
+        <!-- Warning at the top of detail preview -->
+        <div
+          v-if="selectedRecord.targetScore > 0 && selectedRecord.score < selectedRecord.targetScore"
+          class="ikas-panel-target-warning ikas-warning-top"
+        >
+          <i class="ri-error-warning-fill text-warning" aria-hidden="true" style="font-size: 1.5rem;"></i>
+          <div>
+            <strong>Peringatan: Skor Di Bawah Target</strong>
+            <span>Skor saat ini ({{ selectedRecord.score.toFixed(2) }}) tidak mencapai target ({{ selectedRecord.targetScore.toFixed(2) }}).</span>
+          </div>
         </div>
 
         <div v-if="actionError" class="ikas-action-error" role="alert">
@@ -5621,6 +5658,59 @@ const IkasCard = defineComponent({
   color: #475569;
 }
 
+/* ── Below Target Warning Badge (table & card) ─────────── */
+.ikas-below-target-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.ikas-below-target-badge i {
+  font-size: 0.78rem;
+  color: #d97706;
+}
+
+/* ── Below Target Warning Alert (detail panel) ─────────── */
+.ikas-panel-target-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.ikas-panel-target-warning > i {
+  font-size: 1.2rem;
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ikas-panel-target-warning strong {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin-bottom: 1px;
+  color: #78350f;
+}
+.ikas-panel-target-warning b {
+  font-weight: 700;
+  color: #b45309;
+}
+
 .ikas-detail-timeline {
   display: grid;
   gap: 8px;
@@ -6387,15 +6477,19 @@ const IkasCard = defineComponent({
 }
 
 .ikas-col-company {
-  width: 39%;
+  width: 30%;
 }
 
 .ikas-col-score {
   width: 15%;
 }
 
+.ikas-col-target {
+  width: 10%;
+}
+
 .ikas-col-status {
-  width: 15%;
+  width: 14%;
 }
 
 .ikas-col-updated {
@@ -6408,6 +6502,24 @@ const IkasCard = defineComponent({
 
 .ikas-col-detail {
   width: 6%;
+}
+
+.ikas-target-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.ikas-warning-top {
+  margin: 0 0 16px 0 !important;
+  background: #fffbeb !important;
+  border: 1px solid #fcd34d !important;
+}
+
+.text-warning {
+  color: #f59e0b !important;
 }
 
 .ikas-table th {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, inject, onMounted, watch } from "vue";
+import { ref, computed, inject, onMounted, onUnmounted, watch } from "vue";
 import {
   sektorService,
   subSektorService,
@@ -111,11 +111,36 @@ const fetchData = async () => {
   }
 };
 
+const isDarkMode = ref(false);
+let themeObserver;
+
+function syncThemeMode() {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const body = document.body;
+    isDarkMode.value =
+        root.getAttribute('data-theme-mode') === 'dark' ||
+        body?.getAttribute('data-theme-mode') === 'dark' ||
+        root.classList.contains('dark') ||
+        body?.classList.contains('dark');
+}
+
 onMounted(async () => {
+  syncThemeMode();
+  themeObserver = new MutationObserver(syncThemeMode);
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme-mode', 'class'] });
+  if (document.body) {
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme-mode', 'class'] });
+  }
+
   await fetchData();
   setTimeout(() => {
     isReady.value = true;
   }, 160);
+});
+
+onUnmounted(() => {
+  themeObserver?.disconnect();
 });
 
 watch(
@@ -543,7 +568,7 @@ const chartData = computed(() => {
       }),
       detailLabels: selectedSubSektorStakeholders.value.map((stakeholder) => stakeholder.completion.statusLabel),
       count: selectedSubSektorStakeholders.value.length,
-      totalLabel: selectedSubSektorName.value || "Sub Sektor",
+      totalLabel: "Total Stakeholder",
     };
   }
 
@@ -580,7 +605,7 @@ const donutChartData = computed(() => {
         return meta ? ` (${meta})` : "";
       }),
       count: selectedSubSektorStakeholders.value.length,
-      totalLabel: selectedSubSektorName.value || "Sub Sektor",
+      totalLabel: "Total Stakeholder",
     };
   }
 
@@ -597,9 +622,7 @@ const barChartHeight = computed(() => {
   return Math.min(420, Math.max(260, chartData.value.count * 44));
 });
 
-const donutChartHeight = computed(() =>
-  isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? 420 : 330
-);
+const donutChartHeight = computed(() => 350);
 
 // ─── Chart Options: Bar Chart ───────────────────────────
 const barChartOptions = computed(() => ({
@@ -678,8 +701,8 @@ const donutChartOptions = computed(() => ({
   colors: donutChartData.value.colors,
   plotOptions: {
     pie: {
-      customScale: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? 1.3 : 1,
-      offsetY: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? 24 : 0,
+      customScale: 1,
+      offsetY: 0,
       donut: {
         size: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? "58%" : "64%",
         labels: {
@@ -715,6 +738,7 @@ const donutChartOptions = computed(() => ({
     markers: { width: 8, height: 8, radius: 3 },
     itemMargin: { horizontal: 6, vertical: 3 },
     offsetY: isStakeholderDonutMode.value || chartLevel.value === "subsektor" ? -8 : 0,
+    height: 120,
   },
   tooltip: {
     y: { formatter: (val, opts) => {
@@ -775,7 +799,7 @@ watch(selectedSektorId, (newSektorId) => {
 </script>
 
 <template>
-  <div class="sektor-analytics">
+  <div class="sektor-analytics" :class="{ 'is-dark': isDarkMode }">
     <!-- ═══════════ SECTION HEADER ═══════════ -->
     <div class="sa-section-header animate-show-up" :style="{ animationDelay: isReady ? '0s' : '2.6s' }">
       <div class="sa-section-header-inner">
@@ -2415,10 +2439,10 @@ watch(selectedSektorId, (newSektorId) => {
   padding: 0.25rem 0.45rem 0.35rem;
 }
 .sa-chart-body--scroll {
-  max-height: 640px;
+  max-height: 350px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-top: 3.4rem;
+  padding-top: 0.5rem;
   padding-right: 0.45rem;
   position: relative;
   scrollbar-width: thin;
@@ -2835,5 +2859,82 @@ watch(selectedSektorId, (newSektorId) => {
   .sa-sub-table-wrap {
     padding-left: 24px;
   }
+}
+
+/* ══════════ DARK MODE ══════════ */
+.sektor-analytics.is-dark {
+  color-scheme: dark;
+}
+.sektor-analytics.is-dark .sa-section-header,
+.sektor-analytics.is-dark .sa-filter-bar,
+.sektor-analytics.is-dark .sa-chart-card,
+.sektor-analytics.is-dark .sa-substakeholder-panel,
+.sektor-analytics.is-dark .sa-table-card,
+.sektor-analytics.is-dark .sa-sektor-card {
+  background: #151a2b;
+  border-color: rgba(148,163,184,0.16);
+  box-shadow: 0 16px 38px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.sektor-analytics.is-dark .sa-chart-body {
+  background: transparent;
+}
+.sektor-analytics.is-dark .sa-chart-header,
+.sektor-analytics.is-dark .sa-substakeholder-header {
+  background: transparent;
+  border-bottom-color: rgba(148,163,184,0.1);
+}
+.sektor-analytics.is-dark .sa-section-title,
+.sektor-analytics.is-dark .sa-chart-title,
+.sektor-analytics.is-dark .sa-substakeholder-title,
+.sektor-analytics.is-dark .sa-substakeholder-name,
+.sektor-analytics.is-dark .sa-stakeholder-name,
+.sektor-analytics.is-dark .sa-sektor-name,
+.sektor-analytics.is-dark .sa-sub-name,
+.sektor-analytics.is-dark .sa-filter-title { color: #eef4ff; }
+
+.sektor-analytics.is-dark .sa-section-subtitle,
+.sektor-analytics.is-dark .sa-chart-sub,
+.sektor-analytics.is-dark .sa-substakeholder-sub,
+.sektor-analytics.is-dark .sa-substakeholder-parent,
+.sektor-analytics.is-dark .sa-filter-label { color: #94a3b8; }
+
+.sektor-analytics.is-dark .sa-substakeholder-card {
+  background: rgba(15,23,42,0.5);
+  border-color: rgba(148,163,184,0.16);
+}
+.sektor-analytics.is-dark .sa-substakeholder-card-head {
+  background: transparent;
+  border-bottom: 1px solid rgba(148,163,184,0.1);
+}
+.sektor-analytics.is-dark .sa-stakeholder-item {
+  background: rgba(15,23,42,0.8);
+  border-color: rgba(148,163,184,0.16);
+}
+.sektor-analytics.is-dark .sa-stakeholder-item:hover {
+  background: rgba(37,99,235,0.1);
+  border-color: rgba(96,165,250,0.3);
+}
+
+.sektor-analytics.is-dark .sa-substakeholder-count,
+.sektor-analytics.is-dark .sa-substakeholder-badge {
+  background: rgba(37,99,235,0.15);
+  color: #93c5fd;
+}
+
+.sektor-analytics.is-dark .sa-stakeholder-copy .sa-stakeholder-meta { color: #94a3b8; }
+.sektor-analytics.is-dark .sa-stakeholder-avatar { background: rgba(37,99,235,0.15); color: #93c5fd; }
+
+.sektor-analytics.is-dark .sa-sektor-row { border-bottom-color: rgba(148,163,184,0.1); }
+.sektor-analytics.is-dark .sa-sub-section-row { background: rgba(15,23,42,0.4); border-bottom-color: rgba(148,163,184,0.1); }
+.sektor-analytics.is-dark .sa-sub-row { border-bottom-color: rgba(148,163,184,0.1); }
+.sektor-analytics.is-dark .sa-filter-select,
+.sektor-analytics.is-dark .sa-search-input { background: #0f172a; border-color: rgba(148,163,184,0.2); color: #eef4ff; }
+.sektor-analytics.is-dark .sa-table th { color: #94a3b8; border-bottom-color: rgba(148,163,184,0.2); }
+.sektor-analytics.is-dark .sa-count-num { color: #cbd5e1; }
+.sektor-analytics.is-dark .sa-empty-chart,
+.sektor-analytics.is-dark .sa-substakeholder-empty,
+.sektor-analytics.is-dark .sa-empty-table,
+.sektor-analytics.is-dark .sa-sub-empty {
+  color: #94a3b8;
 }
 </style>

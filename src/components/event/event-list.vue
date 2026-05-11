@@ -230,16 +230,33 @@ export default {
       return "ri-information-line";
     };
 
+    const parseDatePart = (dateStr: string) => {
+      if (!dateStr) return null;
+      const t = dateStr.replace('T', ' ');
+      const [datePart, timePart] = t.split(' ');
+      if (!datePart) return new Date(dateStr);
+      const [y, m, d] = datePart.split(/[-/]/).map(Number);
+      if (timePart) {
+        const [hh, mm, ss] = timePart.split(':').map(Number);
+        return new Date(y, m - 1, d, hh || 0, mm || 0, ss || 0);
+      }
+      return new Date(y, m - 1, d);
+    };
+
     const formatDate = (dateStr: string) => {
       if (!dateStr) return "-";
       try {
-        return new Date(dateStr).toLocaleDateString("id-ID", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const d = parseDatePart(dateStr);
+        if (!d || isNaN(d.getTime())) return dateStr;
+        
+        const day = d.getDate();
+        const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        const hour = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        
+        return `${day} ${month} ${year}, ${hour}.${min}`;
       } catch {
         return dateStr;
       }
@@ -475,7 +492,7 @@ export default {
 .ev-btn-add{display:inline-flex;align-items:center;gap:8px;background:#0f172a;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:800;cursor:pointer;transition:transform .2s,box-shadow .2s,background .2s;white-space:nowrap}
 .ev-btn-add:hover{transform:translateY(-2px);background:#111f35;box-shadow:0 14px 28px rgba(15,23,42,.18)}
 .ev-list-wrap{display:flex;flex-direction:column;gap:10px}
-.ev-list-item{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px;border:1px solid #eef2f7;border-radius:12px;background:linear-gradient(180deg,#fff 0%,#fbfdff 100%);transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
+.ev-list-item{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px;border:1px solid #eef2f7;border-radius:12px;background:linear-gradient(180deg,#fff 0%,#fbfdff(100%));transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
 .ev-list-item:hover{transform:translateY(-2px);border-color:#cbd5e1;box-shadow:0 16px 32px rgba(15,23,42,.08)}
 .ev-item-index{width:42px;height:42px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;font-weight:900}
 .ev-item-main{min-width:0;display:flex;flex-direction:column;gap:10px}
@@ -593,7 +610,7 @@ export default {
 .ev-hero-tile.tile-a{width:390px;height:200px;right:-78px;top:-40px;transform:rotate(-8deg);animation-duration:9s}
 .ev-hero-tile.tile-b{width:270px;height:270px;left:10%;top:-118px;animation-delay:-1.6s}
 .ev-hero-tile.tile-c{width:240px;height:240px;right:25%;top:-88px;animation-delay:-3s}
-.ev-hero-tile.tile-d{width:205px;height:205px;left:32%;bottom:-112px;animation-delay:-4.4s}
+.ev-hero-tile.tile-d{width:205px;height:205px;left:32%;bottom:-112px;animation-delay:-44s}
 .ev-hero-tile.tile-e{width:220px;height:220px;right:8%;bottom:-130px;animation-delay:-2.4s}
 .ev-hero-tile.tile-f{width:165px;height:165px;left:-20px;bottom:-64px;animation-delay:-5s}
 @keyframes ev-tile-float{0%,100%{translate:0 0;scale:1;opacity:.42}50%{translate:0 -12px;scale:1.035;opacity:.58}}
@@ -818,7 +835,7 @@ export default {
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-btn-add,
 :global(html.dark) .ev-shell .ev-btn-add {
   background: linear-gradient(135deg, #1d4ed8, #2563eb 55%, #0ea5e9);
-  box-shadow: 0 14px 28px rgba(29, 78, 216, 0.24);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24);
 }
 
 .ev-shell.is-dark .ev-list-wrap,
@@ -850,7 +867,7 @@ export default {
 :global(html.dark) .ev-shell .ev-item-index {
   background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
   color: #fff;
-  box-shadow: 0 10px 22px rgba(29, 78, 216, 0.25);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.25);
 }
 
 .ev-shell.is-dark .ev-title-main,
@@ -874,15 +891,23 @@ export default {
 .ev-shell.is-dark .ev-cell-meta,
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-cell-meta,
 :global(html.dark) .ev-shell .ev-cell-meta {
-  background: #0b1220;
-  border-color: #24364f;
-  color: #cbd5e1;
+  background: #0b1220 !important;
+  border-color: #24364f !important;
+  color: #cbd5e1 !important;
 }
 
 .ev-shell.is-dark .ev-cell-meta i,
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-cell-meta i,
 :global(html.dark) .ev-shell .ev-cell-meta i {
-  color: #38bdf8;
+  color: #38bdf8 !important;
+}
+
+.ev-shell.is-dark .ev-list-item:hover .ev-cell-meta,
+:global(html[data-theme-mode="dark"]) .ev-shell .ev-list-item:hover .ev-cell-meta,
+:global(html.dark) .ev-shell .ev-list-item:hover .ev-cell-meta {
+  background: #111c2e !important;
+  border-color: rgba(96, 165, 250, 0.36) !important;
+  color: #e2e8f0 !important;
 }
 
 .ev-shell.is-dark .ev-item-side,
@@ -923,35 +948,32 @@ export default {
 .ev-shell.is-dark .ev-badge-upcoming,
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-upcoming,
 :global(html.dark) .ev-shell .ev-badge-upcoming {
-  background: rgba(245, 158, 11, 0.16);
-  border-color: rgba(251, 191, 36, 0.3);
-  color: #fbbf24;
+  background: rgba(180, 83, 9, 0.18);
+  border-color: rgba(253, 186, 116, 0.24);
+  color: #fdba74;
 }
 
 .ev-shell.is-dark .ev-badge-ongoing,
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-ongoing,
 :global(html.dark) .ev-shell .ev-badge-ongoing {
-  background: rgba(34, 197, 94, 0.16);
-  border-color: rgba(74, 222, 128, 0.28);
-  color: #86efac;
+  background: rgba(4, 120, 87, 0.18);
+  border-color: rgba(110, 231, 183, 0.24);
+  color: #6ee7b7;
 }
 
 .ev-shell.is-dark .ev-badge-completed,
-.ev-shell.is-dark .ev-badge-default,
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-completed,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-default,
-:global(html.dark) .ev-shell .ev-badge-completed,
-:global(html.dark) .ev-shell .ev-badge-default {
-  background: rgba(148, 163, 184, 0.14);
-  border-color: rgba(148, 163, 184, 0.24);
-  color: #cbd5e1;
+:global(html.dark) .ev-shell .ev-badge-completed {
+  background: rgba(7, 89, 133, 0.18);
+  border-color: rgba(56, 189, 248, 0.24);
+  color: #38bdf8;
 }
 
 .ev-shell.is-dark .ev-badge-active,
 :global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-active,
 :global(html.dark) .ev-shell .ev-badge-active {
-  background: rgba(59, 130, 246, 0.16);
-  border-color: rgba(96, 165, 250, 0.28);
+  background: rgba(29, 78, 216, 0.18);
+  border-color: rgba(147, 197, 253, 0.24);
   color: #93c5fd;
 }
 
@@ -975,6 +997,4 @@ export default {
   background: #0b1220;
   border-color: #22314a;
 }
-
-
 </style>

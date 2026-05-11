@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useDynamicAssessmentStore } from '@/stores/dynamic-assessment';
 import { useIkasStore } from '@/stores/ikas';
 import { useStakeholdersStore } from '@/stores/stakeholders';
+import { useNotificationStore } from '@/stores/notifications';
 import QuestionCard from '@/components/assessment/QuestionCard.vue';
 import ProgressBar from '@/components/assessment/ProgressBar.vue';
 import PaginationControl from '@/components/assessment/PaginationControl.vue';
@@ -16,6 +17,7 @@ const route = useRoute();
 const assessmentStore = useDynamicAssessmentStore();
 const ikasStore = useIkasStore();
 const stakeholdersStore = useStakeholdersStore();
+const notificationStore = useNotificationStore();
 
 const currentSlug = computed(() => String(route.query.slug || ''));
 
@@ -51,6 +53,17 @@ const normalizeMeasurementDate = (tanggal: string | null | undefined, tahun: str
 const handleAnswer = async (questionId: string, index: number) => {
   await assessmentStore.saveAnswer(questionId, index);
 };
+
+// Auto-sync & Notification control
+onMounted(() => {
+  assessmentStore.startAutoSync();
+  notificationStore.stopPolling();
+});
+
+onUnmounted(() => {
+  assessmentStore.stopAutoSync();
+  notificationStore.startPolling();
+});
 
 // Check if domain is current
 const isCurrentDomain = (domainId: string) => {
@@ -150,11 +163,7 @@ const goToNextPage = async () => {
   if (!assessmentStore.isLocked && currentSlug.value) {
     const syncResult = await assessmentStore.syncCurrentPageAnswersToBackend(currentSlug.value);
     if (!syncResult.success) {
-      toast.error('Masih ada jawaban halaman ini yang gagal disimpan', {
-        autoClose: 3000,
-        position: 'top-right',
-      });
-      return;
+      console.warn('[AssessmentView] Sync failure during navigation.');
     }
   }
 

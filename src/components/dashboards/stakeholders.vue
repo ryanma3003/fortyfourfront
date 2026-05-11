@@ -2,7 +2,10 @@
 import { ref, computed, onMounted, watch, nextTick } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useStakeholdersStore } from "../../stores/stakeholders";
-import type { Stakeholder, CreateStakeholderPayload } from "../../types/stakeholders.types";
+import type {
+  Stakeholder,
+  CreateStakeholderPayload,
+} from "../../types/stakeholders.types";
 import EasyDataTable from "vue3-easy-data-table";
 import "vue3-easy-data-table/dist/style.css";
 import { useAuthStore } from "../../stores/auth";
@@ -13,13 +16,25 @@ import { useResikoStore } from "../../stores/resiko";
 import { useKonversiStore } from "../../stores/konversi";
 import { useUsersStore } from "../../stores/users";
 import { useListPage } from "../../composables/useListPage";
-import { subSektorService, sektorService, getSektorName, getSubSektorName, getSubSektorParentId } from "../../services/sektor.service";
+import {
+  subSektorService,
+  sektorService,
+  getSektorName,
+  getSubSektorName,
+  getSubSektorParentId,
+} from "../../services/sektor.service";
 import type { SubSektor, Sektor } from "../../services/sektor.service";
 import { csirtService } from "../../services/csirt.service";
 import type { User } from "../../types/user.types";
-import { getKonversiDisplay, getKonversiProgress, getKonversiTotalPoint } from "../../services/konversi.service";
-
-
+import {
+  getKonversiDisplay,
+  getKonversiProgress,
+  getKonversiTotalPoint,
+} from "../../services/konversi.service";
+import { ikasService } from "../../services/ikas.service";
+import { picService } from "../../services/pic.service";
+import { usersService } from "../../services/users.service";
+import { aktivitasService } from "../../services/aktivitas.service";
 
 export default {
   data() {
@@ -47,19 +62,32 @@ export default {
     const loading = computed(() => stakeholdersStore.loading);
 
     const {
-      searchQuery, currentPage, itemsPerPage, sortField, sortOrder,
-      showToast, toastMessage, toastType, showNotification,
-      clearSearch, toggleSort, makePagination,
+      searchQuery,
+      currentPage,
+      itemsPerPage,
+      sortField,
+      sortOrder,
+      showToast,
+      toastMessage,
+      toastType,
+      showNotification,
+      clearSearch,
+      toggleSort,
+      makePagination,
     } = useListPage("nama_perusahaan");
 
     const searchValue2 = ref("");
     const viewMode = ref<"table" | "grid">("table");
-    
+
     // Automatically change pagination limit to 12 when in Grid View to make it look balanced
-    watch(viewMode, (newMode) => {
-      itemsPerPage.value = newMode === "grid" ? 12 : 10;
-      currentPage.value = 1; // Reset to page 1 on view switch
-    }, { immediate: true });
+    watch(
+      viewMode,
+      (newMode) => {
+        itemsPerPage.value = newMode === "grid" ? 12 : 10;
+        currentPage.value = 1; // Reset to page 1 on view switch
+      },
+      { immediate: true },
+    );
 
     const selectedStakeholderIds = ref<string[]>([]);
     const expandedStakeholderSlugs = ref<string[]>([]);
@@ -70,11 +98,11 @@ export default {
 
     // User data and filter
     const usersData = ref<User[]>([]);
-    const userFilter = ref<'all' | 'hasUser' | 'noUser'>('all');
-    const showCreateModal   = ref(false);
-    const showEditModal     = ref(false);
-    const showDeleteModal   = ref(false);
-    const currentEditItem   = ref<Stakeholder | null>(null);
+    const userFilter = ref<"all" | "hasUser" | "noUser">("all");
+    const showCreateModal = ref(false);
+    const showEditModal = ref(false);
+    const showDeleteModal = ref(false);
+    const currentEditItem = ref<Stakeholder | null>(null);
     const currentDeleteItem = ref<Stakeholder | null>(null);
     const sektorFilter = ref<string | number>("");
     const subSektorFilter = ref<string | number>("");
@@ -98,20 +126,27 @@ export default {
     const loadingSubSektors = ref(false);
     const selectedSektorId = ref<string | number | "">("");
     const selectedSubSektorId = ref<string | number | "">("");
+    const isAddingNewSektor = ref(false);
+    const newSektorName = ref("");
+    const isAddingNewSubSektor = ref(false);
+    const newSubSektorName = ref("");
+    const isSavingNewOption = ref(false);
 
     // Filtered sub sektor berdasarkan sektor yang dipilih
     const filteredSubSektorList = computed(() => {
       if (!selectedSektorId.value) return [];
-      return subSektorList.value.filter(ss => {
+      return subSektorList.value.filter((ss) => {
         const pid = getSubSektorParentId(ss);
-        return pid !== undefined && String(pid) === String(selectedSektorId.value);
+        return (
+          pid !== undefined && String(pid) === String(selectedSektorId.value)
+        );
       });
     });
 
     // Filtered sub sektor untuk filter table
     const availableSubSektorFilters = computed(() => {
       if (!sektorFilter.value) return subSektorList.value;
-      return subSektorList.value.filter(ss => {
+      return subSektorList.value.filter((ss) => {
         const pid = getSubSektorParentId(ss);
         return pid !== undefined && String(pid) === String(sektorFilter.value);
       });
@@ -119,14 +154,18 @@ export default {
 
     const currentSektorNameFilter = computed(() => {
       if (!sektorFilter.value) return "";
-      const s = sektorList.value.find(s => String(s.id) === String(sektorFilter.value));
+      const s = sektorList.value.find(
+        (s) => String(s.id) === String(sektorFilter.value),
+      );
       return s ? s.nama_sektor : "";
     });
 
     // ? Auto-set formData.sektor (nama) dan selectedSektorId ketika sub sektor ID dipilih
     watch(selectedSubSektorId, (newId) => {
       if (newId && subSektorList.value.length) {
-        const matched = subSektorList.value.find(ss => String(ss.id) === String(newId));
+        const matched = subSektorList.value.find(
+          (ss) => String(ss.id) === String(newId),
+        );
         if (matched) {
           formData.value.sektor = getSubSektorName(matched);
           const pid = getSubSektorParentId(matched);
@@ -138,8 +177,11 @@ export default {
     });
 
     watch(selectedSektorId, (newId) => {
-      if (!newId || !selectedSubSektorId.value || !subSektorList.value.length) return;
-      const matched = subSektorList.value.find(ss => String(ss.id) === String(selectedSubSektorId.value));
+      if (!newId || !selectedSubSektorId.value || !subSektorList.value.length)
+        return;
+      const matched = subSektorList.value.find(
+        (ss) => String(ss.id) === String(selectedSubSektorId.value),
+      );
       const parentId = matched ? getSubSektorParentId(matched) : undefined;
       if (parentId === undefined || String(parentId) !== String(newId)) {
         selectedSubSektorId.value = "";
@@ -159,7 +201,10 @@ export default {
         console.error("Gagal memuat sektor/sub_sektor:", e);
         sektorList.value = [];
         subSektorList.value = [];
-        showNotification("Data sektor tidak dapat dimuat. Pastikan backend endpoint /api/sektor dan /api/sub_sektor tersedia.", "error");
+        showNotification(
+          "Data sektor tidak dapat dimuat. Pastikan backend endpoint /api/sektor dan /api/sub_sektor tersedia.",
+          "error",
+        );
       } finally {
         loadingSubSektors.value = false;
       }
@@ -168,12 +213,71 @@ export default {
     // ? Helper: Dapatkan nama sektor induk dari nama sub sektor
     const getSektorFromSubSektor = (subSektorName: string): string => {
       if (!subSektorName || !subSektorList.value.length) return "-";
-      const matched = subSektorList.value.find(ss => getSubSektorName(ss) === subSektorName);
+      const matched = subSektorList.value.find(
+        (ss) => getSubSektorName(ss) === subSektorName,
+      );
       if (!matched) return "-";
       const parentId = getSubSektorParentId(matched);
       if (parentId === undefined) return "-";
-      const parentSektor = sektorList.value.find(s => String(s.id) === String(parentId));
+      const parentSektor = sektorList.value.find(
+        (s) => String(s.id) === String(parentId),
+      );
       return parentSektor ? getSektorName(parentSektor) : "-";
+    };
+
+    const handleSektorChange = () => {
+      if (selectedSektorId.value === "ADD_NEW") {
+        selectedSektorId.value = "";
+        isAddingNewSektor.value = true;
+      }
+    };
+
+    const handleSubSektorChange = () => {
+      if (selectedSubSektorId.value === "ADD_NEW") {
+        selectedSubSektorId.value = "";
+        isAddingNewSubSektor.value = true;
+      }
+    };
+
+    const submitNewSektor = async () => {
+      if (!newSektorName.value.trim()) return;
+      isSavingNewOption.value = true;
+      try {
+        const result = await sektorService.create({ nama_sektor: newSektorName.value });
+        await loadAllSubSektors();
+        if (result && result.id) {
+          selectedSektorId.value = result.id;
+          isAddingNewSektor.value = false;
+          newSektorName.value = "";
+          showNotification("Sektor baru berhasil ditambahkan", "success");
+        }
+      } catch (error) {
+        showNotification("Gagal menambahkan sektor baru", "error");
+      } finally {
+        isSavingNewOption.value = false;
+      }
+    };
+
+    const submitNewSubSektor = async () => {
+      if (!newSubSektorName.value.trim() || !selectedSektorId.value) return;
+      isSavingNewOption.value = true;
+      try {
+        const result = await subSektorService.create({
+          nama_sub_sektor: newSubSektorName.value,
+          sektor_id: selectedSektorId.value,
+        });
+        await loadAllSubSektors();
+        if (result && result.id) {
+          selectedSubSektorId.value = result.id;
+          isAddingNewSubSektor.value = false;
+          newSubSektorName.value = "";
+          showNotification("Sub Sektor baru berhasil ditambahkan", "success");
+        }
+      } catch (error) {
+        showNotification("Gagal menambahkan sub sektor baru", "error");
+      } finally {
+        isSavingNewOption.value = false;
+      }
     };
 
     const headers = [
@@ -192,7 +296,7 @@ export default {
         await usersStore.initialize();
         usersData.value = usersStore.allUsers;
       } catch (error) {
-        console.error('Failed to load users:', error);
+        console.error("Failed to load users:", error);
         usersData.value = [];
       }
     };
@@ -220,16 +324,18 @@ export default {
       const csirt = getRelatedCsirt(pid);
       const cid = csirt?.id ? String(csirt.id) : "";
 
-      const fromStore = csirtStore.seList.filter((item: any) =>
-        (cid && (
-          String(item.id_csirt) === cid ||
-          String(item.csirt_id) === cid ||
-          String(item.csirt?.id) === cid
-        )) ||
-        String(item.id_perusahaan) === pid
+      const fromStore = csirtStore.seList.filter(
+        (item: any) =>
+          (cid &&
+            (String(item.id_csirt) === cid ||
+              String(item.csirt_id) === cid ||
+              String(item.csirt?.id) === cid)) ||
+          String(item.id_perusahaan) === pid,
       ).length;
 
-      const fromCsirt = Array.isArray((csirt as any)?.se_csirt) ? (csirt as any).se_csirt.length : 0;
+      const fromCsirt = Array.isArray((csirt as any)?.se_csirt)
+        ? (csirt as any).se_csirt.length
+        : 0;
       return Math.max(fromStore, fromCsirt);
     };
 
@@ -237,9 +343,8 @@ export default {
       return resikoStore.progressMap[slug]?.status === "COMPLETED";
     };
 
-    const getStakeholderKonversiRecord = (item: Stakeholder) => (
-      konversiStore.getByPerusahaanId(item.id)
-    );
+    const getStakeholderKonversiRecord = (item: Stakeholder) =>
+      konversiStore.getByPerusahaanId(item.id);
 
     const getStakeholderConversion = (item: Stakeholder) => {
       const record = getStakeholderKonversiRecord(item);
@@ -250,9 +355,8 @@ export default {
       };
     };
 
-    const getStakeholderConversionPoints = (item: Stakeholder) => (
-      getKonversiDisplay(getStakeholderKonversiRecord(item)).pointMetrics
-    );
+    const getStakeholderConversionPoints = (item: Stakeholder) =>
+      getKonversiDisplay(getStakeholderKonversiRecord(item)).pointMetrics;
 
     const getMonitoringStatusLabel = (item: Stakeholder): string => {
       const progress = getStakeholderConversion(item);
@@ -275,8 +379,12 @@ export default {
       const itemDate = new Date(item.created_at);
       if (Number.isNaN(itemDate.getTime())) return true;
 
-      const start = dateRangeStart.value ? new Date(dateRangeStart.value) : null;
-      const end = dateRangeEnd.value ? new Date(`${dateRangeEnd.value}T23:59:59`) : null;
+      const start = dateRangeStart.value
+        ? new Date(dateRangeStart.value)
+        : null;
+      const end = dateRangeEnd.value
+        ? new Date(`${dateRangeEnd.value}T23:59:59`)
+        : null;
 
       if (start && itemDate < start) return false;
       if (end && itemDate > end) return false;
@@ -287,31 +395,40 @@ export default {
       let data = stakeholdersStore.allStakeholders;
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
-        data = data.filter(
-          (i) => i.nama_perusahaan.toLowerCase().includes(q)
-        );
+        data = data.filter((i) => i.nama_perusahaan.toLowerCase().includes(q));
       } else {
         // Filter by user status
-        if (userFilter.value === 'hasUser') {
-          data = data.filter(i => hasUser(i.id));
-        } else if (userFilter.value === 'noUser') {
-          data = data.filter(i => !hasUser(i.id));
+        if (userFilter.value === "hasUser") {
+          data = data.filter((i) => hasUser(i.id));
+        } else if (userFilter.value === "noUser") {
+          data = data.filter((i) => !hasUser(i.id));
         }
 
         // Filter by sektor (parent id)
         if (sektorFilter.value !== "") {
-          data = data.filter(i => {
-            const itemSubSektor = i.sub_sektor || subSektorList.value.find(ss => getSubSektorName(ss) === i.sektor);
+          data = data.filter((i) => {
+            const itemSubSektor =
+              i.sub_sektor ||
+              subSektorList.value.find(
+                (ss) => getSubSektorName(ss) === i.sektor,
+              );
             if (!itemSubSektor) return false;
             const parentId = getSubSektorParentId(itemSubSektor);
-            return parentId !== undefined && String(parentId) === String(sektorFilter.value);
+            return (
+              parentId !== undefined &&
+              String(parentId) === String(sektorFilter.value)
+            );
           });
         }
-        
+
         // Filter by sub-sektor
         if (subSektorFilter.value !== "") {
-          data = data.filter(i => {
-            const itemSubSektor = i.sub_sektor || subSektorList.value.find(ss => getSubSektorName(ss) === i.sektor);
+          data = data.filter((i) => {
+            const itemSubSektor =
+              i.sub_sektor ||
+              subSektorList.value.find(
+                (ss) => getSubSektorName(ss) === i.sektor,
+              );
             if (!itemSubSektor) return false;
             return String(itemSubSektor.id) === String(subSektorFilter.value);
           });
@@ -328,7 +445,11 @@ export default {
           aVal = getItemSubSektorName(a);
           bVal = getItemSubSektorName(b);
         } else if (sortField.value === "status") {
-          return (getStakeholderConversion(a).completed - getStakeholderConversion(b).completed) * mod;
+          return (
+            (getStakeholderConversion(a).completed -
+              getStakeholderConversion(b).completed) *
+            mod
+          );
         } else {
           aVal = (a[sortField.value as keyof Stakeholder] as string) || "";
           bVal = (b[sortField.value as keyof Stakeholder] as string) || "";
@@ -337,7 +458,8 @@ export default {
       });
     });
 
-    const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
+    const { totalPages, displayData, paginationInfo } =
+      makePagination(filteredData);
 
     // Form validation
     const validateForm = (): boolean => {
@@ -427,7 +549,10 @@ export default {
         showCreateModal.value = false;
         showNotification("Stakeholder berhasil ditambahkan!", "success");
       } else {
-        showNotification("Gagal menambahkan stakeholder: " + result.error, "error");
+        showNotification(
+          "Gagal menambahkan stakeholder: " + result.error,
+          "error",
+        );
       }
     };
 
@@ -443,12 +568,20 @@ export default {
       // Load sektor & sub sektor
       await loadAllSubSektors();
 
-      // ? Auto-detect sub sektor ID: utamakan dari sub_sektor.id (nested), fallback nama
+      // ? Auto-detect sub sektor & parent sektor
       if (item.sub_sektor?.id) {
         selectedSubSektorId.value = item.sub_sektor.id;
+        const pid = getSubSektorParentId(item.sub_sektor);
+        if (pid) selectedSektorId.value = pid;
       } else if (item.sektor) {
-        const matched = subSektorList.value.find(ss => getSubSektorName(ss) === item.sektor);
-        if (matched) selectedSubSektorId.value = matched.id;
+        const matched = subSektorList.value.find(
+          (ss) => getSubSektorName(ss) === item.sektor,
+        );
+        if (matched) {
+          selectedSubSektorId.value = matched.id;
+          const pid = getSubSektorParentId(matched);
+          if (pid) selectedSektorId.value = pid;
+        }
       }
 
       showEditModal.value = true;
@@ -467,13 +600,19 @@ export default {
         photo: photoFile.value,
       };
 
-      const result = await stakeholdersStore.updateStakeholderById(currentEditItem.value.id, payload);
+      const result = await stakeholdersStore.updateStakeholderById(
+        currentEditItem.value.id,
+        payload,
+      );
 
       if (result.success) {
         showEditModal.value = false;
         showNotification("Stakeholder berhasil diperbarui!", "success");
       } else {
-        showNotification("Gagal memperbarui stakeholder: " + result.error, "error");
+        showNotification(
+          "Gagal memperbarui stakeholder: " + result.error,
+          "error",
+        );
       }
     };
 
@@ -483,77 +622,125 @@ export default {
       showDeleteModal.value = true;
     };
 
-    const deleteStakeholderWithCascade = async (stakeholderId: string | number) => {
-      try {
-        const allCsirts = await csirtService.getMembers();
-        const companyCsirts = allCsirts.filter(
-          c => String(c.perusahaan?.id) === String(stakeholderId) ||
-               String(c.id_perusahaan) === String(stakeholderId)
-        );
-        for (const csirt of companyCsirts) {
-          await csirtStore.deleteCsirtById(csirt.id);
-        }
-      } catch (err) {
-        console.warn('Cascade delete CSIRT failed:', err);
-        showNotification('Gagal menghapus data CSIRT terkait: ' + (err as any)?.message, 'error');
-        return false;
-      }
-
-      const result = await stakeholdersStore.deleteStakeholderById(stakeholderId);
-      if (!result.success) {
-        showNotification("Gagal menghapus stakeholder: " + result.error, "error");
-        return false;
-      }
-
-      await csirtStore.refresh();
-      selectedStakeholderIds.value = selectedStakeholderIds.value.filter(id => String(id) !== String(stakeholderId));
-      return true;
-    };
 
     const deleteStakeholder = async () => {
       if (!currentDeleteItem.value) return;
 
       const stakeholderId = currentDeleteItem.value.id;
 
-      // Cascade delete: SDMs → SEs → CSIRTs → perusahaan
-      // Fetch fresh from API to avoid stale store data; filter by perusahaan UUID.
+      // Cascade delete: IKAS → PICs → Aktivitas → Users → CSIRTs → perusahaan
+      // We try to clean up everything before deleting the parent perusahaan record
       try {
-        const allCsirts = await csirtService.getMembers();
-        const companyCsirts = allCsirts.filter(
-          c => String(c.perusahaan?.id) === String(stakeholderId) ||
-               String(c.id_perusahaan)  === String(stakeholderId)
-        );
-        for (const csirt of companyCsirts) {
-          await csirtStore.deleteCsirtById(csirt.id);
+        // 1. Delete Related IKAS (Primary FK blocker)
+        try {
+          // Use ikasStore.ikasRawRecords for local filtering to be safe
+          const stakeholderIkas = ikasStore.ikasRawRecords.filter((rec) => {
+            const compId =
+              rec.id_perusahaan || rec.perusahaan_id || rec.perusahaan?.id;
+            return String(compId) === String(stakeholderId);
+          });
+
+          for (const rec of stakeholderIkas) {
+            const recId = rec.id || rec.ID || rec.ikas_id;
+            if (recId) await ikasStore.deleteFromBackend(recId);
+          }
+        } catch (ikasErr) {
+          console.warn("Cascade delete IKAS failed:", ikasErr);
+        }
+
+        // 2. Delete Related PICs (SDM)
+        try {
+          // picService.getByPerusahaan already has internal safety filter
+          const pics = await picService.getByPerusahaan(stakeholderId);
+          for (const p of pics) {
+            await picService.delete(p.id);
+          }
+        } catch (picErr) {
+          console.warn("Cascade delete PIC failed:", picErr);
+        }
+
+        // 3. Delete Related Aktivitas
+        try {
+          const actResponse = await aktivitasService.getByPerusahaan(
+            stakeholderId,
+          );
+          if (actResponse && Array.isArray(actResponse.data)) {
+            // Add safety filter: only delete if perusahaan_id matches
+            const companyActs = actResponse.data.filter(
+              (act) => String(act.perusahaan_id) === String(stakeholderId),
+            );
+            for (const act of companyActs) {
+              await aktivitasService.delete(act.id);
+            }
+          }
+        } catch (actErr) {
+          console.warn("Cascade delete Aktivitas failed:", actErr);
+        }
+
+        // 4. Delete Related Users
+        try {
+          const allUsers = await usersService.getAll();
+          const companyUsers = allUsers.filter(
+            (u) => String(u.id_perusahaan) === String(stakeholderId),
+          );
+          for (const u of companyUsers) {
+            await usersService.delete(u.id);
+          }
+        } catch (userErr) {
+          console.warn("Cascade delete Users failed:", userErr);
+        }
+
+        // 5. Delete Related CSIRTs
+        try {
+          const allCsirts = await csirtService.getMembers();
+          const companyCsirts = allCsirts.filter(
+            (c) =>
+              String(c.perusahaan?.id) === String(stakeholderId) ||
+              String(c.id_perusahaan) === String(stakeholderId),
+          );
+          for (const csirt of companyCsirts) {
+            await csirtStore.deleteCsirtById(csirt.id);
+          }
+        } catch (csirtErr) {
+          console.warn("Cascade delete CSIRT failed:", csirtErr);
         }
       } catch (err) {
-        console.warn('Cascade delete CSIRT failed:', err);
-        showNotification('Gagal menghapus data CSIRT terkait: ' + (err as any)?.message, 'error');
-        return;
+        console.warn("General cascade cleanup warning:", err);
       }
 
-      const result = await stakeholdersStore.deleteStakeholderById(stakeholderId);
+      const result = await stakeholdersStore.deleteStakeholderById(
+        stakeholderId,
+      );
       if (result.success) {
+        // Refresh relevant stores
         await csirtStore.refresh();
+        await usersStore.refresh();
+
         showDeleteModal.value = false;
         showNotification("Stakeholder berhasil dihapus!", "success");
       } else {
-        showNotification("Gagal menghapus stakeholder: " + result.error, "error");
+        showNotification(
+          "Gagal menghapus stakeholder: " + result.error,
+          "error",
+        );
       }
     };
 
     // Reset page to 1 when any filter changes
-    watch([sektorFilter, subSektorFilter, userFilter, dateRangeStart, dateRangeEnd], () => {
-      currentPage.value = 1;
-      selectedStakeholderIds.value = [];
-    });
+    watch(
+      [sektorFilter, subSektorFilter, userFilter, dateRangeStart, dateRangeEnd],
+      () => {
+        currentPage.value = 1;
+        selectedStakeholderIds.value = [];
+      },
+    );
 
     // Scroll to top of table when page changes
     watch(currentPage, () => {
       nextTick(() => {
-        const card = document.querySelector('.stakeholder-table-wrap');
+        const card = document.querySelector(".stakeholder-table-wrap");
         if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          card.scrollIntoView({ behavior: "smooth", block: "start" });
         }
       });
     });
@@ -569,7 +756,10 @@ export default {
       await csirtStore.initialize();
       // If CSIRTs exist but SDM/SE lists are empty (e.g., global endpoint failed on prior load),
       // force a refresh so hasCompleteCsirt reflects the actual backend state.
-      if (csirtStore.csirts.length > 0 && (csirtStore.sdmList.length === 0 || csirtStore.seList.length === 0)) {
+      if (
+        csirtStore.csirts.length > 0 &&
+        (csirtStore.sdmList.length === 0 || csirtStore.seList.length === 0)
+      ) {
         await csirtStore.refresh();
       }
     });
@@ -585,11 +775,16 @@ export default {
 
     const focusInput = (field: string) => {
       setTimeout(() => {
-        if (field === 'nama_perusahaan' && input_nama_perusahaan.value) input_nama_perusahaan.value.focus();
-        else if (field === 'email' && input_email.value) input_email.value.focus();
-        else if (field === 'telepon' && input_telepon.value) input_telepon.value.focus();
-        else if (field === 'website' && input_website.value) input_website.value.focus();
-        else if (field === 'alamat' && input_alamat.value) input_alamat.value.focus();
+        if (field === "nama_perusahaan" && input_nama_perusahaan.value)
+          input_nama_perusahaan.value.focus();
+        else if (field === "email" && input_email.value)
+          input_email.value.focus();
+        else if (field === "telepon" && input_telepon.value)
+          input_telepon.value.focus();
+        else if (field === "website" && input_website.value)
+          input_website.value.focus();
+        else if (field === "alamat" && input_alamat.value)
+          input_alamat.value.focus();
       }, 50);
     };
 
@@ -611,7 +806,7 @@ export default {
         if (!ALLOWED_FORMATS.includes(file.type)) {
           showNotification(
             `Format file tidak didukung. Gunakan ${ALLOWED_EXTENSIONS}.`,
-            "error"
+            "error",
           );
           target.value = "";
           return;
@@ -620,7 +815,7 @@ export default {
         if (file.size > MAX_FILE_SIZE_BYTES) {
           showNotification(
             `Ukuran file terlalu besar. Maksimal ${MAX_FILE_SIZE_MB}MB.`,
-            "error"
+            "error",
           );
           target.value = "";
           return;
@@ -649,71 +844,124 @@ export default {
 
     // Check if stakeholder has a user associated with it
     const hasUser = (stakeholderId: string | number): boolean => {
-      return usersData.value.some(u => String(u.id_perusahaan) === String(stakeholderId));
+      return usersData.value.some(
+        (u) => String(u.id_perusahaan) === String(stakeholderId),
+      );
     };
 
-    const countStakeholderWithUser = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => hasUser(s.id)).length
+    const countStakeholderWithUser = computed(
+      () => stakeholdersStore.stakeholders.filter((s) => hasUser(s.id)).length,
     );
 
-    const countStakeholderNoUser = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => !hasUser(s.id)).length
+    const countStakeholderNoUser = computed(
+      () => stakeholdersStore.stakeholders.filter((s) => !hasUser(s.id)).length,
     );
 
-    const getStakeholderPointValue = (item: Stakeholder, key: string): number => {
-      const point = getStakeholderConversionPoints(item).find(metric => metric.key === key);
+    const getStakeholderPointValue = (
+      item: Stakeholder,
+      key: string,
+    ): number => {
+      const point = getStakeholderConversionPoints(item).find(
+        (metric) => metric.key === key,
+      );
       return point?.value || 0;
     };
 
-    const countIkasOnly = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') > 0 && getStakeholderPointValue(s, 'poin_csirt') <= 0).length
+    const countIkasOnly = computed(
+      () =>
+        stakeholdersStore.stakeholders.filter(
+          (s) =>
+            getStakeholderPointValue(s, "poin_ikas") > 0 &&
+            getStakeholderPointValue(s, "poin_csirt") <= 0,
+        ).length,
     );
-    const countCsirtOnly = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') <= 0 && getStakeholderPointValue(s, 'poin_csirt') > 0).length
+    const countCsirtOnly = computed(
+      () =>
+        stakeholdersStore.stakeholders.filter(
+          (s) =>
+            getStakeholderPointValue(s, "poin_ikas") <= 0 &&
+            getStakeholderPointValue(s, "poin_csirt") > 0,
+        ).length,
     );
-    const countBoth = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') > 0 && getStakeholderPointValue(s, 'poin_csirt') > 0).length
+    const countBoth = computed(
+      () =>
+        stakeholdersStore.stakeholders.filter(
+          (s) =>
+            getStakeholderPointValue(s, "poin_ikas") > 0 &&
+            getStakeholderPointValue(s, "poin_csirt") > 0,
+        ).length,
     );
-    const countIkas = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_ikas') > 0).length
+    const countIkas = computed(
+      () =>
+        stakeholdersStore.stakeholders.filter(
+          (s) => getStakeholderPointValue(s, "poin_ikas") > 0,
+        ).length,
     );
-    const countCsirt = computed(() =>
-      stakeholdersStore.stakeholders.filter(s => getStakeholderPointValue(s, 'poin_csirt') > 0).length
+    const countCsirt = computed(
+      () =>
+        stakeholdersStore.stakeholders.filter(
+          (s) => getStakeholderPointValue(s, "poin_csirt") > 0,
+        ).length,
     );
 
     const totalStakeholders = computed(() => filteredData.value.length);
-    const activeSubSectors = computed(() =>
-      new Set(filteredData.value.map(item => getItemSubSektorName(item)).filter(Boolean)).size
+    const activeSubSectors = computed(
+      () =>
+        new Set(
+          filteredData.value
+            .map((item) => getItemSubSektorName(item))
+            .filter(Boolean),
+        ).size,
     );
-    const filteredIkasCount = computed(() =>
-      filteredData.value.filter(item => getStakeholderPointValue(item, 'poin_ikas') > 0).length
+    const filteredIkasCount = computed(
+      () =>
+        filteredData.value.filter(
+          (item) => getStakeholderPointValue(item, "poin_ikas") > 0,
+        ).length,
     );
-    const filteredCsirtCount = computed(() =>
-      filteredData.value.filter(item => getStakeholderPointValue(item, 'poin_csirt') > 0).length
+    const filteredCsirtCount = computed(
+      () =>
+        filteredData.value.filter(
+          (item) => getStakeholderPointValue(item, "poin_csirt") > 0,
+        ).length,
     );
     const coveredCount = computed(() => {
       if (!filteredData.value.length) return 0;
-      return filteredData.value.filter(item => getStakeholderConversion(item).isComplete).length;
+      return filteredData.value.filter(
+        (item) => getStakeholderConversion(item).isComplete,
+      ).length;
     });
     const averageConversion = computed(() => {
       if (!filteredData.value.length) return 0;
-      const total = filteredData.value.reduce((sum, item) => sum + getStakeholderConversion(item).percent, 0);
+      const total = filteredData.value.reduce(
+        (sum, item) => sum + getStakeholderConversion(item).percent,
+        0,
+      );
       return Math.round(total / filteredData.value.length);
     });
-    const completeStatusCount = computed(() =>
-      filteredData.value.filter(item => getStakeholderConversion(item).percent === 100).length
+    const completeStatusCount = computed(
+      () =>
+        filteredData.value.filter(
+          (item) => getStakeholderConversion(item).percent === 100,
+        ).length,
     );
-    const inProgressStatusCount = computed(() =>
-      filteredData.value.filter(item => {
-        const percent = getStakeholderConversion(item).percent;
-        return percent > 0 && percent < 100;
-      }).length
+    const inProgressStatusCount = computed(
+      () =>
+        filteredData.value.filter((item) => {
+          const percent = getStakeholderConversion(item).percent;
+          return percent > 0 && percent < 100;
+        }).length,
     );
     const visibleStart = computed(() =>
-      filteredData.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0
+      filteredData.value.length
+        ? (currentPage.value - 1) * itemsPerPage.value + 1
+        : 0,
     );
     const visibleEnd = computed(() =>
-      Math.min(currentPage.value * itemsPerPage.value, filteredData.value.length)
+      Math.min(
+        currentPage.value * itemsPerPage.value,
+        filteredData.value.length,
+      ),
     );
 
     const isSelected = (id: string | number): boolean =>
@@ -722,26 +970,34 @@ export default {
     const toggleStakeholderSelection = (id: string | number) => {
       const normalizedId = String(id);
       if (isSelected(normalizedId)) {
-        selectedStakeholderIds.value = selectedStakeholderIds.value.filter(item => item !== normalizedId);
+        selectedStakeholderIds.value = selectedStakeholderIds.value.filter(
+          (item) => item !== normalizedId,
+        );
       } else {
-        selectedStakeholderIds.value = [...selectedStakeholderIds.value, normalizedId];
+        selectedStakeholderIds.value = [
+          ...selectedStakeholderIds.value,
+          normalizedId,
+        ];
       }
     };
 
-    const allVisibleSelected = computed(() =>
-      !!displayData.value.length && displayData.value.every(item => isSelected(item.id))
+    const allVisibleSelected = computed(
+      () =>
+        !!displayData.value.length &&
+        displayData.value.every((item) => isSelected(item.id)),
     );
 
     const toggleSelectAllVisible = () => {
       if (allVisibleSelected.value) {
         selectedStakeholderIds.value = selectedStakeholderIds.value.filter(
-          id => !displayData.value.some(item => String(item.id) === String(id))
+          (id) =>
+            !displayData.value.some((item) => String(item.id) === String(id)),
         );
         return;
       }
 
       const next = new Set(selectedStakeholderIds.value);
-      displayData.value.forEach(item => next.add(String(item.id)));
+      displayData.value.forEach((item) => next.add(String(item.id)));
       selectedStakeholderIds.value = [...next];
     };
 
@@ -754,9 +1010,14 @@ export default {
 
     const toggleExpandedRow = (slug: string) => {
       if (isExpanded(slug)) {
-        expandedStakeholderSlugs.value = expandedStakeholderSlugs.value.filter(item => item !== slug);
+        expandedStakeholderSlugs.value = expandedStakeholderSlugs.value.filter(
+          (item) => item !== slug,
+        );
       } else {
-        expandedStakeholderSlugs.value = [...expandedStakeholderSlugs.value, slug];
+        expandedStakeholderSlugs.value = [
+          ...expandedStakeholderSlugs.value,
+          slug,
+        ];
       }
     };
 
@@ -805,7 +1066,8 @@ export default {
       if (end === todayString && start) {
         const startDate = new Date(start);
         if (!Number.isNaN(startDate.getTime())) {
-          const diffDays = Math.round((today.getTime() - startDate.getTime()) / 86400000) + 1;
+          const diffDays =
+            Math.round((today.getTime() - startDate.getTime()) / 86400000) + 1;
           if (diffDays === 7) {
             datePreset.value = "7d";
             return;
@@ -819,6 +1081,34 @@ export default {
 
       datePreset.value = "custom";
     });
+
+    const getIkasScoreThisYear = (item: Stakeholder): number => {
+      const currentYear = new Date().getFullYear();
+      const records = ikasStore.ikasRawRecords;
+      const latest = ikasStore.findLatestIkasRecord(
+        records,
+        String(item.id),
+        String(currentYear),
+      );
+      if (!latest) return 0;
+      return Number(latest.nilai_kematangan ?? latest.total_rata_rata ?? 0);
+    };
+
+    const getKseScore = (item: Stakeholder): number => {
+      const data = kseStore.getKseData(item.slug);
+      return data.totalBobot || 0;
+    };
+
+    const getPointDisplayValue = (
+      item: Stakeholder,
+      point: any,
+    ): string | number => {
+      if (point.key === "poin_ikas") {
+        const score = getIkasScoreThisYear(item);
+        return score > 0 ? score.toFixed(2) : 0;
+      }
+      return point.value;
+    };
 
     return {
       allVisibleSelected,
@@ -841,7 +1131,8 @@ export default {
       sektorFilter,
       subSektorFilter,
       hasUser,
-      isAdmin, isFullAdmin,
+      isAdmin,
+      isFullAdmin,
       stakeholdersStore,
       csirtStore,
       loading,
@@ -857,6 +1148,15 @@ export default {
       displayData,
       paginationInfo,
       showCreateModal,
+      isAddingNewSektor,
+      newSektorName,
+      isAddingNewSubSektor,
+      newSubSektorName,
+      isSavingNewOption,
+      handleSektorChange,
+      handleSubSektorChange,
+      submitNewSektor,
+      submitNewSubSektor,
       showEditModal,
       showDeleteModal,
       currentEditItem,
@@ -872,6 +1172,82 @@ export default {
       updateStakeholder,
       openDeleteModal,
       deleteStakeholder,
+      getPointDisplayValue,
+      getIkasScoreThisYear,
+      getKseScore,
+      getSektorBadgeStyle: (subSektorName: string) => {
+        if (!subSektorName || subSektorName === "-") {
+          return {
+            "--sector-bg-light": "#f1f5f9",
+            "--sector-fg-light": "#475569",
+            "--sector-border-light": "#cbd5e1",
+            "--sector-bg-dark": "rgba(148, 163, 184, 0.12)",
+            "--sector-fg-dark": "#cbd5e1",
+            "--sector-border-dark": "rgba(148, 163, 184, 0.2)",
+          };
+        }
+
+        // --- HASH STABIL ---
+        let hash = 0;
+        for (let i = 0; i < subSektorName.length; i++) {
+          hash = subSektorName.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const base = Math.abs(hash);
+
+        // --- RANGE HUE AMAN (NO UNGU / PINK) ---
+        const MIN_HUE = 40; // kuning
+        const MAX_HUE = 220; // biru
+        const RANGE = MAX_HUE - MIN_HUE;
+
+        // pakai golden angle tapi dibatasi range
+        const goldenAngle = 137.508;
+        const hue = MIN_HUE + ((base * goldenAngle) % RANGE);
+
+        // --- VARIASI SATURATION ---
+        const saturationVariants = [50, 60, 70];
+        const saturation = saturationVariants[base % saturationVariants.length];
+
+        // --- VARIASI LIGHTNESS (biar nggak mirip) ---
+        const lightnessVariants = [82, 86, 90];
+        const lightness =
+          lightnessVariants[Math.floor(base / 3) % lightnessVariants.length];
+
+        return {
+          "--sector-bg-light": `hsl(${hue}, ${saturation}%, ${lightness}%)`,
+          "--sector-fg-light": `hsl(${hue}, ${Math.min(
+            saturation + 10,
+            80,
+          )}%, 22%)`,
+          "--sector-border-light": `hsl(${hue}, ${saturation - 10}%, ${
+            lightness - 12
+          }%)`,
+          "--sector-bg-dark": `hsla(${hue}, ${saturation}%, 18%, 0.2)`,
+          "--sector-fg-dark": `hsl(${hue}, 78%, 85%)`,
+          "--sector-border-dark": `hsla(${hue}, ${
+            saturation - 10
+          }%, 48%, 0.32)`,
+        };
+      },
+      getAvatarClass: (letter: string) => {
+        const variants = [
+          "avatar-blue",
+          "avatar-indigo",
+          "avatar-violet",
+          "avatar-purple",
+          "avatar-teal",
+          "avatar-cyan",
+          "avatar-green",
+          "avatar-amber",
+          "avatar-orange",
+          "avatar-red",
+        ];
+        const idx =
+          (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) %
+          variants.length;
+        return variants[idx];
+      },
+      hasIkas,
+      hasCompleteCsirt,
       toggleSort,
       clearSearch,
       fileInput,
@@ -924,67 +1300,9 @@ export default {
       isRiskSurveyCompleted,
       getMonitoringStatusLabel,
       getProgressClass,
-
-getSektorBadgeStyle: (subSektorName: string) => {
-  if (!subSektorName || subSektorName === "-") {
-    return {
-      "--sector-bg-light": "#f1f5f9",
-      "--sector-fg-light": "#475569",
-      "--sector-border-light": "#cbd5e1",
-      "--sector-bg-dark": "rgba(148, 163, 184, 0.12)",
-      "--sector-fg-dark": "#cbd5e1",
-      "--sector-border-dark": "rgba(148, 163, 184, 0.2)",
-    };
-  }
-
-  // --- HASH STABIL ---
-  let hash = 0;
-  for (let i = 0; i < subSektorName.length; i++) {
-    hash = subSektorName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const base = Math.abs(hash);
-
-  // --- RANGE HUE AMAN (NO UNGU / PINK) ---
-  const MIN_HUE = 40;   // kuning
-  const MAX_HUE = 220;  // biru
-  const RANGE = MAX_HUE - MIN_HUE;
-
-  // pakai golden angle tapi dibatasi range
-  const goldenAngle = 137.508;
-  const hue = MIN_HUE + ((base * goldenAngle) % RANGE);
-
-  // --- VARIASI SATURATION ---
-  const saturationVariants = [50, 60, 70];
-  const saturation = saturationVariants[base % saturationVariants.length];
-
-  // --- VARIASI LIGHTNESS (biar nggak mirip) ---
-  const lightnessVariants = [82, 86, 90];
-  const lightness = lightnessVariants[(Math.floor(base / 3)) % lightnessVariants.length];
-
-  return {
-    "--sector-bg-light": `hsl(${hue}, ${saturation}%, ${lightness}%)`,
-    "--sector-fg-light": `hsl(${hue}, ${Math.min(saturation + 10, 80)}%, 22%)`,
-    "--sector-border-light": `hsl(${hue}, ${saturation - 10}%, ${lightness - 12}%)`,
-    "--sector-bg-dark": `hsla(${hue}, ${saturation}%, 18%, 0.2)`,
-    "--sector-fg-dark": `hsl(${hue}, 78%, 85%)`,
-    "--sector-border-dark": `hsla(${hue}, ${saturation - 10}%, 48%, 0.32)`,
-  };
-},
-      getAvatarClass: (letter: string) => {
-        const variants = [
-          'avatar-blue', 'avatar-indigo', 'avatar-violet', 'avatar-purple',
-          'avatar-teal', 'avatar-cyan', 'avatar-green', 'avatar-amber',
-          'avatar-orange', 'avatar-red'
-        ];
-        const idx = (letter.toUpperCase().charCodeAt(0) - 65 + variants.length) % variants.length;
-        return variants[idx];
-      },
-      hasIkas,
-      hasCompleteCsirt,
     };
   },
 };
-
 </script>
 
 <template>
@@ -993,12 +1311,24 @@ getSektorBadgeStyle: (subSektorName: string) => {
   <!-- Toast Notification -->
   <transition name="toast-slide">
     <div v-if="showToast" class="toast-wrapper position-fixed">
-      <div class="toast-modern" :class="toastType === 'success' ? 'toast-success' : 'toast-error'" role="alert">
+      <div
+        class="toast-modern"
+        :class="toastType === 'success' ? 'toast-success' : 'toast-error'"
+        role="alert"
+      >
         <div class="toast-icon-wrap">
-          <i :class="toastType === 'success' ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'"></i>
+          <i
+            :class="
+              toastType === 'success'
+                ? 'ri-checkbox-circle-fill'
+                : 'ri-error-warning-fill'
+            "
+          ></i>
         </div>
         <div class="toast-content">
-          <span class="toast-title">{{ toastType === 'success' ? 'Berhasil' : 'Gagal' }}</span>
+          <span class="toast-title">{{
+            toastType === "success" ? "Berhasil" : "Gagal"
+          }}</span>
           <span class="toast-msg">{{ toastMessage }}</span>
         </div>
       </div>
@@ -1007,14 +1337,28 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
   <div class="row">
     <div class="col-xl-12">
-      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header stakeholders-ikas-hero">
+      <div
+        class="card custom-card gradient-header-card stakeholders-shell-card"
+        style="overflow: visible !important"
+      >
+        <div
+          class="stakeholder-header stakeholders-premium-header stakeholders-ikas-hero"
+        >
           <div class="stakeholders-header-main">
             <div class="stakeholders-hero-copy1">
               <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboard <span>/</span> Data Stakeholder</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Data Stakeholder</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Monitoring data perusahaan, status IKAS, CSIRT, dan kelengkapan pengisian.</div>
+                <div class="stakeholders-inline-breadcrumb">
+                  Dashboard <span>/</span> Data Stakeholder
+                </div>
+                <div
+                  class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title"
+                >
+                  Data Stakeholder
+                </div>
+                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">
+                  Monitoring data perusahaan, status IKAS, CSIRT, dan
+                  kelengkapan pengisian.
+                </div>
               </div>
             </div>
             <div class="stakeholders-header-tools stakeholders-hero-tools">
@@ -1041,7 +1385,10 @@ getSektorBadgeStyle: (subSektorName: string) => {
           </div>
         </div>
 
-        <div class="card-body p-4 stakeholders-premium-body" style="overflow: visible !important;">
+        <div
+          class="card-body p-4 stakeholders-premium-body"
+          style="overflow: visible !important"
+        >
           <div v-if="loading" class="skeleton-loading p-4">
             <div class="skeleton-row" v-for="n in 5" :key="n">
               <div class="skel skel-no"></div>
@@ -1055,32 +1402,57 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
           <template v-else>
             <div class="stakeholders-summary-grid mb-4">
-              <div class="stakeholders-summary-card stakeholders-summary-card--indigo">
-                <div class="stakeholders-summary-icon"><i class="ri-building-line"></i></div>
+              <div
+                class="stakeholders-summary-card stakeholders-summary-card--indigo"
+              >
+                <div class="stakeholders-summary-icon">
+                  <i class="ri-building-line"></i>
+                </div>
                 <div>
-                  <div class="stakeholders-summary-value">{{ totalStakeholders }}</div>
-                  <div class="stakeholders-summary-label">Total Stakeholder</div>
+                  <div class="stakeholders-summary-value">
+                    {{ totalStakeholders }}
+                  </div>
+                  <div class="stakeholders-summary-label">
+                    Total Stakeholder
+                  </div>
                 </div>
               </div>
-              <div class="stakeholders-summary-card stakeholders-summary-card--cyan">
-                <div class="stakeholders-summary-icon"><i class="ri-layout-grid-line"></i></div>
+              <div
+                class="stakeholders-summary-card stakeholders-summary-card--cyan"
+              >
+                <div class="stakeholders-summary-icon">
+                  <i class="ri-layout-grid-line"></i>
+                </div>
                 <div>
-                  <div class="stakeholders-summary-value">{{ activeSubSectors }}</div>
+                  <div class="stakeholders-summary-value">
+                    {{ activeSubSectors }}
+                  </div>
                   <div class="stakeholders-summary-label">Sub Sektor Aktif</div>
                 </div>
               </div>
-              <div class="stakeholders-summary-card stakeholders-summary-card--emerald">
-                <div class="stakeholders-summary-icon"><i class="ri-file-chart-line"></i></div>
+              <div
+                class="stakeholders-summary-card stakeholders-summary-card--emerald"
+              >
+                <div class="stakeholders-summary-icon">
+                  <i class="ri-file-chart-line"></i>
+                </div>
                 <div>
-                  <div class="stakeholders-summary-value">{{ filteredIkasCount }}</div>
+                  <div class="stakeholders-summary-value">
+                    {{ filteredIkasCount }}
+                  </div>
                   <div class="stakeholders-summary-label">Jumlah IKAS</div>
                 </div>
               </div>
-              <div class="stakeholders-summary-card stakeholders-summary-card--amber">
-                <div class="stakeholders-summary-icon"><i class="ri-percent-line"></i></div>
+              <div
+                class="stakeholders-summary-card stakeholders-summary-card--amber"
+              >
+                <div class="stakeholders-summary-icon">
+                  <i class="ri-percent-line"></i>
+                </div>
                 <div>
                   <div class="stakeholders-summary-value">
-                    {{ averageConversion }}<span class="fs-15 text-muted fw-medium ms-1">%</span>
+                    {{ averageConversion
+                    }}<span class="fs-15 text-muted fw-medium ms-1">%</span>
                   </div>
                   <div class="stakeholders-summary-label">Rata-rata Status</div>
                 </div>
@@ -1089,7 +1461,9 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
             <div class="stakeholders-workbar mb-4">
               <div class="stakeholders-workbar-top">
-                <div class="search-container position-relative stakeholders-search">
+                <div
+                  class="search-container position-relative stakeholders-search"
+                >
                   <i class="ri-search-line card-search-icon"></i>
                   <input
                     v-model="searchQuery"
@@ -1097,7 +1471,12 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     class="form-control form-control-sm header-search-input"
                     placeholder="Cari nama perusahaan"
                   />
-                  <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Bersihkan pencarian">
+                  <button
+                    v-if="searchQuery"
+                    @click="clearSearch"
+                    class="clear-btn"
+                    title="Bersihkan pencarian"
+                  >
                     <i class="ri-close-circle-fill"></i>
                   </button>
                 </div>
@@ -1105,61 +1484,141 @@ getSektorBadgeStyle: (subSektorName: string) => {
                 <div class="stakeholders-workbar-filters">
                   <label class="stakeholders-filter-field">
                     <span><i class="ri-building-4-line"></i>Sektor</span>
-                    <select v-model="sektorFilter" class="form-select stakeholders-select-input">
+                    <select
+                      v-model="sektorFilter"
+                      class="form-select stakeholders-select-input"
+                    >
                       <option value="">Semua sektor</option>
-                      <option v-for="s in sektorList" :key="s.id" :value="s.id">{{ s.nama_sektor }}</option>
+                      <option v-for="s in sektorList" :key="s.id" :value="s.id">
+                        {{ s.nama_sektor }}
+                      </option>
                     </select>
                   </label>
                   <label class="stakeholders-filter-field">
                     <span><i class="ri-community-line"></i>Sub Sektor</span>
-                    <select v-model="subSektorFilter" class="form-select stakeholders-select-input">
+                    <select
+                      v-model="subSektorFilter"
+                      class="form-select stakeholders-select-input"
+                    >
                       <option value="">Semua sub sektor</option>
-                      <option v-for="s in availableSubSektorFilters" :key="s.id" :value="s.id">{{ s.nama_sub_sektor }}</option>
+                      <option
+                        v-for="s in availableSubSektorFilters"
+                        :key="s.id"
+                        :value="s.id"
+                      >
+                        {{ s.nama_sub_sektor }}
+                      </option>
                     </select>
                   </label>
                   <div class="dropdown stakeholders-filter-field">
                     <span><i class="ri-user-settings-line"></i>Akun</span>
-                    <button class="form-select stakeholders-select-input text-start" type="button" data-bs-toggle="dropdown">
+                    <button
+                      class="form-select stakeholders-select-input text-start"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                    >
                       {{
-                        userFilter === 'all'
-                          ? 'Semua stakeholder'
-                          : userFilter === 'hasUser'
-                          ? 'Sudah punya user'
-                          : 'Belum punya user'
+                        userFilter === "all"
+                          ? "Semua stakeholder"
+                          : userFilter === "hasUser"
+                          ? "Sudah punya user"
+                          : "Belum punya user"
                       }}
                     </button>
-                    <ul class="dropdown-menu shadow-sm stakeholders-toolbar-menu">
-                      <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">Semua ({{ filteredData.length }})</a></li>
-                      <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">Ada User ({{ countStakeholderWithUser }})</a></li>
-                      <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">Tanpa User ({{ countStakeholderNoUser }})</a></li>
+                    <ul
+                      class="dropdown-menu shadow-sm stakeholders-toolbar-menu"
+                    >
+                      <li>
+                        <a
+                          class="dropdown-item"
+                          href="#"
+                          @click.prevent="userFilter = 'all'"
+                          >Semua ({{ filteredData.length }})</a
+                        >
+                      </li>
+                      <li>
+                        <a
+                          class="dropdown-item"
+                          href="#"
+                          @click.prevent="userFilter = 'hasUser'"
+                          >Ada User ({{ countStakeholderWithUser }})</a
+                        >
+                      </li>
+                      <li>
+                        <a
+                          class="dropdown-item"
+                          href="#"
+                          @click.prevent="userFilter = 'noUser'"
+                          >Tanpa User ({{ countStakeholderNoUser }})</a
+                        >
+                      </li>
                     </ul>
                   </div>
                 </div>
               </div>
               <div class="stakeholders-workbar-bottom">
-                <div class="stakeholders-view-toggle" role="group" aria-label="Mode tampilan">
-                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'table' }" @click="viewMode = 'table'" title="Tampilan tabel">
+                <div
+                  class="stakeholders-view-toggle"
+                  role="group"
+                  aria-label="Mode tampilan"
+                >
+                  <button
+                    class="stakeholders-view-btn"
+                    :class="{ active: viewMode === 'table' }"
+                    @click="viewMode = 'table'"
+                    title="Tampilan tabel"
+                  >
                     <i class="ri-list-check-2"></i>
                     <span>Tabel</span>
                   </button>
-                  <button class="stakeholders-view-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'" title="Tampilan grid">
+                  <button
+                    class="stakeholders-view-btn"
+                    :class="{ active: viewMode === 'grid' }"
+                    @click="viewMode = 'grid'"
+                    title="Tampilan grid"
+                  >
                     <i class="ri-layout-grid-line"></i>
                     <span>Grid</span>
                   </button>
                 </div>
                 <div class="stakeholders-per-page">
-                  <span>{{ viewMode === 'grid' ? 'Kartu' : 'Baris' }}</span>
-                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
-                    <option v-for="n in (viewMode === 'grid' ? [6, 12, 18, 24, 60] : [5, 10, 15, 20, 25, 50])" :key="n" :value="n">{{ n }}</option>
+                  <span>{{ viewMode === "grid" ? "Kartu" : "Baris" }}</span>
+                  <select
+                    v-model="itemsPerPage"
+                    class="form-select form-select-sm entries-select"
+                  >
+                    <option
+                      v-for="n in viewMode === 'grid'
+                        ? [6, 12, 18, 24, 60]
+                        : [5, 10, 15, 20, 25, 50]"
+                      :key="n"
+                      :value="n"
+                    >
+                      {{ n }}
+                    </option>
                   </select>
                 </div>
 
-                <button class="stakeholders-filter-reset" type="button" @click="clearSearch(); resetDateRange(); sektorFilter = ''; subSektorFilter = ''; userFilter = 'all';">
+                <button
+                  class="stakeholders-filter-reset"
+                  type="button"
+                  @click="
+                    clearSearch();
+                    resetDateRange();
+                    sektorFilter = '';
+                    subSektorFilter = '';
+                    userFilter = 'all';
+                  "
+                >
                   <i class="ri-restart-line"></i>
                   <span>Reset</span>
                 </button>
 
-                <button v-if="isAdmin" @click="openCreateModal" class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2">
+                <button
+                  v-if="isAdmin"
+                  @click="openCreateModal"
+                  class="btn stakeholders-add-btn ms-auto d-flex align-items-center gap-2"
+                >
                   <i class="ri-add-circle-line fs-13"></i>
                   <span class="btn-text">Tambah Stakeholder</span>
                 </button>
@@ -1167,31 +1626,65 @@ getSektorBadgeStyle: (subSektorName: string) => {
             </div>
 
             <transition name="fade">
-              <div v-if="showAdvancedFilters" class="stakeholders-advanced-panel">
+              <div
+                v-if="showAdvancedFilters"
+                class="stakeholders-advanced-panel"
+              >
                 <div class="dropdown">
-                  <button class="btn btn-sm stakeholders-toolbar-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                  <button
+                    class="btn btn-sm stakeholders-toolbar-btn dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                  >
                     <i class="ri-user-settings-line me-1"></i>
                     {{
-                      userFilter === 'all'
-                        ? 'Semua stakeholder'
-                        : userFilter === 'hasUser'
-                        ? 'Sudah punya user'
-                        : 'Belum punya user'
+                      userFilter === "all"
+                        ? "Semua stakeholder"
+                        : userFilter === "hasUser"
+                        ? "Sudah punya user"
+                        : "Belum punya user"
                     }}
                   </button>
                   <ul class="dropdown-menu shadow-sm stakeholders-toolbar-menu">
-                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'all'">Semua ({{ filteredData.length }})</a></li>
-                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'hasUser'">Ada User ({{ countStakeholderWithUser }})</a></li>
-                    <li><a class="dropdown-item" href="#" @click.prevent="userFilter = 'noUser'">Tanpa User ({{ countStakeholderNoUser }})</a></li>
+                    <li>
+                      <a
+                        class="dropdown-item"
+                        href="#"
+                        @click.prevent="userFilter = 'all'"
+                        >Semua ({{ filteredData.length }})</a
+                      >
+                    </li>
+                    <li>
+                      <a
+                        class="dropdown-item"
+                        href="#"
+                        @click.prevent="userFilter = 'hasUser'"
+                        >Ada User ({{ countStakeholderWithUser }})</a
+                      >
+                    </li>
+                    <li>
+                      <a
+                        class="dropdown-item"
+                        href="#"
+                        @click.prevent="userFilter = 'noUser'"
+                        >Tanpa User ({{ countStakeholderNoUser }})</a
+                      >
+                    </li>
                   </ul>
                 </div>
                 <div class="stakeholders-filter-hint">
                   <i class="ri-information-line"></i>
-                  <span>{{ currentSektorNameFilter || 'Semua sektor' }} · {{ paginationInfo }}</span>
+                  <span
+                    >{{ currentSektorNameFilter || "Semua sektor" }} ·
+                    {{ paginationInfo }}</span
+                  >
                 </div>
               </div>
             </transition>
-            <div v-if="viewMode === 'table'" class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+            <div
+              v-if="viewMode === 'table'"
+              class="table-responsive stakeholder-table-wrap stakeholders-table-shell"
+            >
               <table class="table stakeholder-table mb-0">
                 <thead class="stakeholder-thead">
                   <tr>
@@ -1199,20 +1692,72 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     <th class="sortable fw-semibold th-name-wide">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-building-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('nama_perusahaan')" title="Urutkan perusahaan">Perusahaan</span>
+                        <span
+                          class="column-label"
+                          @click="toggleSort('nama_perusahaan')"
+                          title="Urutkan perusahaan"
+                          >Perusahaan</span
+                        >
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'nama_perusahaan' && sortOrder === 'asc' }" @click.stop="sortField = 'nama_perusahaan'; sortOrder = 'asc';"></i>
-                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'nama_perusahaan' && sortOrder === 'desc' }" @click.stop="sortField = 'nama_perusahaan'; sortOrder = 'desc';"></i>
+                          <i
+                            class="ri-arrow-up-s-line"
+                            :class="{
+                              active:
+                                sortField === 'nama_perusahaan' &&
+                                sortOrder === 'asc',
+                            }"
+                            @click.stop="
+                              sortField = 'nama_perusahaan';
+                              sortOrder = 'asc';
+                            "
+                          ></i>
+                          <i
+                            class="ri-arrow-down-s-line"
+                            :class="{
+                              active:
+                                sortField === 'nama_perusahaan' &&
+                                sortOrder === 'desc',
+                            }"
+                            @click.stop="
+                              sortField = 'nama_perusahaan';
+                              sortOrder = 'desc';
+                            "
+                          ></i>
                         </div>
                       </div>
                     </th>
                     <th class="sortable fw-semibold th-sektor">
                       <div class="d-flex align-items-center gap-2">
                         <i class="ri-pie-chart-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('sektor')" title="Urutkan sektor">Sektor &amp; Sub Sektor</span>
+                        <span
+                          class="column-label"
+                          @click="toggleSort('sektor')"
+                          title="Urutkan sektor"
+                          >Sektor &amp; Sub Sektor</span
+                        >
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'sektor' && sortOrder === 'asc' }" @click.stop="sortField = 'sektor'; sortOrder = 'asc';"></i>
-                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'sektor' && sortOrder === 'desc' }" @click.stop="sortField = 'sektor'; sortOrder = 'desc';"></i>
+                          <i
+                            class="ri-arrow-up-s-line"
+                            :class="{
+                              active:
+                                sortField === 'sektor' && sortOrder === 'asc',
+                            }"
+                            @click.stop="
+                              sortField = 'sektor';
+                              sortOrder = 'asc';
+                            "
+                          ></i>
+                          <i
+                            class="ri-arrow-down-s-line"
+                            :class="{
+                              active:
+                                sortField === 'sektor' && sortOrder === 'desc',
+                            }"
+                            @click.stop="
+                              sortField = 'sektor';
+                              sortOrder = 'desc';
+                            "
+                          ></i>
                         </div>
                       </div>
                     </th>
@@ -1223,12 +1768,39 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </div>
                     </th>
                     <th class="text-center sortable th-status">
-                      <div class="d-flex align-items-center justify-content-center gap-2">
+                      <div
+                        class="d-flex align-items-center justify-content-center gap-2"
+                      >
                         <i class="ri-bar-chart-grouped-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('status')" title="Urutkan status">Status</span>
+                        <span
+                          class="column-label"
+                          @click="toggleSort('status')"
+                          title="Urutkan status"
+                          >Status</span
+                        >
                         <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" :class="{ active: sortField === 'status' && sortOrder === 'asc' }" @click.stop="sortField = 'status'; sortOrder = 'asc';"></i>
-                          <i class="ri-arrow-down-s-line" :class="{ active: sortField === 'status' && sortOrder === 'desc' }" @click.stop="sortField = 'status'; sortOrder = 'desc';"></i>
+                          <i
+                            class="ri-arrow-up-s-line"
+                            :class="{
+                              active:
+                                sortField === 'status' && sortOrder === 'asc',
+                            }"
+                            @click.stop="
+                              sortField = 'status';
+                              sortOrder = 'asc';
+                            "
+                          ></i>
+                          <i
+                            class="ri-arrow-down-s-line"
+                            :class="{
+                              active:
+                                sortField === 'status' && sortOrder === 'desc',
+                            }"
+                            @click.stop="
+                              sortField = 'status';
+                              sortOrder = 'desc';
+                            "
+                          ></i>
                         </div>
                       </div>
                     </th>
@@ -1244,75 +1816,192 @@ getSektorBadgeStyle: (subSektorName: string) => {
                             <i class="ri-building-2-line"></i>
                           </div>
                         </div>
-                        <h6 class="fw-semibold mb-1 empty-state-title">Data stakeholder tidak ditemukan</h6>
-                        <p class="text-muted fs-13 mb-3">Coba ubah pencarian, filter sektor, atau rentang tanggal.</p>
-                        <button @click="clearSearch(); resetDateRange(); sektorFilter = ''; subSektorFilter = ''; userFilter = 'all';" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                        <h6 class="fw-semibold mb-1 empty-state-title">
+                          Data stakeholder tidak ditemukan
+                        </h6>
+                        <p class="text-muted fs-13 mb-3">
+                          Coba ubah pencarian, filter sektor, atau rentang
+                          tanggal.
+                        </p>
+                        <button
+                          @click="
+                            clearSearch();
+                            resetDateRange();
+                            sektorFilter = '';
+                            subSektorFilter = '';
+                            userFilter = 'all';
+                          "
+                          class="btn btn-sm btn-outline-primary rounded-pill px-4"
+                        >
                           <i class="ri-refresh-line me-1"></i>Reset filter
                         </button>
                       </div>
                     </td>
                   </tr>
                   <template v-for="(item, i) in displayData" :key="item.slug">
-                    <tr class="stakeholder-row" :class="{ 'stakeholder-row-expanded': isExpanded(item.slug) }">
-
+                    <tr
+                      class="stakeholder-row"
+                      :class="{
+                        'stakeholder-row-expanded': isExpanded(item.slug),
+                      }"
+                    >
                       <td class="align-middle text-center">
-                        <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
+                        <span class="row-number">{{
+                          (currentPage - 1) * itemsPerPage + i + 1
+                        }}</span>
                       </td>
                       <td class="align-middle">
                         <div class="stakeholder-company-cell">
-                          <button class="stakeholder-expand-btn" @click="toggleExpandedRow(item.slug)" :title="isExpanded(item.slug) ? 'Tutup detail' : 'Buka detail'">
-                            <i :class="isExpanded(item.slug) ? 'ri-arrow-down-s-line' : 'ri-arrow-right-s-line'"></i>
+                          <button
+                            class="stakeholder-expand-btn"
+                            @click="toggleExpandedRow(item.slug)"
+                            :title="
+                              isExpanded(item.slug)
+                                ? 'Tutup detail'
+                                : 'Buka detail'
+                            "
+                          >
+                            <i
+                              :class="
+                                isExpanded(item.slug)
+                                  ? 'ri-arrow-down-s-line'
+                                  : 'ri-arrow-right-s-line'
+                              "
+                            ></i>
                           </button>
-                          <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
-                            <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="company-avatar-img" />
-                            <span v-else class="company-avatar-letter">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                          <div
+                            class="company-avatar"
+                            :class="
+                              getAvatarClass(
+                                item.nama_perusahaan.charAt(0).toUpperCase(),
+                              )
+                            "
+                          >
+                            <img
+                              v-if="item.photo"
+                              :src="item.photo"
+                              :alt="item.nama_perusahaan"
+                              class="company-avatar-img"
+                            />
+                            <span v-else class="company-avatar-letter">{{
+                              item.nama_perusahaan.charAt(0).toUpperCase()
+                            }}</span>
                           </div>
                           <div class="company-name-wrap">
-                            <span class="company-name d-block">{{ item.nama_perusahaan }}</span>
+                            <span class="company-name d-block">{{
+                              item.nama_perusahaan
+                            }}</span>
                             <small class="company-address d-block">
-                              <i class="ri-map-pin-2-line me-1"></i>{{ item.alamat?.substring(0, 54) }}{{ item.alamat?.length > 54 ? '...' : '' }}
+                              <i class="ri-map-pin-2-line me-1"></i
+                              >{{ item.alamat?.substring(0, 54)
+                              }}{{ item.alamat?.length > 54 ? "..." : "" }}
                             </small>
                           </div>
                         </div>
                       </td>
                       <td class="align-middle">
                         <div class="d-flex flex-column align-items-start gap-2">
-                          <span class="stakeholders-sector-parent"><i class="ri-government-line text-muted me-1"></i>{{ getSektorFromSubSektor(getItemSubSektorName(item)) }}</span>
-                          <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">{{ getItemSubSektorName(item) }}</span>
+                          <span class="stakeholders-sector-parent"
+                            ><i class="ri-government-line text-muted me-1"></i
+                            >{{
+                              getSektorFromSubSektor(getItemSubSektorName(item))
+                            }}</span
+                          >
+                          <span
+                            class="badge-sektor"
+                            :style="
+                              getSektorBadgeStyle(getItemSubSektorName(item))
+                            "
+                            >{{ getItemSubSektorName(item) }}</span
+                          >
                         </div>
                       </td>
                       <td class="align-middle">
-                        <a :href="`mailto:${item.email}`" class="email-link stakeholders-email-link">
+                        <a
+                          :href="`mailto:${item.email}`"
+                          class="email-link stakeholders-email-link"
+                        >
                           <span class="email-text">{{ item.email }}</span>
                         </a>
                       </td>
                       <td class="text-center align-middle">
-                        <div class="d-flex align-items-center justify-content-center gap-3 flex-wrap flex-xl-nowrap">
-                          <div class="status-progress-cell m-0 flex-grow-1" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                        <div
+                          class="d-flex align-items-center justify-content-center gap-3 flex-wrap flex-xl-nowrap"
+                        >
+                          <div
+                            class="status-progress-cell m-0 flex-grow-1"
+                            :class="
+                              getProgressClass(
+                                getStakeholderConversion(item).percent,
+                              )
+                            "
+                          >
                             <div class="status-progress-head">
-                              <span class="monitoring-label" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                              <span
+                                class="monitoring-label"
+                                :class="
+                                  getProgressClass(
+                                    getStakeholderConversion(item).percent,
+                                  )
+                                "
+                              >
                                 {{ getMonitoringStatusLabel(item) }}
                               </span>
-                              <strong>{{ getStakeholderConversion(item).percent }}%</strong>
+                              <strong
+                                >{{
+                                  getStakeholderConversion(item).percent
+                                }}%</strong
+                              >
                             </div>
                             <div class="conversion-track">
-                              <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
+                              <div
+                                class="conversion-bar"
+                                :style="{
+                                  width: `${
+                                    getStakeholderConversion(item).percent
+                                  }%`,
+                                }"
+                              ></div>
                             </div>
-                            <small>{{ getStakeholderConversion(item).completed }}/{{ getStakeholderConversion(item).total }} poin terisi - Total {{ getStakeholderConversion(item).totalPoint }} poin</small>
+                            <small
+                              >{{ getStakeholderConversion(item).completed }}/{{
+                                getStakeholderConversion(item).total
+                              }}
+                              poin terisi - Total
+                              {{ getStakeholderConversion(item).totalPoint }}
+                              poin</small
+                            >
                           </div>
-                          <div class="status-indicators m-0 d-flex flex-column gap-1 align-items-start" style="min-width: max-content;">
+                          <div
+                            class="status-indicators m-0 d-flex flex-column gap-1 align-items-start"
+                            style="min-width: max-content"
+                          >
                             <div class="conversion-point-badges">
                               <div
-                                v-for="point in getStakeholderConversionPoints(item)"
+                                v-for="point in getStakeholderConversionPoints(
+                                  item,
+                                )"
                                 :key="`${item.id}-${point.key}`"
                                 class="status-badge"
-                                :class="point.isComplete ? 'badge-done' : 'badge-pending'"
+                                :class="
+                                  point.isComplete
+                                    ? 'badge-done'
+                                    : 'badge-pending'
+                                "
                                 :title="`${point.label}: ${point.value} poin`"
                               >
                                 <span class="badge-icon-dot">
-                                  <i :class="point.isComplete ? 'ri-check-line' : 'ri-subtract-line'"></i>
+                                  <i
+                                    :class="
+                                      point.isComplete
+                                        ? 'ri-check-line'
+                                        : 'ri-subtract-line'
+                                    "
+                                  ></i>
                                 </span>
-                                <span class="badge-label">{{ point.label }}: {{ point.value }}</span>
+                                <span class="badge-label">
+                                  {{ point.label }}{{ point.key === 'poin_ikas' ? `: ${getPointDisplayValue(item, point)}` : '' }}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1320,47 +2009,107 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </td>
                       <td class="text-center align-middle">
                         <div class="d-flex gap-1 justify-content-center">
-                          <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="Lihat">
+                          <router-link
+                            :to="`/stakeholders/${item.slug}`"
+                            class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
+                            title="Lihat"
+                          >
                             <i class="ri-eye-line"></i>
                           </router-link>
-                          <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Buka IKAS">
+                          <router-link
+                            :to="`/ikas?slug=${item.slug}&source=list`"
+                            class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn"
+                            title="Buka IKAS"
+                          >
                             <i class="ri-file-chart-line"></i>
                           </router-link>
-                          <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Ubah">
+                          <button
+                            v-if="isAdmin"
+                            @click="openEditModal(item)"
+                            class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn"
+                            title="Ubah"
+                          >
                             <i class="ri-edit-2-line"></i>
                           </button>
-                          <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
+                          <button
+                            v-if="isFullAdmin"
+                            @click="openDeleteModal(item)"
+                            class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn"
+                            title="Hapus"
+                          >
                             <i class="ri-delete-bin-3-line"></i>
                           </button>
                         </div>
                       </td>
                     </tr>
-                    <tr v-if="isExpanded(item.slug)" class="stakeholder-detail-row">
+                    <tr
+                      v-if="isExpanded(item.slug)"
+                      class="stakeholder-detail-row"
+                    >
                       <td colspan="6">
                         <div class="stakeholder-detail-panel">
                           <div class="stakeholder-detail-item">
                             <span class="stakeholder-detail-label">Alamat</span>
-                            <span class="stakeholder-detail-value">{{ item.alamat || '-' }}</span>
+                            <span class="stakeholder-detail-value">{{
+                              item.alamat || "-"
+                            }}</span>
                           </div>
                           <div class="stakeholder-detail-item">
-                            <span class="stakeholder-detail-label">Telepon</span>
-                            <span class="stakeholder-detail-value">{{ item.telepon || '-' }}</span>
+                            <span class="stakeholder-detail-label"
+                              >Telepon</span
+                            >
+                            <span class="stakeholder-detail-value">{{
+                              item.telepon || "-"
+                            }}</span>
                           </div>
                           <div class="stakeholder-detail-item">
-                            <span class="stakeholder-detail-label">Website</span>
-                            <a :href="item.website" target="_blank" rel="noopener noreferrer" class="stakeholder-detail-link">{{ item.website || '-' }}</a>
+                            <span class="stakeholder-detail-label"
+                              >Website</span
+                            >
+                            <a
+                              :href="item.website"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="stakeholder-detail-link"
+                              >{{ item.website || "-" }}</a
+                            >
                           </div>
                           <div class="stakeholder-detail-item">
-                            <span class="stakeholder-detail-label">Monitoring</span>
+                            <span class="stakeholder-detail-label"
+                              >Monitoring</span
+                            >
                             <div class="stakeholder-detail-status">
                               <span
-                                v-for="point in getStakeholderConversionPoints(item)"
+                                v-for="point in getStakeholderConversionPoints(
+                                  item,
+                                )"
                                 :key="`${item.id}-detail-${point.key}`"
                                 class="status-badge"
-                                :class="point.isComplete ? 'badge-done' : 'badge-pending'"
-                              >{{ point.label }}: {{ point.value }}</span>
-                              <span class="status-badge badge-done">Total Poin: {{ getStakeholderConversion(item).totalPoint }}</span>
-                              <span class="status-badge" :class="getStakeholderConversion(item).percent === 100 ? 'badge-done' : 'badge-pending'">Status {{ getStakeholderConversion(item).percent }}%</span>
+                                :class="
+                                  point.isComplete
+                                    ? 'badge-done'
+                                    : 'badge-pending'
+                                "
+                                >{{ point.label }}{{ point.key === 'poin_ikas' ? `: ${getPointDisplayValue(item, point)}` : '' }}</span
+                              >
+                              <span class="status-badge badge-done"
+                                >Total Poin:
+                                {{
+                                  getStakeholderConversion(item).totalPoint
+                                }}</span
+                              >
+                              <span
+                                class="status-badge"
+                                :class="
+                                  getStakeholderConversion(item).percent === 100
+                                    ? 'badge-done'
+                                    : 'badge-pending'
+                                "
+                                >Status
+                                {{
+                                  getStakeholderConversion(item).percent
+                                }}%</span
+                              >
                             </div>
                           </div>
                         </div>
@@ -1379,16 +2128,38 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       <i class="ri-layout-grid-line"></i>
                     </div>
                   </div>
-                  <h6 class="fw-semibold mb-1 empty-state-title">Tampilan grid kosong</h6>
-                  <p class="text-muted fs-13 mb-0">Belum ada data yang cocok dengan filter aktif.</p>
+                  <h6 class="fw-semibold mb-1 empty-state-title">
+                    Tampilan grid kosong
+                  </h6>
+                  <p class="text-muted fs-13 mb-0">
+                    Belum ada data yang cocok dengan filter aktif.
+                  </p>
                 </div>
               </div>
-              <div v-for="item in displayData" :key="`${item.slug}-card`" class="stakeholders-grid-card">
+              <div
+                v-for="item in displayData"
+                :key="`${item.slug}-card`"
+                class="stakeholders-grid-card"
+              >
                 <div class="stakeholders-grid-card-top">
                   <div class="d-flex align-items-center gap-3">
-                    <div class="company-avatar" :class="getAvatarClass(item.nama_perusahaan.charAt(0).toUpperCase())">
-                      <img v-if="item.photo" :src="item.photo" :alt="item.nama_perusahaan" class="company-avatar-img" />
-                      <span v-else class="company-avatar-letter">{{ item.nama_perusahaan.charAt(0).toUpperCase() }}</span>
+                    <div
+                      class="company-avatar"
+                      :class="
+                        getAvatarClass(
+                          item.nama_perusahaan.charAt(0).toUpperCase(),
+                        )
+                      "
+                    >
+                      <img
+                        v-if="item.photo"
+                        :src="item.photo"
+                        :alt="item.nama_perusahaan"
+                        class="company-avatar-img"
+                      />
+                      <span v-else class="company-avatar-letter">{{
+                        item.nama_perusahaan.charAt(0).toUpperCase()
+                      }}</span>
                     </div>
                     <div>
                       <div class="company-name">{{ item.nama_perusahaan }}</div>
@@ -1396,24 +2167,48 @@ getSektorBadgeStyle: (subSektorName: string) => {
                     </div>
                   </div>
                   <div class="d-flex gap-1">
-                    <router-link :to="`/stakeholders/${item.slug}`" class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn" title="Lihat">
+                    <router-link
+                      :to="`/stakeholders/${item.slug}`"
+                      class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
+                      title="Lihat"
+                    >
                       <i class="ri-eye-line"></i>
                     </router-link>
-                    <router-link :to="`/ikas?slug=${item.slug}&source=list`" class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn" title="Buka IKAS">
+                    <router-link
+                      :to="`/ikas?slug=${item.slug}&source=list`"
+                      class="btn btn-sm btn-icon btn-wave btn-warning-light stakeholders-action-btn"
+                      title="Buka IKAS"
+                    >
                       <i class="ri-file-chart-line"></i>
                     </router-link>
-                    <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Ubah">
+                    <button
+                      v-if="isAdmin"
+                      @click="openEditModal(item)"
+                      class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn"
+                      title="Ubah"
+                    >
                       <i class="ri-edit-2-line"></i>
                     </button>
-                    <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
+                    <button
+                      v-if="isFullAdmin"
+                      @click="openDeleteModal(item)"
+                      class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn"
+                      title="Hapus"
+                    >
                       <i class="ri-delete-bin-3-line"></i>
                     </button>
                   </div>
                 </div>
                 <div class="stakeholders-grid-card-body">
                   <div class="stakeholders-grid-sector">
-                    <span class="stakeholders-sector-parent">{{ getSektorFromSubSektor(getItemSubSektorName(item)) }}</span>
-                    <span class="badge-sektor" :style="getSektorBadgeStyle(getItemSubSektorName(item))">{{ getItemSubSektorName(item) }}</span>
+                    <span class="stakeholders-sector-parent">{{
+                      getSektorFromSubSektor(getItemSubSektorName(item))
+                    }}</span>
+                    <span
+                      class="badge-sektor"
+                      :style="getSektorBadgeStyle(getItemSubSektorName(item))"
+                      >{{ getItemSubSektorName(item) }}</span
+                    >
                   </div>
                   <div class="status-indicators justify-content-start">
                     <div
@@ -1421,24 +2216,48 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       :key="`${item.id}-grid-${point.key}`"
                       class="status-badge"
                       :class="point.isComplete ? 'badge-done' : 'badge-pending'"
-                      :title="`${point.label}: ${point.value} poin`"
+                      :title="`${point.label}${point.key === 'poin_ikas' ? ': ' + getPointDisplayValue(item, point) : ''}`"
                     >
-                      {{ point.label }}: {{ point.value }}
+                      {{ point.label }}{{ point.key === 'poin_ikas' ? ': ' + getPointDisplayValue(item, point) : '' }}
                     </div>
                   </div>
-                  <div class="conversion-cell mt-3" :class="getProgressClass(getStakeholderConversion(item).percent)">
+                  <div
+                    class="conversion-cell mt-3"
+                    :class="
+                      getProgressClass(getStakeholderConversion(item).percent)
+                    "
+                  >
                     <div class="conversion-top">
-                      <strong>Status {{ getStakeholderConversion(item).percent }}%</strong>
+                      <strong
+                        >Status
+                        {{ getStakeholderConversion(item).percent }}%</strong
+                      >
                       <span>{{ getMonitoringStatusLabel(item) }}</span>
                     </div>
                     <div class="conversion-track">
-                      <div class="conversion-bar" :style="{ width: `${getStakeholderConversion(item).percent}%` }"></div>
+                      <div
+                        class="conversion-bar"
+                        :style="{
+                          width: `${getStakeholderConversion(item).percent}%`,
+                        }"
+                      ></div>
                     </div>
-                    <small>Total {{ getStakeholderConversion(item).totalPoint }} poin</small>
+                    <small
+                      >Total
+                      {{ getStakeholderConversion(item).totalPoint }}
+                      poin</small
+                    >
                   </div>
                   <div class="stakeholders-grid-meta">
-                    <div><i class="ri-phone-line"></i>{{ item.telepon || '-' }}</div>
-                    <a :href="item.website" target="_blank" rel="noopener noreferrer"><i class="ri-global-line"></i>Website</a>
+                    <div>
+                      <i class="ri-phone-line"></i>{{ item.telepon || "-" }}
+                    </div>
+                    <a
+                      :href="item.website"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      ><i class="ri-global-line"></i>Website</a
+                    >
                   </div>
                 </div>
               </div>
@@ -1446,42 +2265,98 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
             <div class="pagination-container stakeholders-pagination">
               <div class="stakeholders-pagination-copy">
-                Menampilkan {{ visibleStart }}-{{ visibleEnd }} dari {{ filteredData.length }} stakeholder
+                Menampilkan {{ visibleStart }}-{{ visibleEnd }} dari
+                {{ filteredData.length }} stakeholder
               </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                
-                <span class="stakeholders-page-pill">Halaman {{ currentPage }} dari {{ totalPages || 1 }}</span>
+              <div
+                class="d-flex align-items-center gap-2 flex-wrap justify-content-end"
+              >
+                <span class="stakeholders-page-pill"
+                  >Halaman {{ currentPage }} dari {{ totalPages || 1 }}</span
+                >
                 <nav v-if="totalPages > 1">
-                <ul class="pagination pagination-sm mb-0 gap-1">
-                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1" title="Pertama">
-                      <i class="ri-skip-back-mini-line"></i>
-                    </a>
-                  </li>
-                  <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--" title="Sebelumnya">
-                      <i class="ri-arrow-left-s-line"></i>
-                    </a>
-                  </li>
-                  <template v-for="p in totalPages" :key="p">
-                    <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
-                      <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
+                  <ul class="pagination pagination-sm mb-0 gap-1">
+                    <li
+                      class="page-item"
+                      :class="{ disabled: currentPage === 1 }"
+                    >
+                      <a
+                        class="page-link rounded-circle"
+                        href="#"
+                        @click.prevent="currentPage = 1"
+                        title="Pertama"
+                      >
+                        <i class="ri-skip-back-mini-line"></i>
+                      </a>
                     </li>
-                    <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">
-                      <span class="page-link border-0 bg-transparent">...</span>
+                    <li
+                      class="page-item"
+                      :class="{ disabled: currentPage === 1 }"
+                    >
+                      <a
+                        class="page-link rounded-circle"
+                        href="#"
+                        @click.prevent="currentPage--"
+                        title="Sebelumnya"
+                      >
+                        <i class="ri-arrow-left-s-line"></i>
+                      </a>
                     </li>
-                  </template>
-                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++" title="Berikutnya">
-                      <i class="ri-arrow-right-s-line"></i>
-                    </a>
-                  </li>
-                  <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages" title="Terakhir">
-                      <i class="ri-skip-forward-mini-line"></i>
-                    </a>
-                  </li>
-                </ul>
+                    <template v-for="p in totalPages" :key="p">
+                      <li
+                        v-if="
+                          p === 1 ||
+                          p === totalPages ||
+                          (p >= currentPage - 1 && p <= currentPage + 1)
+                        "
+                        class="page-item"
+                        :class="{ active: p === currentPage }"
+                      >
+                        <a
+                          class="page-link rounded-circle"
+                          href="#"
+                          @click.prevent="currentPage = p"
+                          >{{ p }}</a
+                        >
+                      </li>
+                      <li
+                        v-else-if="
+                          p === currentPage - 2 || p === currentPage + 2
+                        "
+                        class="page-item disabled"
+                      >
+                        <span class="page-link border-0 bg-transparent"
+                          >...</span
+                        >
+                      </li>
+                    </template>
+                    <li
+                      class="page-item"
+                      :class="{ disabled: currentPage === totalPages }"
+                    >
+                      <a
+                        class="page-link rounded-circle"
+                        href="#"
+                        @click.prevent="currentPage++"
+                        title="Berikutnya"
+                      >
+                        <i class="ri-arrow-right-s-line"></i>
+                      </a>
+                    </li>
+                    <li
+                      class="page-item"
+                      :class="{ disabled: currentPage === totalPages }"
+                    >
+                      <a
+                        class="page-link rounded-circle"
+                        href="#"
+                        @click.prevent="currentPage = totalPages"
+                        title="Terakhir"
+                      >
+                        <i class="ri-skip-forward-mini-line"></i>
+                      </a>
+                    </li>
+                  </ul>
                 </nav>
               </div>
             </div>
@@ -1492,8 +2367,15 @@ getSektorBadgeStyle: (subSektorName: string) => {
   </div>
 
   <!-- ===================== CREATE MODAL ===================== -->
-  <div v-if="showCreateModal" class="modal fade show d-block modal-overlay stakeholder-create-overlay" tabindex="-1" @click.self="showCreateModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal stakeholder-create-modal">
+  <div
+    v-if="showCreateModal"
+    class="modal fade show d-block modal-overlay stakeholder-create-overlay"
+    tabindex="-1"
+    @click.self="showCreateModal = false"
+  >
+    <div
+      class="modal-dialog modal-dialog-centered custom-modal stakeholder-create-modal"
+    >
       <div class="modal-content border-0 stakeholder-create-content">
         <div class="stakeholder-create-shell w-100">
           <div class="stakeholder-create-header">
@@ -1503,13 +2385,25 @@ getSektorBadgeStyle: (subSektorName: string) => {
               </div>
               <div class="min-w-0">
                 <div class="stakeholder-create-kicker">Data Stakeholder</div>
-                <div class="stakeholder-create-title">Tambah Stakeholder Baru</div>
-                <div class="stakeholder-create-subtitle">Lengkapi identitas, kontak, dan alamat perusahaan dalam satu form ringkas.</div>
+                <div class="stakeholder-create-title">
+                  Tambah Stakeholder Baru
+                </div>
+                <div class="stakeholder-create-subtitle">
+                  Lengkapi identitas, kontak, dan alamat perusahaan dalam satu
+                  form ringkas.
+                </div>
               </div>
             </div>
             <div class="stakeholder-create-header-actions">
-              <span class="stakeholder-create-pill"><i class="ri-asterisk"></i> Wajib diisi</span>
-              <button type="button" class="stakeholder-create-close" @click="showCreateModal = false" title="Tutup">
+              <span class="stakeholder-create-pill"
+                ><i class="ri-asterisk"></i> Wajib diisi</span
+              >
+              <button
+                type="button"
+                class="stakeholder-create-close"
+                @click="showCreateModal = false"
+                title="Tutup"
+              >
                 <i class="ri-close-line"></i>
               </button>
             </div>
@@ -1519,37 +2413,68 @@ getSektorBadgeStyle: (subSektorName: string) => {
               <div class="stakeholder-create-layout">
                 <aside class="stakeholder-create-aside">
                   <div class="stakeholder-photo-panel">
-                    <div class="stakeholder-photo-preview"
+                    <div
+                      class="stakeholder-photo-preview"
                       :class="{ 'has-image': formData.photo }"
                       :style="{
-                        backgroundImage: formData.photo ? `url(${formData.photo})` : 'none',
-                      }">
-                      <div v-if="!formData.photo" class="stakeholder-photo-empty">
+                        backgroundImage: formData.photo
+                          ? `url(${formData.photo})`
+                          : 'none',
+                      }"
+                    >
+                      <div
+                        v-if="!formData.photo"
+                        class="stakeholder-photo-empty"
+                      >
                         <i class="ri-image-add-line"></i>
                         <span>Logo atau foto perusahaan</span>
                       </div>
                     </div>
-                    <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
+                    <input
+                      ref="fileInput"
+                      type="file"
+                      :accept="ALLOWED_FORMATS.join(',')"
+                      class="d-none"
+                      @change="onFileChange"
+                    />
                     <div class="stakeholder-photo-copy">
                       <strong>Foto Perusahaan</strong>
-                      <span>{{ ALLOWED_EXTENSIONS }} - Maks {{ MAX_FILE_SIZE_MB }}MB</span>
+                      <span
+                        >{{ ALLOWED_EXTENSIONS }} - Maks
+                        {{ MAX_FILE_SIZE_MB }}MB</span
+                      >
                     </div>
                     <div class="stakeholder-photo-actions">
-                      <button type="button" class="btn stakeholder-photo-upload" @click="triggerFileInput">
+                      <button
+                        type="button"
+                        class="btn stakeholder-photo-upload"
+                        @click="triggerFileInput"
+                      >
                         <i class="ri-upload-cloud-2-line"></i>
-                        {{ formData.photo ? 'Ganti Foto' : 'Upload Foto' }}
+                        {{ formData.photo ? "Ganti Foto" : "Upload Foto" }}
                       </button>
-                      <button v-if="formData.photo" type="button" class="btn stakeholder-photo-remove" @click="removeImage" title="Hapus foto">
+                      <button
+                        v-if="formData.photo"
+                        type="button"
+                        class="btn stakeholder-photo-remove"
+                        @click="removeImage"
+                        title="Hapus foto"
+                      >
                         <i class="ri-delete-bin-line"></i>
                       </button>
                     </div>
                   </div>
 
                   <div class="stakeholder-create-note">
-                    <div class="stakeholder-create-note-icon"><i class="ri-information-line"></i></div>
+                    <div class="stakeholder-create-note-icon">
+                      <i class="ri-information-line"></i>
+                    </div>
                     <div>
                       <strong>Tips input</strong>
-                      <span>Gunakan nama legal perusahaan dan URL website dengan awalan https:// agar validasi lolos.</span>
+                      <span
+                        >Gunakan nama legal perusahaan dan URL website dengan
+                        awalan https:// agar validasi lolos.</span
+                      >
                     </div>
                   </div>
 
@@ -1573,47 +2498,187 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </div>
                     </div>
                     <div class="stakeholder-form-grid">
-                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.nama_perusahaan }" @click="focusInput('nama_perusahaan')">
-                        <span class="stakeholder-field-label"><i class="ri-building-line"></i> Nama Perusahaan <b>*</b></span>
-                        <input ref="input_nama_perusahaan" type="text" class="stakeholder-field-control" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
-                        <span v-if="formErrors.nama_perusahaan" class="stakeholder-field-error">{{ formErrors.nama_perusahaan }}</span>
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.nama_perusahaan }"
+                        @click="focusInput('nama_perusahaan')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-building-line"></i> Nama Perusahaan
+                          <b>*</b></span
+                        >
+                        <input
+                          ref="input_nama_perusahaan"
+                          type="text"
+                          class="stakeholder-field-control"
+                          v-model="formData.nama_perusahaan"
+                          :class="{ 'is-invalid': formErrors.nama_perusahaan }"
+                          placeholder="Masukkan nama perusahaan"
+                        />
+                        <span
+                          v-if="formErrors.nama_perusahaan"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.nama_perusahaan }}</span
+                        >
                       </label>
 
-                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.sektor_induk }">
-                        <span class="stakeholder-field-label"><i class="ri-government-line"></i> Sektor <b>*</b></span>
-                        <select
-                          v-model="selectedSektorId"
-                          class="stakeholder-field-control stakeholder-field-select"
-                          :class="{ 'is-invalid': formErrors.sektor_induk }"
-                          :disabled="loadingSubSektors"
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.sektor_induk }"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-government-line"></i> Sektor
+                          <b>*</b></span
                         >
-                          <option value="" disabled>
-                            {{ loadingSubSektors ? 'Memuat sektor...' : 'Pilih sektor' }}
-                          </option>
-                          <option v-for="s in sektorList" :key="s.id" :value="s.id">
-                            {{ getSektorName(s) }}
-                          </option>
-                        </select>
-                        <span v-if="formErrors.sektor_induk" class="stakeholder-field-error">{{ formErrors.sektor_induk }}</span>
+                        <div class="w-100">
+                          <select
+                            v-if="!isAddingNewSektor"
+                            v-model="selectedSektorId"
+                            class="stakeholder-field-control stakeholder-field-select"
+                            :class="{ 'is-invalid': formErrors.sektor_induk }"
+                            :disabled="loadingSubSektors"
+                            @change="handleSektorChange"
+                          >
+                            <option value="" disabled>
+                              {{
+                                loadingSubSektors
+                                  ? "Memuat sektor..."
+                                  : "Pilih sektor"
+                              }}
+                            </option>
+                            <option
+                              v-for="s in sektorList"
+                              :key="s.id"
+                              :value="s.id"
+                            >
+                              {{ getSektorName(s) }}
+                            </option>
+                            <option value="ADD_NEW" class="text-primary fw-bold">
+                              + Tambah Sektor Baru
+                            </option>
+                          </select>
+                          <div v-else class="d-flex align-items-center gap-1">
+                            <input
+                              v-model="newSektorName"
+                              type="text"
+                              class="stakeholder-field-control"
+                              placeholder="Nama sektor baru..."
+                              autofocus
+                              @keyup.enter="submitNewSektor"
+                            />
+                            <div class="d-flex gap-1">
+                              <button
+                                type="button"
+                                @click="submitNewSektor"
+                                class="btn btn-icon btn-sm btn-success"
+                                :disabled="isSavingNewOption || !newSektorName"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i v-if="!isSavingNewOption" class="ri-check-line"></i>
+                                <span v-else class="spinner-border spinner-border-sm"></span>
+                              </button>
+                              <button
+                                type="button"
+                                @click="isAddingNewSektor = false"
+                                class="btn btn-icon btn-sm btn-light"
+                                :disabled="isSavingNewOption"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i class="ri-close-line"></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          v-if="formErrors.sektor_induk"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.sektor_induk }}</span
+                        >
                       </label>
 
-                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.sektor }">
-                        <span class="stakeholder-field-label"><i class="ri-pie-chart-line"></i> Sub Sektor <b>*</b></span>
-                        <select
-                          v-model="selectedSubSektorId"
-                          class="stakeholder-field-control stakeholder-field-select"
-                          :class="{ 'is-invalid': formErrors.sektor }"
-                          :disabled="loadingSubSektors || !selectedSektorId"
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.sektor }"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-pie-chart-line"></i> Sub Sektor
+                          <b>*</b></span
                         >
-                          <option value="" disabled>
-                            {{ loadingSubSektors ? 'Memuat sub sektor...' : (selectedSektorId ? 'Pilih sub sektor' : 'Pilih sektor terlebih dahulu') }}
-                          </option>
-                          <option v-for="ss in filteredSubSektorList" :key="ss.id" :value="ss.id">
-                            {{ getSubSektorName(ss) }}
-                          </option>
-                        </select>
-                        <span v-if="formErrors.sektor" class="stakeholder-field-error">{{ formErrors.sektor }}</span>
-                        <span v-else-if="loadingSubSektors" class="stakeholder-field-hint">Memuat data sektor...</span>
+                        <div class="w-100">
+                          <select
+                            v-if="!isAddingNewSubSektor"
+                            v-model="selectedSubSektorId"
+                            class="stakeholder-field-control stakeholder-field-select"
+                            :class="{ 'is-invalid': formErrors.sektor }"
+                            :disabled="loadingSubSektors || !selectedSektorId"
+                            @change="handleSubSektorChange"
+                          >
+                            <option value="" disabled>
+                              {{
+                                loadingSubSektors
+                                  ? "Memuat sub sektor..."
+                                  : selectedSektorId
+                                  ? "Pilih sub sektor"
+                                  : "Pilih sektor terlebih dahulu"
+                              }}
+                            </option>
+                            <option
+                              v-for="ss in filteredSubSektorList"
+                              :key="ss.id"
+                              :value="ss.id"
+                            >
+                              {{ getSubSektorName(ss) }}
+                            </option>
+                            <option
+                              v-if="selectedSektorId"
+                              value="ADD_NEW"
+                              class="text-info fw-bold"
+                            >
+                              + Tambah Sub Sektor Baru
+                            </option>
+                          </select>
+                          <div v-else class="d-flex align-items-center gap-1">
+                            <input
+                              v-model="newSubSektorName"
+                              type="text"
+                              class="stakeholder-field-control"
+                              placeholder="Nama sub sektor baru..."
+                              autofocus
+                              @keyup.enter="submitNewSubSektor"
+                            />
+                            <div class="d-flex gap-1">
+                              <button
+                                type="button"
+                                @click="submitNewSubSektor"
+                                class="btn btn-icon btn-sm btn-success"
+                                :disabled="isSavingNewOption || !newSubSektorName"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i v-if="!isSavingNewOption" class="ri-check-line"></i>
+                                <span v-else class="spinner-border spinner-border-sm"></span>
+                              </button>
+                              <button
+                                type="button"
+                                @click="isAddingNewSubSektor = false"
+                                class="btn btn-icon btn-sm btn-light"
+                                :disabled="isSavingNewOption"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i class="ri-close-line"></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          v-if="formErrors.sektor"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.sektor }}</span
+                        >
+                        <span
+                          v-else-if="loadingSubSektors"
+                          class="stakeholder-field-hint"
+                          >Memuat data sektor...</span
+                        >
                       </label>
                     </div>
                   </section>
@@ -1627,22 +2692,74 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       </div>
                     </div>
                     <div class="stakeholder-form-grid">
-                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.email }" @click="focusInput('email')">
-                        <span class="stakeholder-field-label"><i class="ri-mail-line"></i> Email <b>*</b></span>
-                        <input ref="input_email" type="email" class="stakeholder-field-control" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="nama@perusahaan.go.id" />
-                        <span v-if="formErrors.email" class="stakeholder-field-error">{{ formErrors.email }}</span>
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.email }"
+                        @click="focusInput('email')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-mail-line"></i> Email <b>*</b></span
+                        >
+                        <input
+                          ref="input_email"
+                          type="email"
+                          class="stakeholder-field-control"
+                          v-model="formData.email"
+                          :class="{ 'is-invalid': formErrors.email }"
+                          placeholder="nama@perusahaan.go.id"
+                        />
+                        <span
+                          v-if="formErrors.email"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.email }}</span
+                        >
                       </label>
 
-                      <label class="stakeholder-field" :class="{ 'has-error': formErrors.telepon }" @click="focusInput('telepon')">
-                        <span class="stakeholder-field-label"><i class="ri-phone-line"></i> Nomor Telepon <b>*</b></span>
-                        <input ref="input_telepon" type="tel" class="stakeholder-field-control" v-model="formData.telepon" placeholder="Masukkan nomor telepon" :class="{ 'is-invalid': formErrors.telepon }" />
-                        <span v-if="formErrors.telepon" class="stakeholder-field-error">{{ formErrors.telepon }}</span>
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.telepon }"
+                        @click="focusInput('telepon')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-phone-line"></i> Nomor Telepon
+                          <b>*</b></span
+                        >
+                        <input
+                          ref="input_telepon"
+                          type="tel"
+                          class="stakeholder-field-control"
+                          v-model="formData.telepon"
+                          placeholder="Masukkan nomor telepon"
+                          :class="{ 'is-invalid': formErrors.telepon }"
+                        />
+                        <span
+                          v-if="formErrors.telepon"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.telepon }}</span
+                        >
                       </label>
 
-                      <label class="stakeholder-field stakeholder-field-wide" :class="{ 'has-error': formErrors.website }" @click="focusInput('website')">
-                        <span class="stakeholder-field-label"><i class="ri-global-line"></i> Website <b>*</b></span>
-                        <input ref="input_website" type="url" class="stakeholder-field-control" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="https://contoh.com" />
-                        <span v-if="formErrors.website" class="stakeholder-field-error">{{ formErrors.website }}</span>
+                      <label
+                        class="stakeholder-field stakeholder-field-wide"
+                        :class="{ 'has-error': formErrors.website }"
+                        @click="focusInput('website')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-global-line"></i> Website <b>*</b></span
+                        >
+                        <input
+                          ref="input_website"
+                          type="url"
+                          class="stakeholder-field-control"
+                          v-model="formData.website"
+                          :class="{ 'is-invalid': formErrors.website }"
+                          placeholder="https://contoh.com"
+                        />
+                        <span
+                          v-if="formErrors.website"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.website }}</span
+                        >
                       </label>
                     </div>
                   </section>
@@ -1652,13 +2769,33 @@ getSektorBadgeStyle: (subSektorName: string) => {
                       <span><i class="ri-map-pin-line"></i></span>
                       <div>
                         <strong>Alamat Perusahaan</strong>
-                        <small>Alamat lengkap untuk kebutuhan administrasi</small>
+                        <small
+                          >Alamat lengkap untuk kebutuhan administrasi</small
+                        >
                       </div>
                     </div>
-                    <label class="stakeholder-field stakeholder-field-textarea" :class="{ 'has-error': formErrors.alamat }" @click="focusInput('alamat')">
-                      <span class="stakeholder-field-label"><i class="ri-map-pin-2-line"></i> Alamat Lengkap <b>*</b></span>
-                      <textarea ref="input_alamat" class="stakeholder-field-control" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="3" placeholder="Masukkan alamat lengkap"></textarea>
-                      <span v-if="formErrors.alamat" class="stakeholder-field-error">{{ formErrors.alamat }}</span>
+                    <label
+                      class="stakeholder-field stakeholder-field-textarea"
+                      :class="{ 'has-error': formErrors.alamat }"
+                      @click="focusInput('alamat')"
+                    >
+                      <span class="stakeholder-field-label"
+                        ><i class="ri-map-pin-2-line"></i> Alamat Lengkap
+                        <b>*</b></span
+                      >
+                      <textarea
+                        ref="input_alamat"
+                        class="stakeholder-field-control"
+                        v-model="formData.alamat"
+                        :class="{ 'is-invalid': formErrors.alamat }"
+                        rows="3"
+                        placeholder="Masukkan alamat lengkap"
+                      ></textarea>
+                      <span
+                        v-if="formErrors.alamat"
+                        class="stakeholder-field-error"
+                        >{{ formErrors.alamat }}</span
+                      >
                     </label>
                   </section>
                 </div>
@@ -1666,10 +2803,18 @@ getSektorBadgeStyle: (subSektorName: string) => {
             </form>
           </div>
           <div class="stakeholder-create-footer">
-            <button type="button" class="btn stakeholder-create-cancel" @click="showCreateModal = false">
+            <button
+              type="button"
+              class="btn stakeholder-create-cancel"
+              @click="showCreateModal = false"
+            >
               <i class="ri-close-line me-1"></i>Batal
             </button>
-            <button type="button" class="btn stakeholder-create-save" @click="createStakeholder">
+            <button
+              type="button"
+              class="btn stakeholder-create-save"
+              @click="createStakeholder"
+            >
               <i class="ri-save-line me-1"></i>Simpan
             </button>
           </div>
@@ -1679,183 +2824,449 @@ getSektorBadgeStyle: (subSektorName: string) => {
   </div>
 
   <!-- ===================== EDIT MODAL ===================== -->
-  <div v-if="showEditModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showEditModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="card custom-card gradient-header-card w-100 mb-0">
-          <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header">
-            <div class="d-flex align-items-center gap-3">
-              <div class="header-icon-box">
-                <i class="ri-building-2-line"></i>
+  <div
+    v-if="showEditModal"
+    class="modal fade show d-block modal-overlay stakeholder-create-overlay"
+    tabindex="-1"
+    @click.self="showEditModal = false"
+  >
+    <div
+      class="modal-dialog modal-dialog-centered custom-modal stakeholder-create-modal"
+    >
+      <div class="modal-content border-0 stakeholder-create-content">
+        <div class="stakeholder-create-shell w-100">
+          <div class="stakeholder-create-header">
+            <div class="stakeholder-create-title-row">
+              <div class="stakeholder-create-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                <i class="ri-edit-2-line"></i>
               </div>
-              <div>
-                <div class="card-title mb-0 text-white fw-bold header-card-title">Ubah Data Stakeholder</div>
-                <div class="header-subtitle mt-1">Ubah detail informasi perusahaan</div>
+              <div class="min-w-0">
+                <div class="stakeholder-create-kicker">Data Stakeholder</div>
+                <div class="stakeholder-create-title">
+                  Ubah Data Stakeholder
+                </div>
+                <div class="stakeholder-create-subtitle">
+                  Perbarui identitas, kontak, dan alamat perusahaan untuk menjaga akurasi data.
+                </div>
               </div>
             </div>
-            <button type="button" class="btn-close btn-close-white" @click="showEditModal = false"></button>
+            <div class="stakeholder-create-header-actions">
+              <span class="stakeholder-create-pill"
+                ><i class="ri-asterisk"></i> Wajib diisi</span
+              >
+              <button
+                type="button"
+                class="stakeholder-create-close"
+                @click="showEditModal = false"
+                title="Tutup"
+              >
+                <i class="ri-close-line"></i>
+              </button>
+            </div>
           </div>
-          <div class="card-body p-4 bg-white">
+          <div class="stakeholder-create-body">
             <form @submit.prevent="updateStakeholder">
-              <div class="row gy-3">
-                <!-- Photo Section -->
-                <div class="col-xl-12">
-                  <div class="d-flex flex-column flex-sm-row gap-3 align-items-start">
-                    <div 
-                      class="photo-preview-modal position-relative overflow-hidden rounded-3 shadow-sm border flex-shrink-0"
-                      :style="{ 
-                        backgroundImage: formData.photo ? `url(${formData.photo})` : 'none',
-                        backgroundColor: formData.photo ? 'transparent' : '#e9ecef',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
+              <div class="stakeholder-create-layout">
+                <aside class="stakeholder-create-aside">
+                  <div class="stakeholder-photo-panel">
+                    <div
+                      class="stakeholder-photo-preview"
+                      :class="{ 'has-image': formData.photo }"
+                      :style="{
+                        backgroundImage: formData.photo
+                          ? `url(${formData.photo})`
+                          : 'none',
                       }"
                     >
-                      <div v-if="!formData.photo" class="position-absolute d-flex flex-column align-items-center justify-content-center text-muted photo-empty-state">
-                        <i class="ri-image-add-line fs-2 mb-1 opacity-50"></i>
-                        <span class="fs-11">Belum ada foto</span>
-                      </div>
-                    </div>
-                    <input ref="fileInput" type="file" :accept="ALLOWED_FORMATS.join(',')" class="d-none" @change="onFileChange" />
-                    <div class="flex-grow-1">
-                      <h6 class="fw-semibold mb-3 d-flex align-items-center gap-2">
-                        <i class="ri-image-2-line text-primary"></i>
-                        Foto Perusahaan
-                      </h6>
-                      <div class="d-flex flex-wrap gap-2 mb-2">
-                        <button type="button" class="btn btn-primary btn-sm" @click="triggerFileInput">
-                          <i class="ri-upload-2-line me-1"></i>
-                          {{ formData.photo ? 'Ganti Gambar' : 'Upload Gambar' }}
-                        </button>
-                        <button v-if="formData.photo" type="button" class="btn btn-outline-danger btn-sm" @click="removeImage">
-                          <i class="ri-delete-bin-line me-1"></i>Hapus
-                        </button>
-                      </div>
-                      <div class="d-flex align-items-center gap-3 fs-11 text-muted">
-                        <span><i class="ri-file-type-line me-1"></i>{{ ALLOWED_EXTENSIONS }}</span>
-                        <span><i class="ri-upload-cloud-line me-1"></i>Maks {{ MAX_FILE_SIZE_MB }}MB</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Nama Perusahaan -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('nama_perusahaan')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-blue" style="width:32px;height:32px">
-                        <i class="ri-building-line" style="font-size:0.95rem"></i>
-                      </div>
-                      <label class="form-item-label mb-0">Nama Perusahaan <span class="text-danger ms-1">*</span></label>
-                    </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.nama_perusahaan }">
-                      <input ref="input_nama_perusahaan" type="text" class="form-item-input" v-model="formData.nama_perusahaan" :class="{ 'is-invalid': formErrors.nama_perusahaan }" placeholder="Masukkan nama perusahaan" />
-                      <div v-if="formErrors.nama_perusahaan" class="invalid-feedback">{{ formErrors.nama_perusahaan }}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ? SUB SEKTOR (semua sub sektor, sektor induk otomatis) -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-teal" style="width:32px;height:32px">
-                        <i class="ri-pie-chart-line" style="font-size:0.95rem"></i>
-                      </div>
-                      <label class="form-item-label mb-0">Sub Sektor <span class="text-danger ms-1">*</span></label>
-                    </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.sektor }">
-                      <select
-                        v-model="selectedSubSektorId"
-                        class="form-item-input form-item-select"
-                        :class="{ 'is-invalid': formErrors.sektor }"
-                        :disabled="loadingSubSektors"
+                      <div
+                        v-if="!formData.photo"
+                        class="stakeholder-photo-empty"
                       >
-                        <option value="" disabled>
-                          {{ loadingSubSektors ? 'Memuat...' : '-- Pilih Sub Sektor --' }}
-                        </option>
-                        <option v-for="ss in subSektorList" :key="ss.id" :value="ss.id">
-                          {{ getSubSektorName(ss) }}
-                        </option>
-                      </select>
-                      <div v-if="formErrors.sektor" class="invalid-feedback">{{ formErrors.sektor }}</div>
-                      <small v-if="loadingSubSektors" class="text-muted mt-1 d-block">Memuat data sektor...</small>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Email -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('email')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-indigo" style="width:32px;height:32px">
-                        <i class="ri-mail-line" style="font-size:0.95rem"></i>
+                        <i class="ri-image-add-line"></i>
+                        <span>Logo atau foto perusahaan</span>
                       </div>
-                      <label class="form-item-label mb-0">Email <span class="text-danger ms-1">*</span></label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.email }">
-                      <input ref="input_email" type="email" class="form-item-input" v-model="formData.email" :class="{ 'is-invalid': formErrors.email }" placeholder="Masukkan email" />
-                      <div v-if="formErrors.email" class="invalid-feedback">{{ formErrors.email }}</div>
+                    <input
+                      ref="fileInput"
+                      type="file"
+                      :accept="ALLOWED_FORMATS.join(',')"
+                      class="d-none"
+                      @change="onFileChange"
+                    />
+                    <div class="stakeholder-photo-copy">
+                      <strong>Foto Perusahaan</strong>
+                      <span
+                        >{{ ALLOWED_EXTENSIONS }} - Maks
+                        {{ MAX_FILE_SIZE_MB }}MB</span
+                      >
+                    </div>
+                    <div class="stakeholder-photo-actions">
+                      <button
+                        type="button"
+                        class="btn stakeholder-photo-upload"
+                        @click="triggerFileInput"
+                      >
+                        <i class="ri-upload-cloud-2-line"></i>
+                        {{ formData.photo ? "Ganti Foto" : "Upload Foto" }}
+                      </button>
+                      <button
+                        v-if="formData.photo"
+                        type="button"
+                        class="btn stakeholder-photo-remove"
+                        @click="removeImage"
+                        title="Hapus foto"
+                      >
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
                     </div>
                   </div>
-                </div>
 
-                <!-- Phone -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('telepon')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-violet" style="width:32px;height:32px">
-                        <i class="ri-phone-line" style="font-size:0.95rem"></i>
+                  <div class="stakeholder-create-note">
+                    <div class="stakeholder-create-note-icon">
+                      <i class="ri-information-line"></i>
+                    </div>
+                    <div>
+                      <strong>Tips update</strong>
+                      <span
+                        >Pastikan alamat email dan nomor telepon yang dimasukkan adalah kontak aktif perusahaan.</span
+                      >
+                    </div>
+                  </div>
+
+                  <div class="stakeholder-create-progress">
+                    <span>Update data</span>
+                    <div>
+                      <i class="ri-building-line text-warning"></i>
+                      <i class="ri-mail-line text-warning"></i>
+                      <i class="ri-map-pin-line text-warning"></i>
+                    </div>
+                  </div>
+                </aside>
+
+                <div class="stakeholder-create-fields">
+                  <section class="stakeholder-form-section">
+                    <div class="stakeholder-form-section-head">
+                      <span><i class="ri-id-card-line"></i></span>
+                      <div>
+                        <strong>Identitas Perusahaan</strong>
+                        <small>Nama dan klasifikasi sektor</small>
                       </div>
-                      <label class="form-item-label mb-0">Nomor Telepon <span class="text-danger ms-1">*</span></label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.telepon }">
-                      <input ref="input_telepon" type="tel" class="form-item-input" v-model="formData.telepon" placeholder="Masukkan nomor telepon" :class="{ 'is-invalid': formErrors.telepon }" />
-                      <div v-if="formErrors.telepon" class="invalid-feedback d-block">{{ formErrors.telepon }}</div>
-                    </div>
-                  </div>
-                </div>
+                    <div class="stakeholder-form-grid">
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.nama_perusahaan }"
+                        @click="focusInput('nama_perusahaan')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-building-line"></i> Nama Perusahaan
+                          <b>*</b></span
+                        >
+                        <input
+                          ref="input_nama_perusahaan"
+                          type="text"
+                          class="stakeholder-field-control"
+                          v-model="formData.nama_perusahaan"
+                          :class="{ 'is-invalid': formErrors.nama_perusahaan }"
+                          placeholder="Masukkan nama perusahaan"
+                        />
+                        <span
+                          v-if="formErrors.nama_perusahaan"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.nama_perusahaan }}</span
+                        >
+                      </label>
 
-                <!-- Website -->
-                <div class="col-xl-6 col-lg-6 col-md-6">
-                  <div class="form-group-split" @click="focusInput('website')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-amber" style="width:32px;height:32px">
-                        <i class="ri-global-line" style="font-size:0.95rem"></i>
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.sektor_induk }"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-government-line"></i> Sektor
+                          <b>*</b></span
+                        >
+                        <div class="w-100">
+                          <select
+                            v-if="!isAddingNewSektor"
+                            v-model="selectedSektorId"
+                            class="stakeholder-field-control stakeholder-field-select"
+                            :class="{ 'is-invalid': formErrors.sektor_induk }"
+                            :disabled="loadingSubSektors"
+                            @change="handleSektorChange"
+                          >
+                            <option value="" disabled>
+                              {{
+                                loadingSubSektors
+                                  ? "Memuat sektor..."
+                                  : "Pilih sektor"
+                              }}
+                            </option>
+                            <option
+                              v-for="s in sektorList"
+                              :key="s.id"
+                              :value="s.id"
+                            >
+                              {{ getSektorName(s) }}
+                            </option>
+                            <option value="ADD_NEW" class="text-primary fw-bold">
+                              + Tambah Sektor Baru
+                            </option>
+                          </select>
+                          <div v-else class="d-flex align-items-center gap-1">
+                            <input
+                              v-model="newSektorName"
+                              type="text"
+                              class="stakeholder-field-control"
+                              placeholder="Nama sektor baru..."
+                              autofocus
+                              @keyup.enter="submitNewSektor"
+                            />
+                            <div class="d-flex gap-1">
+                              <button
+                                type="button"
+                                @click="submitNewSektor"
+                                class="btn btn-icon btn-sm btn-success"
+                                :disabled="isSavingNewOption || !newSektorName"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i v-if="!isSavingNewOption" class="ri-check-line"></i>
+                                <span v-else class="spinner-border spinner-border-sm"></span>
+                              </button>
+                              <button
+                                type="button"
+                                @click="isAddingNewSektor = false"
+                                class="btn btn-icon btn-sm btn-light"
+                                :disabled="isSavingNewOption"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i class="ri-close-line"></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          v-if="formErrors.sektor_induk"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.sektor_induk }}</span
+                        >
+                      </label>
+
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.sektor }"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-pie-chart-line"></i> Sub Sektor
+                          <b>*</b></span
+                        >
+                        <div class="w-100">
+                          <select
+                            v-if="!isAddingNewSubSektor"
+                            v-model="selectedSubSektorId"
+                            class="stakeholder-field-control stakeholder-field-select"
+                            :class="{ 'is-invalid': formErrors.sektor }"
+                            :disabled="loadingSubSektors || !selectedSektorId"
+                            @change="handleSubSektorChange"
+                          >
+                            <option value="" disabled>
+                              {{
+                                loadingSubSektors
+                                  ? "Memuat sub sektor..."
+                                  : selectedSektorId
+                                  ? "Pilih sub sektor"
+                                  : "Pilih sektor terlebih dahulu"
+                              }}
+                            </option>
+                            <option
+                              v-for="ss in filteredSubSektorList"
+                              :key="ss.id"
+                              :value="ss.id"
+                            >
+                              {{ getSubSektorName(ss) }}
+                            </option>
+                            <option
+                              v-if="selectedSektorId"
+                              value="ADD_NEW"
+                              class="text-info fw-bold"
+                            >
+                              + Tambah Sub Sektor Baru
+                            </option>
+                          </select>
+                          <div v-else class="d-flex align-items-center gap-1">
+                            <input
+                              v-model="newSubSektorName"
+                              type="text"
+                              class="stakeholder-field-control"
+                              placeholder="Nama sub sektor baru..."
+                              autofocus
+                              @keyup.enter="submitNewSubSektor"
+                            />
+                            <div class="d-flex gap-1">
+                              <button
+                                type="button"
+                                @click="submitNewSubSektor"
+                                class="btn btn-icon btn-sm btn-success"
+                                :disabled="isSavingNewOption || !newSubSektorName"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i v-if="!isSavingNewOption" class="ri-check-line"></i>
+                                <span v-else class="spinner-border spinner-border-sm"></span>
+                              </button>
+                              <button
+                                type="button"
+                                @click="isAddingNewSubSektor = false"
+                                class="btn btn-icon btn-sm btn-light"
+                                :disabled="isSavingNewOption"
+                                style="width: 24px; height: 24px"
+                              >
+                                <i class="ri-close-line"></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          v-if="formErrors.sektor"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.sektor }}</span
+                        >
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="stakeholder-form-section">
+                    <div class="stakeholder-form-section-head">
+                      <span><i class="ri-customer-service-2-line"></i></span>
+                      <div>
+                        <strong>Kontak Resmi</strong>
+                        <small>Email, telepon, dan website</small>
                       </div>
-                      <label class="form-item-label mb-0">Website <span class="text-danger ms-1">*</span></label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.website }">
-                      <input ref="input_website" type="url" class="form-item-input" v-model="formData.website" :class="{ 'is-invalid': formErrors.website }" placeholder="https://contoh.com" />
-                      <div v-if="formErrors.website" class="invalid-feedback">{{ formErrors.website }}</div>
-                    </div>
-                  </div>
-                </div>
+                    <div class="stakeholder-form-grid">
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.email }"
+                        @click="focusInput('email')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-mail-line"></i> Email <b>*</b></span
+                        >
+                        <input
+                          ref="input_email"
+                          type="email"
+                          class="stakeholder-field-control"
+                          v-model="formData.email"
+                          :class="{ 'is-invalid': formErrors.email }"
+                          placeholder="nama@perusahaan.go.id"
+                        />
+                        <span
+                          v-if="formErrors.email"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.email }}</span
+                        >
+                      </label>
 
-                <!-- Alamat -->
-                <div class="col-12">
-                  <div class="form-group-split" @click="focusInput('alamat')">
-                    <div class="form-group-split-label-card">
-                      <div class="form-item-icon stat-icon-red" style="width:32px;height:32px">
-                        <i class="ri-map-pin-line" style="font-size:0.95rem"></i>
+                      <label
+                        class="stakeholder-field"
+                        :class="{ 'has-error': formErrors.telepon }"
+                        @click="focusInput('telepon')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-phone-line"></i> Nomor Telepon
+                          <b>*</b></span
+                        >
+                        <input
+                          ref="input_telepon"
+                          type="tel"
+                          class="stakeholder-field-control"
+                          v-model="formData.telepon"
+                          placeholder="Masukkan nomor telepon"
+                          :class="{ 'is-invalid': formErrors.telepon }"
+                        />
+                        <span
+                          v-if="formErrors.telepon"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.telepon }}</span
+                        >
+                      </label>
+
+                      <label
+                        class="stakeholder-field stakeholder-field-wide"
+                        :class="{ 'has-error': formErrors.website }"
+                        @click="focusInput('website')"
+                      >
+                        <span class="stakeholder-field-label"
+                          ><i class="ri-global-line"></i> Website <b>*</b></span
+                        >
+                        <input
+                          ref="input_website"
+                          type="url"
+                          class="stakeholder-field-control"
+                          v-model="formData.website"
+                          :class="{ 'is-invalid': formErrors.website }"
+                          placeholder="https://contoh.com"
+                        />
+                        <span
+                          v-if="formErrors.website"
+                          class="stakeholder-field-error"
+                          >{{ formErrors.website }}</span
+                        >
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="stakeholder-form-section">
+                    <div class="stakeholder-form-section-head">
+                      <span><i class="ri-map-pin-line"></i></span>
+                      <div>
+                        <strong>Alamat Perusahaan</strong>
+                        <small
+                          >Alamat lengkap untuk kebutuhan administrasi</small
+                        >
                       </div>
-                      <label class="form-item-label mb-0">Alamat <span class="text-danger ms-1">*</span></label>
                     </div>
-                    <div class="form-group-split-input-card" :class="{ 'border-danger': formErrors.alamat }">
-                      <textarea ref="input_alamat" class="form-item-input" v-model="formData.alamat" :class="{ 'is-invalid': formErrors.alamat }" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
-                      <div v-if="formErrors.alamat" class="invalid-feedback">{{ formErrors.alamat }}</div>
-                    </div>
-                  </div>
+                    <label
+                      class="stakeholder-field stakeholder-field-textarea"
+                      :class="{ 'has-error': formErrors.alamat }"
+                      @click="focusInput('alamat')"
+                    >
+                      <span class="stakeholder-field-label"
+                        ><i class="ri-map-pin-2-line"></i> Alamat Lengkap
+                        <b>*</b></span
+                      >
+                      <textarea
+                        ref="input_alamat"
+                        class="stakeholder-field-control"
+                        v-model="formData.alamat"
+                        :class="{ 'is-invalid': formErrors.alamat }"
+                        rows="3"
+                        placeholder="Masukkan alamat lengkap"
+                      ></textarea>
+                      <span
+                        v-if="formErrors.alamat"
+                        class="stakeholder-field-error"
+                        >{{ formErrors.alamat }}</span
+                      >
+                    </label>
+                  </section>
                 </div>
-
               </div>
             </form>
           </div>
-          <div class="card-footer bg-light d-flex flex-wrap justify-content-end gap-2">
-            <button type="button" @click="showEditModal = false" class="btn btn-outline-danger flex-fill flex-sm-grow-0">
+          <div class="stakeholder-create-footer">
+            <button
+              type="button"
+              class="btn stakeholder-create-cancel"
+              @click="showEditModal = false"
+            >
               <i class="ri-arrow-left-line me-1"></i>Batal
             </button>
-            <button type="button" @click="updateStakeholder" class="btn btn-secondary flex-fill flex-sm-grow-0">
-              <i class="ri-save-line me-1"></i><span class="d-none d-sm-inline"> Simpan Perubahan</span><span class="d-inline d-sm-none"> Simpan</span>
+            <button
+              type="button"
+              class="btn stakeholder-create-save"
+              style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;"
+              @click="updateStakeholder"
+            >
+              <i class="ri-save-line me-1"></i>Simpan Perubahan
             </button>
           </div>
         </div>
@@ -1864,27 +3275,52 @@ getSektorBadgeStyle: (subSektorName: string) => {
   </div>
 
   <!-- ===================== DELETE MODAL ===================== -->
-  <div v-if="showDeleteModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showDeleteModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Konfirmasi Hapus</h5>
-          <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
+  <div
+    v-if="showDeleteModal"
+    class="modal fade show d-flex align-items-center justify-content-center"
+    tabindex="-1"
+    style="display: flex !important; background: rgba(15, 23, 42, 0.75); position: fixed; inset: 0; z-index: 9999;"
+    @click.self="showDeleteModal = false"
+  >
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 450px; width: 100%; margin: 16px;">
+      <div class="modal-content border-0 shadow-lg bg-white" style="border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
+        <div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+          <h5 class="modal-title fw-bold text-dark">Konfirmasi Hapus</h5>
+          <button
+            type="button"
+            class="btn-close"
+            @click="showDeleteModal = false"
+            aria-label="Close"
+          ></button>
         </div>
-        <div class="modal-body">
-          <div class="text-center">
-            <i class="ri-error-warning-line text-danger warning-icon-lg"></i>
-            <h5 class="mt-3">Apakah Anda yakin?</h5>
-            <p class="text-muted">
-              Anda akan menghapus stakeholder
-              <strong>{{ currentDeleteItem?.nama_perusahaan }}</strong>.
+        <div class="modal-body py-4 px-4 text-center">
+          <div class="mb-4">
+            <div class="d-inline-flex align-items-center justify-content-center bg-light-danger rounded-circle mb-3" style="width: 80px; height: 80px; background-color: #fff1f2;">
+              <i class="ri-error-warning-line text-danger" style="font-size: 3rem;"></i>
+            </div>
+            <h4 class="fw-bold text-dark mb-2">Apakah Anda yakin?</h4>
+            <p class="text-muted mb-0 px-3">
+              Anda akan menghapus stakeholder 
+              <span class="text-dark fw-semibold">{{ currentDeleteItem?.nama_perusahaan }}</span>. 
               Tindakan ini tidak dapat dibatalkan.
             </p>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">Batal</button>
-          <button type="button" class="btn btn-danger" @click="deleteStakeholder">
+        <div class="modal-footer border-0 pt-0 pb-4 px-4 d-flex gap-2">
+          <button
+            type="button"
+            class="btn btn-light flex-grow-1 fw-semibold py-2"
+            style="border-radius: 10px; background-color: #f1f5f9; border: none; color: #64748b;"
+            @click="showDeleteModal = false"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            class="btn btn-danger flex-grow-1 fw-semibold py-2"
+            style="border-radius: 10px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none;"
+            @click="deleteStakeholder"
+          >
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
         </div>
@@ -1892,7 +3328,6 @@ getSektorBadgeStyle: (subSektorName: string) => {
     </div>
   </div>
 </template>
-
 
 <style>
 /* Global style untuk modal - tidak scoped agar bisa override */
@@ -1913,7 +3348,11 @@ getSektorBadgeStyle: (subSektorName: string) => {
 }
 
 .stakeholders-premium-header::after {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0)
+  );
   content: "";
   position: absolute;
   height: 1px;
@@ -2380,8 +3819,11 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
 .stakeholder-create-header {
   align-items: center;
-  background:
-    radial-gradient(circle at 12% 20%, rgba(147, 197, 253, 0.2), transparent 34%),
+  background: radial-gradient(
+      circle at 12% 20%,
+      rgba(147, 197, 253, 0.2),
+      transparent 34%
+    ),
     linear-gradient(135deg, #0f172a 0%, #1d4ed8 58%, #2563eb 100%);
   color: #ffffff;
   display: flex;
@@ -2511,8 +3953,11 @@ getSektorBadgeStyle: (subSektorName: string) => {
 
 .stakeholder-photo-preview {
   align-items: center;
-  background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(14, 165, 233, 0.04)),
+  background: linear-gradient(
+      135deg,
+      rgba(37, 99, 235, 0.08),
+      rgba(14, 165, 233, 0.04)
+    ),
     #f1f5f9;
   background-position: center;
   background-size: cover;
@@ -2704,7 +4149,8 @@ getSektorBadgeStyle: (subSektorName: string) => {
   margin: 0;
   min-width: 0;
   padding: 11px 12px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+    background 0.18s ease;
 }
 
 .stakeholder-field:focus-within {
@@ -2817,488 +4263,502 @@ getSektorBadgeStyle: (subSektorName: string) => {
   box-shadow: 0 12px 24px rgba(245, 158, 11, 0.24);
 }
 
-[data-theme-mode='dark'] .conversion-top strong {
+[data-theme-mode="dark"] .conversion-top strong {
   color: #f8fafc;
 }
 
-[data-theme-mode='dark'] .status-progress-head strong {
+[data-theme-mode="dark"] .status-progress-head strong {
   color: #f8fafc;
 }
 
-[data-theme-mode='dark'] .conversion-track {
+[data-theme-mode="dark"] .conversion-track {
   background: rgba(148, 163, 184, 0.24);
 }
 
-[data-theme-mode='dark'] .stakeholders-shell-card {
+[data-theme-mode="dark"] .stakeholders-shell-card {
   background: #0b1020 !important;
   border-color: rgba(148, 163, 184, 0.12) !important;
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-premium-header {
+[data-theme-mode="dark"] .stakeholders-premium-header {
   border-color: rgba(96, 165, 250, 0.26);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 46px rgba(2, 6, 23, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 46px rgba(2, 6, 23, 0.18);
 }
 
-[data-theme-mode='dark'] .stakeholders-hero-status-card {
+[data-theme-mode="dark"] .stakeholders-hero-status-card {
   background: rgba(15, 23, 42, 0.72);
   border-color: rgba(96, 165, 250, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-[data-theme-mode='dark'] .stakeholders-hero-status-title span,
-[data-theme-mode='dark'] .stakeholders-hero-status-stats span,
-[data-theme-mode='dark'] .stakeholders-inline-breadcrumb,
-[data-theme-mode='dark'] .stakeholders-hero-subtitle,
-[data-theme-mode='dark'] .stakeholders-meta-label,
-[data-theme-mode='dark'] .stakeholders-pagination-copy,
-[data-theme-mode='dark'] .stakeholders-per-page span,
-[data-theme-mode='dark'] .stakeholders-filter-hint,
-[data-theme-mode='dark'] .stakeholders-filter-field > span {
+[data-theme-mode="dark"] .stakeholders-hero-status-title span,
+[data-theme-mode="dark"] .stakeholders-hero-status-stats span,
+[data-theme-mode="dark"] .stakeholders-inline-breadcrumb,
+[data-theme-mode="dark"] .stakeholders-hero-subtitle,
+[data-theme-mode="dark"] .stakeholders-meta-label,
+[data-theme-mode="dark"] .stakeholders-pagination-copy,
+[data-theme-mode="dark"] .stakeholders-per-page span,
+[data-theme-mode="dark"] .stakeholders-filter-hint,
+[data-theme-mode="dark"] .stakeholders-filter-field > span {
   color: #94a3b8 !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-hero-status-title strong,
-[data-theme-mode='dark'] .stakeholders-hero-status-stats strong,
-[data-theme-mode='dark'] .stakeholders-hero-title,
-[data-theme-mode='dark'] .stakeholders-summary-value,
-[data-theme-mode='dark'] .conversion-top strong,
-[data-theme-mode='dark'] .status-progress-head strong,
-[data-theme-mode='dark'] .stakeholders-grid-card .company-name {
+[data-theme-mode="dark"] .stakeholders-hero-status-title strong,
+[data-theme-mode="dark"] .stakeholders-hero-status-stats strong,
+[data-theme-mode="dark"] .stakeholders-hero-title,
+[data-theme-mode="dark"] .stakeholders-summary-value,
+[data-theme-mode="dark"] .conversion-top strong,
+[data-theme-mode="dark"] .status-progress-head strong,
+[data-theme-mode="dark"] .stakeholders-grid-card .company-name {
   color: #f8fafc !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-hero-status-stats > div,
-[data-theme-mode='dark'] .stakeholders-summary-card,
-[data-theme-mode='dark'] .stakeholders-workbar,
-[data-theme-mode='dark'] .stakeholders-workbar-bottom,
-[data-theme-mode='dark'] .stakeholders-filter-field,
-[data-theme-mode='dark'] .stakeholders-advanced-panel,
-[data-theme-mode='dark'] .stakeholders-toolbar-menu,
-[data-theme-mode='dark'] .stakeholders-grid-card,
-[data-theme-mode='dark'] .stakeholders-grid-empty,
-[data-theme-mode='dark'] .stakeholders-page-pill,
-[data-theme-mode='dark'] .stakeholders-per-page,
-[data-theme-mode='dark'] .stakeholders-view-toggle,
-[data-theme-mode='dark'] .stakeholders-table-shell,
-[data-theme-mode='dark'] .stakeholder-table-wrap {
+[data-theme-mode="dark"] .stakeholders-hero-status-stats > div,
+[data-theme-mode="dark"] .stakeholders-summary-card,
+[data-theme-mode="dark"] .stakeholders-workbar,
+[data-theme-mode="dark"] .stakeholders-workbar-bottom,
+[data-theme-mode="dark"] .stakeholders-filter-field,
+[data-theme-mode="dark"] .stakeholders-advanced-panel,
+[data-theme-mode="dark"] .stakeholders-toolbar-menu,
+[data-theme-mode="dark"] .stakeholders-grid-card,
+[data-theme-mode="dark"] .stakeholders-grid-empty,
+[data-theme-mode="dark"] .stakeholders-page-pill,
+[data-theme-mode="dark"] .stakeholders-per-page,
+[data-theme-mode="dark"] .stakeholders-view-toggle,
+[data-theme-mode="dark"] .stakeholders-table-shell,
+[data-theme-mode="dark"] .stakeholder-table-wrap {
   background: #111827 !important;
   border-color: rgba(148, 163, 184, 0.16) !important;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--indigo {
+[data-theme-mode="dark"] .stakeholders-summary-card--indigo {
   background: linear-gradient(180deg, #0f172a 0%, #111827 100%) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--cyan {
+[data-theme-mode="dark"] .stakeholders-summary-card--cyan {
   background: linear-gradient(180deg, #0f172a 0%, #0b1f2f 100%) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--emerald {
+[data-theme-mode="dark"] .stakeholders-summary-card--emerald {
   background: linear-gradient(180deg, #0f172a 0%, #0b1f1a 100%) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--amber {
+[data-theme-mode="dark"] .stakeholders-summary-card--amber {
   background: linear-gradient(180deg, #0f172a 0%, #1a1610 100%) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-label,
-[data-theme-mode='dark'] .stakeholders-grid-card .company-address,
-[data-theme-mode='dark'] .stakeholders-filter-reset,
-[data-theme-mode='dark'] .stakeholders-view-btn,
-[data-theme-mode='dark'] .stakeholders-workbar .header-search-input::placeholder,
-[data-theme-mode='dark'] .stakeholders-workbar .card-search-icon,
-[data-theme-mode='dark'] .stakeholders-workbar .clear-btn,
-[data-theme-mode='dark'] .stakeholders-grid-meta div,
-[data-theme-mode='dark'] .stakeholders-grid-meta a,
-[data-theme-mode='dark'] .stakeholder-detail-label,
-[data-theme-mode='dark'] .stakeholder-detail-value,
-[data-theme-mode='dark'] .stakeholder-detail-link,
-[data-theme-mode='dark'] .status-progress-cell small,
-[data-theme-mode='dark'] .conversion-top,
-[data-theme-mode='dark'] .empty-state .text-muted,
-[data-theme-mode='dark'] .modal-overlay .text-muted {
+[data-theme-mode="dark"] .stakeholders-summary-label,
+[data-theme-mode="dark"] .stakeholders-grid-card .company-address,
+[data-theme-mode="dark"] .stakeholders-filter-reset,
+[data-theme-mode="dark"] .stakeholders-view-btn,
+[data-theme-mode="dark"]
+  .stakeholders-workbar
+  .header-search-input::placeholder,
+[data-theme-mode="dark"] .stakeholders-workbar .card-search-icon,
+[data-theme-mode="dark"] .stakeholders-workbar .clear-btn,
+[data-theme-mode="dark"] .stakeholders-grid-meta div,
+[data-theme-mode="dark"] .stakeholders-grid-meta a,
+[data-theme-mode="dark"] .stakeholder-detail-label,
+[data-theme-mode="dark"] .stakeholder-detail-value,
+[data-theme-mode="dark"] .stakeholder-detail-link,
+[data-theme-mode="dark"] .status-progress-cell small,
+[data-theme-mode="dark"] .conversion-top,
+[data-theme-mode="dark"] .empty-state .text-muted,
+[data-theme-mode="dark"] .modal-overlay .text-muted {
   color: #94a3b8 !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card {
+[data-theme-mode="dark"] .stakeholders-summary-card {
   border-radius: 16px;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card .stakeholders-summary-icon {
+[data-theme-mode="dark"] .stakeholders-summary-card .stakeholders-summary-icon {
   background: rgba(59, 130, 246, 0.14);
   border-color: rgba(96, 165, 250, 0.22);
   color: #93c5fd;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--cyan .stakeholders-summary-icon {
+[data-theme-mode="dark"]
+  .stakeholders-summary-card--cyan
+  .stakeholders-summary-icon {
   background: rgba(14, 165, 233, 0.14);
   color: #67e8f9;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--emerald .stakeholders-summary-icon {
+[data-theme-mode="dark"]
+  .stakeholders-summary-card--emerald
+  .stakeholders-summary-icon {
   background: rgba(16, 185, 129, 0.14);
   color: #6ee7b7;
 }
 
-[data-theme-mode='dark'] .stakeholders-summary-card--amber .stakeholders-summary-icon {
+[data-theme-mode="dark"]
+  .stakeholders-summary-card--amber
+  .stakeholders-summary-icon {
   background: rgba(245, 158, 11, 0.14);
   color: #fbbf24;
 }
 
-[data-theme-mode='dark'] .stakeholders-sector-parent {
+[data-theme-mode="dark"] .stakeholders-sector-parent {
   color: #cbd5e1 !important;
   font-weight: 700;
 }
 
-[data-theme-mode='dark'] .stakeholders-sector-parent i {
+[data-theme-mode="dark"] .stakeholders-sector-parent i {
   color: #60a5fa !important;
 }
 
-[data-theme-mode='dark'] .badge-sektor {
+[data-theme-mode="dark"] .badge-sektor {
   background-color: var(--sector-bg-dark, rgba(148, 163, 184, 0.12)) !important;
   border-color: var(--sector-border-dark, rgba(148, 163, 184, 0.2)) !important;
   color: var(--sector-fg-dark, #cbd5e1) !important;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-[data-theme-mode='dark'] .stakeholders-workbar::before {
+[data-theme-mode="dark"] .stakeholders-workbar::before {
   opacity: 0.9;
 }
 
-[data-theme-mode='dark'] .stakeholders-workbar .header-search-input,
-[data-theme-mode='dark'] .stakeholders-workbar .stakeholders-select-input,
-[data-theme-mode='dark'] .stakeholders-filter-reset,
-[data-theme-mode='dark'] .stakeholders-toolbar-btn {
+[data-theme-mode="dark"] .stakeholders-workbar .header-search-input,
+[data-theme-mode="dark"] .stakeholders-workbar .stakeholders-select-input,
+[data-theme-mode="dark"] .stakeholders-filter-reset,
+[data-theme-mode="dark"] .stakeholders-toolbar-btn {
   background: #0f172a !important;
   border-color: rgba(148, 163, 184, 0.2) !important;
   color: #e2e8f0 !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-workbar .header-search-input:focus {
+[data-theme-mode="dark"] .stakeholders-workbar .header-search-input:focus {
   background: #0b1220 !important;
   border-color: rgba(96, 165, 250, 0.6) !important;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.14) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-toolbar-menu .dropdown-item {
+[data-theme-mode="dark"] .stakeholders-toolbar-menu .dropdown-item {
   color: #e2e8f0;
 }
 
-[data-theme-mode='dark'] .stakeholders-toolbar-menu .dropdown-item:hover {
+[data-theme-mode="dark"] .stakeholders-toolbar-menu .dropdown-item:hover {
   background: rgba(59, 130, 246, 0.12);
   color: #f8fafc;
 }
 
-[data-theme-mode='dark'] .stakeholders-view-toggle {
+[data-theme-mode="dark"] .stakeholders-view-toggle {
   background: #0b1220 !important;
   border-color: rgba(96, 165, 250, 0.22) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-view-btn {
+[data-theme-mode="dark"] .stakeholders-view-btn {
   color: #cbd5e1 !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-view-btn:hover {
+[data-theme-mode="dark"] .stakeholders-view-btn:hover {
   background: rgba(96, 165, 250, 0.12);
   color: #f8fafc !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-view-btn.active {
+[data-theme-mode="dark"] .stakeholders-view-btn.active {
   background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%) !important;
   color: #ffffff !important;
   box-shadow: 0 10px 22px rgba(37, 99, 235, 0.34);
 }
 
-[data-theme-mode='dark'] .stakeholders-view-btn.active i,
-[data-theme-mode='dark'] .stakeholders-view-btn.active span {
+[data-theme-mode="dark"] .stakeholders-view-btn.active i,
+[data-theme-mode="dark"] .stakeholders-view-btn.active span {
   color: #ffffff !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-add-btn {
+[data-theme-mode="dark"] .stakeholders-add-btn {
   background: linear-gradient(180deg, #2563eb 0%, #1e40af 100%) !important;
   box-shadow: 0 12px 24px rgba(37, 99, 235, 0.28) !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-add-btn:hover {
+[data-theme-mode="dark"] .stakeholders-add-btn:hover {
   box-shadow: 0 16px 30px rgba(37, 99, 235, 0.34) !important;
 }
 
-[data-theme-mode='dark'] .stakeholder-table-wrap,
-[data-theme-mode='dark'] .stakeholders-table-shell {
+[data-theme-mode="dark"] .stakeholder-table-wrap,
+[data-theme-mode="dark"] .stakeholders-table-shell {
   border-color: rgba(148, 163, 184, 0.14) !important;
 }
 
-[data-theme-mode='dark'] table.stakeholder-table thead.stakeholder-thead th {
+[data-theme-mode="dark"] table.stakeholder-table thead.stakeholder-thead th {
   background: rgba(15, 23, 42, 0.96) !important;
   color: #94a3b8 !important;
   border-bottom-color: rgba(148, 163, 184, 0.16) !important;
 }
 
-[data-theme-mode='dark'] .stakeholder-row td {
+[data-theme-mode="dark"] .stakeholder-row td {
   background: transparent !important;
   border-bottom-color: rgba(148, 163, 184, 0.08) !important;
   color: #cbd5e1 !important;
 }
 
-[data-theme-mode='dark'] .stakeholder-row:hover td {
+[data-theme-mode="dark"] .stakeholder-row:hover td {
   background-color: rgba(255, 255, 255, 0.03) !important;
 }
 
-[data-theme-mode='dark'] .stakeholder-row-expanded td,
-[data-theme-mode='dark'] .stakeholder-detail-row td {
+[data-theme-mode="dark"] .stakeholder-row-expanded td,
+[data-theme-mode="dark"] .stakeholder-detail-row td {
   background: #0b1220 !important;
   border-bottom-color: rgba(148, 163, 184, 0.08) !important;
 }
 
-[data-theme-mode='dark'] .stakeholder-detail-item {
+[data-theme-mode="dark"] .stakeholder-detail-item {
   background: #0f172a;
   border-color: rgba(148, 163, 184, 0.14);
 }
 
-[data-theme-mode='dark'] .stakeholder-detail-link {
+[data-theme-mode="dark"] .stakeholder-detail-link {
   color: #60a5fa !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-grid-card {
+[data-theme-mode="dark"] .stakeholders-grid-card {
   border-color: rgba(148, 163, 184, 0.14);
 }
 
-[data-theme-mode='dark'] .stakeholders-grid-card:hover {
+[data-theme-mode="dark"] .stakeholders-grid-card:hover {
   border-color: rgba(96, 165, 250, 0.28);
 }
 
-[data-theme-mode='dark'] .stakeholders-grid-card::before {
+[data-theme-mode="dark"] .stakeholders-grid-card::before {
   background: linear-gradient(90deg, #2563eb, #06b6d4, #22c55e);
 }
 
-[data-theme-mode='dark'] .stakeholders-grid-card-body {
+[data-theme-mode="dark"] .stakeholders-grid-card-body {
   border-top-color: rgba(148, 163, 184, 0.14);
 }
 
-[data-theme-mode='dark'] .stakeholders-grid-meta div,
-[data-theme-mode='dark'] .stakeholders-grid-meta a {
+[data-theme-mode="dark"] .stakeholders-grid-meta div,
+[data-theme-mode="dark"] .stakeholders-grid-meta a {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(148, 163, 184, 0.12);
 }
 
-[data-theme-mode='dark'] .stakeholders-grid-meta a:hover {
+[data-theme-mode="dark"] .stakeholders-grid-meta a:hover {
   background: rgba(59, 130, 246, 0.14);
   border-color: rgba(96, 165, 250, 0.28);
   color: #bfdbfe;
 }
 
-[data-theme-mode='dark'] .badge-done {
+[data-theme-mode="dark"] .badge-done {
   background: rgba(16, 185, 129, 0.16);
   color: #bbf7d0;
   border-color: rgba(34, 197, 94, 0.28);
   box-shadow: none;
 }
 
-[data-theme-mode='dark'] .badge-done .badge-icon-dot {
+[data-theme-mode="dark"] .badge-done .badge-icon-dot {
   background: linear-gradient(135deg, #10b981, #059669);
 }
 
-[data-theme-mode='dark'] .badge-pending {
+[data-theme-mode="dark"] .badge-pending {
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
   border-color: rgba(148, 163, 184, 0.18);
 }
 
-[data-theme-mode='dark'] .badge-pending .badge-icon-dot {
+[data-theme-mode="dark"] .badge-pending .badge-icon-dot {
   background: rgba(148, 163, 184, 0.24);
   color: #94a3b8;
 }
 
-[data-theme-mode='dark'] .monitoring-label.progress-good {
+[data-theme-mode="dark"] .monitoring-label.progress-good {
   background: rgba(22, 163, 74, 0.18);
   color: #86efac;
 }
 
-[data-theme-mode='dark'] .monitoring-label.progress-mid {
+[data-theme-mode="dark"] .monitoring-label.progress-mid {
   background: rgba(14, 165, 233, 0.16);
   color: #7dd3fc;
 }
 
-[data-theme-mode='dark'] .monitoring-label.progress-low {
+[data-theme-mode="dark"] .monitoring-label.progress-low {
   background: rgba(245, 158, 11, 0.16);
   color: #fcd34d;
 }
 
-[data-theme-mode='dark'] .monitoring-label.progress-empty {
+[data-theme-mode="dark"] .monitoring-label.progress-empty {
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
 }
 
-[data-theme-mode='dark'] .empty-icon-ring {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(14, 165, 233, 0.08));
+[data-theme-mode="dark"] .empty-icon-ring {
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.18),
+    rgba(14, 165, 233, 0.08)
+  );
 }
 
-[data-theme-mode='dark'] .empty-icon-ring::before {
+[data-theme-mode="dark"] .empty-icon-ring::before {
   border-color: rgba(96, 165, 250, 0.12);
 }
 
-[data-theme-mode='dark'] .empty-icon-inner {
+[data-theme-mode="dark"] .empty-icon-inner {
   background: rgba(15, 23, 42, 0.9);
   color: #60a5fa;
 }
 
-[data-theme-mode='dark'] .pagination .page-link {
+[data-theme-mode="dark"] .pagination .page-link {
   background-color: rgba(255, 255, 255, 0.04);
   border-color: rgba(148, 163, 184, 0.16);
   color: #cbd5e1;
 }
 
-[data-theme-mode='dark'] .pagination .page-item.active .page-link {
+[data-theme-mode="dark"] .pagination .page-item.active .page-link {
   background-color: #2563eb;
   border-color: #2563eb;
   color: #ffffff;
 }
 
-[data-theme-mode='dark'] .pagination .page-item.disabled .page-link {
+[data-theme-mode="dark"] .pagination .page-item.disabled .page-link {
   background-color: rgba(255, 255, 255, 0.02);
   color: #64748b;
 }
 
-[data-theme-mode='dark'] .modal-overlay {
+[data-theme-mode="dark"] .modal-overlay {
   background: rgba(2, 6, 23, 0.72);
 }
 
-[data-theme-mode='dark'] .modal-overlay .custom-modal {
+[data-theme-mode="dark"] .modal-overlay .custom-modal {
   box-shadow: 0 28px 70px rgba(0, 0, 0, 0.42) !important;
 }
 
-[data-theme-mode='dark'] .modal-overlay .card.custom-card,
-[data-theme-mode='dark'] .modal-overlay .modal-content {
+[data-theme-mode="dark"] .modal-overlay .card.custom-card,
+[data-theme-mode="dark"] .modal-overlay .modal-content {
   background: #0f172a;
   color: #e2e8f0;
 }
 
-[data-theme-mode='dark'] .modal-overlay .card-body.bg-white,
-[data-theme-mode='dark'] .modal-overlay .card-footer.bg-light,
-[data-theme-mode='dark'] .modal-overlay .modal-header,
-[data-theme-mode='dark'] .modal-overlay .modal-body,
-[data-theme-mode='dark'] .modal-overlay .modal-footer {
+[data-theme-mode="dark"] .modal-overlay .card-body.bg-white,
+[data-theme-mode="dark"] .modal-overlay .card-footer.bg-light,
+[data-theme-mode="dark"] .modal-overlay .modal-header,
+[data-theme-mode="dark"] .modal-overlay .modal-body,
+[data-theme-mode="dark"] .modal-overlay .modal-footer {
   background: #0f172a !important;
   border-color: rgba(148, 163, 184, 0.14) !important;
 }
 
-[data-theme-mode='dark'] .modal-overlay .header-subtitle,
-[data-theme-mode='dark'] .modal-overlay .form-item-label,
-[data-theme-mode='dark'] .modal-overlay .form-label,
-[data-theme-mode='dark'] .modal-overlay .text-muted {
+[data-theme-mode="dark"] .modal-overlay .header-subtitle,
+[data-theme-mode="dark"] .modal-overlay .form-item-label,
+[data-theme-mode="dark"] .modal-overlay .form-label,
+[data-theme-mode="dark"] .modal-overlay .text-muted {
   color: #94a3b8 !important;
 }
 
-[data-theme-mode='dark'] .modal-overlay .form-group-split-label-card {
+[data-theme-mode="dark"] .modal-overlay .form-group-split-label-card {
   background: #111827;
   border-color: rgba(148, 163, 184, 0.14);
 }
 
-[data-theme-mode='dark'] .modal-overlay .form-group-split-input-card {
+[data-theme-mode="dark"] .modal-overlay .form-group-split-input-card {
   background: #0b1220;
   border-color: rgba(148, 163, 184, 0.18);
 }
 
-[data-theme-mode='dark'] .modal-overlay .form-item-input,
-[data-theme-mode='dark'] .modal-overlay .form-item-select {
+[data-theme-mode="dark"] .modal-overlay .form-item-input,
+[data-theme-mode="dark"] .modal-overlay .form-item-select {
   background: transparent !important;
   color: #e2e8f0 !important;
 }
 
-[data-theme-mode='dark'] .modal-overlay .photo-preview-modal {
+[data-theme-mode="dark"] .modal-overlay .photo-preview-modal {
   background-color: #111827 !important;
   border-color: rgba(148, 163, 184, 0.16) !important;
 }
 
-[data-theme-mode='dark'] .modal-overlay .photo-empty-state {
+[data-theme-mode="dark"] .modal-overlay .photo-empty-state {
   color: #94a3b8 !important;
 }
 
-[data-theme-mode='dark'] .stakeholders-workbar,
-[data-theme-mode='dark'] .stakeholders-workbar-bottom,
-[data-theme-mode='dark'] .stakeholders-filter-field {
+[data-theme-mode="dark"] .stakeholders-workbar,
+[data-theme-mode="dark"] .stakeholders-workbar-bottom,
+[data-theme-mode="dark"] .stakeholders-filter-field {
   background: #111827;
   border-color: rgba(148, 163, 184, 0.24);
 }
 
-[data-theme-mode='dark'] .stakeholders-workbar .header-search-input,
-[data-theme-mode='dark'] .stakeholders-workbar .stakeholders-select-input,
-[data-theme-mode='dark'] .stakeholders-filter-reset {
+[data-theme-mode="dark"] .stakeholders-workbar .header-search-input,
+[data-theme-mode="dark"] .stakeholders-workbar .stakeholders-select-input,
+[data-theme-mode="dark"] .stakeholders-filter-reset {
   background: #0f172a;
   border-color: rgba(148, 163, 184, 0.24);
   color: #e5e7eb;
 }
 
-[data-theme-mode='dark'] .stakeholder-create-shell {
+[data-theme-mode="dark"] .stakeholder-create-shell {
   background: #0f172a;
   border-color: rgba(148, 163, 184, 0.16);
   color: #e2e8f0;
 }
 
-[data-theme-mode='dark'] .stakeholder-create-body {
+[data-theme-mode="dark"] .stakeholder-create-body {
   background: linear-gradient(180deg, #0b1220 0%, #0f172a 44%);
 }
 
-[data-theme-mode='dark'] .stakeholder-photo-panel,
-[data-theme-mode='dark'] .stakeholder-create-note,
-[data-theme-mode='dark'] .stakeholder-create-progress,
-[data-theme-mode='dark'] .stakeholder-form-section,
-[data-theme-mode='dark'] .stakeholder-create-footer {
+[data-theme-mode="dark"] .stakeholder-photo-panel,
+[data-theme-mode="dark"] .stakeholder-create-note,
+[data-theme-mode="dark"] .stakeholder-create-progress,
+[data-theme-mode="dark"] .stakeholder-form-section,
+[data-theme-mode="dark"] .stakeholder-create-footer {
   background: #111827;
   border-color: rgba(148, 163, 184, 0.16);
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
 }
 
-[data-theme-mode='dark'] .stakeholder-photo-preview,
-[data-theme-mode='dark'] .stakeholder-field {
+[data-theme-mode="dark"] .stakeholder-photo-preview,
+[data-theme-mode="dark"] .stakeholder-field {
   background: #0b1220;
   border-color: rgba(148, 163, 184, 0.22);
 }
 
-[data-theme-mode='dark'] .stakeholder-field:focus-within {
+[data-theme-mode="dark"] .stakeholder-field:focus-within {
   background: #0f172a;
   border-color: rgba(96, 165, 250, 0.62);
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
 }
 
-[data-theme-mode='dark'] .stakeholder-field.has-error {
+[data-theme-mode="dark"] .stakeholder-field.has-error {
   background: rgba(127, 29, 29, 0.16);
   border-color: rgba(248, 113, 113, 0.4);
 }
 
-[data-theme-mode='dark'] .stakeholder-photo-copy strong,
-[data-theme-mode='dark'] .stakeholder-create-note strong,
-[data-theme-mode='dark'] .stakeholder-form-section-head strong,
-[data-theme-mode='dark'] .stakeholder-field-control,
-[data-theme-mode='dark'] .stakeholder-create-progress span {
+[data-theme-mode="dark"] .stakeholder-photo-copy strong,
+[data-theme-mode="dark"] .stakeholder-create-note strong,
+[data-theme-mode="dark"] .stakeholder-form-section-head strong,
+[data-theme-mode="dark"] .stakeholder-field-control,
+[data-theme-mode="dark"] .stakeholder-create-progress span {
   color: #f8fafc;
 }
 
-[data-theme-mode='dark'] .stakeholder-photo-empty span,
-[data-theme-mode='dark'] .stakeholder-photo-copy span,
-[data-theme-mode='dark'] .stakeholder-create-note span,
-[data-theme-mode='dark'] .stakeholder-form-section-head small,
-[data-theme-mode='dark'] .stakeholder-field-label,
-[data-theme-mode='dark'] .stakeholder-field-hint {
+[data-theme-mode="dark"] .stakeholder-photo-empty span,
+[data-theme-mode="dark"] .stakeholder-photo-copy span,
+[data-theme-mode="dark"] .stakeholder-create-note span,
+[data-theme-mode="dark"] .stakeholder-form-section-head small,
+[data-theme-mode="dark"] .stakeholder-field-label,
+[data-theme-mode="dark"] .stakeholder-field-hint {
   color: #94a3b8;
 }
 
-[data-theme-mode='dark'] .stakeholder-create-note-icon,
-[data-theme-mode='dark'] .stakeholder-form-section-head > span,
-[data-theme-mode='dark'] .stakeholder-create-progress i {
+[data-theme-mode="dark"] .stakeholder-create-note-icon,
+[data-theme-mode="dark"] .stakeholder-form-section-head > span,
+[data-theme-mode="dark"] .stakeholder-create-progress i {
   background: rgba(37, 99, 235, 0.16);
   color: #93c5fd;
 }
 
-[data-theme-mode='dark'] .stakeholder-create-cancel {
+[data-theme-mode="dark"] .stakeholder-create-cancel {
   background: rgba(127, 29, 29, 0.14);
   border-color: rgba(248, 113, 113, 0.32);
   color: #fecaca;
 }
 
-[data-theme-mode='dark'] .stakeholder-create-cancel:hover {
+[data-theme-mode="dark"] .stakeholder-create-cancel:hover {
   background: rgba(127, 29, 29, 0.22);
   color: #fee2e2;
 }
@@ -3326,7 +4786,7 @@ getSektorBadgeStyle: (subSektorName: string) => {
     margin: 10px auto;
     width: calc(100% - 20px) !important;
   }
-  
+
   /* Prevent flex-centering cutoff bug for very tall modals on short screens */
   .modal.fade.show.d-block .modal-dialog-centered {
     align-items: flex-start !important;
@@ -3339,13 +4799,13 @@ getSektorBadgeStyle: (subSektorName: string) => {
     overflow: hidden;
     padding: 8px 12px !important; /* Compact padding for mobile */
   }
-  
+
   /* Compact label cards */
   .form-group-split-label-card {
     padding: 6px 12px !important;
     gap: 8px !important;
   }
-  
+
   /* Shrink icons */
   .form-group-split-label-card .form-item-icon {
     width: 24px !important;
@@ -3354,16 +4814,18 @@ getSektorBadgeStyle: (subSektorName: string) => {
   .form-group-split-label-card .form-item-icon i {
     font-size: 0.8rem !important;
   }
-  
+
   /* Shrink text */
-  .form-item-label { font-size: 11.5px !important; }
-  .form-item-input { 
-    font-size: 13px !important; 
+  .form-item-label {
+    font-size: 11.5px !important;
+  }
+  .form-item-input {
+    font-size: 13px !important;
     padding: 2px 0 !important;
     max-width: 100%;
     text-overflow: ellipsis;
   }
-  
+
   /* Compact Photo preview */
   .photo-preview-modal {
     width: 60px !important;
@@ -3372,13 +4834,18 @@ getSektorBadgeStyle: (subSektorName: string) => {
   .photo-preview-modal i.ri-image-add-line {
     font-size: 1.5rem !important;
   }
-  
+
   /* Form group spacing reductions */
-  .modal-dialog .card-body.p-4 { padding: 12px !important; }
-  .modal-dialog .card-header   { padding: 12px !important; }
-  
+  .modal-dialog .card-body.p-4 {
+    padding: 12px !important;
+  }
+  .modal-dialog .card-header {
+    padding: 12px !important;
+  }
+
   /* Text break for long modal headers */
-  .header-card-title, .header-subtitle {
+  .header-card-title,
+  .header-subtitle {
     white-space: normal !important;
     word-break: break-word;
     line-height: 1.4;

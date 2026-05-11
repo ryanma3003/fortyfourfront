@@ -2287,7 +2287,7 @@
         return [
             {
                 title: "Total CSIRT",
-                count: String(fixedCsirtCount),
+                count: String(displayFilteredCsirt),
                 percent: String(displayFilteredCsirt),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "danger",
@@ -2307,7 +2307,7 @@
             },
             {
                 title: "Total IKAS",
-                count: String(fixedIkasCount),
+                count: String(displayFilteredIkas),
                 percent: String(displayFilteredIkas),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "info",
@@ -2327,7 +2327,7 @@
             },
             {
                 title: "Sistem Elektronik",
-                count: String(fixedSeCount),
+                count: String(displayFilteredSe),
                 percent: String(displayFilteredSe),
                 monthLabel: dateRangeLabel.value,
                 priceColor: "success",
