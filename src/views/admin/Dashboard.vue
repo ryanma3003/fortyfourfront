@@ -3961,22 +3961,61 @@ const monitoringSektorItems = computed(() =>
   })),
 );
 
-const monitoringSubSektorItems = computed(() => {
-  return monitoringChartSektors.value.flatMap((sektor) =>
-    [...sektor.subSektors]
-      .sort(
-        (a, b) =>
-          b.stakeholderCount - a.stakeholderCount ||
-          a.displayName.localeCompare(b.displayName),
-      )
-      .map((subSektor) => ({
-        label: subSektor.displayName,
-        value: subSektor.stakeholderCount,
-        color: sektor.color,
-        parentName: sektor.displayName,
-      })),
-  );
-});
+const monitoringTopSubSektorItems = computed(() =>
+  monitoringChartSektors.value
+    .flatMap((sektor) =>
+      [...sektor.subSektors]
+        .sort(
+          (a, b) =>
+            b.stakeholderCount - a.stakeholderCount ||
+            a.displayName.localeCompare(b.displayName),
+        )
+        .map((subSektor) => ({
+          label: subSektor.displayName,
+          value: subSektor.stakeholderCount,
+          color: sektor.color,
+          parentName: sektor.displayName,
+        })),
+    )
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+    .slice(0, 10),
+);
+
+const monitoringSubSektorChartItems = computed(() =>
+  sektorList.value
+    .map((sektor) => {
+      const children = subSektorList.value
+        .filter((ss) => {
+          const pid = getSubSektorParentId(ss);
+          return pid !== undefined && String(pid) === String(sektor.id);
+        })
+        .map((subSektor) => {
+          const stakeholderCount = datedStakeholders.value.filter((stakeholder) => {
+            const subSektorId = resolveMonitoringSubSektorId(stakeholder);
+            return subSektorId && subSektorId === String(subSektor.id);
+          }).length;
+
+          return {
+            label: getSubSektorName(subSektor),
+            value: stakeholderCount,
+            color: getMonitoringSektorColor(getSektorName(sektor)),
+            parentName: getSektorName(sektor),
+            sectorSort: Number(sektor.sort_order || sektor.urutan || sektor.id || 0),
+            subSort: Number(subSektor.sort_order || subSektor.urutan || subSektor.id || 0),
+          };
+        })
+        .filter((subSektor) => subSektor.value > 0);
+
+      return children;
+    })
+    .flat()
+    .sort((a, b) =>
+      a.sectorSort - b.sectorSort ||
+      a.subSort - b.subSort ||
+      a.parentName.localeCompare(b.parentName) ||
+      a.label.localeCompare(b.label),
+    ),
+);
 const monitoringRiskSummary = computed(() => {
   const stakeholders = datedStakeholders.value;
   const completedSlugs = new Set(
@@ -4102,7 +4141,7 @@ const monitoringHeroHighlights = computed(() => [
   {
     label: "Sub-sektor terbaca",
     value: formatChartNumber(
-      monitoringSubSektorItems.value.length || totalSubSektors.value,
+      monitoringSubSektorChartItems.value.length || totalSubSektors.value,
     ),
     icon: "ri-node-tree",
   },
@@ -4512,16 +4551,16 @@ const monitoringSektorChartHeight = computed(() =>
   getDistributionChartHeight(monitoringSektorItems.value.length, 255, 40),
 );
 const monitoringSubSektorChartOptions = computed(() =>
-  buildDistributionBarOptions(monitoringSubSektorItems.value),
+  buildDistributionBarOptions(monitoringSubSektorChartItems.value),
 );
 const monitoringSubSektorChartSeries = computed(() => [
   {
     name: "Stakeholder",
-    data: monitoringSubSektorItems.value.map((item) => item.value),
+    data: monitoringSubSektorChartItems.value.map((item) => item.value),
   },
 ]);
 const monitoringSubSektorChartHeight = computed(() =>
-  getDistributionChartHeight(monitoringSubSektorItems.value.length, 310, 26),
+  getDistributionChartHeight(monitoringSubSektorChartItems.value.length, 310, 26),
 );
 const monitoringIkasChartOptions = computed(() =>
   buildMonitoringBarOptions(monitoringIkasItems.value, false),
@@ -4903,7 +4942,7 @@ const monitoringIkasPieSeries = computed(
             >
               <div class="dashboard-distribution-chart-frame">
                 <apexchart
-                  v-if="monitoringSubSektorItems.length"
+                  v-if="monitoringSubSektorChartItems.length"
                   :height="monitoringSubSektorChartHeight"
                   width="100%"
                   type="bar"
@@ -5174,9 +5213,9 @@ const monitoringIkasPieSeries = computed(
                 <p>Ringkasan proporsi stakeholder.</p>
               </div>
             </div>
-            <div class="monitoring-top-list">
+            <div class="monitoring-top-list monitoring-top-list-scrollable">
               <div
-                v-for="item in monitoringSubSektorItems.slice(0, 3)"
+                v-for="item in monitoringTopSubSektorItems"
                 :key="'monitoring-top-sub-' + item.label"
                 class="monitoring-top-row"
               >
@@ -10596,6 +10635,12 @@ code {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.85rem 0.95rem 0.95rem;
+}
+
+.monitoring-top-list-scrollable {
+  max-height: 16.5rem;
+  overflow-y: auto;
+  padding-right: 0.4rem;
 }
 
 .monitoring-top-row {
