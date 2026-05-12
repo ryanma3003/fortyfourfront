@@ -182,6 +182,7 @@ import { useAuthStore } from "../../../stores/auth";
 import RecursiveMenu from "../../UI/recursiveMenu.vue";
 import ChatModal from "../chatbot/ChatModal.vue";
 import { seEditService } from "../../../services/se-edit.service";
+import { ikasService } from "../../../services/ikas.service";
 
 const authStore = useAuthStore();
 
@@ -246,8 +247,15 @@ const route = useRoute();
 const updatePendingBadge = async () => {
   if (authStore.isAdmin || authStore.currentUser?.role === 'staff') {
     try {
-      const requests = await seEditService.getRequests();
+      const [requests, ikasRecords] = await Promise.all([
+        seEditService.getRequests(),
+        ikasService.getIkasList().catch(() => []),
+      ]);
+
       const pendingCount = requests.filter(r => r.status === 'pending').length;
+      const pendingIkasCount = Array.isArray(ikasRecords)
+        ? ikasRecords.filter((item) => String(item?.edit_request_status || item?.editRequestStatus || '').toLowerCase() === 'pending').length
+        : 0;
       
       const kseItem = menuData.find(item => item.title === 'KSE List');
       if (kseItem) {
@@ -255,6 +263,15 @@ const updatePendingBadge = async () => {
           kseItem.badgetxt = `<span class="sb2-notif-badge">${pendingCount}</span>`;
         } else {
           kseItem.badgetxt = '';
+        }
+      }
+
+      const ikasItem = menuData.find(item => item.title === 'IKAS List');
+      if (ikasItem) {
+        if (pendingIkasCount > 0) {
+          ikasItem.badgetxt = `<span class="sb2-notif-badge">${pendingIkasCount}</span>`;
+        } else {
+          ikasItem.badgetxt = '';
         }
       }
     } catch (e) {
@@ -266,10 +283,12 @@ const updatePendingBadge = async () => {
 onMounted(() => {
   updatePendingBadge();
   window.addEventListener('se-requests-updated', updatePendingBadge);
+  window.addEventListener('ikas-requests-updated', updatePendingBadge);
 });
 
 onUnmounted(() => {
   window.removeEventListener('se-requests-updated', updatePendingBadge);
+  window.removeEventListener('ikas-requests-updated', updatePendingBadge);
 });
 
 watch(() => route.path, () => {
