@@ -6,12 +6,14 @@ import { useCsirtStore } from '@/stores/csirt';
 import { useIkasStore } from '@/stores/ikas';
 import { useKseStore } from '@/stores/kse';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
+import { useResikoStore } from '@/stores/resiko';
 
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
 const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
+const resikoStore = useResikoStore();
 const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const props = defineProps({
     loading: { type: Boolean, default: false },
@@ -104,6 +106,12 @@ const actions = computed(() => {
         return inDate && inSector;
     });
     const items = [];
+    const completedManrisCompanyIds = new Set(resikoStore.completedCompanyIds || []);
+    Object.entries(resikoStore.progressMap || {}).forEach(([slug, progress]) => {
+        if (progress?.status !== 'COMPLETED') return;
+        const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+        if (stakeholder?.id) completedManrisCompanyIds.add(String(stakeholder.id));
+    });
 
     // Critical: stakeholders without CSIRT
     const noCsirt = all.filter(s => !csirtStore.csirtByPerusahaanMap[String(s.id)]);
@@ -156,24 +164,19 @@ const actions = computed(() => {
         });
     }
 
-    // Warning: low CSIRT SDM count
-    const csirtsLowSdm = csirtStore.csirts.filter(c => {
-        const sdmCount = csirtStore.sdmList.filter(s =>
-            String(s.id_csirt) === String(c.id)
-        ).length;
-        return sdmCount < 2;
-    });
-    if (csirtsLowSdm.length > 0) {
+    // Critical: stakeholders without Manris
+    const noManris = all.filter((s) => !completedManrisCompanyIds.has(String(s.id)));
+    if (noManris.length > 0) {
         items.push({
-            severity: 'warning',
-            score: csirtsLowSdm.length * 2,
-            icon: 'ri-team-line',
+            severity: 'critical',
+            score: noManris.length * 2,
+            icon: 'ri-shield-flash-line',
             color: '#f5b849',
-            title: `Evaluasi Kapasitas SDM CSIRT`,
-            desc: `${csirtsLowSdm.length} tim CSIRT tercatat memiliki kurang dari 2 personel`,
+            title: `Tindak Lanjut Pengisian Manris`,
+            desc: `${noManris.length} stakeholder belum menyelesaikan survey risiko`,
             action: 'Review',
-            route: '/csirt-list',
-            meta: 'Risiko operasional',
+            route: '/stakeholders',
+            meta: 'Prioritas pemetaan risiko',
         });
     }
 

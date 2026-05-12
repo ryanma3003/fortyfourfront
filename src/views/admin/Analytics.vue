@@ -2262,6 +2262,7 @@
         // The API summary already respects global filters sent via getSummary params.
         const csirtLocalReady = csirtStore.initialized && stakeholdersStore.initialized;
         const ikasLocalReady = ikasStore.initialized && stakeholdersStore.initialized;
+        const manrisLocalReady = resikoStore.initialized && stakeholdersStore.initialized;
         
         // Fixed counts for the top big numbers (ignores global filters)
         const fixedCsirtCount = globalCsirtStatus.value.sudah_membentuk_csirt || apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || 0;
@@ -2272,6 +2273,7 @@
         const displayFilteredCsirt = csirtLocalReady ? filteredCsirt.value : (apiCsirtStatus.value.sudah_membentuk_csirt || apiCsirtData.value.total_csirt || 0);
         const displayFilteredIkas = ikasLocalReady ? filteredIkasCount.value : (apiIkasStatus.value.sudah_mengisi_ikas || apiIkasData.value.total_ikas || 0);
         const displayFilteredSe = csirtLocalReady ? filteredSe.value : (apiKseData.value.total_se || 0);
+        const displayFilteredManris = manrisLocalReady ? manrisStatus.value.sudah_mengisi_manris : 0;
         
         // Stakeholder fixed count (Top number)
         const fixedStakeholderCount = stakeholdersStore.allStakeholders.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
@@ -2282,6 +2284,7 @@
         const csirtTrend = useDetailedTrends ? getTrendData(baseCsirts.value, 'perusahaan.created_at') : fallbackTrendData(displayFilteredCsirt);
         const ikasTrend = useDetailedTrends ? getTrendData(baseIkasStakeholders.value, 'updated_at') : fallbackTrendData(displayFilteredIkas);
         const seTrend = useDetailedTrends ? getTrendData(firstKseByCompany.value) : fallbackTrendData(displayFilteredSe);
+        const manrisTrend = useDetailedTrends ? getTrendData(resikoStore.adminRespondents || [], 'created_at') : fallbackTrendData(displayFilteredManris);
         const stakeholderTrend = useDetailedTrends ? getTrendData(baseStakeholders.value) : fallbackTrendData(displayFilteredStakeholder);
 
         return [
@@ -2344,6 +2347,26 @@
                 width: '100',
                 chartSeries: [{ name: 'SE', data: seTrend.data }],
                 chartOptions: buildSparkOptions('success', seTrend.labels)
+            },
+            {
+                title: "Total Manris",
+                count: String(displayFilteredManris),
+                percent: String(displayFilteredManris),
+                monthLabel: dateRangeLabel.value,
+                priceColor: "warning",
+                iconColor: "warning fw-medium",
+                cardClass: "dashboard-main-card overflow-hidden warning",
+                avatarClass: "avatar-md flex-shrink-0",
+                ValueClass: "fw-semibold lh-sm",
+                smallText: "fs-12 lh-base",
+                ValueClass1: "fs-12 lh-base",
+                svgIcon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,24a80.18,80.18,0,0,1,77.36,64H184a16,16,0,0,0-16,16v61.36A80,80,0,1,1,128,48Zm16,136a8,8,0,0,1-8,8H88a8,8,0,0,1-8-8V136a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Zm40-8H160V128a16,16,0,0,0-16-16H96a16,16,0,0,0-16,16v56H50.64A80.18,80.18,0,0,1,128,48V96a16,16,0,0,0,16,16h61.36A79.63,79.63,0,0,1,184,176Z"/></svg>',
+                id: 'chart-manris',
+                type: 'area',
+                height: '50',
+                width: '100',
+                chartSeries: [{ name: 'Manris', data: manrisTrend.data }],
+                chartOptions: buildSparkOptions('warning', manrisTrend.labels)
             },
             {
                 title: "Stakeholders",
@@ -2619,6 +2642,37 @@
                     sub_sektor: getStakeholderSubSektorName(s),
                     ikas_score: ikasData?.total_rata_rata ? Number(ikasData.total_rata_rata).toFixed(2) : '-',
                     ikas_maturity: ikasData?.total_kategori || '-',
+                    slug: s.slug,
+                };
+            });
+        } else if (context.type === 'Total Manris' || context.type.includes('Manris') || context.type.includes('Survey Risiko')) {
+            const completedCompanyIds = new Set(resikoStore.completedCompanyIds || []);
+            Object.entries(resikoStore.progressMap || {}).forEach(([slug, progress]) => {
+                if (progress?.status !== 'COMPLETED') return;
+                const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+                if (stakeholder?.id) completedCompanyIds.add(String(stakeholder.id));
+            });
+
+            const respondentsByCompany = resikoStore.respondentsByCompanyId || {};
+            const type = String(context.type || '').toLowerCase();
+
+            drillDownColumns.value = ['nama_perusahaan', 'sektor', 'sub_sektor', 'status_manris', 'jumlah_responden', 'updated_at'];
+            drillDownItems.value = all.filter((s) => {
+                const isCompleted = completedCompanyIds.has(String(s.id));
+                if (type.includes('belum')) return false;
+                return isCompleted;
+            }).map((s) => {
+                const respondents = respondentsByCompany[String(s.id)] || [];
+                const latestRespondent = respondents[0] || null;
+                return {
+                    nama_perusahaan: s.nama_perusahaan || s.nama || '-',
+                    sektor: getStakeholderSektorName(s),
+                    sub_sektor: getStakeholderSubSektorName(s),
+                    status_manris: completedCompanyIds.has(String(s.id)) ? 'Sudah Diisi' : 'Belum Diisi',
+                    jumlah_responden: respondents.length,
+                    updated_at: latestRespondent?.updated_at || latestRespondent?.created_at
+                        ? new Date(latestRespondent.updated_at || latestRespondent.created_at).toLocaleDateString('id-ID')
+                        : '-',
                     slug: s.slug,
                 };
             });
@@ -3047,7 +3101,7 @@
 
                 <!--  OPERATIONAL CARDS  -->
                 <div v-if="operationalCardsReady" class="row g-3 mt-1">
-                    <div class="col-xl-3 col-md-6 animate-show-up"
+                    <div class="col-xl col-md-6 animate-show-up"
                         v-for="(card, index) in operationalCards"
                         :key="'ops-' + index"
                         :style="{ animationDelay: isFirstLoad ? `${0.4 + (index * 0.1)}s` : '0s' }"
