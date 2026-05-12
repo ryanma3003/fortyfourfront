@@ -64,7 +64,25 @@ export const MENUITEMS: (MenuItem | { menutitle: string })[] = [
     path: "/dashboards", icon: Svgicons.Dashboardicon, title: "Dashboard", type: "link", active: true, dirchange: false, selected: false, requiredRole: "user"
   },
   {
-    path: "/stakeholders", icon: Svgicons.Stakeholdersicon, title: "Stakeholders", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"
+    path: "/stakeholders",
+    icon: Svgicons.Stakeholdersicon,
+    title: "Stakeholders",
+    type: "sub",
+    active: false,
+    dirchange: false,
+    selected: false,
+    requiredRole: "admin",
+    children: [
+      {
+        path: "/stakeholders/sektor-setup",
+        icon: '<i class="ri-settings-4-line"></i>',
+        title: "Sektor Setup",
+        type: "link",
+        active: false,
+        dirchange: false,
+        selected: false,
+      },
+    ],
   },
   {
     path: "/csirt-list", icon: Svgicons.Csirticon, title: "CSIRT List", type: "link", active: true, dirchange: false, selected: false, requiredRole: "admin"

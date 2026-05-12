@@ -588,8 +588,8 @@ export default {
                         </div>
                       </div>
                     </td>
-                    <td class="align-middle text-muted fs-13">
-                      <div class="fw-semibold text-dark mb-1">{{ item.deskripsi || '-' }}</div>
+                    <td class="align-middle text-muted fs-13" style="max-width: 450px;">
+                      <div class="fw-semibold text-dark mb-1 lms-description-truncate" :title="item.deskripsi">{{ item.deskripsi || '-' }}</div>
                       <div class="d-flex flex-wrap gap-2">
                         <span v-if="item.kategori" class="badge bg-primary-transparent text-primary fs-11">{{ item.kategori }}</span>
                         <span v-if="item.penyelenggara" class="badge bg-info-transparent text-info fs-11">{{ item.penyelenggara }}</span>
@@ -1774,6 +1774,15 @@ html.dark .kelas-thumbnail-preview {
 
 .lms-th-description {
   min-width: 240px;
+  max-width: 500px;
+}
+
+.lms-description-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  width: 100%;
 }
 
 .lms-kelas-page .stakeholder-table tbody td {

@@ -6,6 +6,7 @@ import { useIkasStore } from '@/stores/ikas';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import { useKseStore } from '@/stores/kse';
 import { useKonversiStore } from '@/stores/konversi';
+import { useResikoStore } from '@/stores/resiko';
 import { isKonversiComplete } from '@/services/konversi.service';
 import { useNotificationStore } from '@/stores/notifications';
 
@@ -15,6 +16,7 @@ const ikasStore = useIkasStore();
 const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const kseStore = useKseStore();
 const konversiStore = useKonversiStore();
+const resikoStore = useResikoStore();
 const notifStore = useNotificationStore();
 const emit = defineEmits(['drill-down']);
 const props = defineProps({
@@ -58,6 +60,7 @@ function handleInsightClick(insight) {
     if (insight.key === 'csirt') type = 'Cakupan CSIRT';
     else if (insight.key === 'ikas') type = 'Cakupan IKAS';
     else if (insight.key === 'kse') type = 'Sistem Elektronik';
+    else if (insight.key === 'manris') type = 'Total Manris';
     else if (insight.key === 'fresh') type = 'Update Terakhir';
     else if (insight.key === 'complete') type = 'Data Lengkap';
     emit('drill-down', { type });
@@ -125,7 +128,16 @@ const insights = computed(() => {
 
     const all = stakeholdersStore.allStakeholders.filter(s => {
         const inDate = isInGlobalRange(s.created_at);
-        const inSector = filterStore.sektorId ? s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId : true;
+        const inSector = (() => {
+            if (!filterStore.sektorId) return true;
+            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
+            if (!matchSektor) return false;
+            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
+                return String(subSektorId) === String(filterStore.subSektorId);
+            }
+            return true;
+        })();
         return inDate && inSector;
     });
     if (all.length === 0) return [];
@@ -143,6 +155,15 @@ const insights = computed(() => {
 
     const kseCount = all.filter(stakeholderHasKse).length;
     const ksePct = totalSh > 0 ? Math.round((kseCount / totalSh) * 100) : 0;
+
+    const completedManrisCompanyIds = new Set(resikoStore.completedCompanyIds || []);
+    Object.entries(resikoStore.progressMap || {}).forEach(([slug, progress]) => {
+        if (progress?.status !== 'COMPLETED') return;
+        const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+        if (stakeholder?.id) completedManrisCompanyIds.add(String(stakeholder.id));
+    });
+    const manrisCount = all.filter((s) => completedManrisCompanyIds.has(String(s.id))).length;
+    const manrisPct = totalSh > 0 ? Math.round((manrisCount / totalSh) * 100) : 0;
 
     let maxTime = 0;
     all.forEach(s => {
@@ -235,6 +256,17 @@ const insights = computed(() => {
             icon: 'ri-file-shield-2-line',
             color: '#7c3aed',
             action: 'validasi kategori SE',
+        },
+        {
+            key: 'manris',
+            label: 'Cakupan Manris',
+            value: manrisCount,
+            total: totalSh,
+            pct: manrisPct,
+            missing: totalSh - manrisCount,
+            icon: 'ri-shield-flash-line',
+            color: '#f59e0b',
+            action: 'lanjutkan survey risiko',
         },
         {
             key: 'fresh',

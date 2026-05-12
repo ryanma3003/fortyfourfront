@@ -2,7 +2,7 @@
 <script lang="ts">
 import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import CountryCodeDropdown from "../shared/CountryCodeDropdown.vue";
+
 import { useCsirtStore } from "../../stores/csirt";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import { csirtService } from "../../services/csirt.service";
@@ -23,7 +23,7 @@ export default {
       },
     };
   },
-  components: { Pageheader, EasyDataTable, CountryCodeDropdown },
+  components: { Pageheader, EasyDataTable },
   setup() {
     const authStore = useAuthStore();
     const csirtStore = useCsirtStore();
@@ -1042,11 +1042,7 @@ export default {
                     <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon <span class="text-danger">*</span>
                   </label>
                   <div class="input-group" :class="{ 'is-invalid': formErrors.telepon_csirt }">
-                    <CountryCodeDropdown 
-                      v-model="selectedCountryCode" 
-                      :error="!!formErrors.telepon_csirt"
-                      @update:modelValue="handleCountryCodeChange"
-                    />
+                    <span class="input-group-text">+62</span>
                     <input 
                       type="tel" 
                       class="form-control" 
@@ -1245,11 +1241,7 @@ export default {
                     <i class="ri-phone-line me-1 text-primary"></i>Nomor Telepon <span class="text-danger">*</span>
                   </label>
                   <div class="input-group" :class="{ 'is-invalid': formErrors.telepon_csirt }">
-                    <CountryCodeDropdown 
-                      v-model="selectedCountryCode" 
-                      :error="!!formErrors.telepon_csirt"
-                      @update:modelValue="handleCountryCodeChange"
-                    />
+                    <span class="input-group-text">+62</span>
                     <input 
                       type="tel" 
                       class="form-control" 
@@ -1347,27 +1339,52 @@ export default {
   </div>
 
   <!-- Delete Confirmation Modal -->
-  <div v-if="showDeleteModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showDeleteModal = false">
-    <div class="modal-dialog modal-dialog-centered custom-modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Konfirmasi Hapus</h5>
-          <button type="button" class="btn-close" @click="showDeleteModal = false"></button>
+  <div
+    v-if="showDeleteModal"
+    class="modal fade show d-flex align-items-center justify-content-center"
+    tabindex="-1"
+    style="display: flex !important; background: rgba(15, 23, 42, 0.75); position: fixed; inset: 0; z-index: 9999;"
+    @click.self="showDeleteModal = false"
+  >
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 450px; width: 100%; margin: 16px;">
+      <div class="modal-content border-0 shadow-lg bg-white" style="border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
+        <div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+          <h5 class="modal-title fw-bold text-dark">Konfirmasi Hapus</h5>
+          <button
+            type="button"
+            class="btn-close"
+            @click="showDeleteModal = false"
+            aria-label="Close"
+          ></button>
         </div>
-        <div class="modal-body">
-          <div class="text-center">
-            <i class="ri-error-warning-line text-danger warning-icon-lg"></i>
-            <h5 class="mt-3">Apakah Anda yakin?</h5>
-            <p class="text-muted">
-              Anda akan menghapus CSIRT
-              <strong>{{ currentDeleteItem?.nama_csirt }}</strong
-              >. Tindakan ini tidak dapat dibatalkan.
+        <div class="modal-body py-4 px-4 text-center">
+          <div class="mb-4">
+            <div class="d-inline-flex align-items-center justify-content-center bg-light-danger rounded-circle mb-3" style="width: 80px; height: 80px; background-color: #fff1f2;">
+              <i class="ri-error-warning-line text-danger" style="font-size: 3rem;"></i>
+            </div>
+            <h4 class="fw-bold text-dark mb-2">Apakah Anda yakin?</h4>
+            <p class="text-muted mb-0 px-3">
+              Anda akan menghapus CSIRT 
+              <span class="text-dark fw-semibold">{{ currentDeleteItem?.nama_csirt }}</span>. 
+              Tindakan ini tidak dapat dibatalkan.
             </p>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="showDeleteModal = false">Batal</button>
-          <button type="button" class="btn btn-danger" @click="deleteCsirt">
+        <div class="modal-footer border-0 pt-0 pb-4 px-4 d-flex gap-2">
+          <button
+            type="button"
+            class="btn btn-light flex-grow-1 fw-semibold py-2"
+            style="border-radius: 10px; background-color: #f1f5f9; border: none; color: #64748b;"
+            @click="showDeleteModal = false"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            class="btn btn-danger flex-grow-1 fw-semibold py-2"
+            style="border-radius: 10px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none;"
+            @click="deleteCsirt"
+          >
             <i class="ri-delete-bin-line me-1"></i>Hapus
           </button>
         </div>

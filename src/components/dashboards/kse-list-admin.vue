@@ -156,25 +156,46 @@ const categoryCoverage = computed(() => {
     return Math.round((categorizedCount.value / seList.value.length) * 100);
 });
 
-const filteredSeList = computed(() => {
+const groupedByCompany = computed(() => {
     const q = searchQuery.value.toLowerCase();
-    return seList.value.filter(se => {
+    const groups: Record<string, { id: string, stakeholder: any, ses: SeCsirt[] }> = {};
+    
+    seList.value.forEach(se => {
         const stakeholder = getFullStakeholder(se);
-        return se.nama_se?.toLowerCase().includes(q) ||
+        const companyId = String(stakeholder?.id || se.id_perusahaan || se.perusahaan?.id || 'unknown');
+        
+        // Search filter logic
+        const matchesSearch = !q || 
+               se.nama_se?.toLowerCase().includes(q) ||
                stakeholder?.nama_perusahaan?.toLowerCase().includes(q) ||
                se.perusahaan?.nama_perusahaan?.toLowerCase().includes(q);
+        
+        if (matchesSearch) {
+            if (!groups[companyId]) {
+                groups[companyId] = {
+                    id: companyId,
+                    stakeholder: stakeholder || se.perusahaan || { nama_perusahaan: 'Unknown Stakeholder' },
+                    ses: []
+                };
+            }
+            groups[companyId].ses.push(se);
+        }
     });
+    
+    return Object.values(groups).sort((a, b) => 
+        (a.stakeholder.nama_perusahaan || '').localeCompare(b.stakeholder.nama_perusahaan || '')
+    );
 });
 
-const paginatedSeList = computed(() => {
+const paginatedGroups = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
     const end = start + itemsPerPage.value;
-    return filteredSeList.value.slice(start, end);
+    return groupedByCompany.value.slice(start, end);
 });
 
-const totalSePages = computed(() => Math.max(1, Math.ceil(filteredSeList.value.length / itemsPerPage.value)));
-const visibleRangeStart = computed(() => filteredSeList.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0);
-const visibleRangeEnd = computed(() => Math.min(currentPage.value * itemsPerPage.value, filteredSeList.value.length));
+const totalGroupPages = computed(() => Math.max(1, Math.ceil(groupedByCompany.value.length / itemsPerPage.value)));
+const visibleRangeStart = computed(() => groupedByCompany.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0);
+const visibleRangeEnd = computed(() => Math.min(currentPage.value * itemsPerPage.value, groupedByCompany.value.length));
 
 const paginatedRequests = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
@@ -241,7 +262,7 @@ const confirmDelete = async () => {
         const deletedId = String(deleteTarget.value.id);
         seList.value = seList.value.filter(se => String(se.id) !== deletedId);
         editRequests.value = editRequests.value.filter(req => String(req.id_se) !== deletedId);
-        if (currentPage.value > totalSePages.value) currentPage.value = totalSePages.value;
+        if (currentPage.value > totalGroupPages.value) currentPage.value = totalGroupPages.value;
         deleteModal.value = false;
         deleteTarget.value = null;
         window.dispatchEvent(new Event('se-requests-updated'));
@@ -326,8 +347,8 @@ const formatTime = (date?: string | null) => {
 };
 
 // Expansion State
-const expandedRows = ref<Set<number>>(new Set());
-const toggleExpand = (id: number) => {
+const expandedRows = ref<Set<string>>(new Set());
+const toggleExpand = (id: string) => {
     if (expandedRows.value.has(id)) {
         expandedRows.value.delete(id);
     } else {
@@ -454,8 +475,8 @@ watch(loading, (isLoading) => {
     }
 });
 
-watch([paginatedSeList, currentPage, itemsPerPage, searchQuery], () => {
-    if (currentPage.value > totalSePages.value) currentPage.value = totalSePages.value;
+watch([paginatedGroups, currentPage, itemsPerPage, searchQuery], () => {
+    if (currentPage.value > totalGroupPages.value) currentPage.value = totalGroupPages.value;
     if (!loading.value) animateTableRows(true);
 }, { flush: 'post' });
 
@@ -467,7 +488,6 @@ onBeforeUnmount(() => {
 <template>
     <div ref="kseAdminPageRef" class="kse-admin-page">
         <Pageheader :propData="pageData" />
-
         <div class="row">
             <div class="col-xl-12">
                 <!-- Premium Shell Card -->
@@ -604,12 +624,12 @@ onBeforeUnmount(() => {
                                     <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
                                 </select>
                             </div>
-                            <label class="kse-search" aria-label="Cari sistem elektronik">
+                            <label class="kse-search" aria-label="Cari stakeholder atau KSE">
                                 <i class="ri-search-line"></i>
                                 <input
                                     v-model="searchQuery"
                                     type="text"
-                                    placeholder="Cari sistem elektronik atau stakeholder..."
+                                    placeholder="Cari stakeholder atau sistem elektronik..."
                                 />
                                 <button v-if="searchQuery" type="button" @click="searchQuery = ''" aria-label="Clear search">
                                     <i class="ri-close-circle-fill"></i>
@@ -691,239 +711,133 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
 
-                        <!-- 2. ALL SYSTEMS LIST -->
+                        <!-- 2. GROUPED LIST BY STAKEHOLDER -->
                         <div class="table-responsive">
                             <table class="table table-hover mb-0 align-middle lms-style-table">
                                 <thead class="stakeholder-thead">
                                     <tr>
                                         <th class="text-center" style="width: 50px;">NO</th>
-                                        <th>Nama Sistem Elektronik</th>
-                                        <th>Stakeholder</th>
-                                        <th class="text-center" style="width: 140px;">Kategori</th>
-                                        <th class="text-center" style="width: 120px;">Status</th>
-                                        <th style="width: 220px;">Dibuat / Diperbarui</th>
+                                        <th>Stakeholder / Perusahaan</th>
+                                        <th class="text-center">Total KSE</th>
+                                        <th class="text-center">Kategori</th>
+                                        <th class="text-center">Update Terakhir</th>
                                         <th class="text-center" style="width: 150px;">Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-if="loading && seList.length === 0" v-for="index in Math.min(itemsPerPage, 8)" :key="`kse-skeleton-${index}`" class="kse-skeleton-table-row">
                                         <td class="text-center"><span class="kse-skel-line kse-skel-index"></span></td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-3">
-                                                <span class="kse-skel-icon"></span>
-                                                <div class="flex-grow-1">
-                                                    <span class="kse-skel-line kse-skel-title"></span>
-                                                    <span class="kse-skel-line kse-skel-subtitle"></span>
-                                                </div>
-                                            </div>
-                                        </td>
+                                        <td><div class="d-flex align-items-center gap-3"><span class="kse-skel-icon"></span><div class="flex-grow-1"><span class="kse-skel-line kse-skel-title"></span><span class="kse-skel-line kse-skel-subtitle"></span></div></div></td>
+                                        <td class="text-center"><span class="kse-skel-pill"></span></td>
+                                        <td class="text-center"><span class="kse-skel-pill"></span></td>
                                         <td><span class="kse-skel-line kse-skel-title"></span></td>
-                                        <td class="text-center"><span class="kse-skel-pill"></span></td>
-                                        <td class="text-center"><span class="kse-skel-pill"></span></td>
-                                        <td>
-                                            <span class="kse-skel-line kse-skel-title"></span>
-                                            <span class="kse-skel-line kse-skel-subtitle"></span>
-                                        </td>
-                                        <td class="text-center">
-                                            <div class="d-flex justify-content-center gap-2">
-                                                <span class="kse-skel-action"></span>
-                                                <span class="kse-skel-action"></span>
-                                                <span class="kse-skel-action"></span>
-                                            </div>
-                                        </td>
+                                        <td class="text-center"><span class="kse-skel-action"></span></td>
                                     </tr>
-                                    <tr v-else-if="filteredSeList.length === 0">
-                                        <td colspan="7" class="text-center py-5">
+                                    <tr v-else-if="groupedByCompany.length === 0">
+                                        <td colspan="6" class="text-center py-5">
                                             <div class="empty-state py-5">
-                                                <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-computer-line"></i></div></div>
-                                                <h6 class="fw-bold empty-state-title">Tidak ada sistem ditemukan</h6>
+                                                <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-government-line"></i></div></div>
+                                                <h6 class="fw-bold empty-state-title">Tidak ada stakeholder ditemukan</h6>
                                                 <p class="text-muted fs-13">Coba ubah kata kunci pencarian Anda</p>
                                             </div>
                                         </td>
                                     </tr>
                                     
-                                    <template v-for="(se, idx) in paginatedSeList" :key="se.id">
-                                        <!-- Main Row -->
-                                        <tr class="lms-table-row clickable-row" 
-                                            :class="{ 'expanded-parent': expandedRows.has(se.id) }"
-                                            @click="toggleExpand(se.id)">
+                                    <template v-for="(group, idx) in paginatedGroups" :key="group.id">
+                                        <tr class="lms-table-row clickable-row" :class="{ 'expanded-parent': expandedRows.has(group.id) }" @click="toggleExpand(group.id)">
                                             <td class="text-center text-muted fw-bold fs-13">{{ (currentPage - 1) * itemsPerPage + idx + 1 }}</td>
                                             <td>
                                                 <div class="d-flex align-items-center gap-2">
-                                                    <!-- Expansion Arrow in Circle -->
-                                                    <button class="btn btn-sm btn-icon btn-light rounded-circle expansion-toggle-lms" 
-                                                            :class="{ 'active': expandedRows.has(se.id) }"
-                                                            @click.stop="toggleExpand(se.id)">
+                                                    <button class="btn btn-sm btn-icon btn-light rounded-circle expansion-toggle-lms" :class="{ 'active': expandedRows.has(group.id) }" @click.stop="toggleExpand(group.id)">
                                                         <i class="ri-arrow-right-s-line"></i>
                                                     </button>
-                                                    
-                                                    <!-- System Info -->
                                                     <div class="d-flex align-items-center gap-3 ms-1">
-                                                        <div class="avatar avatar-md rounded-3 bg-danger text-white shadow-sm flex-shrink-0" style="width: 42px; height: 42px;">
-                                                            <i class="ri-macbook-line fs-20"></i>
+                                                        <div class="avatar avatar-md rounded-circle bg-primary-transparent text-primary shadow-sm flex-shrink-0" style="width: 42px; height: 42px;">
+                                                            <i class="ri-government-line fs-20"></i>
                                                         </div>
                                                         <div class="overflow-hidden">
-                                                            <div class="fw-bold text-dark fs-14 text-truncate" style="max-width: 250px;" :title="se.nama_se">{{ se.nama_se }}</div>
+                                                            <div class="fw-bold text-dark fs-14 text-truncate" style="max-width: 300px;">{{ group.stakeholder.nama_perusahaan }}</div>
+                                                            <div class="text-muted fs-11 text-truncate">{{ group.stakeholder.sektor || 'Sektor belum ditentukan' }}</div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <div class="avatar avatar-xs rounded-circle bg-primary-transparent text-primary flex-shrink-0" style="width: 28px; height: 28px; font-size: 10px;">
-                                                        <i class="ri-government-line"></i>
-                                                    </div>
-                                                    <div class="fw-medium text-dark fs-12 text-truncate" style="max-width: 180px;">
-                                                        {{ getFullStakeholder(se)?.nama_perusahaan || se.perusahaan?.nama_perusahaan || 'N/A' }}
-                                                    </div>
+                                            <td class="text-center">
+                                                <span class="badge bg-primary-transparent text-primary px-3 py-2 rounded-pill fw-bold fs-12">{{ group.ses.length }} Sistem</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="d-flex justify-content-center flex-wrap gap-1" style="max-width: 150px; margin: 0 auto;">
+                                                    <span v-if="group.ses.some(s => normalizeCategory(s.kategori_se) === 'strategis')" class="badge bg-danger-transparent text-danger fs-10">Strategis</span>
+                                                    <span v-if="group.ses.some(s => normalizeCategory(s.kategori_se) === 'tinggi')" class="badge bg-warning-transparent text-warning fs-10">Tinggi</span>
+                                                    <span v-if="group.ses.some(s => normalizeCategory(s.kategori_se) === 'rendah')" class="badge bg-info-transparent text-info fs-10">Rendah</span>
                                                 </div>
                                             </td>
                                             <td class="text-center">
-                                                <span class="badge-sektor" :class="getCategoryBadge(se.kategori_se || '')">
-                                                    {{ se.kategori_se || 'N/A' }}
-                                                </span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge rounded-pill px-3 py-2 bg-success-transparent text-success fw-bold fs-10">
-                                                    <i class="ri-lock-fill me-1"></i> FINAL
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div class="d-flex flex-column gap-1">
-                                                    <div class="text-dark fs-12 fw-medium d-flex align-items-center gap-2">
-                                                        <i class="ri-calendar-line text-muted"></i> {{ formatDate(se.created_at || '') }}
-                                                    </div>
-                                                    <div class="text-muted fs-11 d-flex align-items-center gap-2">
-                                                        <i class="ri-time-line text-muted"></i> {{ formatDate(se.updated_at || se.created_at || '') }}, {{ formatTime(se.updated_at || se.created_at || '') }}
-                                                    </div>
-                                                </div>
+                                                <div class="text-dark fs-11 fw-medium"><i class="ri-calendar-line text-muted"></i> {{ formatDate(group.ses[0]?.updated_at || group.ses[0]?.created_at) }}</div>
                                             </td>
                                             <td class="text-center" @click.stop>
-                                                <div class="d-flex justify-content-center gap-2">
-                                                    <button class="btn btn-sm btn-icon btn-info-light stakeholders-action-btn" @click.stop="viewDetail(se)" title="View Details">
-                                                        <i class="ri-eye-line"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-icon btn-primary-light stakeholders-action-btn action-edit" @click.stop="editSe(se)" title="Edit Data">
-                                                        <i class="ri-edit-line"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-icon btn-danger-light stakeholders-action-btn action-delete" @click.stop="openDelete(se)" :disabled="actionLoadingId === se.id" title="Delete">
-                                                        <i :class="actionLoadingId === se.id ? 'ri-loader-4-line ri-spin' : 'ri-delete-bin-line'"></i>
-                                                    </button>
-                                                </div>
+                                                <button class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" @click="router.push(`/stakeholders/${group.stakeholder.slug || getStakeholderSlug(group.ses[0])}`)">
+                                                    <i class="ri-user-line me-1"></i> Profil
+                                                </button>
                                             </td>
                                         </tr>
 
-                                        <!-- Expanded Detail Row -->
-                                        <tr v-if="expandedRows.has(se.id)" class="expansion-row animate__animated animate__fadeIn">
-                                            <td colspan="7" class="px-4 py-3 border-0">
-                                                <div class="card custom-card mb-0 shadow-sm border-0 w-100 overflow-hidden" style="border-radius: 12px; background: #fbfcfe; border-left: 4px solid #3b82f6 !important;">
-                                                    <div class="card-body p-3">
-                                                        <!-- Compact Dashboard Header -->
-                                                        <div class="d-flex align-items-center justify-content-between mb-3">
-                                                            <div class="d-flex align-items-center gap-2">
-                                                                <i class="ri-dashboard-3-line text-primary fs-18"></i>
-                                                                <h6 class="fw-bold text-dark mb-0 fs-13">Rangkuman Sistem Elektronik</h6>
-                                                                <span class="text-muted fs-10 ms-2">| Informasi teknis & administrasi</span>
-                                                            </div>
-                                                            <button class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm fw-bold fs-10 d-flex align-items-center gap-2" @click="viewDetail(se)">
-                                                                KELOLA SISTEM <i class="ri-settings-4-line"></i>
-                                                            </button>
+                                        <tr v-if="expandedRows.has(group.id)" class="expansion-row animate__animated animate__fadeIn">
+                                            <td colspan="6" class="px-5 py-3 border-0 bg-light-subtle">
+                                                <div class="card custom-card mb-0 shadow-sm border-0 overflow-hidden" style="border-radius: 16px; border-left: 4px solid #3b82f6 !important;">
+                                                    <div class="card-header bg-white border-bottom p-3 d-flex align-items-center justify-content-between">
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <i class="ri-list-check-3 text-primary fs-18"></i>
+                                                            <h6 class="fw-bold text-dark mb-0 fs-13">Daftar Sistem Elektronik ({{ group.ses.length }})</h6>
                                                         </div>
-
-                                                        <!-- Compact Metric Cards (3 Columns) -->
-                                                        <div class="row g-3 mb-3">
-                                                            <!-- 1. Network -->
-                                                            <div class="col-md-4">
-                                                                <div class="p-2 rounded-3 bg-white border border-light-dark shadow-xs h-100">
-                                                                    <div class="d-flex align-items-center gap-3">
-                                                                        <div class="avatar avatar-md rounded-circle bg-indigo-transparent text-indigo flex-shrink-0">
-                                                                            <i class="ri-global-line fs-20"></i>
-                                                                        </div>
-                                                                        <div class="overflow-hidden">
-                                                                            <div class="text-muted fs-9 fw-bold text-uppercase letter-spacing-1">Network & Arsitektur</div>
-                                                                            <div class="text-indigo fw-bold fs-12 d-flex align-items-center gap-1">
-                                                                                {{ se.ip_se || '-' }}
-                                                                                <span class="badge bg-light text-muted fs-9 fw-normal">AS{{ se.as_number_se || '-' }}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <!-- 2. Skor / Kelengkapan -->
-                                                            <div class="col-md-4">
-                                                                <div class="p-2 rounded-3 bg-white border border-light-dark shadow-xs h-100">
-                                                                    <div class="d-flex align-items-center gap-3">
-                                                                        <div class="avatar avatar-md rounded-circle bg-emerald-transparent text-success flex-shrink-0">
-                                                                            <i class="ri-shield-check-line fs-20"></i>
-                                                                        </div>
-                                                                        <div class="flex-grow-1">
-                                                                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                                                                <span class="text-muted fs-10 fw-bold text-uppercase letter-spacing-1">SKOR / KELENGKAPAN</span>
-                                                                                <div class="text-end">
-                                                                                    <span class="text-success fw-bold fs-11">{{ calculateScore(se).score }}/50</span>
-                                                                                    <span class="text-muted fs-10 ms-1">({{ calculateScore(se).completion }}%)</span>
+                                                    </div>
+                                                    <div class="card-body p-0">
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm table-nowrap mb-0 align-middle">
+                                                                <thead class="bg-light">
+                                                                    <tr>
+                                                                        <th class="ps-4" style="width: 40px;">No</th>
+                                                                        <th>Nama Sistem</th>
+                                                                        <th class="text-center">Kategori</th>
+                                                                        <th class="text-center">Status</th>
+                                                                        <th>Kelengkapan</th>
+                                                                        <th class="text-center">Aksi</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    <tr v-for="(se, sIdx) in group.ses" :key="se.id" class="border-bottom-0">
+                                                                        <td class="ps-4 text-muted fs-11 fw-bold">{{ sIdx + 1 }}</td>
+                                                                        <td>
+                                                                            <div class="d-flex align-items-center gap-3">
+                                                                                <div class="avatar avatar-sm rounded bg-danger-transparent text-danger"><i class="ri-macbook-line"></i></div>
+                                                                                <div>
+                                                                                    <div class="fw-bold text-dark fs-12">{{ se.nama_se }}</div>
+                                                                                    <div class="text-muted fs-9">ID: {{ se.id }}</div>
                                                                                 </div>
                                                                             </div>
-                                                                            <div class="progress progress-xs" style="height: 3px; background: #f1f5f9; border-radius: 10px;">
-                                                                                <div class="progress-bar bg-success" :style="{ width: calculateScore(se).completion + '%' }"></div>
+                                                                        </td>
+                                                                        <td class="text-center">
+                                                                            <span class="badge-sektor" :class="getCategoryBadge(se.kategori_se || '')">{{ se.kategori_se || 'Draft' }}</span>
+                                                                        </td>
+                                                                        <td class="text-center">
+                                                                            <span class="badge rounded-pill px-2 py-1 bg-success-transparent text-success fs-9 fw-bold"><i class="ri-lock-fill me-1"></i> FINAL</span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <div class="d-flex align-items-center gap-2" style="width: 100px;">
+                                                                                <div class="progress progress-xs flex-grow-1" style="height: 4px;"><div class="progress-bar bg-primary" :style="{ width: calculateScore(se).completion + '%' }"></div></div>
+                                                                                <span class="fs-10 fw-bold text-primary">{{ calculateScore(se).completion }}%</span>
                                                                             </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <!-- 3. Status Verifikasi -->
-                                                            <div class="col-md-4">
-                                                                <div class="p-2 rounded-3 bg-white border border-light-dark shadow-xs h-100">
-                                                                    <div class="d-flex align-items-center gap-3">
-                                                                        <div class="avatar avatar-md rounded-circle bg-slate-transparent text-slate flex-shrink-0">
-                                                                            <i class="ri-verified-badge-line fs-20 text-primary"></i>
-                                                                        </div>
-                                                                        <div class="flex-grow-1">
-                                                                            <div class="text-muted fs-9 fw-bold text-uppercase letter-spacing-1">Status Verifikasi</div>
-                                                                            <div class="text-success fw-bold fs-12 d-flex align-items-center gap-1">
-                                                                                Finalized <i class="ri-checkbox-circle-fill text-success fs-14"></i>
+                                                                        </td>
+                                                                        <td class="text-center pe-3">
+                                                                            <div class="d-flex justify-content-center gap-1">
+                                                                                <button class="btn btn-icon btn-sm btn-info-light stakeholders-action-btn" @click="viewDetail(se)" title="Lihat"><i class="ri-eye-line"></i></button>
+                                                                                <button class="btn btn-icon btn-sm btn-primary-light stakeholders-action-btn" @click="editSe(se)" title="Edit"><i class="ri-edit-line"></i></button>
+                                                                                <button class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn" @click="openDelete(se)" title="Hapus"><i class="ri-delete-bin-line"></i></button>
                                                                             </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <!-- Compact Bottom Section -->
-                                                        <div class="row g-3">
-                                                            <!-- Features (Compact) -->
-                                                            <div class="col-lg-8">
-                                                                <div class="p-3 rounded-3 bg-white border h-100 shadow-xs">
-                                                                    <div class="fw-bold mb-2 text-dark fs-11 d-flex align-items-center gap-2">
-                                                                        <i class="ri-list-settings-line text-primary"></i> Fitur & Layanan Utama
-                                                                    </div>
-                                                                    <div class="fs-12 text-muted lh-base bg-light bg-opacity-25 p-2 rounded-2 border border-light">
-                                                                        {{ se.fitur_se || 'Tidak ada deskripsi fitur layanan tambahan.' }}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <!-- Stakeholder (Slim Card) -->
-                                                            <div class="col-lg-4">
-                                                                <div class="p-3 rounded-3 bg-indigo-transparent border border-indigo-light h-100 shadow-xs">
-                                                                    <div class="d-flex align-items-center gap-3">
-                                                                        <div class="avatar avatar-lg rounded-circle bg-white shadow-sm text-indigo border border-indigo-light flex-shrink-0">
-                                                                            <i class="ri-government-line fs-20"></i>
-                                                                        </div>
-                                                                        <div class="overflow-hidden">
-                                                                            <div class="text-indigo fw-bold text-uppercase fs-9 mb-1 letter-spacing-1">Profil Stakeholder</div>
-                                                                            <div class="text-dark fw-bold fs-13 text-truncate">{{ getFullStakeholder(se)?.nama_perusahaan || se.perusahaan?.nama_perusahaan || 'N/A' }}</div>
-                                                                            <div class="text-muted fs-11 text-truncate d-flex align-items-center gap-1">
-                                                                                <i class="ri-map-pin-2-line"></i> 
-                                                                                <span class="text-truncate">
-                                                                                    {{ getFullStakeholder(se)?.sub_sektor?.nama_sektor || '-' }} 
-                                                                                    <span class="mx-1 opacity-50">/</span> 
-                                                                                    {{ getFullStakeholder(se)?.sub_sektor?.nama_sub_sektor || '-' }}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -933,43 +847,33 @@ onBeforeUnmount(() => {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
 
-
-                    <!-- ══ TABLE FOOTER ══════════════════════════════════════════ -->
-                    <div class="pagination-container stakeholders-pagination mt-4 mb-0 pb-0">
-                        <div class="stakeholders-pagination-copy">
-                            Showing {{ visibleRangeStart }}-{{ visibleRangeEnd }} 
-                            of {{ filteredSeList.length }} sistem elektronik
-                        </div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                            <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalSePages }}</span>
-                            <nav v-if="totalSePages > 1">
-                                <ul class="pagination pagination-sm mb-0 gap-1">
-                                    <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                                        <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--">
-                                            <i class="ri-arrow-left-s-line"></i>
-                                        </a>
-                                    </li>
-                                    <template v-for="p in totalSePages" :key="p">
-                                        <li v-if="p === 1 || p === totalSePages || (p >= currentPage - 1 && p <= currentPage + 1)" 
-                                            class="page-item" :class="{ active: p === currentPage }">
-                                            <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
+                        <!-- ══ PAGINATION ══════════════════════════════════════════ -->
+                        <div class="pagination-container stakeholders-pagination p-4 border-top">
+                            <div class="stakeholders-pagination-copy">Menampilkan {{ visibleRangeStart }}-{{ visibleRangeEnd }} dari {{ groupedByCompany.length }} Stakeholder</div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                                <span class="stakeholders-page-pill">Halaman {{ currentPage }} dari {{ totalGroupPages }}</span>
+                                <nav v-if="totalGroupPages > 1">
+                                    <ul class="pagination pagination-sm mb-0 gap-1">
+                                        <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                                            <button class="page-link rounded-circle" @click="currentPage = 1"><i class="ri-skip-back-mini-line"></i></button>
                                         </li>
-                                        <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled">
-                                            <span class="page-link border-0 bg-transparent">...</span>
+                                        <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                                            <button class="page-link rounded-circle" @click="currentPage--"><i class="ri-arrow-left-s-line"></i></button>
                                         </li>
-                                    </template>
-                                    <li class="page-item" :class="{ disabled: currentPage === totalSePages }">
-                                        <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++">
-                                            <i class="ri-arrow-right-s-line"></i>
-                                        </a>
-                                    </li>
-                                </ul>
-                            </nav>
+                                        <template v-for="p in totalGroupPages" :key="p">
+                                            <li v-if="p === 1 || p === totalGroupPages || (p >= currentPage - 2 && p <= currentPage + 2)" class="page-item" :class="{ active: p === currentPage }">
+                                                <button class="page-link rounded-circle" @click="currentPage = p">{{ p }}</button>
+                                            </li>
+                                        </template>
+                                        <li class="page-item" :class="{ disabled: currentPage === totalGroupPages }">
+                                            <button class="page-link rounded-circle" @click="currentPage++"><i class="ri-arrow-right-s-line"></i></button>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </div>
                         </div>
-                    </div>
-
+                    </div><!-- /kse-list-shell -->
                 </div><!-- /card-body -->
                 </div><!-- /premium shell card -->
             </div>

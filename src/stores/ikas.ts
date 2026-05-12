@@ -1633,21 +1633,21 @@ export const useIkasStore = defineStore('ikas', {
       const errors: string[] = [];
       const warnings: string[] = [];
 
-      const idenResult = await this.submitIdentifikasi(slug);
-      if (!idenResult.success) errors.push(`Identifikasi: ${idenResult.error}`);
-      else if (idenResult.skipped) warnings.push('Identifikasi summary endpoint tidak tersedia');
+      const results = await Promise.all([
+        this.submitIdentifikasi(slug),
+        this.submitProteksi(slug),
+        this.submitDeteksi(slug),
+        this.submitGulih(slug)
+      ]);
 
-      const protResult = await this.submitProteksi(slug);
-      if (!protResult.success) errors.push(`Proteksi: ${protResult.error}`);
-      else if (protResult.skipped) warnings.push('Proteksi summary endpoint tidak tersedia');
-
-      const detResult = await this.submitDeteksi(slug);
-      if (!detResult.success) errors.push(`Deteksi: ${detResult.error}`);
-      else if (detResult.skipped) warnings.push('Deteksi summary endpoint tidak tersedia');
-
-      const gulihResult = await this.submitGulih(slug);
-      if (!gulihResult.success) errors.push(`Gulih: ${gulihResult.error}`);
-      else if (gulihResult.skipped) warnings.push('Gulih summary endpoint tidak tersedia');
+      const labels = ['Identifikasi', 'Proteksi', 'Deteksi', 'Gulih'];
+      results.forEach((result, idx) => {
+        if (!result.success) {
+          errors.push(`${labels[idx]}: ${result.error}`);
+        } else if (result.skipped) {
+          warnings.push(`${labels[idx]} summary endpoint tidak tersedia`);
+        }
+      });
 
       return { success: errors.length === 0, errors, warnings };
     },

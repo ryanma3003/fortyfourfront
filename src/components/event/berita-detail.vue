@@ -122,17 +122,33 @@ export default {
       return "Admin";
     };
 
+    const parseDatePart = (dateStr: string) => {
+      if (!dateStr) return null;
+      const t = dateStr.replace('T', ' ');
+      const [datePart, timePart] = t.split(' ');
+      if (!datePart) return new Date(dateStr);
+      const [y, m, d] = datePart.split(/[-/]/).map(Number);
+      if (timePart) {
+        const [hh, mm, ss] = timePart.split(':').map(Number);
+        return new Date(y, m - 1, d, hh || 0, mm || 0, ss || 0);
+      }
+      return new Date(y, m - 1, d);
+    };
+
     const formatDate = (dateStr: string) => {
       if (!dateStr) return '-';
       try {
-        return new Date(dateStr).toLocaleDateString('id-ID', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+        const d = parseDatePart(dateStr);
+        if (!d || isNaN(d.getTime())) return dateStr;
+        
+        const day = d.getDate();
+        const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        const hour = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        
+        return `${day} ${month} ${year}, ${hour}.${min}`;
       } catch {
         return dateStr;
       }
@@ -141,13 +157,17 @@ export default {
     const formatDateShort = (dateStr: string) => {
       if (!dateStr) return '-';
       try {
-        return new Date(dateStr).toLocaleDateString('id-ID', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+        const d = parseDatePart(dateStr);
+        if (!d || isNaN(d.getTime())) return dateStr;
+
+        const day = d.getDate();
+        const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        const hour = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        
+        return `${day} ${month} ${year}, ${hour}.${min}`;
       } catch {
         return dateStr;
       }

@@ -10,7 +10,7 @@ import { formatImageUrl } from '@/utils/media';
 
 // ─── Constants ───────────────────────────────────────────────────────
 const MAX_EVENTS = 200;
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 60_000;
 
 /**
  * Frontend-generated SSE items always use the "sse-" prefix.

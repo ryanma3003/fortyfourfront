@@ -658,56 +658,75 @@ function progressFillClass(pct: number): string {
 
   <!-- ══ ADD MODAL ══════════════════════════════════════════════ -->
   <teleport to="body">
-    <div v-if="showAddModal" class="modal-overlay" @click.self="closeAdd">
-      <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
-        <div class="modal-content border-0 bg-transparent">
-          <div class="kse-modal-box kse-modal-sm w-100">
-            <div class="kse-modal-header pb-3 mb-2" style="border-bottom: 1px solid rgba(0,0,0,0.05);">
-              <div class="d-flex align-items-center gap-3">
-                <div class="kse-modal-icon-wrap" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
-                  <i class="ri-add-circle-fill"></i>
-                </div>
-                <div>
-                  <div class="kse-modal-title">Tambah KSE Baru</div>
-                  <div class="kse-modal-sub fs-11 text-muted">{{ currentStakeholder?.nama_perusahaan }}</div>
-                </div>
-              </div>
-              <button @click="closeAdd" class="btn-close ms-auto shadow-none"></button>
+    <div
+      v-if="showAddModal"
+      class="modal fade show d-flex align-items-center justify-content-center"
+      tabindex="-1"
+      style="display: flex !important; background: rgba(15, 23, 42, 0.75); position: fixed; inset: 0; z-index: 9999;"
+      @click.self="closeAdd"
+    >
+      <div class="modal-dialog modal-dialog-centered" style="max-width: 400px; width: 100%; margin: 16px;">
+        <div class="modal-content border-0 shadow-lg bg-white" style="border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
+          <!-- Blue Header like Screenshot -->
+          <div class="modal-header border-0 p-4 d-flex align-items-center gap-3" style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white;">
+            <div class="d-flex align-items-center justify-content-center bg-white bg-opacity-20 rounded-circle" style="width: 48px; height: 48px;">
+              <i class="ri-add-line fs-24"></i>
+            </div>
+            <div class="flex-grow-1">
+              <h5 class="modal-title fw-bold mb-0" style="color: white; font-size: 1.1rem;">Tambah KSE Baru</h5>
+              <div class="fs-12 opacity-75">{{ currentStakeholder?.nama_perusahaan }}</div>
+            </div>
+            <button
+              type="button"
+              class="btn-close btn-close-white shadow-none"
+              @click="closeAdd"
+              aria-label="Close"
+            ></button>
+          </div>
+
+          <div class="modal-body p-4">
+            <p class="text-muted mb-4 fs-14">
+              Masukkan nama Sistem Elektronik yang akan dikategorisasi. Setiap sistem akan dinilai secara terpisah.
+            </p>
+            
+            <div class="mb-4">
+              <label class="form-label fs-12 fw-bold text-uppercase tracking-wider text-muted mb-2">Nama Sistem Elektronik <span class="text-danger">*</span></label>
+              <input
+                v-model="newNamaSistem"
+                @keyup.enter="confirmAdd"
+                type="text"
+                class="form-control form-control-lg fs-15 border-2 shadow-sm"
+                style="border-radius: 14px; border-color: #e2e8f0; padding: 12px 16px;"
+                :class="{ 'is-invalid': addError }"
+                placeholder="cth: SIMKEU, Core Banking..."
+                autofocus
+              />
+              <div v-if="addError" class="invalid-feedback mt-2">{{ addError }}</div>
             </div>
             
-            <div class="kse-modal-body text-start">
-              <p class="text-muted mb-4 fs-13">
-                Masukkan nama Sistem Elektronik yang akan dikategorisasi.
-                Setiap sistem akan dinilai secara terpisah.
-              </p>
-              
-              <div class="mb-3">
-                <label class="form-label fs-12 fw-bold text-uppercase tracking-wider text-muted">Nama Sistem Elektronik <span class="text-danger">*</span></label>
-                <input
-                  v-model="newNamaSistem"
-                  @keyup.enter="confirmAdd"
-                  type="text"
-                  class="form-control form-control-lg fs-14 border-2"
-                  style="border-radius: 12px;"
-                  :class="{ 'is-invalid': addError }"
-                  placeholder="cth: SIMKEU, Core Banking System..."
-                  autofocus
-                />
-                <div v-if="addError" class="invalid-feedback">{{ addError }}</div>
-              </div>
-              
-              <div class="alert alert-light border d-flex gap-2 p-2 mb-0" style="border-radius: 10px;">
-                <i class="ri-information-line text-primary fs-16"></i>
-                <div class="fs-11 text-muted">Setelah ini Anda akan diarahkan ke halaman kuesioner penilaian KSE.</div>
-              </div>
+            <div class="alert alert-primary border-0 d-flex gap-3 p-3 mb-0" style="border-radius: 14px; background-color: #f0f7ff;">
+              <i class="ri-information-line text-primary fs-20"></i>
+              <div class="fs-12 text-primary text-opacity-75 leading-relaxed">Setelah ini Anda akan diarahkan ke halaman kuesioner penilaian KSE.</div>
             </div>
+          </div>
 
-            <div class="kse-modal-footer mt-4 d-flex gap-2">
-              <button @click="closeAdd" class="btn btn-light flex-grow-1 py-2 rounded-pill">Batal</button>
-              <button @click="confirmAdd" class="btn btn-primary flex-grow-1 py-2 rounded-pill shadow-sm">
-                Lanjut Isi KSE <i class="ri-arrow-right-line ms-1"></i>
-              </button>
-            </div>
+          <div class="modal-footer border-0 p-4 pt-0 d-flex gap-2">
+            <button
+              type="button"
+              class="btn btn-light flex-grow-1 fw-semibold py-2"
+              style="border-radius: 12px; background-color: #f8fafc; border: none; color: #64748b; height: 48px;"
+              @click="closeAdd"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary flex-grow-1 fw-semibold py-2 d-flex align-items-center justify-content-center gap-2"
+              style="border-radius: 12px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); border: none; height: 48px;"
+              @click="confirmAdd"
+            >
+              Lanjut Isi KSE <i class="ri-arrow-right-line"></i>
+            </button>
           </div>
         </div>
       </div>
@@ -716,38 +735,53 @@ function progressFillClass(pct: number): string {
 
   <!-- ══ DELETE MODAL ═══════════════════════════════════════════ -->
   <teleport to="body">
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDelete">
-      <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
-        <div class="modal-content border-0 bg-transparent">
-          <div class="kse-modal-box kse-modal-sm w-100">
-            <div class="kse-modal-header kse-modal-header-danger pb-3 mb-2">
-              <div class="d-flex align-items-center gap-3">
-                <div class="kse-modal-icon-wrap" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">
-                  <i class="ri-delete-bin-2-fill"></i>
-                </div>
-                <div>
-                  <div class="kse-modal-title">Hapus KSE</div>
-                  <div class="kse-modal-sub text-danger opacity-75 fs-11">Tindakan permanen</div>
-                </div>
-              </div>
+    <div
+      v-if="showDeleteModal"
+      class="modal fade show d-flex align-items-center justify-content-center"
+      tabindex="-1"
+      style="display: flex !important; background: rgba(15, 23, 42, 0.75); position: fixed; inset: 0; z-index: 9999;"
+      @click.self="closeDelete"
+    >
+      <div class="modal-dialog modal-dialog-centered" style="max-width: 400px; width: 100%; margin: 16px;">
+        <div class="modal-content border-0 shadow-lg bg-white" style="border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
+          <div class="modal-header border-0 p-4 pb-0 d-flex justify-content-between align-items-center">
+            <h5 class="modal-title fw-bold text-dark">Hapus KSE</h5>
+            <button
+              type="button"
+              class="btn-close shadow-none"
+              @click="closeDelete"
+              aria-label="Close"
+            ></button>
+          </div>
+          
+          <div class="modal-body p-4 text-center">
+            <div class="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 rounded-circle mb-4" style="width: 80px; height: 80px;">
+              <i class="ri-delete-bin-line text-danger fs-40" style="font-size: 2.5rem;"></i>
             </div>
-            
-            <div class="kse-modal-body text-center py-4">
-              <div class="mb-3 fs-14">
-                Apakah Anda yakin ingin menghapus KSE <br>
-                <strong class="text-dark">&ldquo;{{ deleteTarget?.namaSistem }}&rdquo;</strong>?
-              </div>
-              <p class="text-muted fs-12 mb-0 px-3">
-                Semua data penilaian dan riwayat yang telah diisi akan terhapus secara permanen dari sistem.
-              </p>
-            </div>
-            
-            <div class="kse-modal-footer d-flex gap-2">
-              <button @click="closeDelete" class="btn btn-light flex-grow-1 py-2 rounded-pill">Batal</button>
-              <button @click="confirmDelete" class="btn btn-danger flex-grow-1 py-2 rounded-pill shadow-sm">
-                Ya, Hapus
-              </button>
-            </div>
+            <h4 class="fw-bold text-dark mb-2">Apakah Anda yakin?</h4>
+            <p class="text-muted mb-0 px-2">
+              Anda akan menghapus KSE <span class="fw-bold text-dark">"{{ deleteTarget?.namaSistem }}"</span>. 
+              Tindakan ini tidak dapat dibatalkan.
+            </p>
+          </div>
+
+          <div class="modal-footer border-0 p-4 pt-0 d-flex gap-2">
+            <button
+              type="button"
+              class="btn btn-light flex-grow-1 fw-semibold py-2"
+              style="border-radius: 12px; background-color: #f8fafc; border: none; color: #64748b; height: 48px;"
+              @click="closeDelete"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger flex-grow-1 fw-semibold py-2"
+              style="border-radius: 12px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; height: 48px;"
+              @click="confirmDelete"
+            >
+              Ya, Hapus
+            </button>
           </div>
         </div>
       </div>
@@ -828,39 +862,7 @@ function progressFillClass(pct: number): string {
   transform: translateY(-2px);
 }
 
-.kse-modal-box {
-  background: #fff;
-  border-radius: 20px;
-  padding: 1.75rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-}
 
-[data-theme-mode="dark"] .kse-modal-box {
-  background: #1e293b;
-  color: #f1f5f9;
-}
-
-[data-theme-mode="dark"] .kse-sys-name {
-  color: #f1f5f9 !important;
-}
-
-[data-theme-mode="dark"] .text-dark {
-  color: #f1f5f9 !important;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* Animations */
 .stakeholder-row {

@@ -467,11 +467,11 @@ export const ikasService = {
     },
 
     async createJawabanIdentifikasi(payload: JawabanIdentifikasiPayload): Promise<JawabanResponse> {
-        return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload, undefined, { skipQueue: true });
+        return api.post<JawabanResponse>('/api/maturity/jawaban-identifikasi', payload, undefined, { skipNotificationSync: true });
     },
 
     async updateJawabanIdentifikasi(id: string, payload: JawabanIdentifikasiPayload): Promise<JawabanResponse> {
-        return api.put<JawabanResponse>(`/api/maturity/jawaban-identifikasi/${id}`, payload, undefined, { skipQueue: true });
+        return api.put<JawabanResponse>(`/api/maturity/jawaban-identifikasi/${id}`, payload, undefined, { skipNotificationSync: true });
     },
 
     async deleteJawabanIdentifikasi(id: string): Promise<any> {
@@ -490,11 +490,11 @@ export const ikasService = {
     },
 
     async createJawabanProteksi(payload: JawabanProteksiPayload): Promise<JawabanResponse> {
-        return api.post<JawabanResponse>('/api/maturity/jawaban-proteksi', payload, undefined, { skipQueue: true });
+        return api.post<JawabanResponse>('/api/maturity/jawaban-proteksi', payload, undefined, { skipNotificationSync: true });
     },
 
     async updateJawabanProteksi(id: string, payload: JawabanProteksiPayload): Promise<JawabanResponse> {
-        return api.put<JawabanResponse>(`/api/maturity/jawaban-proteksi/${id}`, payload, undefined, { skipQueue: true });
+        return api.put<JawabanResponse>(`/api/maturity/jawaban-proteksi/${id}`, payload, undefined, { skipNotificationSync: true });
     },
 
     async deleteJawabanProteksi(id: string): Promise<any> {
@@ -513,11 +513,11 @@ export const ikasService = {
     },
 
     async createJawabanDeteksi(payload: JawabanDeteksiPayload): Promise<JawabanResponse> {
-        return api.post<JawabanResponse>('/api/maturity/jawaban-deteksi', payload, undefined, { skipQueue: true });
+        return api.post<JawabanResponse>('/api/maturity/jawaban-deteksi', payload, undefined, { skipNotificationSync: true });
     },
 
     async updateJawabanDeteksi(id: string, payload: JawabanDeteksiPayload): Promise<JawabanResponse> {
-        return api.put<JawabanResponse>(`/api/maturity/jawaban-deteksi/${id}`, payload, undefined, { skipQueue: true });
+        return api.put<JawabanResponse>(`/api/maturity/jawaban-deteksi/${id}`, payload, undefined, { skipNotificationSync: true });
     },
 
     async deleteJawabanDeteksi(id: string): Promise<any> {
@@ -536,11 +536,11 @@ export const ikasService = {
     },
 
     async createJawabanGulih(payload: JawabanPayload): Promise<JawabanGulihResponse> {
-        return api.post<JawabanGulihResponse>('/api/maturity/jawaban-gulih', payload, undefined, { skipQueue: true });
+        return api.post<JawabanGulihResponse>('/api/maturity/jawaban-gulih', payload, undefined, { skipNotificationSync: true });
     },
 
     async updateJawabanGulih(id: string, payload: JawabanPayload): Promise<JawabanGulihResponse> {
-        return api.put<JawabanGulihResponse>(`/api/maturity/jawaban-gulih/${id}`, payload, undefined, { skipQueue: true });
+        return api.put<JawabanGulihResponse>(`/api/maturity/jawaban-gulih/${id}`, payload, undefined, { skipNotificationSync: true });
     },
 
     async deleteJawabanGulih(id: string): Promise<any> {
@@ -557,11 +557,11 @@ export const ikasService = {
 
     async createJawabanByKategori(kategori: string, payload: JawabanPayload): Promise<any> {
         const resolved = this.resolveKategoriKey(kategori);
-        return api.post<any>(`/api/maturity/jawaban-${resolved}`, payload, undefined, { skipQueue: true });
+        return api.post<any>(`/api/maturity/jawaban-${resolved}`, payload, undefined, { skipNotificationSync: true });
     },
 
     async updateJawabanByKategori(kategori: string, id: string, payload: JawabanPayload): Promise<any> {
         const resolved = this.resolveKategoriKey(kategori);
-        return api.put<any>(`/api/maturity/jawaban-${resolved}/${id}`, payload, undefined, { skipQueue: true });
+        return api.put<any>(`/api/maturity/jawaban-${resolved}/${id}`, payload, undefined, { skipNotificationSync: true });
     },
 };

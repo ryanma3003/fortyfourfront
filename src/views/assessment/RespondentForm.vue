@@ -16,18 +16,7 @@ const emit = defineEmits<{
   (e: 'cancel'): void;
 }>();
 
-// Dropdown options
-const sektorOptions = [
-  'Administrasi Pemerintahan',
-  'Energi dan Sumber Daya Mineral',
-  'Transportasi',
-  'Keamanan',
-  'Kesehatan',
-  'TIK',
-  'Pangan',
-  'Pertahanan',
-  'Sektor Lain'
-];
+
 const targetLevelOptions = [
   { value: 1, label: 'Level 1 - Awal' },
   { value: 2, label: 'Level 2 - Berulang' },
@@ -154,8 +143,6 @@ const validateField = (field: string, value: any): string => {
 
 // List of required fields
 const requiredFields = [
-  'alamat',
-  'email',
   'nomorTelepon',
   'namaResponden',
   'jabatanResponden',
@@ -253,17 +240,7 @@ const startAssessment = () => {
           <!-- Form -->
           <form @submit.prevent="startAssessment">
             <div class="row">
-              <!-- Instansi (Read-only from stakeholder) -->
-              <div class="col-12 mb-3" v-if="stakeholder">
-                <label class="form-label">Instansi / Perusahaan</label>
-                <input 
-                  type="text" 
-                  class="form-control bg-light"
-                  :value="stakeholder.nama_perusahaan"
-                  readonly
-                />
-                <small class="text-muted">Diambil otomatis dari data Perusahaan</small>
-              </div>
+
 
               <!-- Nama Responden -->
               <div class="col-md-6 mb-3">
@@ -293,21 +270,7 @@ const startAssessment = () => {
                 <div v-if="errors.jabatanResponden" class="invalid-feedback">{{ errors.jabatanResponden }}</div>
               </div>
 
-              <!-- Email (pre-filled from stakeholder) -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Alamat Surel (Email) <span class="text-danger">*</span></label>
-                <input 
-                  type="email" 
-                  class="form-control"
-                  :class="[{ 'is-invalid': errors.email }, stakeholder ? 'bg-light' : '']"
-                  v-model="formData.email"
-                  @blur="handleFieldBlur('email')"
-                  placeholder="email@example.com"
-                  :readonly="!!stakeholder"
-                />
-                <small v-if="stakeholder" class="text-muted">Diambil dari data Perusahaan</small>
-                <div v-if="errors.email" class="invalid-feedback">{{ errors.email }}</div>
-              </div>
+
 
               <!-- Nomor Telepon -->
               <div class="col-md-6 mb-3">
@@ -323,30 +286,7 @@ const startAssessment = () => {
                 <div v-if="errors.nomorTelepon" class="invalid-feedback">{{ errors.nomorTelepon }}</div>
               </div>
 
-              <!-- Sektor (pre-filled from stakeholder sub_sektor) -->
-              <div class="col-md-6 mb-3">
-                <label class="form-label">Sektor <span class="text-danger">*</span></label>
-                <template v-if="stakeholder">
-                  <input 
-                    type="text" 
-                    class="form-control bg-light"
-                    :value="formData.sektor"
-                    readonly
-                  />
-                  <small class="text-muted">Diambil dari sub-sektor Perusahaan</small>
-                </template>
-                <template v-else>
-                  <select 
-                    class="form-select"
-                    v-model="formData.sektor"
-                    @change="handleFieldBlur('sektor')"
-                  >
-                    <option v-for="option in sektorOptions" :key="option" :value="option">
-                      {{ option }}
-                    </option>
-                  </select>
-                </template>
-              </div>
+
 
               <!-- Tanggal Pengisian -->
               <div class="col-md-6 mb-3">
@@ -359,21 +299,7 @@ const startAssessment = () => {
                 />
               </div>
 
-              <!-- Alamat (pre-filled from stakeholder) -->
-              <div class="col-12 mb-3">
-                <label class="form-label">Alamat <span class="text-danger">*</span></label>
-                <textarea 
-                  class="form-control"
-                  :class="[{ 'is-invalid': errors.alamat }, stakeholder ? 'bg-light' : '']"
-                  v-model="formData.alamat"
-                  @blur="handleFieldBlur('alamat')"
-                  rows="2"
-                  placeholder="Alamat lengkap instansi"
-                  :readonly="!!stakeholder"
-                ></textarea>
-                <small v-if="stakeholder" class="text-muted">Diambil dari data Perusahaan</small>
-                <div v-if="errors.alamat" class="invalid-feedback">{{ errors.alamat }}</div>
-              </div>
+
 
               <!-- Tahun Pengukuran -->
               <div class="col-md-4 mb-3">

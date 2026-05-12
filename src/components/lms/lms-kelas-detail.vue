@@ -232,7 +232,7 @@ export default {
                      </span>
                   </div>
                   <h1 class="hero-title text-white fw-black mb-1 fs-32">{{ currentKelas.nama_kelas }}</h1>
-                  <p class="hero-subtitle text-white-50 mb-0 fs-15 max-w-2xl line-clamp-2">{{ currentKelas.deskripsi || 'Pengantar Pembelajaran' }}</p>
+                  <p class="hero-subtitle text-white-50 mb-0 fs-15 max-w-2xl line-clamp-1">{{ currentKelas.deskripsi || 'Pengantar Pembelajaran' }}</p>
                 </div>
               </div>
               
@@ -410,27 +410,31 @@ export default {
                    <p class="mt-3 text-muted fw-medium">Menyiapkan soal evaluasi...</p>
                 </div>
                 <div v-else-if="relatedSoal.length > 0">
-                   <div v-for="(soal, sIdx) in relatedSoal" :key="soal.id" class="card quiz-soal-card border-0 shadow-sm mb-4 rounded-4 transition-all">
-                      <div class="card-body p-3 p-md-4">
-                         <div class="d-flex gap-3 mb-3">
-                           <div class="soal-number bg-success bg-opacity-10 text-success fw-black rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px; font-size: 1.1rem;">
+                   <div v-for="(soal, sIdx) in relatedSoal" :key="soal.id" class="card quiz-soal-card border-0 shadow-sm mb-4 rounded-4 overflow-hidden transition-all">
+                      <div class="card-header bg-white border-bottom border-light p-3 p-md-4">
+                         <div class="d-flex align-items-center gap-3">
+                           <div class="soal-number-badge bg-primary text-white fw-bold rounded-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 36px; height: 36px; font-size: 1rem;">
                              {{ sIdx + 1 }}
                            </div>
-                           <div class="soal-text fs-16 text-dark fw-semibold pt-1 leading-relaxed" v-html="soal.pertanyaan"></div>
+                           <div class="soal-text fs-16 text-dark fw-bold" v-html="soal.pertanyaan"></div>
                          </div>
-                         <div class="row g-3 ps-xl-5">
+                      </div>
+                      <div class="card-body p-3 p-md-4">
+                         <div class="row g-3">
                             <div v-for="opsi in soal.opsi" :key="opsi.label" class="col-md-6">
-                               <div class="quiz-opsi-item p-3 border rounded-3 d-flex align-items-center gap-3 transition-all h-100"
-                                 :class="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text) ? 'correct-opsi border-success' : 'bg-white border-light'">
-                                 <div class="opsi-label rounded-circle flex-shrink-0 fw-bold d-flex align-items-center justify-content-center" 
-                                   :class="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text) ? 'bg-success text-white' : 'bg-light text-muted'"
-                                   style="width: 32px; height: 32px;">
+                               <div class="quiz-opsi-item p-3 border rounded-3 d-flex align-items-center gap-3 transition-all h-100 position-relative cursor-pointer"
+                                 :class="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text) ? 'correct-opsi' : 'bg-white'">
+                                 <div class="opsi-label rounded-circle flex-shrink-0 fw-bold d-flex align-items-center justify-content-center border" 
+                                   :class="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text) ? 'bg-success text-white border-success' : 'bg-light text-muted border-light'"
+                                   style="width: 30px; height: 30px; font-size: 13px;">
                                    {{ opsi.label }}
                                  </div>
                                  <span class="flex-grow-1 fs-14 fw-medium" :class="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text) ? 'text-success-emphasis' : 'text-dark'">
                                    {{ opsi.text || '(Pilihan Kosong)' }}
                                  </span>
-                                 <i v-if="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text)" class="ri-checkbox-circle-fill text-success fs-20"></i>
+                                 <div v-if="opsi.text === soal.jawaban_benar || (soal.jawaban_benar === opsi.label && opsi.text)" class="correct-badge shadow-sm">
+                                   <i class="ri-checkbox-circle-fill text-success fs-18"></i>
+                                 </div>
                                </div>
                             </div>
                          </div>
@@ -642,4 +646,51 @@ export default {
     </div>
   </div>
 </template>
+
+<style scoped>
+.line-clamp-1 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.quiz-soal-card {
+  border: 1px solid #dee2e6 !important;
+}
+
+.quiz-opsi-item {
+  transition: all 0.2s ease;
+  border-width: 1px !important;
+  border-color: #d1d5db !important; /* Darker border for visibility */
+}
+
+.quiz-opsi-item:hover:not(.correct-opsi) {
+  border-color: var(--primary-color) !important;
+  background-color: #f8f9fa !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.correct-opsi {
+  background: rgba(var(--success-rgb), 0.08) !important;
+  border-color: #198754 !important; /* Solid success color */
+  border-width: 2px !important;
+  box-shadow: 0 4px 15px rgba(var(--success-rgb), 0.2);
+}
+
+.soal-number-badge {
+  background: linear-gradient(135deg, var(--primary-color), #2563eb) !important;
+}
+
+.correct-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+}
+</style>
 

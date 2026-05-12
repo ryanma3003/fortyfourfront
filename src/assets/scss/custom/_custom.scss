@@ -777,6 +777,21 @@ button {
 
 /* End::scrollspy */
 
+/* Start::line-clamp */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* End::line-clamp */
+
 /* Start::object-fit */
 .object-fit-container {
   display: flex;
