@@ -47,7 +47,7 @@ const updatePassword = (val: string) => {
                     <div class="card custom-card border-0 my-4">
                         <div class="card-body p-5">
                             <div class="mb-4 align-items-center d-flex justify-content-center">
-                                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
+                                <img src="/images/media/studio1.png" alt="logo" id="logo-desktop" style="height:50px; width:auto;">
                             </div>
                             <div>
                                 <h4 class="mb-1 fw-semibold">Hi,Welcome back!</h4>

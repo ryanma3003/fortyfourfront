@@ -219,15 +219,47 @@ const unwrapIkasResponse = (response: any): any => response?.data || response?.r
 
 const firstValue = (...values: any[]): any => values.find((value) => value !== undefined && value !== null && value !== '');
 
+const findNestedObjectByKeys = (
+  source: any,
+  keys: string[],
+  depth = 0,
+  seen = new Set<any>(),
+): any => {
+  if (!source || typeof source !== 'object' || depth > 5 || seen.has(source)) return null;
+  seen.add(source);
+
+  for (const key of keys) {
+    const candidate = source?.[key];
+    if (candidate && typeof candidate === 'object') {
+      return candidate;
+    }
+  }
+
+  const values = Array.isArray(source) ? source : Object.values(source);
+  for (const value of values) {
+    const nested = findNestedObjectByKeys(value, keys, depth + 1, seen);
+    if (nested) return nested;
+  }
+
+  return null;
+};
+
 const getNestedDomain = (record: any, apiKey: string, localKey = apiKey): any => (
   record?.[apiKey] ||
   record?.[localKey] ||
   record?.data?.[apiKey] ||
   record?.data?.[localKey] ||
+  record?.data?.data?.[apiKey] ||
+  record?.data?.data?.[localKey] ||
   record?.record?.[apiKey] ||
   record?.record?.[localKey] ||
+  record?.record?.data?.[apiKey] ||
+  record?.record?.data?.[localKey] ||
   record?.ikas?.[apiKey] ||
   record?.ikas?.[localKey] ||
+  record?.ikas?.data?.[apiKey] ||
+  record?.ikas?.data?.[localKey] ||
+  findNestedObjectByKeys(record, [apiKey, localKey]) ||
   {}
 );
 
@@ -612,6 +644,33 @@ export const useIkasStore = defineStore('ikas', {
       applyDomain('proteksi', 'proteksi', 'nilai_proteksi', 'kategori_proteksi', 6);
       applyDomain('deteksi', 'deteksi', 'nilai_deteksi', 'kategori_deteksi', 3);
       applyDomain('gulih', 'tanggulih', 'nilai_gulih', 'kategori_tanggulih', 4);
+    },
+
+    applySubdomainValues(
+      slug: string,
+      record: any,
+      apiKey: string,
+      localKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih',
+      subdomainCount: number,
+    ) {
+      const data = this.ikasDataMap[slug];
+      const target = data?.[localKey] as any;
+      const domain = getNestedDomain(record, apiKey, localKey);
+      if (!target || !domain) return;
+
+      for (let index = 1; index <= subdomainCount; index += 1) {
+        const key = `nilai_subdomain${index}`;
+        const rawValue = firstValue(
+          domain?.[key],
+          domain?.data?.[key],
+          record?.[`${apiKey}_${key}`],
+          record?.[`${localKey}_${key}`],
+        );
+
+        if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+          target[key] = this.numberValue(rawValue);
+        }
+      }
     },
 
     resolveIkasSlug(record: any): string {
@@ -1151,11 +1210,10 @@ export const useIkasStore = defineStore('ikas', {
 
       try {
         const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
-        const matchedRecord = this.findLatestIkasRecord(
-          this.normalizeIkasRecords(listResponse),
-          perusahaanId,
-          targetYear
-        );
+        const records = this.normalizeIkasRecords(listResponse);
+        const matchedRecord =
+          this.findLatestIkasRecord(records, perusahaanId, targetYear) ||
+          this.findLatestIkasRecord(records, perusahaanId);
 
         if (!matchedRecord) {
           this.backendSyncedMap[slug] = false;
@@ -1187,6 +1245,10 @@ export const useIkasStore = defineStore('ikas', {
         const data = this.ikasDataMap[slug];
         const response = detailedResponse;
         this.applyDomainScoresFromRecord(slug, response);
+        this.applySubdomainValues(slug, response, 'identifikasi', 'identifikasi', 5);
+        this.applySubdomainValues(slug, response, 'proteksi', 'proteksi', 6);
+        this.applySubdomainValues(slug, response, 'deteksi', 'deteksi', 3);
+        this.applySubdomainValues(slug, response, 'gulih', 'tanggulih', 4);
 
         const hasSubdomainScores = (domain: any, count: number): boolean => {
           if (!domain) return false;
@@ -1197,41 +1259,45 @@ export const useIkasStore = defineStore('ikas', {
           return false;
         };
 
-        if (response.identifikasi) {
-          data.identifikasi.nilai_subdomain1 = response.identifikasi.nilai_subdomain1 || 0;
-          data.identifikasi.nilai_subdomain2 = response.identifikasi.nilai_subdomain2 || 0;
-          data.identifikasi.nilai_subdomain3 = response.identifikasi.nilai_subdomain3 || 0;
-          data.identifikasi.nilai_subdomain4 = response.identifikasi.nilai_subdomain4 || 0;
-          data.identifikasi.nilai_subdomain5 = response.identifikasi.nilai_subdomain5 || 0;
+        const identifikasiResponse = getNestedDomain(response, 'identifikasi');
+        const proteksiResponse = getNestedDomain(response, 'proteksi');
+        const deteksiResponse = getNestedDomain(response, 'deteksi');
+        const gulihResponse = getNestedDomain(response, 'gulih', 'tanggulih');
+
+        if (identifikasiResponse) {
+          data.identifikasi.nilai_subdomain1 = this.numberValue(identifikasiResponse.nilai_subdomain1 ?? data.identifikasi.nilai_subdomain1);
+          data.identifikasi.nilai_subdomain2 = this.numberValue(identifikasiResponse.nilai_subdomain2 ?? data.identifikasi.nilai_subdomain2);
+          data.identifikasi.nilai_subdomain3 = this.numberValue(identifikasiResponse.nilai_subdomain3 ?? data.identifikasi.nilai_subdomain3);
+          data.identifikasi.nilai_subdomain4 = this.numberValue(identifikasiResponse.nilai_subdomain4 ?? data.identifikasi.nilai_subdomain4);
+          data.identifikasi.nilai_subdomain5 = this.numberValue(identifikasiResponse.nilai_subdomain5 ?? data.identifikasi.nilai_subdomain5);
         }
-        if (response.proteksi) {
-          data.proteksi.nilai_subdomain1 = response.proteksi.nilai_subdomain1 || 0;
-          data.proteksi.nilai_subdomain2 = response.proteksi.nilai_subdomain2 || 0;
-          data.proteksi.nilai_subdomain3 = response.proteksi.nilai_subdomain3 || 0;
-          data.proteksi.nilai_subdomain4 = response.proteksi.nilai_subdomain4 || 0;
-          data.proteksi.nilai_subdomain5 = response.proteksi.nilai_subdomain5 || 0;
-          data.proteksi.nilai_subdomain6 = response.proteksi.nilai_subdomain6 || 0;
+        if (proteksiResponse) {
+          data.proteksi.nilai_subdomain1 = this.numberValue(proteksiResponse.nilai_subdomain1 ?? data.proteksi.nilai_subdomain1);
+          data.proteksi.nilai_subdomain2 = this.numberValue(proteksiResponse.nilai_subdomain2 ?? data.proteksi.nilai_subdomain2);
+          data.proteksi.nilai_subdomain3 = this.numberValue(proteksiResponse.nilai_subdomain3 ?? data.proteksi.nilai_subdomain3);
+          data.proteksi.nilai_subdomain4 = this.numberValue(proteksiResponse.nilai_subdomain4 ?? data.proteksi.nilai_subdomain4);
+          data.proteksi.nilai_subdomain5 = this.numberValue(proteksiResponse.nilai_subdomain5 ?? data.proteksi.nilai_subdomain5);
+          data.proteksi.nilai_subdomain6 = this.numberValue(proteksiResponse.nilai_subdomain6 ?? data.proteksi.nilai_subdomain6);
         }
-        if (response.deteksi) {
-          data.deteksi.nilai_subdomain1 = response.deteksi.nilai_subdomain1 || 0;
-          data.deteksi.nilai_subdomain2 = response.deteksi.nilai_subdomain2 || 0;
-          data.deteksi.nilai_subdomain3 = response.deteksi.nilai_subdomain3 || 0;
+        if (deteksiResponse) {
+          data.deteksi.nilai_subdomain1 = this.numberValue(deteksiResponse.nilai_subdomain1 ?? data.deteksi.nilai_subdomain1);
+          data.deteksi.nilai_subdomain2 = this.numberValue(deteksiResponse.nilai_subdomain2 ?? data.deteksi.nilai_subdomain2);
+          data.deteksi.nilai_subdomain3 = this.numberValue(deteksiResponse.nilai_subdomain3 ?? data.deteksi.nilai_subdomain3);
         }
-        const gulihResponse = response.gulih || response.tanggulih;
         if (gulihResponse) {
-          data.tanggulih.nilai_subdomain1 = gulihResponse.nilai_subdomain1 || 0;
-          data.tanggulih.nilai_subdomain2 = gulihResponse.nilai_subdomain2 || 0;
-          data.tanggulih.nilai_subdomain3 = gulihResponse.nilai_subdomain3 || 0;
-          data.tanggulih.nilai_subdomain4 = gulihResponse.nilai_subdomain4 || 0;
+          data.tanggulih.nilai_subdomain1 = this.numberValue(gulihResponse.nilai_subdomain1 ?? data.tanggulih.nilai_subdomain1);
+          data.tanggulih.nilai_subdomain2 = this.numberValue(gulihResponse.nilai_subdomain2 ?? data.tanggulih.nilai_subdomain2);
+          data.tanggulih.nilai_subdomain3 = this.numberValue(gulihResponse.nilai_subdomain3 ?? data.tanggulih.nilai_subdomain3);
+          data.tanggulih.nilai_subdomain4 = this.numberValue(gulihResponse.nilai_subdomain4 ?? data.tanggulih.nilai_subdomain4);
         }
         data.is_validated = normalizeValidatedStatus(response, false);
         data.edit_request_status = normalizeEditRequestStatus(response, data.edit_request_status || 'none');
         data.edit_request_reason = normalizeEditRequestReason(response);
 
         if (
-          hasSubdomainScores(response.identifikasi, 5) &&
-          hasSubdomainScores(response.proteksi, 6) &&
-          hasSubdomainScores(response.deteksi, 3) &&
+          hasSubdomainScores(identifikasiResponse, 5) &&
+          hasSubdomainScores(proteksiResponse, 6) &&
+          hasSubdomainScores(deteksiResponse, 3) &&
           hasSubdomainScores(gulihResponse, 4)
         ) {
           this.recalculate(slug);

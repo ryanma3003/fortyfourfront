@@ -44,7 +44,7 @@ const hydrateCurrentStakeholderIkas = async () => {
     // Start store initializations in parallel
     const initPromises = [
         ikasStore.initialize(),
-        assessmentStore.initialize()
+        assessmentStore.fetchAssessmentStructure({ includeMasterStructure: false }),
     ];
     
     if (!stakeholdersStore.initialized) {
@@ -57,14 +57,12 @@ const hydrateCurrentStakeholderIkas = async () => {
 
     const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
     assessmentStore.setCurrentStakeholder(slug);
+    assessmentStore.resetStakeholderData(slug);
+    assessmentStore.setCurrentStakeholder(slug);
 
     if (stakeholder?.id) {
         const requestedYear = String(route.query.year || '');
-        // Fetch IKAS record and answers in parallel
-        const [ikasResult] = await Promise.all([
-            ikasStore.fetchFromBackend(slug, stakeholder.id, requestedYear),
-            assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id)
-        ]);
+        const ikasResult = await ikasStore.fetchFromBackend(slug, stakeholder.id, requestedYear);
         
         activeMeasurementYear.value =
             ikasResult.respondentData?.tahun_pengukuran ||
@@ -72,13 +70,10 @@ const hydrateCurrentStakeholderIkas = async () => {
             requestedYear ||
             currentMeasurementYear;
 
-        if (!ikasResult.exists) {
-            assessmentStore.resetStakeholderData(slug);
+        if (ikasResult.exists) {
+            await assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id);
         }
     }
-
-    assessmentStore.syncToIkas(slug);
-    ikasStore.recalculate(slug);
 };
 
 // Theme mode synchronization
@@ -256,7 +251,9 @@ const goToIkasCrud = () => {
     if (currentSource.value) {
         query.source = currentSource.value;
     }
-    router.push({ path: '/ikas-crud', query });
+    assessmentStore.initialize().finally(() => {
+        router.push({ path: '/ikas-crud', query });
+    });
 };
 
 const ensureEditableIkas = () => {

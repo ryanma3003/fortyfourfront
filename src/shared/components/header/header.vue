@@ -26,10 +26,10 @@
         <div class="header-element sb-logo-element">
             <div class="horizontal-logo">
                   <router-link :to="dashboardPath" class="header-logo">
-                    <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
-                    <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
-                    <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
-                    <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle-dark"  class="sb2-logo-mini" />
+                    <img src="/images/media/studio1.png" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
+                    <img src="/images/media/studio1.png" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
+                    <img src="/images/media/studio1.png"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
+                    <img src="/images/media/studio1.png"   alt="logo" id="logo-toggle-dark"  class="sb2-logo-mini" />
                   </router-link>
             </div>
         </div>

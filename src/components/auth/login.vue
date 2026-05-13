@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
@@ -38,6 +38,14 @@ const turnstileToken = ref<string>("");
 const turnstileWidgetId = ref<string | null>(null);
 const turnstileReady = ref(false);
 const turnstileError = ref("");
+const isTurnstileVerified = computed(() => !!turnstileToken.value);
+const canSubmit = computed(
+  () =>
+    !isLoading.value &&
+    turnstileReady.value &&
+    !turnstileError.value &&
+    isTurnstileVerified.value
+);
 
 // Toast helper
 const showToast = (type: "success" | "error", message: string) => {
@@ -209,8 +217,8 @@ onUnmounted(() => {
             <div class="card-body p-4 p-md-5">
               <!-- Logo -->
               <div class="mb-4 d-flex justify-content-center">
-                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px"/>
-                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px"/>
+                <img src="/images/media/studio1.png" alt="logo" id="logo-light" style="height: 50px"/>
+                <img src="/images/media/studio1.png" alt="logo" id="logo-dark" style="height: 50px"/>
               </div>
 
               <!-- Header -->
@@ -263,7 +271,7 @@ onUnmounted(() => {
 
                 <!-- Submit Button -->
                 <div class="d-grid mt-4">
-                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !turnstileReady || !!turnstileError">
+                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="!canSubmit">
                     <span v-if="!isLoading"><i class="ri-login-box-line me-2"></i>Sign In</span>
                     <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Signing in...</span>
                   </button>

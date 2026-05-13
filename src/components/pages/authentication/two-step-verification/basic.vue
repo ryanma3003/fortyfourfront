@@ -220,8 +220,8 @@ const resendSetup = async () => {
           <div class="card-body p-4 p-md-5">
             <!-- Logo -->
             <div class="mb-4 d-flex justify-content-center">
-              <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px" />
-              <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px" />
+              <img src="/images/media/studio1.png" alt="logo" id="logo-light" style="height: 50px" />
+              <img src="/images/media/studio1.png" alt="logo" id="logo-dark" style="height: 50px" />
             </div>
 
             <!-- Title -->

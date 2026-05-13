@@ -512,15 +512,20 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             });
         },
 
-        async fetchAssessmentStructure() {
+        async fetchAssessmentStructure(options: { includeMasterStructure?: boolean } = {}) {
             if (this.dataLoaded || this.loading) return;
 
             this.loading = true;
             this.error = null;
             try {
+                const includeMasterStructure = options.includeMasterStructure !== false;
+                let domainsList: any[] = [];
+
                 // 1. Fetch Domains
-                const domainsResp = await ikasService.getDomains();
-                const domainsList = Array.isArray(domainsResp) ? domainsResp : ((domainsResp as any).data || []);
+                if (includeMasterStructure) {
+                    const domainsResp = await ikasService.getDomains();
+                    domainsList = Array.isArray(domainsResp) ? domainsResp : ((domainsResp as any).data || []);
+                }
 
                 const domainColors = ['#00a2e8', '#8e44ad', '#f1c40f', '#27ae60'];
                 const domainMap = new Map<string, any>();
@@ -538,9 +543,13 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
 
                 // 2. Fetch Pertanyaan and optionally Answers in parallel
                 const structurePromises = [
-                    ikasService.getKategoris().catch(() => []),
-                    ikasService.getSubKategoris().catch(() => []),
-                    ikasService.getRuangLingkups().catch(() => []),
+                    ...(includeMasterStructure
+                        ? [
+                            ikasService.getKategoris().catch(() => []),
+                            ikasService.getSubKategoris().catch(() => []),
+                            ikasService.getRuangLingkups().catch(() => []),
+                        ]
+                        : []),
                     ikasService.getPertanyaanByKategori('identifikasi').catch(() => null),
                     ikasService.getPertanyaanByKategori('proteksi').catch(() => null),
                     ikasService.getPertanyaanByKategori('deteksi').catch(() => null),
@@ -557,7 +566,11 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 }
 
                 const results = await Promise.all(structurePromises);
-                const [kategorisResp, subKResp, rlResp, ...pertanyaanResults] = results;
+                const metadataOffset = includeMasterStructure ? 3 : 0;
+                const kategorisResp = includeMasterStructure ? results[0] : [];
+                const subKResp = includeMasterStructure ? results[1] : [];
+                const rlResp = includeMasterStructure ? results[2] : [];
+                const pertanyaanResults = results.slice(metadataOffset);
 
                 // 2.1 Process Kategoris
                 const kategorisList = Array.isArray(kategorisResp) ? kategorisResp : ((kategorisResp as any).data || []);
