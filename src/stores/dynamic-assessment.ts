@@ -966,11 +966,46 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                     console.warn('[DynamicAssessment] hydrateAnswersFromBackend dibatalkan: ikas_id null');
                     return;
                 }
+
+                const fetchAllAnswersForDomain = async (domainKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih') => {
+                    const collected: any[] = [];
+                    let page = 1;
+                    let totalPages = 1;
+
+                    while (page <= totalPages) {
+                        const response = await ikasService.getJawabanByKategori(domainKey, activeIkasId, {
+                            page,
+                            limit: 500,
+                        }).catch(() => null);
+
+                        if (!response) break;
+
+                        collected.push(...this.normalizeApiCollection(response));
+
+                        const pagination = response?.pagination || response?.data?.pagination || null;
+                        totalPages = Number(
+                            pagination?.total_pages ||
+                            pagination?.totalPages ||
+                            pagination?.last_page ||
+                            pagination?.lastPage ||
+                            1
+                        ) || 1;
+
+                        if (collected.length === 0 && totalPages === 1) {
+                            break;
+                        }
+
+                        page += 1;
+                    }
+
+                    return collected;
+                };
+
                 const results = await Promise.all([
-                    ikasService.getJawabanByKategori('identifikasi', activeIkasId).catch(() => []),
-                    ikasService.getJawabanByKategori('proteksi', activeIkasId).catch(() => []),
-                    ikasService.getJawabanByKategori('deteksi', activeIkasId).catch(() => []),
-                    ikasService.getJawabanByKategori('gulih', activeIkasId).catch(() => []),
+                    fetchAllAnswersForDomain('identifikasi'),
+                    fetchAllAnswersForDomain('proteksi'),
+                    fetchAllAnswersForDomain('deteksi'),
+                    fetchAllAnswersForDomain('gulih'),
                 ]);
 
                 // Debug: log raw results for each domain fetch

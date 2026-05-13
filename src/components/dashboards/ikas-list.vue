@@ -354,13 +354,20 @@ const mapRecord = (record: any): IkasRecord => {
   const stakeholder = getStakeholderForRecord(record);
   const company = record?.perusahaan || {};
   const slug = stakeholder?.slug || company?.slug || String(record?.slug || record?.id || '');
-  const score = numberValue(record?.nilai_kematangan ?? record?.total_rata_rata ?? record?.score ?? 0);
+  const storeData = getStoreDataForRecord(record, slug);
+  const storeSummary = findSummaryForRecord(record, slug);
+  const score = numberValue(
+    storeSummary?.score ??
+    storeData?.total_rata_rata ??
+    record?.nilai_kematangan ??
+    record?.total_rata_rata ??
+    record?.score ??
+    0
+  );
   const status = getStatus(record, slug);
   const sectorObject = stakeholder?.sub_sektor || company?.sub_sektor;
   const measurementDate = getRecordMeasurementDate(record);
   const measurementYear = getRecordMeasurementYear(record);
-  const storeData = getStoreDataForRecord(record, slug);
-  const storeSummary = findSummaryForRecord(record, slug);
 
   const _rawTs = record?.updated_at || record?.tanggal || record?.created_at || '';
   const _normTs = normalizeUtcTimestamp(_rawTs);
@@ -758,7 +765,15 @@ const selectRecord = (record: IkasRecord) => {
 
 const openFullDetail = () => {
   if (!selectedRecord.value?.slug) return;
-  router.push({ path: '/ikas', query: { slug: selectedRecord.value.slug, source: 'list' } });
+  router.push({
+    path: '/ikas',
+    query: {
+      slug: selectedRecord.value.slug,
+      ikas_id: selectedRecord.value.id,
+      perusahaan_id: selectedRecord.value.raw?.perusahaan?.id || selectedRecord.value.raw?.id_perusahaan || '',
+      source: 'list',
+    },
+  });
 };
 
 const safeFileName = (value: string): string => String(value || 'IKAS')

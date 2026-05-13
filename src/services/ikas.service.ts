@@ -547,12 +547,22 @@ export const ikasService = {
         return api.delete<any>(`/api/maturity/jawaban-gulih/${id}`);
     },
 
-    async getJawabanByKategori(kategori: string, ikasId: string): Promise<any> {
+    async getJawabanByKategori(
+        kategori: string,
+        ikasId: string,
+        options: { page?: number; limit?: number } = {},
+    ): Promise<any> {
         const resolved = this.resolveKategoriKey(kategori);
         if (!ikasId) {
             throw new Error('ikas_id wajib ada untuk mengambil jawaban maturity');
         }
-        return api.get<any>(`/api/maturity/jawaban-${resolved}?ikas_id=${ikasId}`);
+
+        const params = new URLSearchParams();
+        params.set('ikas_id', ikasId);
+        if (options.page) params.set('page', String(options.page));
+        if (options.limit) params.set('limit', String(options.limit));
+
+        return api.get<any>(`/api/maturity/jawaban-${resolved}?${params.toString()}`);
     },
 
     async createJawabanByKategori(kategori: string, payload: JawabanPayload): Promise<any> {

@@ -17,10 +17,10 @@
     <!-- ── Logo Header ── -->
     <div class="main-sidebar-header sb2-header">
       <router-link :to="dashboardRoute" class="header-logo sb2-logo-link">
-        <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
-        <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
-        <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
-        <img src="/images/brand-logos/logoD4.svg"   alt="logo" id="logo-toggle-dark"  class="sb2-logo-mini" />
+        <img src="/images/media/studio1.png" alt="logo" id="logo-desktop"      class="sb2-logo-full" />
+        <img src="/images/media/studio1.png" alt="logo" id="logo-desktop-dark" class="sb2-logo-full" />
+        <img src="/images/media/studio1.png"   alt="logo" id="logo-toggle"       class="sb2-logo-mini" />
+        <img src="/images/media/studio1.png"   alt="logo" id="logo-toggle-dark"  class="sb2-logo-mini" />
       </router-link>
     </div>
 
@@ -229,6 +229,7 @@ watchEffect(() => {
   const filteredItems = filterMenuByRole(staticMenuData);
   menuData.length = 0;
   filteredItems.forEach((item) => menuData.push(item));
+  updatePendingBadge();
 });
 
 
@@ -243,8 +244,19 @@ const previousUrl = ref("/");
 const router = useRouter();
 const route = useRoute();
 
+const normalizeListResponse = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.records)) return response.records;
+  return [];
+};
+
+const isPendingRequest = (value) => {
+  return String(value || "").trim().toLowerCase() === "pending";
+};
+
 // Fetch and update pending SE requests badge
-const updatePendingBadge = async () => {
+async function updatePendingBadge() {
   if (authStore.isAdmin || authStore.currentUser?.role === 'staff') {
     try {
       const [requests, ikasRecords] = await Promise.all([
@@ -252,10 +264,12 @@ const updatePendingBadge = async () => {
         ikasService.getIkasList().catch(() => []),
       ]);
 
-      const pendingCount = requests.filter(r => r.status === 'pending').length;
-      const pendingIkasCount = Array.isArray(ikasRecords)
-        ? ikasRecords.filter((item) => String(item?.edit_request_status || item?.editRequestStatus || '').toLowerCase() === 'pending').length
-        : 0;
+      const seList = normalizeListResponse(requests);
+      const ikasList = normalizeListResponse(ikasRecords);
+      const pendingCount = seList.filter((item) => isPendingRequest(item?.status)).length;
+      const pendingIkasCount = ikasList.filter((item) =>
+        isPendingRequest(item?.edit_request_status || item?.editRequestStatus)
+      ).length;
       
       const kseItem = menuData.find(item => item.title === 'KSE List');
       if (kseItem) {
@@ -278,7 +292,7 @@ const updatePendingBadge = async () => {
       console.error("Failed to fetch pending requests for badge", e);
     }
   }
-};
+}
 
 onMounted(() => {
   updatePendingBadge();

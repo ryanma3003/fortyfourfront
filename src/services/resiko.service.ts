@@ -57,7 +57,14 @@ const pickArray = (payload: any): any[] => {
     ];
 
     const found = candidates.find(Array.isArray);
-    return found || [];
+    if (found) return found;
+
+    for (const value of Object.values(data)) {
+        const parsed = unwrap(value);
+        if (Array.isArray(parsed)) return parsed;
+    }
+
+    return [];
 };
 
 const pickRespondent = (payload: any): any | null => {
@@ -84,7 +91,14 @@ export const resikoService = {
     },
 
     async getRiskPayloadByRespondentId(id: string | number): Promise<any> {
-        return api.get<any>(`/api/survey/risiko/${id}`);
+        try {
+            return await api.get<any>(`/api/suvery/risiko/${id}`);
+        } catch (error) {
+            if (error instanceof ApiRequestError && error.status === 404) {
+                return api.get<any>(`/api/survey/risiko/${id}`);
+            }
+            throw error;
+        }
     },
 
     async getRiskByRespondentId(id: string | number): Promise<any[]> {
@@ -127,7 +141,7 @@ export const resikoService = {
         const respondentId = getRespondentId(respondent);
         if (respondentId) {
             try {
-                const riskPayload = await api.get<any>(`/api/survey/risiko/${respondentId}`);
+                const riskPayload = await this.getRiskPayloadByRespondentId(respondentId);
                 const riskRows = pickArray(riskPayload);
                 if (riskRows.length > 0) {
                     risks = riskRows;

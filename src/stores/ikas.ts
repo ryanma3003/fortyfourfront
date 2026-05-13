@@ -323,6 +323,23 @@ const unwrapCollection = (response: any): any[] => {
   return getIkasRecordId(response) ? [response] : [];
 };
 
+const recordHasMeaningfulIkasSummary = (record: any): boolean => {
+  const score = firstValue(record?.nilai_kematangan, record?.total_rata_rata, record?.score);
+  const numericScore = typeof score === 'number' ? score : Number(String(score ?? '').replace(',', '.'));
+  if (Number.isFinite(numericScore) && numericScore > 0) return true;
+
+  const identifikasi = getNestedDomain(record, 'identifikasi');
+  const proteksi = getNestedDomain(record, 'proteksi');
+  const deteksi = getNestedDomain(record, 'deteksi');
+  const gulih = getNestedDomain(record, 'gulih', 'tanggulih');
+
+  return [identifikasi, proteksi, deteksi, gulih].some((domain) => (
+    domain &&
+    typeof domain === 'object' &&
+    Object.keys(domain).some((key) => key.startsWith('nilai_'))
+  ));
+};
+
 // Helper function untuk label maturity
 export const getMaturityLabel = (score: number | 'NA'): string => {
   if (score === 'NA') return "Not Applicable";
@@ -392,6 +409,7 @@ export const useIkasStore = defineStore('ikas', {
     // Backend API state
     backendIkasIds: {} as Record<string, string | null>, // Map stakeholder slug -> backend IKAS ID
     backendSyncedMap: {} as Record<string, boolean>, // Map stakeholder slug -> backend sync state
+    hiddenIkasIds: {} as Record<string, boolean>, // IDs hidden locally after delete / stale 404
     domainIds: {} as Record<string, string>, // Maps domain name -> backend ID
     apiLoading: false,
     apiError: null as string | null,
@@ -529,7 +547,24 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     normalizeIkasRecords(response: any): any[] {
-      return unwrapCollection(response);
+      return unwrapCollection(response).filter((record: any) => {
+        const recordId = getIkasRecordId(record);
+        return !recordId || !this.hiddenIkasIds[String(recordId)];
+      });
+    },
+
+    isHiddenIkasId(id: string | null | undefined): boolean {
+      return !!(id && this.hiddenIkasIds[String(id)]);
+    },
+
+    hideIkasId(id: string | null | undefined) {
+      if (!id) return;
+      this.hiddenIkasIds[String(id)] = true;
+    },
+
+    unhideIkasId(id: string | null | undefined) {
+      if (!id) return;
+      delete this.hiddenIkasIds[String(id)];
     },
 
     recordMatchesIkasIdentity(record: any, slug: string, ikasId: string | null, perusahaanId = ''): boolean {
@@ -543,6 +578,15 @@ export const useIkasStore = defineStore('ikas', {
         (!!slug && String(company?.slug || '') === String(slug)) ||
         (!!perusahaanId && getIkasRecordPerusahaanId(record) === String(perusahaanId))
       );
+    },
+
+    clearIkasStateForSlug(slug: string) {
+      if (!slug) return;
+
+      delete this.backendIkasIds[slug];
+      delete this.backendSyncedMap[slug];
+      delete this.ikasSummaryMap[slug];
+      this.ikasDataMap[slug] = createDefaultIkasData();
     },
 
     patchIkasStatus(slug: string, patch: { is_validated?: boolean; edit_request_status?: string; edit_request_reason?: string }) {
@@ -767,6 +811,7 @@ export const useIkasStore = defineStore('ikas', {
       try {
         const deletedRecord = this.ikasRawRecords.find((record: any) => getIkasRecordId(record) === String(id));
         await ikasService.deleteIkas(id);
+        this.hideIkasId(id);
         
         // Find slug associated with this ID to clear local state
         let slugToClear = deletedRecord ? this.resolveIkasSlug(deletedRecord) : '';
@@ -776,45 +821,46 @@ export const useIkasStore = defineStore('ikas', {
             break;
           }
         }
-
-        const deletedCompanyId = String(
-          getIkasRecordPerusahaanId(deletedRecord) ||
-          this.ikasSummaryMap[slugToClear]?.id_perusahaan ||
-          '',
-        );
+        const shouldClearActiveState = !!slugToClear && String(this.backendIkasIds[slugToClear] || '') === String(id);
 
         this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== String(id));
         
-        if (slugToClear) {
-          delete this.backendIkasIds[slugToClear];
-          delete this.backendSyncedMap[slugToClear];
-          delete this.ikasSummaryMap[slugToClear];
-
-          const remainingForStakeholder = this.ikasRawRecords.filter((record: any) => {
-            const company = record?.perusahaan || {};
-            return (
-              (!!deletedCompanyId && getIkasRecordPerusahaanId(record) === deletedCompanyId) ||
-              (!!slugToClear && (String(record?.slug || '') === slugToClear || String(company?.slug || '') === slugToClear))
-            );
-          });
-
-          const nextRecord = this.findLatestIkasRecord(remainingForStakeholder, deletedCompanyId) ||
-            [...remainingForStakeholder].sort((a, b) => getIkasRecordSortTime(b) - getIkasRecordSortTime(a))[0];
-
-          if (nextRecord) {
-            this.ikasDataMap[slugToClear] = createDefaultIkasData();
-            this.upsertSummaryRecord(nextRecord);
-          } else {
-            this.ikasDataMap[slugToClear] = createDefaultIkasData();
-            this.backendIkasIds[slugToClear] = null;
-            this.backendSyncedMap[slugToClear] = false;
-          }
+        if (shouldClearActiveState) {
+          this.clearIkasStateForSlug(slugToClear);
+          this.backendIkasIds[slugToClear] = null;
+          this.backendSyncedMap[slugToClear] = false;
         }
         
         this.ikasVersion++;
         window.dispatchEvent(new Event('ikas-requests-updated'));
         return true;
       } catch (error) {
+        const deletedRecord = this.ikasRawRecords.find((record: any) => getIkasRecordId(record) === String(id));
+        let slugToClear = deletedRecord ? this.resolveIkasSlug(deletedRecord) : '';
+        for (const [slug, ikasId] of Object.entries(this.backendIkasIds)) {
+          if (String(ikasId) === String(id)) {
+            slugToClear = slug;
+            break;
+          }
+        }
+        const isNotFound = Number((error as any)?.status) === 404;
+
+        if (isNotFound && slugToClear) {
+          this.hideIkasId(id);
+          const shouldClearActiveState = String(this.backendIkasIds[slugToClear] || '') === String(id);
+
+          this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== String(id));
+          if (shouldClearActiveState) {
+            this.clearIkasStateForSlug(slugToClear);
+            this.backendIkasIds[slugToClear] = null;
+            this.backendSyncedMap[slugToClear] = false;
+          }
+
+          this.ikasVersion++;
+          window.dispatchEvent(new Event('ikas-requests-updated'));
+          return true;
+        }
+
         console.error('[IKAS Store] deleteFromBackend failed:', error);
         throw error;
       } finally {
@@ -834,12 +880,38 @@ export const useIkasStore = defineStore('ikas', {
 
           const response = await ikasService.getIkasList();
           const records = this.normalizeIkasRecords(response);
-          this.ikasRawRecords = records;
+          const hydratedRecords = await Promise.all(records.map(async (record: any) => {
+            const recordId = getIkasRecordId(record);
+            if (!recordId || recordHasMeaningfulIkasSummary(record)) {
+              return record;
+            }
+
+            try {
+              const detailed = await ikasService.getIkasById(recordId);
+              const unwrapped = unwrapIkasResponse(detailed);
+              return {
+                ...record,
+                ...unwrapped,
+                perusahaan: unwrapped?.perusahaan || record?.perusahaan,
+              };
+            } catch (error: any) {
+              if (Number(error?.status) === 404) {
+                this.hideIkasId(recordId);
+                return null;
+              }
+
+              console.warn('[IKAS Store] Could not hydrate IKAS list record, using list payload:', error);
+              return record;
+            }
+          }));
+
+          const finalRecords = hydratedRecords.filter((record: any) => !!record);
+          this.ikasRawRecords = finalRecords;
           this.ikasSummaryMap = {};
           this.backendIkasIds = {};
           this.backendSyncedMap = {};
           
-          records.forEach((rec: any) => {
+          finalRecords.forEach((rec: any) => {
             this.upsertSummaryRecord(rec);
           });
           
@@ -1201,7 +1273,8 @@ export const useIkasStore = defineStore('ikas', {
     async fetchFromBackend(
       slug: string,
       perusahaanId: string,
-      targetYear = ''
+      targetYear = '',
+      preferredIkasId = ''
     ): Promise<{ success: boolean; exists: boolean; error?: string; respondentData?: any; ikasRecord?: any }> {
       this.apiLoading = true;
       this.apiError = null;
@@ -1211,9 +1284,81 @@ export const useIkasStore = defineStore('ikas', {
       try {
         const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
         const records = this.normalizeIkasRecords(listResponse);
-        const matchedRecord =
-          this.findLatestIkasRecord(records, perusahaanId, targetYear) ||
-          this.findLatestIkasRecord(records, perusahaanId);
+        const buildCandidateRecords = (year = '') => records
+          .filter((record: any) => (
+            getIkasRecordPerusahaanId(record) === String(perusahaanId) &&
+            (!year || getIkasRecordMeasurementYear(record) === String(year))
+          ))
+          .sort((a: any, b: any) => getIkasRecordSortTime(b) - getIkasRecordSortTime(a));
+
+        const scopedCandidates = targetYear ? buildCandidateRecords(targetYear) : [];
+        const matchedCandidates = scopedCandidates.length ? scopedCandidates : buildCandidateRecords();
+
+        let matchedRecord: any | null = null;
+        let detailedResponse: any = null;
+
+        const preferredCandidate = preferredIkasId
+          ? matchedCandidates.find((candidate: any) => getIkasRecordId(candidate) === String(preferredIkasId))
+          : null;
+
+        if (preferredCandidate) {
+          const preferredCandidateId = getIkasRecordId(preferredCandidate);
+
+          if (recordHasMeaningfulIkasSummary(preferredCandidate)) {
+            matchedRecord = preferredCandidate;
+            detailedResponse = preferredCandidate;
+          } else if (preferredCandidateId) {
+            try {
+              const preferredDetailed = await ikasService.getIkasById(preferredCandidateId);
+              matchedRecord = preferredCandidate;
+              detailedResponse = unwrapIkasResponse(preferredDetailed);
+            } catch (e: any) {
+              if (Number(e?.status) !== 404) {
+                console.warn('[IKAS Store] Could not fetch preferred detailed record, continuing with perusahaan list');
+              }
+            }
+          }
+        }
+
+        for (const candidate of matchedCandidates) {
+          if (matchedRecord) break;
+          const candidateId = getIkasRecordId(candidate);
+          if (!candidateId) {
+            matchedRecord = candidate;
+            detailedResponse = candidate;
+            break;
+          }
+
+          if (recordHasMeaningfulIkasSummary(candidate)) {
+            matchedRecord = candidate;
+            detailedResponse = candidate;
+            break;
+          }
+
+          try {
+            const detailed = await ikasService.getIkasById(candidateId);
+            matchedRecord = candidate;
+            detailedResponse = unwrapIkasResponse(detailed);
+            break;
+          } catch (e: any) {
+            if (Number(e?.status) === 404) {
+              this.hideIkasId(candidateId);
+              const staleSlug = this.resolveIkasSlug(candidate);
+              this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== String(candidateId));
+              if (staleSlug) {
+                this.clearIkasStateForSlug(staleSlug);
+                this.backendIkasIds[staleSlug] = null;
+                this.backendSyncedMap[staleSlug] = false;
+              }
+              continue;
+            }
+
+            console.warn('[IKAS Store] Could not fetch detailed record, using list data');
+            matchedRecord = candidate;
+            detailedResponse = candidate;
+            break;
+          }
+        }
 
         if (!matchedRecord) {
           this.backendSyncedMap[slug] = false;
@@ -1225,25 +1370,12 @@ export const useIkasStore = defineStore('ikas', {
         const matchedRecordId = getIkasRecordId(matchedRecord);
         this.setBackendIkasId(slug, matchedRecordId || null);
         this.backendSyncedMap[slug] = true;
-        this.upsertSummaryRecord(matchedRecord);
-
-        // Fetch full detailed record by ID (includes nested domain scores)
-        let detailedResponse: any = matchedRecord;
-        if (matchedRecordId) {
-          try {
-            const detailed = await ikasService.getIkasById(matchedRecordId);
-            if (detailed) {
-              // Handle { data: {...} } wrapper
-              detailedResponse = unwrapIkasResponse(detailed);
-            }
-          } catch (e) {
-            console.warn('[IKAS Store] Could not fetch detailed record, using list data');
-          }
-        }
+        const summaryRecord = detailedResponse || matchedRecord;
+        this.upsertSummaryRecord(summaryRecord);
 
         // Populate local store from backend data
         const data = this.ikasDataMap[slug];
-        const response = detailedResponse;
+        const response = detailedResponse || matchedRecord;
         this.applyDomainScoresFromRecord(slug, response);
         this.applySubdomainValues(slug, response, 'identifikasi', 'identifikasi', 5);
         this.applySubdomainValues(slug, response, 'proteksi', 'proteksi', 6);
@@ -1316,10 +1448,10 @@ export const useIkasStore = defineStore('ikas', {
             telepon: matchedRecord.telepon || '',
             tanggal: getIkasRecordDateValue(matchedRecord) || '',
             tahun_pengukuran: getIkasRecordMeasurementYear(matchedRecord),
-            target_nilai: matchedRecord.target_nilai || 3,
-            nilai_kematangan: matchedRecord.nilai_kematangan || 0,
+            target_nilai: summaryRecord.target_nilai || 3,
+            nilai_kematangan: summaryRecord.nilai_kematangan || 0,
           },
-          ikasRecord: matchedRecord
+          ikasRecord: summaryRecord
         };
       } catch (error: any) {
         console.error('[IKAS Store] Fetch from backend failed:', error);

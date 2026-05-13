@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import gsap from 'gsap';
 import { ikasService } from '../../services/ikas.service';
+import { useIkasStore } from '../../stores/ikas';
 
 const props = defineProps({
   stakeholderSlug: {
@@ -19,6 +20,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['year-selected']);
+const ikasStore = useIkasStore();
 
 // --- STATE ---
 const currentYear = new Date().getFullYear();
@@ -87,22 +89,83 @@ const domainDefs = [
   { key: 'tanggulih', label: 'Penanggulangan & Pemulihan', shortLabel: 'Gulih', icon: 'ri-first-aid-kit-line', color: '#059669', gradient: 'linear-gradient(135deg, #064e3b, #059669)' },
 ];
 
-// Extract domain score from a record
-const getDomainScore = (record, domainKey) => {
-  if (!record) return 0;
-  switch (domainKey) {
-    case 'identifikasi': return record.identifikasi?.nilai_identifikasi || record.identifikasi?.nilai_subdomain_avg || 0;
-    case 'proteksi': return record.proteksi?.nilai_proteksi || record.proteksi?.nilai_subdomain_avg || 0;
-    case 'deteksi': return record.deteksi?.nilai_deteksi || record.deteksi?.nilai_subdomain_avg || 0;
-    case 'tanggulih': return record.gulih?.nilai_gulih || record.gulih?.nilai_subdomain_avg || 0;
-    default: return 0;
+const hasScoreValue = (value) => value !== undefined && value !== null && value !== '' && value !== 'NA';
+
+const toScoreNumber = (value) => {
+  if (!hasScoreValue(value)) return null;
+  const parsed = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const averageScores = (values) => {
+  const validValues = values.filter((value) => typeof value === 'number' && Number.isFinite(value));
+  if (!validValues.length) return null;
+  return Number((validValues.reduce((total, value) => total + value, 0) / validValues.length).toFixed(2));
+};
+
+const getRecordId = (record) => String(
+  record?.id ||
+  record?.ID ||
+  record?.ikas_id ||
+  record?.id_ikas ||
+  record?.data?.id ||
+  record?.data?.ID ||
+  ''
+);
+
+const unwrapDetailedRecord = (response) => response?.data || response?.record || response?.ikas || response || null;
+
+const hasDetailedIkasPayload = (record) => {
+  const domains = [
+    record?.identifikasi,
+    record?.proteksi,
+    record?.deteksi,
+    record?.gulih || record?.tanggulih,
+  ];
+
+  return domains.every((domain) => domain && typeof domain === 'object' && Object.keys(domain).length > 0);
+};
+
+const getRecordDomain = (record, domainKey) => {
+  if (!record) return null;
+  if (domainKey === 'tanggulih') {
+    return record.tanggulih || record.gulih || null;
   }
+  return record[domainKey] || null;
+};
+
+// Extract domain score from a record using the same fallback order as the main IKAS page.
+const getDomainScore = (record, domainKey) => {
+  const domain = getRecordDomain(record, domainKey);
+  const scoreByDomain = {
+    identifikasi: ['nilai_identifikasi', 'nilai_subdomain_avg', 'nilai', 'score'],
+    proteksi: ['nilai_proteksi', 'nilai_subdomain_avg', 'nilai', 'score'],
+    deteksi: ['nilai_deteksi', 'nilai_subdomain_avg', 'nilai', 'score'],
+    tanggulih: ['nilai_tanggulih', 'nilai_gulih', 'nilai_subdomain_avg', 'nilai', 'score'],
+  };
+
+  for (const key of scoreByDomain[domainKey] || []) {
+    const nestedScore = toScoreNumber(domain?.[key]);
+    if (nestedScore !== null) return nestedScore;
+
+    const flatScore = toScoreNumber(record?.[key]);
+    if (flatScore !== null) return flatScore;
+  }
+
+  const nestedSubdomainValues = domain
+    ? Object.keys(domain)
+        .filter((key) => key.startsWith('nilai_subdomain'))
+        .map((key) => toScoreNumber(domain[key]))
+    : [];
+
+  return averageScores(nestedSubdomainValues);
 };
 
 // Extract total score
-const getTotalScore = (record) => {
-  if (!record) return 0;
-  return record.nilai_kematangan || record.total_rata_rata || 0;
+const getTotalScore = (record, domains = []) => {
+  const explicitTotal = toScoreNumber(record?.nilai_kematangan ?? record?.total_rata_rata ?? record?.score);
+  if (explicitTotal !== null) return explicitTotal;
+  return averageScores(domains);
 };
 
 // Group records by year
@@ -165,26 +228,10 @@ const comparisonData = computed(() => {
     
     const domains = {};
     domainDefs.forEach(d => {
-      // Calculate from subdomains if domain-level score isn't available
-      let score = getDomainScore(record, d.key);
-      if (!score && record) {
-        const domData = record[d.key === 'tanggulih' ? 'gulih' : d.key];
-        if (domData) {
-          const subKeys = Object.keys(domData).filter(k => k.startsWith('nilai_subdomain'));
-          const vals = subKeys.map(k => Number(domData[k]) || 0).filter(v => v > 0);
-          if (vals.length > 0) {
-            score = Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2));
-          }
-        }
-      }
-      domains[d.key] = score;
+      domains[d.key] = getDomainScore(record, d.key);
     });
 
-    // Calculate total from domains
-    const domainValues = Object.values(domains).filter(v => v > 0);
-    const total = domainValues.length > 0 
-      ? Number((domainValues.reduce((a, b) => a + b, 0) / domainValues.length).toFixed(2)) 
-      : getTotalScore(record);
+    const total = getTotalScore(record, Object.values(domains));
 
     return {
       year,
@@ -197,7 +244,9 @@ const comparisonData = computed(() => {
 });
 
 // Has comparison data
-const hasData = computed(() => comparisonData.value.some(d => d.total > 0 || Object.values(d.domains).some(v => v > 0)));
+const hasData = computed(() => comparisonData.value.some((item) => (
+  item.total !== null || Object.values(item.domains).some((value) => value !== null)
+)));
 
 // Max score for bar widths
 const maxScore = 5;
@@ -254,7 +303,8 @@ const getTrend = (domainKey) => {
   const sorted = [...comparisonData.value].sort((a, b) => a.year - b.year);
   const first = sorted[0].domains[domainKey];
   const last = sorted[sorted.length - 1].domains[domainKey];
-  if (first === 0 && last === 0) return null;
+  if (first === null && last === null) return null;
+  if (Number(first ?? 0) === 0 && Number(last ?? 0) === 0) return null;
   if (last > first) return 'up';
   if (last < first) return 'down';
   return 'stable';
@@ -265,7 +315,8 @@ const getTotalTrend = () => {
   const sorted = [...comparisonData.value].sort((a, b) => a.year - b.year);
   const first = sorted[0].total;
   const last = sorted[sorted.length - 1].total;
-  if (first === 0 && last === 0) return null;
+  if (first === null && last === null) return null;
+  if (Number(first ?? 0) === 0 && Number(last ?? 0) === 0) return null;
   if (last > first) return 'up';
   if (last < first) return 'down';
   return 'stable';
@@ -355,12 +406,12 @@ const trendChartSeries = computed(() => {
   
   const series = domainDefs.map(d => ({
     name: d.shortLabel || d.label,
-    data: sorted.map(item => item.domains[d.key] || 0),
+    data: sorted.map(item => Number(item.domains[d.key] ?? 0)),
   }));
 
   series.push({
     name: 'Total Rata-rata',
-    data: sorted.map(item => item.total || 0),
+    data: sorted.map(item => Number(item.total ?? 0)),
   });
 
   return series;
@@ -374,6 +425,27 @@ const normalizeIkasRecords = (response) => {
   return [];
 };
 
+const enrichRecordDetails = async (records) => {
+  const detailedRecords = await Promise.all(records.map(async (record) => {
+    if (hasDetailedIkasPayload(record)) return record;
+
+    const recordId = getRecordId(record);
+    if (!recordId) return record;
+
+    try {
+      const detailed = await ikasService.getIkasById(recordId);
+      const payload = unwrapDetailedRecord(detailed);
+      return payload && typeof payload === 'object'
+        ? { ...record, ...payload }
+        : record;
+    } catch {
+      return record;
+    }
+  }));
+
+  return detailedRecords;
+};
+
 // Fetch all IKAS records for the stakeholder
 const fetchAllRecords = async () => {
   if (!props.perusahaanId) return;
@@ -382,26 +454,24 @@ const fetchAllRecords = async () => {
   
   try {
     const response = await ikasService.getIkasByPerusahaan(props.perusahaanId);
-    const records = normalizeIkasRecords(response);
+    const records = normalizeIkasRecords(response).filter((record) => !ikasStore.isHiddenIkasId(getRecordId(record)));
     
     if (records.length) {
       // Filter records for this perusahaan
-      allIkasRecords.value = records.filter(r => 
+      const filteredRecords = records.filter(r => 
         String(r.perusahaan?.id || '') === String(props.perusahaanId) ||
         String(r.id_perusahaan || '') === String(props.perusahaanId)
       );
+      allIkasRecords.value = await enrichRecordDetails(filteredRecords);
       
-      // Build available years from the data. Keep current/active year visible
-      // so a missing year can be selected and created from the main table.
-      const years = new Set([currentYear]);
+      // Only show years that really have IKAS data.
+      const years = new Set();
       const activeYear = toYearNumber(props.activeYear);
-      if (activeYear !== null) years.add(activeYear);
       allIkasRecords.value.forEach(record => {
         const year = getRecordMeasurementYear(record);
         if (year) years.add(year);
       });
       
-      // Show the timeline from older years on the left to newer years on the right.
       availableYears.value = Array.from(years).sort((a, b) => a - b);
       
       const dataYears = allIkasRecords.value
@@ -409,13 +479,19 @@ const fetchAllRecords = async () => {
         .filter(Boolean)
         .sort((a, b) => a - b);
       const latestDataYear = dataYears[dataYears.length - 1];
+
+      if (activeYear !== null && !availableYears.value.includes(activeYear) && latestDataYear) {
+        emit('year-selected', latestDataYear);
+      }
+
       selectedYears.value = normalizeSelectedYears([
-        activeYear ?? latestDataYear ?? availableYears.value[availableYears.value.length - 1],
+        availableYears.value.includes(activeYear)
+          ? activeYear
+          : (latestDataYear ?? availableYears.value[availableYears.value.length - 1]),
       ]);
     } else {
-      const activeYear = toYearNumber(props.activeYear);
-      availableYears.value = Array.from(new Set([currentYear, activeYear].filter((year) => year !== null))).sort((a, b) => a - b);
-      selectedYears.value = activeYear !== null ? [activeYear] : [currentYear];
+      availableYears.value = [];
+      selectedYears.value = [];
     }
   } catch (err) {
     console.error('[IkasComparison] Failed to fetch records:', err);
@@ -445,8 +521,11 @@ watch(() => props.perusahaanId, () => {
 watch(() => props.activeYear, (year) => {
   const normalizedYear = toYearNumber(year);
   if (normalizedYear === null) return;
-  if (!availableYears.value.map(toYearNumber).includes(normalizedYear)) {
-    availableYears.value = Array.from(new Set([...availableYears.value, normalizedYear])).sort((a, b) => a - b);
+  if (!availableYears.value.includes(normalizedYear)) {
+    if (availableYears.value.length) {
+      selectedYears.value = normalizeSelectedYears([availableYears.value[availableYears.value.length - 1]]);
+    }
+    return;
   }
   selectedYears.value = normalizeSelectedYears([normalizedYear]);
 });
@@ -583,19 +662,19 @@ watch(availableYears, (years) => {
               </span>
             </div>
             <div class="total-bars">
-              <div v-for="item in comparisonData" :key="item.year" class="total-bar-row">
+                <div v-for="item in comparisonData" :key="item.year" class="total-bar-row">
                 <span class="total-bar-year" :style="{ color: item.color.solid }">{{ item.year }}</span>
                 <div class="total-bar-track">
                   <div class="total-bar-fill"
                     :style="{
-                      width: `${(item.total / maxScore) * 100}%`,
+                      width: `${((Number(item.total ?? 0)) / maxScore) * 100}%`,
                       background: item.color.bg,
                     }"
                   >
-                    <span class="total-bar-value" v-if="item.total > 0">{{ item.total.toFixed(2) }}</span>
+                    <span class="total-bar-value" v-if="item.total !== null">{{ Number(item.total).toFixed(2) }}</span>
                   </div>
                 </div>
-                <span class="total-bar-label">{{ getMaturityLabel(item.total) }}</span>
+                <span class="total-bar-label">{{ getMaturityLabel(Number(item.total ?? 0)) }}</span>
               </div>
             </div>
           </div>
@@ -624,13 +703,13 @@ watch(availableYears, (years) => {
                   <div class="domain-bar-track">
                     <div class="domain-bar-fill"
                       :style="{
-                        width: item.domains[domain.key] > 0 ? `${(item.domains[domain.key] / maxScore) * 100}%` : '0%',
+                        width: item.domains[domain.key] !== null ? `${(Number(item.domains[domain.key]) / maxScore) * 100}%` : '0%',
                         background: item.color.bg,
                       }"
                     ></div>
                   </div>
-                  <span class="domain-bar-score" :style="{ color: item.domains[domain.key] > 0 ? item.color.solid : '#94a3b8' }">
-                    {{ item.domains[domain.key] > 0 ? item.domains[domain.key].toFixed(2) : '-' }}
+                  <span class="domain-bar-score" :style="{ color: item.domains[domain.key] !== null ? item.color.solid : '#94a3b8' }">
+                    {{ item.domains[domain.key] !== null ? Number(item.domains[domain.key]).toFixed(2) : '-' }}
                   </span>
                 </div>
               </div>
@@ -674,8 +753,8 @@ watch(availableYears, (years) => {
                     </div>
                   </td>
                   <td v-for="item in comparisonData" :key="item.year" class="year-col">
-                    <span :class="{ 'score-zero': item.domains[domain.key] <= 0 }">
-                      {{ item.domains[domain.key] > 0 ? item.domains[domain.key].toFixed(2) : '-' }}
+                    <span :class="{ 'score-zero': item.domains[domain.key] !== null && Number(item.domains[domain.key]) <= 0 }">
+                      {{ item.domains[domain.key] !== null ? Number(item.domains[domain.key]).toFixed(2) : '-' }}
                     </span>
                   </td>
                   <td class="trend-col" v-if="comparisonData.length >= 2">
@@ -693,8 +772,8 @@ watch(availableYears, (years) => {
                 <tr class="total-row">
                   <td class="domain-col"><strong>Total</strong></td>
                   <td v-for="item in comparisonData" :key="item.year" class="year-col">
-                    <strong :class="{ 'score-zero': item.total <= 0 }">
-                      {{ item.total > 0 ? item.total.toFixed(2) : '-' }}
+                    <strong :class="{ 'score-zero': item.total !== null && Number(item.total) <= 0 }">
+                      {{ item.total !== null ? Number(item.total).toFixed(2) : '-' }}
                     </strong>
                   </td>
                   <td class="trend-col" v-if="comparisonData.length >= 2">

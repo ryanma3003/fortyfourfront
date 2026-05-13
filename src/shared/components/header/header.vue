@@ -233,7 +233,7 @@
         </li>
 
         <!-- Start::header-element (Admin & Staff) -->
-        <li v-if="authStore.isAdmin" ref="notifDropdownRoot" class="header-element notifications-dropdown d-flex align-items-center dropdown sb-action-item">
+        <li v-if="authStore.isAdmin" key="header-notif-dropdown" ref="notifDropdownRoot" class="header-element notifications-dropdown d-flex align-items-center dropdown sb-action-item">
           <!-- Start::header-link|dropdown-toggle -->
           <a
             href="javascript:void(0);"
@@ -333,19 +333,19 @@
         </li>
         <!-- End::header-element -->
 
-        <li v-if="authStore.isAdmin" ref="requestDropdownRoot" class="header-element request-notifications-dropdown d-flex align-items-center dropdown sb-action-item">
+        <li v-if="authStore.isAdmin" key="header-ikas-validation-dropdown" ref="requestDropdownRoot" class="header-element request-notifications-dropdown d-flex align-items-center dropdown sb-action-item">
           <a
             href="javascript:void(0);"
             class="header-link dropdown-toggle d-flex align-items-center request-link sb-action-link"
             data-bs-toggle="dropdown"
             data-bs-auto-close="outside"
             aria-expanded="false"
-            @click="loadRequestEditCounts"
+            @click="loadIkasValidationCounts"
           >
             <div class="d-flex align-items-center request-trigger">
-              <i class="ri-edit-2-line"></i>
-              <span v-if="totalRequestEditCount > 0" class="request-total-badge">
-                {{ totalRequestEditCount > 99 ? '99+' : totalRequestEditCount }}
+              <i class="ri-shield-check-line"></i>
+              <span v-if="totalIkasValidationCount > 0" class="request-total-badge">
+                {{ totalIkasValidationCount > 99 ? '99+' : totalIkasValidationCount }}
               </span>
             </div>
           </a>
@@ -357,38 +357,28 @@
             <div class="p-3 bg-primary text-fixed-white">
               <div class="d-flex align-items-center justify-content-between">
                 <p class="mb-0 fs-16">
-                  Request Edit
-                  <span v-if="totalRequestEditCount > 0" class="badge bg-light text-primary ms-1">{{ totalRequestEditCount }}</span>
+                  Validasi IKAS
+                  <span v-if="totalIkasValidationCount > 0" class="badge bg-light text-primary ms-1">{{ totalIkasValidationCount }}</span>
                 </p>
               </div>
-              <div class="request-menu-subtitle">SE dan IKAS menunggu review</div>
+              <div class="request-menu-subtitle">Data IKAS yang masih menunggu validasi admin</div>
             </div>
             <div class="dropdown-divider"></div>
             <div class="request-list">
-              <router-link to="/kse-list-admin" class="dropdown-item request-list-item">
-                <span class="avatar avatar-sm avatar-rounded bg-warning-transparent text-warning">
-                  <i class="ri-server-line fs-16"></i>
-                </span>
-                <span class="flex-fill" style="min-width: 0;">
-                  <span class="d-block fw-semibold fs-13">Request Edit SE</span>
-                  <span class="d-block text-muted fs-12">Sistem Elektronik</span>
-                </span>
-                <span class="badge bg-warning-transparent text-warning">{{ requestEditCounts.se }}</span>
-              </router-link>
-              <router-link to="/ikas-list" class="dropdown-item request-list-item">
+              <router-link key="ikas-validation-link" :to="{ path: '/ikas-list', query: { status: 'draft' } }" class="dropdown-item request-list-item" @click.prevent="openIkasValidationQueue">
                 <span class="avatar avatar-sm avatar-rounded bg-info-transparent text-info">
-                  <i class="ri-shield-star-line fs-16"></i>
+                  <i class="ri-shield-check-line fs-16"></i>
                 </span>
                 <span class="flex-fill" style="min-width: 0;">
-                  <span class="d-block fw-semibold fs-13">Request Edit IKAS</span>
-                  <span class="d-block text-muted fs-12">Maturity IKAS</span>
+                  <span class="d-block fw-semibold fs-13">IKAS Belum Divalidasi</span>
+                  <span class="d-block text-muted fs-12">Maturity IKAS menunggu validasi</span>
                 </span>
-                <span class="badge bg-info-transparent text-info">{{ requestEditCounts.ikas }}</span>
+                <span class="badge bg-info-transparent text-info">{{ ikasValidationCounts.pending }}</span>
               </router-link>
             </div>
             <div class="p-2 text-center border-top">
-              <router-link to="/kse-list-admin" class="text-primary fw-semibold fs-13 text-decoration-none d-block py-1">
-                Lihat Antrean Review
+              <router-link key="ikas-validation-footer-link" :to="{ path: '/ikas-list', query: { status: 'draft' } }" class="text-primary fw-semibold fs-13 text-decoration-none d-block py-1" @click.prevent="openIkasValidationQueue">
+                Lihat Antrean Validasi
                 <i class="ri-arrow-right-s-line"></i>
               </router-link>
             </div>
@@ -558,14 +548,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { Tooltip } from "bootstrap";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import "vue3-perfect-scrollbar/style.css";
 import gsap from "gsap";
 import { ikasService } from "@/services/ikas.service";
-import { seEditService } from "@/services/se-edit.service";
 import {
   Languages,
 } from "../../../data/header";
@@ -583,8 +572,9 @@ const profileStore = useProfileStore();
 const notifStore = useNotificationStore();
 const { logUserOut } = authStore;
 const router = useRouter();
-const requestEditCounts = ref({ se: 0, ikas: 0 });
-const requestEditLoading = ref(false);
+const route = useRoute();
+const ikasValidationCounts = ref({ pending: 0 });
+const ikasValidationLoading = ref(false);
 const requestDropdownRoot = ref<HTMLElement | null>(null);
 const requestDropdownMenu = ref<HTMLElement | null>(null);
 const notifDropdownRoot = ref<HTMLElement | null>(null);
@@ -597,7 +587,7 @@ let themeTransitionCleanupTimeout: number | null = null;
 const ensureNotificationsLoaded = () => {
   if (authStore.authenticated && authStore.isAdmin) {
     notifStore.init();
-    loadRequestEditCounts();
+    loadIkasValidationCounts();
   }
 };
 
@@ -608,36 +598,51 @@ const normalizeListResponse = (response: any): any[] => {
   return [];
 };
 
-const isPendingRequest = (value: unknown): boolean => {
-  return String(value || "").trim().toLowerCase() === "pending";
+const isValidatedStatus = (value: unknown): boolean => {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["true", "1", "validated", "active", "approved"].includes(normalized);
 };
 
-const loadRequestEditCounts = async () => {
-  if (!authStore.authenticated || !authStore.isAdmin || requestEditLoading.value) return;
+const loadIkasValidationCounts = async () => {
+  if (!authStore.authenticated || !authStore.isAdmin || ikasValidationLoading.value) return;
 
-  requestEditLoading.value = true;
+  ikasValidationLoading.value = true;
   try {
-    const [seRequests, ikasRecords] = await Promise.all([
-      seEditService.getRequests().catch(() => []),
-      ikasService.getIkasList().catch(() => []),
-    ]);
-
-    const seList = normalizeListResponse(seRequests);
+    const ikasRecords = await ikasService.getIkasList().catch(() => []);
     const ikasList = normalizeListResponse(ikasRecords);
 
-    requestEditCounts.value = {
-      se: seList.filter((item: any) => isPendingRequest(item?.status)).length,
-      ikas: ikasList.filter((item: any) => isPendingRequest(item?.edit_request_status || item?.editRequestStatus)).length,
+    ikasValidationCounts.value = {
+      pending: ikasList.filter((item: any) => !isValidatedStatus(item?.is_validated ?? item?.isValidated ?? item?.status)).length,
     };
   } catch {
-    requestEditCounts.value = { se: 0, ikas: 0 };
+    ikasValidationCounts.value = { pending: 0 };
   } finally {
-    requestEditLoading.value = false;
+    ikasValidationLoading.value = false;
   }
 };
 
-const totalRequestEditCount = computed(() => requestEditCounts.value.se + requestEditCounts.value.ikas);
-const handleRequestEditChanged = () => loadRequestEditCounts();
+const totalIkasValidationCount = computed(() => ikasValidationCounts.value.pending);
+const handleRequestEditChanged = () => loadIkasValidationCounts();
+const openIkasValidationQueue = async () => {
+  window.dispatchEvent(new CustomEvent("ikas-apply-filter", {
+    detail: { status: "draft" },
+  }));
+
+  if (route.path === "/ikas-list") {
+    await router.replace({
+      path: "/ikas-list",
+      query: { ...route.query, status: "draft" },
+    });
+    return;
+  }
+
+  await router.push({
+    path: "/ikas-list",
+    query: { status: "draft" },
+  });
+};
+
 const animateDropdown = (event: Event) => {
   const root = event.currentTarget as HTMLElement;
   const menu = root.querySelector('.dropdown-menu');
@@ -721,7 +726,6 @@ const initHeaderMotion = () => {
 onMounted(() => {
   profileStore.switchUser();
   ensureNotificationsLoaded();
-  window.addEventListener("se-requests-updated", handleRequestEditChanged);
   window.addEventListener("ikas-requests-updated", handleRequestEditChanged);
   requestDropdownRoot.value?.addEventListener("shown.bs.dropdown", animateDropdown);
   notifDropdownRoot.value?.addEventListener("shown.bs.dropdown", animateDropdown);
@@ -730,7 +734,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener("se-requests-updated", handleRequestEditChanged);
   window.removeEventListener("ikas-requests-updated", handleRequestEditChanged);
   requestDropdownRoot.value?.removeEventListener("shown.bs.dropdown", animateDropdown);
   notifDropdownRoot.value?.removeEventListener("shown.bs.dropdown", animateDropdown);
@@ -750,7 +753,7 @@ watch(
   (isAuth) => {
     if (!isAuth) {
       notifStore.disconnect();
-      requestEditCounts.value = { se: 0, ikas: 0 };
+      ikasValidationCounts.value = { pending: 0 };
       return;
     }
     ensureNotificationsLoaded();
@@ -764,7 +767,7 @@ watch(
     if (isAdmin && authStore.authenticated) {
       ensureNotificationsLoaded();
     } else {
-      requestEditCounts.value = { se: 0, ikas: 0 };
+      ikasValidationCounts.value = { pending: 0 };
     }
   }
 );

@@ -1158,6 +1158,8 @@ const getIkasRecordForYear = (year: string): any | null => {
   return currentStakeholderIkasRecords.value.find((record) => getIkasRecordYear(record) === year) || null;
 };
 
+const latestStakeholderIkasRecord = computed(() => currentStakeholderIkasRecords.value[0] || null);
+
 const getIkasDomainObjectFromRecord = (record: any, key: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih') => {
   const domainKey = key === 'tanggulih' ? 'gulih' : key;
   return record?.[domainKey] || record?.[key] || {};
@@ -4552,7 +4554,14 @@ watch(() => ikasStore.apiLoading, async (loading) => {
                             v-if="!isCurrentYearIkasFilled"
                             type="button"
                             class="profile-action-card"
-                            @click="router.push({ path: '/ikas', query: { slug: currentStakeholder.slug } })"
+                            @click="router.push({
+                              path: '/ikas',
+                              query: {
+                                slug: currentStakeholder.slug,
+                                ikas_id: latestStakeholderIkasRecord?.id || '',
+                                perusahaan_id: currentStakeholder.id,
+                              },
+                            })"
                           >
                             <span class="profile-action-icon action-blue"><i class="ri-bar-chart-box-line"></i></span>
                             <span>
