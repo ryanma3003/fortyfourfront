@@ -3713,7 +3713,7 @@ function handleDrillDownNavigate(item) {
     } else if (title.includes("csirt")) {
       router.push(`/csirt/${item.slug}`);
     } else {
-      router.push(`/stakeholders/${item.slug}`);
+      router.push({ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } });
     }
   } else {
     router.push("/stakeholders");
@@ -5626,7 +5626,7 @@ const monitoringIkasPieSeries = computed(
                                 <button
                                   class="btn btn-sm btn-icon btn-primary-light"
                                   @click="
-                                    router.push(`/stakeholders/${s.slug}`)
+                                    router.push({ path: `/stakeholders/${s.slug}`, query: { id_perusahaan: s.id } })
                                   "
                                   title="Lihat Detail"
                                 >

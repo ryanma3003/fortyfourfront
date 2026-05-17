@@ -776,7 +776,7 @@ onBeforeUnmount(() => {
                                                 <div class="text-dark fs-11 fw-medium"><i class="ri-calendar-line text-muted"></i> {{ formatDate(group.ses[0]?.updated_at || group.ses[0]?.created_at) }}</div>
                                             </td>
                                             <td class="text-center" @click.stop>
-                                                <button class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" @click="router.push(`/stakeholders/${group.stakeholder.slug || getStakeholderSlug(group.ses[0])}`)">
+                                                <button class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" @click="router.push({ path: `/stakeholders/${group.stakeholder.slug || getStakeholderSlug(group.ses[0])}`, query: { id_perusahaan: group.stakeholder.id || group.ses[0]?.id_perusahaan } })">
                                                     <i class="ri-user-line me-1"></i> Profil
                                                 </button>
                                             </td>

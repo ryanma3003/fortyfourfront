@@ -25,8 +25,12 @@ export const kegiatanService = {
      * GET /api/kegiatan/{id}
      * Fetch event detail by ID
      */
-    async getById(id: number): Promise<KegiatanDetailResponse> {
-        return api.get<KegiatanDetailResponse>(`/api/kegiatan/${id}`);
+    async getById(id: number | string): Promise<KegiatanDetailResponse> {
+        const resolvedId = String(id).trim();
+        if (!resolvedId) {
+            throw new Error('ID kegiatan tidak valid');
+        }
+        return api.get<KegiatanDetailResponse>(`/api/kegiatan/${encodeURIComponent(resolvedId)}`);
     },
 
     /**
@@ -41,15 +45,23 @@ export const kegiatanService = {
      * PUT /api/kegiatan/{id}
      * Update an existing event
      */
-    async update(id: number, data: UpdateKegiatanPayload): Promise<MutationResponse> {
-        return api.put<MutationResponse>(`/api/kegiatan/${id}`, data);
+    async update(id: number | string, data: UpdateKegiatanPayload): Promise<MutationResponse> {
+        const resolvedId = String(id).trim();
+        if (!resolvedId) {
+            throw new Error('ID kegiatan tidak valid');
+        }
+        return api.put<MutationResponse>(`/api/kegiatan/${encodeURIComponent(resolvedId)}`, data);
     },
 
     /**
      * DELETE /api/kegiatan/{id}
      * Delete an event
      */
-    async delete(id: number): Promise<MutationResponse> {
-        return api.delete<MutationResponse>(`/api/kegiatan/${id}`);
+    async delete(id: number | string): Promise<MutationResponse> {
+        const resolvedId = String(id).trim();
+        if (!resolvedId) {
+            throw new Error('ID kegiatan tidak valid');
+        }
+        return api.delete<MutationResponse>(`/api/kegiatan/${encodeURIComponent(resolvedId)}`);
     },
 };

@@ -287,24 +287,20 @@ export const useResikoStore = defineStore('resiko', {
                     String(item.id_perusahaan) === String(companyId) ||
                     (normalizedCompanyName && String(item.nama_perusahaan || '').trim().toLowerCase() === normalizedCompanyName)
                 ));
-                let riskPayload: any = null;
-                let riskError: any = null;
+                let result: SurveyRiskResponse = { respondent: null, risks: [], raw: { respondent: null, riskPayload: null, riskError: null, companyId } };
 
                 if (respondent?.id) {
                     try {
-                        riskPayload = await resikoService.getRiskPayloadByRespondentId(respondent.id);
+                        result = await resikoService.getSurveyByRespondentId(respondent.id);
                     } catch (error: any) {
-                        riskError = error?.data || error;
                         this.surveyResultError = error?.message || 'Gagal memuat hasil survey risiko';
+                        result = {
+                            respondent,
+                            risks: [],
+                            raw: { respondent, riskPayload: null, riskError: error?.data || error },
+                        };
                     }
                 }
-
-                const result = respondent
-                    ? {
-                        ...resikoService.buildSurveyResponseFromRespondent(respondent, riskPayload),
-                        raw: { respondent, riskPayload, riskError },
-                    }
-                    : { respondent: null, risks: [], raw: { respondent: null, riskPayload: null, riskError: null, companyId } };
                 this.surveyResultsMap[slug] = result;
 
                 if (result.respondent) {

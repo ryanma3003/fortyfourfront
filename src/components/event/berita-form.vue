@@ -19,6 +19,11 @@ export default {
     const route = useRoute();
 
     const isEdit = computed(() => !!route.params.id);
+    const routeBeritaId = computed(() => {
+      const raw = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
+      const id = String(raw || "").trim();
+      return id && id !== "NaN" && id !== "undefined" && id !== "null" ? id : "";
+    });
     const pageTitle = computed(() => (isEdit.value ? "Edit Berita" : "Tambah Berita"));
 
     const dataToPass = computed(() => ({
@@ -146,8 +151,15 @@ export default {
       }
 
       if (isEdit.value) {
+        if (!routeBeritaId.value) {
+          showNotification("ID berita tidak valid", "error");
+          isLoading.value = false;
+          router.push("/event/berita");
+          return;
+        }
+
         try {
-          const item = await beritaStore.fetchBeritaById(Number(route.params.id));
+          const item = await beritaStore.fetchBeritaById(routeBeritaId.value);
           if (item) {
             const cleanDescription = sanitizeRichText(item.deskripsi) || item.deskripsi || "";
             formBerita.value = {
@@ -192,7 +204,7 @@ export default {
 
       try {
         const result = isEdit.value
-          ? await beritaStore.updateBerita(route.params.id as string, payload)
+          ? await beritaStore.updateBerita(routeBeritaId.value, payload)
           : await beritaStore.createBerita(payload);
 
         if (result.success) {
@@ -337,185 +349,4 @@ export default {
   </div>
 </template>
 
-<style scoped>
-.berita-tag-input {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  min-height: 46px;
-  padding: 8px 10px;
-  border: 1px solid #dde5f4;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.berita-tag-input:focus-within {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.berita-tag-input.is-invalid {
-  border-color: #dc3545;
-}
-
-.berita-tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.berita-tag-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(29, 78, 216, 0.1);
-  color: #1d4ed8;
-  cursor: pointer;
-}
-
-.berita-tag-remove:hover {
-  background: rgba(29, 78, 216, 0.18);
-}
-
-.berita-tag-field {
-  flex: 1;
-  min-width: 180px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #0f172a;
-  font-size: 13px;
-  padding: 4px 2px;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-input,
-:global(html.dark) .berita-tag-input,
-:global(body[data-theme-mode="dark"]) .berita-tag-input {
-  background: #0b1220 !important;
-  border-color: rgba(148, 163, 184, 0.24) !important;
-  color: #e5edf7 !important;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-input:focus-within,
-:global(html.dark) .berita-tag-input:focus-within,
-:global(body[data-theme-mode="dark"]) .berita-tag-input:focus-within {
-  border-color: rgba(96, 165, 250, 0.72) !important;
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.14) !important;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-chip,
-:global(html.dark) .berita-tag-chip,
-:global(body[data-theme-mode="dark"]) .berita-tag-chip {
-  background: rgba(37, 99, 235, 0.18) !important;
-  border-color: rgba(96, 165, 250, 0.34) !important;
-  color: #bfdbfe !important;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-remove,
-:global(html.dark) .berita-tag-remove,
-:global(body[data-theme-mode="dark"]) .berita-tag-remove {
-  background: rgba(191, 219, 254, 0.12) !important;
-  color: #dbeafe !important;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-remove:hover,
-:global(html.dark) .berita-tag-remove:hover,
-:global(body[data-theme-mode="dark"]) .berita-tag-remove:hover {
-  background: rgba(248, 113, 113, 0.22) !important;
-  color: #fecaca !important;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-field,
-:global(html.dark) .berita-tag-field,
-:global(body[data-theme-mode="dark"]) .berita-tag-field {
-  color: #e5edf7 !important;
-}
-
-:global(html[data-theme-mode="dark"]) .berita-tag-field::placeholder,
-:global(html.dark) .berita-tag-field::placeholder,
-:global(body[data-theme-mode="dark"]) .berita-tag-field::placeholder {
-  color: #94a3b8 !important;
-}
-</style>
-
-<style>
-html[data-theme-mode="dark"] .berita-tag-input,
-html.dark .berita-tag-input,
-body[data-theme-mode="dark"] .berita-tag-input,
-body.dark .berita-tag-input {
-  background: #0b1220 !important;
-  background-color: #0b1220 !important;
-  border-color: rgba(148, 163, 184, 0.32) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
-  color: #e5edf7 !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-input:focus-within,
-html.dark .berita-tag-input:focus-within,
-body[data-theme-mode="dark"] .berita-tag-input:focus-within,
-body.dark .berita-tag-input:focus-within {
-  border-color: rgba(96, 165, 250, 0.78) !important;
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.14) !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-chip,
-html.dark .berita-tag-chip,
-body[data-theme-mode="dark"] .berita-tag-chip,
-body.dark .berita-tag-chip {
-  background: rgba(37, 99, 235, 0.18) !important;
-  border-color: rgba(96, 165, 250, 0.42) !important;
-  color: #bfdbfe !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-chip i,
-html.dark .berita-tag-chip i,
-body[data-theme-mode="dark"] .berita-tag-chip i,
-body.dark .berita-tag-chip i {
-  color: #93c5fd !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-remove,
-html.dark .berita-tag-remove,
-body[data-theme-mode="dark"] .berita-tag-remove,
-body.dark .berita-tag-remove {
-  background: rgba(191, 219, 254, 0.12) !important;
-  color: #dbeafe !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-remove:hover,
-html.dark .berita-tag-remove:hover,
-body[data-theme-mode="dark"] .berita-tag-remove:hover,
-body.dark .berita-tag-remove:hover {
-  background: rgba(248, 113, 113, 0.22) !important;
-  color: #fecaca !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-field,
-html.dark .berita-tag-field,
-body[data-theme-mode="dark"] .berita-tag-field,
-body.dark .berita-tag-field {
-  background: transparent !important;
-  color: #e5edf7 !important;
-}
-
-html[data-theme-mode="dark"] .berita-tag-field::placeholder,
-html.dark .berita-tag-field::placeholder,
-body[data-theme-mode="dark"] .berita-tag-field::placeholder,
-body.dark .berita-tag-field::placeholder {
-  color: #94a3b8 !important;
-  opacity: 1 !important;
-}
-</style>
+<style src="../../assets/css/event-berita.css"></style>

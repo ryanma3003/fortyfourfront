@@ -286,9 +286,12 @@ export const useCsirtStore = defineStore('csirt', {
 
                 if (targetId) {
                     console.debug(`[csirtStore] Fetching child data (SDM/SE) for ID: ${targetId}`);
+                    const targetCompanyId = options.targetCompanyId;
                     const [sdm, se] = await Promise.all([
                         csirtService.getSdmByCsirtId(targetId).catch((err) => { console.error('getSdm err:', err); return []; }),
-                        csirtService.getSeByCsirtId(targetId).catch((err) => { console.error('getSe err:', err); return []; })
+                        targetCompanyId
+                            ? csirtService.getSeByPerusahaanId(targetCompanyId).catch((err) => { console.error('getSe err:', err); return []; })
+                            : csirtService.getSeByCsirtId(targetId).catch((err) => { console.error('getSe err:', err); return []; })
                     ]);
                     
                     console.debug(`[csirtStore] Received SDM: ${sdm.length}, SE: ${se.length}`);

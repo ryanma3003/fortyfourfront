@@ -29,21 +29,20 @@ export const lmsService = {
      */
     async getKelasById(id: string | number): Promise<LmsKelas> {
         const response = await api.get<any>(`/api/kelas/${id}`);
-        return normalizeKelas(response?.data ?? response);
+        return normalizeKelas(unwrapDataObject(response));
     },
 
     /**
-     * Get kelas detail with materi + kuis in parallel (optimized)
+     * Get kelas detail with materi + kuis from the kelas response.
      */
-    async getKelasDetail(id: string | number): Promise<{ materi: LmsMateri[], kuis: LmsKuis[] }> {
-        const [kelasRes, kuisRes] = await Promise.all([
-            api.get<any>(`/api/kelas/${id}`),
-            api.get<any>(`/api/kelas/${id}/kuis`).catch(() => [])
-        ]);
-        const kelasData = kelasRes?.data ?? kelasRes;
-        const materi = kelasData?.materi ? unwrapDataArray(kelasData.materi).map(normalizeMateri) : [];
-        const kuis = unwrapDataArray(kuisRes?.data ?? kuisRes).map(normalizeKuis);
-        return { materi, kuis };
+    async getKelasDetail(id: string | number): Promise<{ kelas: LmsKelas, materi: LmsMateri[], kuis: LmsKuis[] }> {
+        const response = await api.get<any>(`/api/kelas/${id}`);
+        const kelas = normalizeKelas(unwrapDataObject(response));
+        return {
+            kelas,
+            materi: kelas.materi || [],
+            kuis: getKelasKuis(kelas)
+        };
     },
 
     /**
@@ -92,13 +91,8 @@ export const lmsService = {
             }
         }
         try {
-            // Detail Kelas returns `materi` array inside it
-            const res = await api.get<any>(`/api/kelas/${kelasId}`);
-            const data = res?.data ?? res;
-            if (data?.materi) {
-                return unwrapDataArray(data.materi).map(normalizeMateri);
-            }
-            return [];
+            const { materi } = await this.getKelasDetail(kelasId);
+            return materi;
         } catch (e: any) {
             console.error('[API Error] getMateriByKelas failed:', e);
             return [];
@@ -208,9 +202,8 @@ export const lmsService = {
             }
         }
         try {
-            // GET /api/kelas/{id_kelas}/kuis
-            const res = await api.get<any>(`/api/kelas/${kelasId}/kuis`);
-            return unwrapDataArray(res?.data ?? res).map(normalizeKuis);
+            const { kuis } = await this.getKelasDetail(kelasId);
+            return kuis;
         } catch (e: any) {
             console.error('[API Error] getKuisByKelas API failed:', e);
             return [];
@@ -231,7 +224,8 @@ export const lmsService = {
             max_attempt: (payload as any).max_attempt || 3,
             passing_grade: (payload as any).passing_grade ?? 70,
         };
-        return api.post<LmsKuis>(`/api/kelas/${kelasId}/kuis`, body);
+        const res = await api.post<any>(`/api/kelas/${kelasId}/kuis`, body);
+        return normalizeKuis(res?.data ?? res);
     },
 
     /**
@@ -248,7 +242,8 @@ export const lmsService = {
             max_attempt: (payload as any).max_attempt || 3,
             passing_grade: (payload as any).passing_grade ?? 70,
         };
-        return api.put<LmsKuis>(`/api/kuis/${id}`, body);
+        const res = await api.put<any>(`/api/kuis/${id}`, body);
+        return normalizeKuis(res?.data ?? res);
     },
 
     /**
@@ -291,7 +286,8 @@ export const lmsService = {
             pilihan: pilihan
         };
 
-        return api.post<LmsSoal>(`/api/kuis/${kuisId}/soal`, body);
+        const res = await api.post<any>(`/api/kuis/${kuisId}/soal`, body);
+        return normalizeSoal(res?.data ?? res);
     },
 
     /**
@@ -310,7 +306,8 @@ export const lmsService = {
             pilihan: pilihan
         };
 
-        return api.put<LmsSoal>(`/api/soal/${id}`, body);
+        const res = await api.put<any>(`/api/soal/${id}`, body);
+        return normalizeSoal(res?.data ?? res);
     },
 
     /**
@@ -379,9 +376,103 @@ function unwrapDataArray(response: any): any[] {
     return [];
 }
 
+function unwrapDataObject(response: any): any {
+    if (!response) return response;
+    if (Array.isArray(response)) return response[0] ?? {};
+    if (Array.isArray(response?.data)) return response.data[0] ?? {};
+
+    const candidates = [
+        response?.data?.kelas,
+        response?.data?.detail,
+        response?.data?.item,
+        response?.data,
+        response?.kelas,
+        response?.detail,
+        response?.item,
+        response
+    ];
+
+    return candidates.find(candidate => candidate && !Array.isArray(candidate) && typeof candidate === 'object') || response;
+}
+
+function getKelasMateri(item: any): LmsMateri[] {
+    const rawMateri = item?.materi ?? item?.materi_list ?? item?.materials;
+    if (!rawMateri) return [];
+
+    const kelasId = item?.id ?? item?.kelas_id ?? item?.id_kelas ?? '';
+    return unwrapDataArray(rawMateri)
+        .map(materi => normalizeMateri({
+            ...materi,
+            id_kelas: materi?.id_kelas ?? materi?.kelas_id ?? kelasId
+        }))
+        .sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+}
+
+function getKelasKuis(item: any): LmsKuis[] {
+    const kelasId = item?.id ?? item?.kelas_id ?? item?.id_kelas ?? '';
+    const rawSources = [
+        item?.kuis_list,
+        item?.quiz_list,
+        item?.kuis,
+        item?.quiz,
+        item?.quizzes
+    ];
+
+    const materi = Array.isArray(item?.materi) ? item.materi : getKelasMateri(item);
+    for (const m of materi) {
+        if ((m as any)?.kuis) rawSources.push((m as any).kuis);
+        if ((m as any)?.quiz) rawSources.push((m as any).quiz);
+        if ((m as any)?.kuis_list) rawSources.push((m as any).kuis_list);
+    }
+
+    const byId = new Map<string, LmsKuis>();
+    let syntheticIndex = 0;
+
+    for (const source of rawSources) {
+        if (!source) continue;
+        const rawKuis = Array.isArray(source) ? source : (isKuisLike(source) ? [source] : unwrapDataArray(source));
+        const items = rawKuis.length > 0 ? rawKuis : [source];
+
+        for (const kuis of items) {
+            if (!kuis || typeof kuis !== 'object') continue;
+            const normalized = normalizeKuis({
+                ...kuis,
+                id_kelas: kuis?.id_kelas ?? kuis?.kelas_id ?? kelasId
+            });
+            const key = String(normalized.id || `__inline_${syntheticIndex++}`);
+            if (!byId.has(key)) byId.set(key, normalized);
+        }
+    }
+
+    return [...byId.values()].sort((a: any, b: any) => (a.urutan || 0) - (b.urutan || 0));
+}
+
+function isKuisLike(item: any): boolean {
+    if (!item || Array.isArray(item) || typeof item !== 'object') return false;
+    return (
+        item.is_final !== undefined ||
+        item.id_materi !== undefined ||
+        item.materi_id !== undefined ||
+        item.passing_grade !== undefined ||
+        item.durasi_menit !== undefined ||
+        item.max_attempt !== undefined ||
+        item.soal !== undefined
+    );
+}
+
 function normalizeKelas(item: any): LmsKelas {
     const judul = String(item?.judul ?? item?.nama_kelas ?? item?.nama ?? '').trim();
-    return {
+    const hasMateriPayload = item?.materi !== undefined || item?.materi_list !== undefined || item?.materials !== undefined;
+    const materi = getKelasMateri(item);
+    const hasKuisPayload =
+        item?.kuis_list !== undefined ||
+        item?.quiz_list !== undefined ||
+        item?.kuis !== undefined ||
+        item?.quiz !== undefined ||
+        item?.quizzes !== undefined ||
+        materi.some(m => Boolean((m as any).kuis || (m as any).quiz || (m as any).kuis_list));
+    const kuis = getKelasKuis({ ...item, materi });
+    const normalized: LmsKelas = {
         ...item,
         id: item?.id ?? item?.kelas_id ?? '',
         nama_kelas: judul,
@@ -396,6 +487,12 @@ function normalizeKelas(item: any): LmsKelas {
         thumbnail: item?.thumbnail ?? item?.thumnail ?? '',
         status: normalizeKelasStatus(item?.status),
     };
+    if (hasMateriPayload) normalized.materi = materi;
+    if (hasKuisPayload) {
+        normalized.kuis = kuis;
+        (normalized as any).kuis_list = kuis;
+    }
+    return normalized;
 }
 
 function normalizeKelasStatus(status: any): 'published' | 'draft' {
@@ -405,6 +502,12 @@ function normalizeKelasStatus(status: any): 'published' | 'draft' {
 }
 
 function normalizeMateri(item: any): LmsMateri {
+    const kuis = item?.kuis ? normalizeKuis({
+        ...item.kuis,
+        id_kelas: item.kuis?.id_kelas ?? item.kuis?.kelas_id ?? item?.id_kelas ?? item?.kelas_id ?? '',
+        id_materi: item.kuis?.id_materi ?? item.kuis?.materi_id ?? item?.id ?? item?.materi_id ?? ''
+    }) : undefined;
+
     return {
         ...item,
         id: item?.id ?? item?.materi_id ?? '',
@@ -417,7 +520,8 @@ function normalizeMateri(item: any): LmsMateri {
         url_video: String(item?.url_video ?? item?.youtube_id ?? item?.id_youtube ?? item?.video_url ?? item?.video ?? item?.link_video ?? (item?.tipe === 'video' ? item?.konten : '') ?? item?.url ?? item?.path ?? item?.video_path ?? item?.materi_url ?? ''),
         durasi_detik: Number(item?.durasi_detik ?? item?.duration_seconds ?? item?.durasi ?? item?.duration ?? 0),
         urutan: Number(item?.urutan ?? 0),
-        file_pendukung: item?.file_pendukung ? unwrapDataArray(item.file_pendukung).map(normalizeFilePendukung) : []
+        file_pendukung: item?.file_pendukung ? unwrapDataArray(item.file_pendukung).map(normalizeFilePendukung) : [],
+        ...(kuis ? { kuis } : {})
     };
 }
 
@@ -439,12 +543,16 @@ function normalizeKuis(item: any): LmsKuis {
         ...item,
         id: item?.id ?? item?.kuis_id ?? item?.quiz_id ?? '',
         id_kelas: item?.id_kelas ?? item?.kelas_id ?? '',
+        id_materi: item?.id_materi ?? item?.materi_id ?? null,
         judul: String(item?.judul ?? item?.nama_kuis ?? item?.nama ?? 'Kuis Tanpa Judul').trim(),
         deskripsi: String(item?.deskripsi ?? ''),
         tipe_kuis: String(item?.tipe_kuis ?? item?.tipe ?? (isFinal ? 'final' : 'per_materi')),
         durasi_menit: Number(item?.durasi_menit ?? item?.durasi ?? 0),
+        durasi: Number(item?.durasi ?? item?.durasi_menit ?? 0),
         max_attempt: Number(item?.max_attempt ?? item?.attempts ?? 0),
         passing_grade: Number(item?.passing_grade ?? item?.passing_score ?? 0),
+        urutan: Number(item?.urutan ?? 0),
+        soal: item?.soal ? unwrapDataArray(item.soal).map(normalizeSoal) : [],
     };
 }
 

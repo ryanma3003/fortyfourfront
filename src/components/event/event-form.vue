@@ -5,7 +5,7 @@ import LmsEditor from "../lms/LmsEditor.vue";
 import { useEventStore } from "../../stores/event";
 import { useRouter, useRoute } from "vue-router";
 import type { CreateKegiatanPayload } from "../../types/kegiatan.types";
-import { isRichTextEmpty } from "../../utils/richText";
+import { isRichTextEmpty, sanitizeRichText } from "../../utils/richText";
 
 export default {
   components: { Pageheader, LmsEditor },
@@ -15,6 +15,11 @@ export default {
     const route = useRoute();
 
     const isEdit = computed(() => !!route.params.id);
+    const routeEventId = computed(() => {
+      const raw = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
+      const id = String(raw || "").trim();
+      return id && id !== "NaN" && id !== "undefined" && id !== "null" ? id : "";
+    });
     const pageTitle = computed(() => (isEdit.value ? "Edit Event" : "Tambah Event"));
 
     const dataToPass = computed(() => ({
@@ -84,13 +89,21 @@ export default {
 
     onMounted(async () => {
       if (isEdit.value) {
+        if (!routeEventId.value) {
+          showNotification("ID event tidak valid", "error");
+          isLoading.value = false;
+          router.push("/event");
+          return;
+        }
+
         try {
           // Fetch event detail from API
-          const ev = await eventStore.fetchEventById(Number(route.params.id));
+          const ev = await eventStore.fetchEventById(routeEventId.value);
           if (ev) {
+            const cleanDescription = sanitizeRichText(ev.deskripsi) || ev.deskripsi || "";
             formEvent.value = {
               judul: ev.judul || "",
-              deskripsi: ev.deskripsi || "",
+              deskripsi: cleanDescription,
               lokasi: ev.lokasi || "",
               tanggal: toDatetimeLocal(ev.tanggal),
             };
@@ -123,14 +136,18 @@ export default {
 
       const payload: CreateKegiatanPayload = {
         judul: formEvent.value.judul.trim(),
-        deskripsi: formEvent.value.deskripsi.trim(),
+        deskripsi: (sanitizeRichText(formEvent.value.deskripsi) || formEvent.value.deskripsi).trim(),
         lokasi: formEvent.value.lokasi.trim(),
         tanggal: toISOString(formEvent.value.tanggal),
       };
 
       try {
         if (isEdit.value) {
-          const result = await eventStore.updateEvent(route.params.id as string, payload);
+          if (!routeEventId.value) {
+            showNotification("ID event tidak valid", "error");
+            return;
+          }
+          const result = await eventStore.updateEvent(routeEventId.value, payload);
           if (result.success) {
             showNotification("Event berhasil diperbarui!", "success");
             setTimeout(() => router.push("/event"), 600);
@@ -281,5 +298,3 @@ export default {
   </div>
 </template>
 
-<style scoped>
-</style>

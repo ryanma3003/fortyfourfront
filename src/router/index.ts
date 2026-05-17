@@ -166,6 +166,7 @@ const routes: RouteRecordRaw[] = [
               path: 'event',
               name: 'Event',
               component: () => import("../components/event/event-list.vue"),
+              meta: { borderlessContainer: true },
             },
             {
               path: 'event/create',
@@ -186,6 +187,7 @@ const routes: RouteRecordRaw[] = [
               path: 'event/berita',
               name: 'Berita',
               component: () => import("../components/event/berita-list.vue"),
+              meta: { borderlessContainer: true },
             },
             {
               path: 'event/berita/create',

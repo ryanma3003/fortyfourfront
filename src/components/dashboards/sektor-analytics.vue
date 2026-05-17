@@ -551,7 +551,7 @@ const chartSummaryText = computed(() => {
 
 const openStakeholder = (stakeholder) => {
   if (stakeholder?.slug) {
-    router.push(`/stakeholders/${stakeholder.slug}`);
+    router.push({ path: `/stakeholders/${stakeholder.slug}`, query: { id_perusahaan: stakeholder.id } });
   }
 };
 

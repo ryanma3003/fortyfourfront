@@ -1,21 +1,16 @@
 <script lang="ts">
 import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from "vue";
 import gsap from "gsap";
-import Pageheader from "../../shared/components/pageheader/pageheader.vue";
-import { useEventStore } from "../../stores/event";
+import { getKegiatanId, useEventStore } from "../../stores/event";
 import { useRouter } from "vue-router";
 import type { Kegiatan } from "../../types/kegiatan.types";
 import { richTextToPlainText } from "../../utils/richText";
+import { formatEventDateShort } from "../../utils/eventDate";
 
 export default {
-  components: { Pageheader },
   data() {
     return {
-      dataToPass: {
-        title: { label: "Beranda", path: "/dashboard" },
-        currentpage: "Event & Berita",
-        activepage: "Event",
-      },
+      dataToPass: null,
     };
   },
   setup() {
@@ -164,8 +159,24 @@ export default {
     });
 
     const openCreate = () => router.push("/event/create");
-    const openEdit = (item: Kegiatan) => router.push(`/event/edit/${item.id}`);
-    const openView = (item: Kegiatan) => router.push(`/event/view/${item.id}`);
+    const getItemId = (item: Kegiatan) => getKegiatanId(item);
+
+    const openEdit = (item: Kegiatan) => {
+      const id = getItemId(item);
+      if (!id) {
+        showNotification("ID event tidak valid", "error");
+        return;
+      }
+      router.push(`/event/edit/${encodeURIComponent(id)}`);
+    };
+    const openView = (item: Kegiatan) => {
+      const id = getItemId(item);
+      if (!id) {
+        showNotification("ID event tidak valid", "error");
+        return;
+      }
+      router.push(`/event/view/${encodeURIComponent(id)}`);
+    };
     const switchToBerita = () => router.push("/event/berita");
 
     const openDeleteModal = (item: Kegiatan) => {
@@ -230,40 +241,54 @@ export default {
       return "ri-information-line";
     };
 
-    const parseDatePart = (dateStr: string) => {
-      if (!dateStr) return null;
-      const t = dateStr.replace('T', ' ');
-      const [datePart, timePart] = t.split(' ');
-      if (!datePart) return new Date(dateStr);
-      const [y, m, d] = datePart.split(/[-/]/).map(Number);
-      if (timePart) {
-        const [hh, mm, ss] = timePart.split(':').map(Number);
-        return new Date(y, m - 1, d, hh || 0, mm || 0, ss || 0);
-      }
-      return new Date(y, m - 1, d);
-    };
+    const normalizePlainText = (value?: string | null) => {
+      const spacedHtml = String(value || "")
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/<\/(p|div|h[1-6]|li|tr|td|th|blockquote)>/gi, "$& ");
 
-    const formatDate = (dateStr: string) => {
-      if (!dateStr) return "-";
-      try {
-        const d = parseDatePart(dateStr);
-        if (!d || isNaN(d.getTime())) return dateStr;
-        
-        const day = d.getDate();
-        const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
-        const month = months[d.getMonth()];
-        const year = d.getFullYear();
-        const hour = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        
-        return `${day} ${month} ${year}, ${hour}.${min}`;
-      } catch {
-        return dateStr;
-      }
+      return richTextToPlainText(spacedHtml).replace(/\s+/g, " ").trim();
     };
 
     const stripHtml = (value: string) => {
-      return richTextToPlainText(value);
+      return normalizePlainText(value);
+    };
+
+    const getDescriptionPreview = (value?: string | null, maxLength = 150) => {
+      const text = normalizePlainText(value);
+      if (!text) return "-";
+      return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+    };
+
+    const getEventType = (item: Kegiatan) => {
+      const explicitType = String(
+        (item as any).kategori || (item as any).category || (item as any).jenis || (item as any).tipe || ""
+      ).trim();
+      if (explicitType) return explicitType;
+
+      const searchableText = `${item.judul || ""} ${normalizePlainText(item.deskripsi)} ${item.lokasi || ""}`.toLowerCase();
+
+      if (/(webinar|zoom|online)/.test(searchableText)) return "Webinar";
+      if (/(workshop|lokakarya)/.test(searchableText)) return "Workshop";
+      if (/(summit|conference|konferensi)/.test(searchableText)) return "Summit";
+      if (/(training|pelatihan|bootcamp)/.test(searchableText)) return "Pelatihan";
+      if (/seminar/.test(searchableText)) return "Seminar";
+      if (/(kompetisi|lomba|ctf)/.test(searchableText)) return "Kompetisi";
+
+      return "Event";
+    };
+
+    const getEventTypeCode = (item: Kegiatan) => {
+      const type = getEventType(item).toLowerCase();
+      if (type === "webinar") return "WEB";
+      if (type === "workshop") return "WS";
+      if (type === "summit") return "SUM";
+      if (type === "pelatihan") return "TRN";
+      if (type === "seminar") return "SEM";
+      if (type === "kompetisi") return "KMP";
+
+      const words = type.split(/\s+/).filter(Boolean);
+      if (words.length > 1) return words.map((word) => word.charAt(0)).join("").slice(0, 3).toUpperCase();
+      return type.slice(0, 3).toUpperCase() || "EVT";
     };
 
     return {
@@ -294,7 +319,10 @@ export default {
       getStatusClass,
       getStatusText,
       getStatusIcon,
-      formatDate,
+      getEventType,
+      getEventTypeCode,
+      getDescriptionPreview,
+      formatDate: formatEventDateShort,
       stripHtml,
     };
   },
@@ -302,8 +330,6 @@ export default {
 </script>
 
 <template>
-  <Pageheader :propData="dataToPass" />
-
   <transition name="ev-toast-slide">
     <div v-if="showToast" class="ev-toast-wrapper">
       <div class="ev-toast" :class="toastType === 'success' ? 'ev-toast-ok' : 'ev-toast-err'" role="alert">
@@ -333,7 +359,7 @@ export default {
             <div class="ev-hero-text">
               <div class="ev-breadcrumb">Beranda <span>/</span> Event &amp; Berita</div>
               <h1 class="ev-hero-title">Manajemen Event</h1>
-              <p class="ev-hero-desc">Kelola agenda, lokasi, dan status kegiatan dalam satu ruang kerja yang ringan untuk discan.</p>
+              <p class="ev-hero-desc">Kelola agenda, lokasi, dan status kegiatan </p>
             </div>
             <div class="ev-hero-stats">
               <div class="ev-stat-card">
@@ -341,7 +367,7 @@ export default {
                 <strong>{{ eventStore.totalEvents }}</strong>
               </div>
               <div class="ev-stat-card">
-                <div class="ev-stat-head"><span>Terfilter</span><i class="ri-filter-3-line"></i></div>
+                <div class="ev-stat-head"><span>Ditampilkan</span><i class="ri-filter-3-line"></i></div>
                 <strong>{{ filteredData.length }}</strong>
               </div>
             </div>
@@ -392,14 +418,30 @@ export default {
 
             <article v-for="(item, i) in displayData" v-else :key="item.id" class="ev-table-row ev-list-item">
               <span class="ev-item-index">{{ String((currentPage - 1) * itemsPerPage + i + 1).padStart(2, '0') }}</span>
-              <div class="ev-avatar" :class="getAvatarClass((item.judul || 'E').charAt(0))">
-                {{ (item.judul || 'E').charAt(0).toUpperCase() }}
+              <div
+                class="ev-avatar ev-type-avatar"
+                :class="getAvatarClass(getEventType(item).charAt(0))"
+                :title="`Tipe event: ${getEventType(item)}`"
+                :aria-label="`Tipe event: ${getEventType(item)}`"
+              >
+                <span class="ev-avatar-code">{{ getEventTypeCode(item) }}</span>
               </div>
               <div class="ev-item-main">
                 <div class="ev-item-top">
                   <div class="ev-title-wrap">
                     <div class="ev-title-main" role="button" tabindex="0" @click="openView(item)" @keydown.enter.prevent="openView(item)" @keydown.space.prevent="openView(item)">{{ item.judul }}</div>
-                    <span class="ev-title-sub">{{ stripHtml(item.deskripsi || '') || '-' }}</span>
+                    <div class="ev-title-meta-line">
+                      <span class="ev-event-type">{{ getEventType(item) }}</span>
+                      <span class="ev-title-sub" :title="stripHtml(item.deskripsi || '')">{{ getDescriptionPreview(item.deskripsi) }}</span>
+                      <button
+                        type="button"
+                        class="ev-inline-detail"
+                        @click="openView(item)"
+                        :aria-label="`Lihat detail event ${item.judul}`"
+                      >
+                        Lihat detail
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div class="ev-meta-grid">
@@ -412,9 +454,9 @@ export default {
                   <i :class="getStatusIcon(item.status)"></i>{{ getStatusText(item.status) }}
                 </span>
                 <div class="ev-actions">
-                  <button type="button" @click="openView(item)" class="ev-act ev-act-view" title="Lihat"><i class="ri-eye-line"></i></button>
-                  <button type="button" @click="openEdit(item)" class="ev-act ev-act-edit" title="Edit"><i class="ri-edit-2-line"></i></button>
-                  <button type="button" @click="openDeleteModal(item)" class="ev-act ev-act-del" title="Hapus"><i class="ri-delete-bin-6-line"></i></button>
+                  <button type="button" @click="openView(item)" class="ev-act ev-act-view" data-tooltip="Lihat" aria-label="Lihat detail event"><i class="ri-eye-line"></i></button>
+                  <button type="button" @click="openEdit(item)" class="ev-act ev-act-edit" data-tooltip="Edit" aria-label="Edit event"><i class="ri-edit-2-line"></i></button>
+                  <button type="button" @click="openDeleteModal(item)" class="ev-act ev-act-del" data-tooltip="Hapus" aria-label="Hapus event"><i class="ri-delete-bin-6-line"></i></button>
                 </div>
               </div>
             </article>
@@ -455,546 +497,5 @@ export default {
   </teleport>
 </template>
 
-<style scoped>
-.ev-shell{position:relative}
-.ev-hero{position:relative;overflow:hidden;border-radius:16px;padding:30px 34px;color:#101827;background:linear-gradient(135deg,#f8fafc 0%,#eef6ff 52%,#f7efe6 100%);border:1px solid rgba(148,163,184,.22);box-shadow:0 20px 48px rgba(15,23,42,.08)}
-.ev-hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(15,23,42,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(15,23,42,.045) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,#000 0%,transparent 70%);pointer-events:none}
-.ev-hero-body{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;position:relative;z-index:1}
-.ev-hero-text{min-width:0;max-width:680px}
-.ev-breadcrumb{font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
-.ev-breadcrumb span{color:#cbd5e1;margin:0 6px}
-.ev-hero-title{font-size:32px;font-weight:900;line-height:1.08;margin:0;color:#0f172a;letter-spacing:0}
-.ev-hero-desc{font-size:14px;color:#64748b;margin:10px 0 0;line-height:1.6}
-.ev-hero-stats{display:flex;gap:10px;flex-shrink:0}
-.ev-stat-card{background:rgba(255,255,255,.72);border:1px solid rgba(148,163,184,.24);border-radius:8px;padding:15px 16px;min-width:140px;box-shadow:0 16px 34px rgba(15,23,42,.07);backdrop-filter:blur(14px);transition:transform .25s ease,box-shadow .25s ease}
-.ev-stat-card:hover{transform:translateY(-3px);box-shadow:0 20px 42px rgba(15,23,42,.1)}
-.ev-stat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-.ev-stat-head span{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
-.ev-stat-head i{font-size:19px;color:#0f766e}
-.ev-stat-card strong{font-size:28px;font-weight:900;color:#0f172a;line-height:1}
-.ev-content-card{background:#fff;border:1px solid #e8edf4;border-radius:14px;box-shadow:0 16px 42px rgba(15,23,42,.06);padding:20px}
-.ev-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.ev-toolbar-left,.ev-toolbar-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.ev-toolbar-left{flex:1 1 520px;min-width:0}
-.ev-toolbar-right{flex-shrink:0}
-.ev-tabs{display:inline-flex;align-items:center;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:3px;gap:3px}
-.ev-tab{border:none;background:transparent;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;color:#64748b;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:all .2s ease;white-space:nowrap}
-.ev-tab:hover{color:#0f172a;background:rgba(255,255,255,.55)}
-.ev-tab.active{background:#fff;color:#0f172a;box-shadow:0 5px 16px rgba(15,23,42,.08)}
-.ev-search{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #dbe3ef;border-radius:10px;padding:0 12px;min-height:40px;max-width:360px;width:100%;transition:border-color .2s,box-shadow .2s}
-.ev-search:focus-within{border-color:#0ea5e9;box-shadow:0 0 0 4px rgba(14,165,233,.11)}
-.ev-search i{color:#94a3b8;font-size:16px;flex-shrink:0}
-.ev-search input{border:0;background:transparent;outline:none;width:100%;color:#0f172a;font-size:13px}
-.ev-search-clear{border:none;background:transparent;color:#94a3b8;padding:0;cursor:pointer;display:flex}
-.ev-per-page{display:flex;align-items:center;gap:7px;margin:0}
-.ev-per-page span{font-size:12px;color:#64748b;font-weight:700}
-.ev-select{border:1px solid #dbe3ef;border-radius:8px;padding:6px 9px;font-size:13px;color:#334155;background:#fff;outline:none;cursor:pointer}
-.ev-btn-add{display:inline-flex;align-items:center;gap:8px;background:#0f172a;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:800;cursor:pointer;transition:transform .2s,box-shadow .2s,background .2s;white-space:nowrap}
-.ev-btn-add:hover{transform:translateY(-2px);background:#111f35;box-shadow:0 14px 28px rgba(15,23,42,.18)}
-.ev-list-wrap{display:flex;flex-direction:column;gap:10px}
-.ev-list-item{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px;border:1px solid #eef2f7;border-radius:12px;background:linear-gradient(180deg,#fff 0%,#fbfdff(100%));transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
-.ev-list-item:hover{transform:translateY(-2px);border-color:#cbd5e1;box-shadow:0 16px 32px rgba(15,23,42,.08)}
-.ev-item-index{width:42px;height:42px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;font-weight:900}
-.ev-item-main{min-width:0;display:flex;flex-direction:column;gap:10px}
-.ev-cell-title{display:flex;align-items:center;gap:12px;min-width:0}
-.ev-avatar{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:#fff;flex-shrink:0;box-shadow:inset 0 -10px 18px rgba(0,0,0,.12)}
-.ev-title-wrap{min-width:0;display:flex;flex-direction:column;gap:3px}
-.ev-title-main{border:0;background:transparent;padding:0;text-align:left;font-weight:800;font-size:14px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;cursor:pointer}
-.ev-title-main:hover{color:#0f766e}
-.ev-title-sub{font-size:12.5px;color:#7a8797;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:620px;display:block}
-.ev-meta-grid{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-left:54px}
-.ev-cell-meta{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#64748b;background:#f8fafc;border:1px solid #eef2f7;border-radius:999px;padding:5px 9px;max-width:100%}
-.ev-cell-meta i{font-size:14px;color:#0ea5e9}
-.ev-item-side{display:flex;align-items:center;gap:14px;justify-content:flex-end}
-.ev-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap;border:1px solid transparent}
-.ev-badge-upcoming{background:#fff7ed;color:#b45309;border-color:#fed7aa}
-.ev-badge-ongoing{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
-.ev-badge-completed{background:#e0f2fe;color:#075985;border-color:#38bdf8}
-.ev-badge-active{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
-.ev-badge-default{background:#f8fafc;color:#64748b;border-color:#e2e8f0}
-.ev-actions{display:flex;gap:6px;justify-content:center}
-.ev-act{width:34px;height:34px;border:none;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:transform .2s ease,background .2s ease,color .2s ease}
-.ev-act:hover{transform:translateY(-1px)}
-.ev-act-view{background:#e0f2fe;color:#0284c7}
-.ev-act-edit{background:#dcfce7;color:#16a34a}
-.ev-act-del{background:#fee2e2;color:#dc2626}
-.ev-act-view:hover{background:#0284c7;color:#fff}
-.ev-act-edit:hover{background:#16a34a;color:#fff}
-.ev-act-del:hover{background:#dc2626;color:#fff}
-.ev-skeleton-wrap{display:flex;flex-direction:column;gap:10px}
-.ev-skeleton-row{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid #eef2f7;border-radius:12px;background:#fff}
-.ev-skel{background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:200% 100%;animation:ev-shimmer 1.4s infinite;border-radius:7px;height:14px}
-.ev-skel-circle{width:42px;height:42px!important;border-radius:10px;flex-shrink:0}
-.ev-skel-lines{flex:1;display:flex;flex-direction:column;gap:7px}
-.ev-skel-chip{width:110px;height:28px;border-radius:999px}
-@keyframes ev-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.ev-empty{text-align:center;padding:54px 20px;border:1px dashed #dbe3ef;border-radius:12px;background:#fbfdff}
-.ev-empty-icon{width:58px;height:58px;border-radius:14px;background:#e0f2fe;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px}
-.ev-empty-icon i{font-size:27px;color:#0284c7}
-.ev-empty h6{font-size:15px;font-weight:800;color:#0f172a;margin:0 0 6px}
-.ev-empty p{font-size:13px;color:#64748b;margin:0}
-.ev-pagination{display:flex;align-items:center;justify-content:space-between;padding:16px 0 0;gap:12px;flex-wrap:wrap}
-.ev-page-info{font-size:12.5px;color:#64748b;font-weight:700}
-.ev-page-nav{display:flex;align-items:center;gap:5px}
-.ev-pg-btn{width:34px;height:34px;border:1px solid #dbe3ef;border-radius:9px;background:#fff;color:#64748b;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s}
-.ev-pg-btn:hover:not(:disabled):not(.active){background:#f8fafc;color:#0f172a}
-.ev-pg-btn.active{background:#0f172a;color:#fff;border-color:#0f172a}
-.ev-pg-btn:disabled{opacity:.42;cursor:not-allowed}
-.ev-pg-dots{font-size:12px;color:#94a3b8;padding:0 2px}
-.ev-toast-wrapper{position:fixed;top:24px;right:24px;z-index:9999}
-.ev-toast{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;backdrop-filter:blur(16px);box-shadow:0 18px 40px rgba(15,23,42,.14);min-width:280px}
-.ev-toast i{font-size:22px;flex-shrink:0}
-.ev-toast div{display:flex;flex-direction:column;gap:2px}
-.ev-toast strong{font-size:13px;font-weight:800}
-.ev-toast span{font-size:12px;opacity:.86}
-.ev-toast-ok{background:rgba(240,253,244,.95);border:1px solid #bbf7d0;color:#166534}
-.ev-toast-err{background:rgba(254,242,242,.95);border:1px solid #fecaca;color:#991b1b}
-.ev-toast-slide-enter-active,.ev-toast-slide-leave-active{transition:all .35s ease}
-.ev-toast-slide-enter-from,.ev-toast-slide-leave-to{opacity:0;transform:translateX(30px)}
-.ev-overlay{position:fixed;inset:0;background:rgba(15,23,42,.28);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px}
-.ev-modal{background:#fff;border-radius:14px;padding:30px;max-width:390px;width:100%;text-align:center;box-shadow:0 28px 70px rgba(0,0,0,.18)}
-.ev-modal-icon{width:54px;height:54px;border-radius:12px;background:#fee2e2;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px}
-.ev-modal-icon i{font-size:24px;color:#dc2626}
-.ev-modal h5{font-size:17px;font-weight:900;color:#0f172a;margin:0 0 8px}
-.ev-modal p{font-size:14px;color:#64748b;margin:0 0 24px;line-height:1.5}
-.ev-modal-actions{display:flex;gap:10px;justify-content:center}
-.ev-modal-cancel,.ev-modal-confirm{padding:9px 22px;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;transition:all .2s}
-.ev-modal-cancel{border:1px solid #dbe3ef;background:#fff;color:#64748b}
-.ev-modal-confirm{border:none;background:#dc2626;color:#fff}
-.ev-modal-confirm:disabled{opacity:.6;cursor:not-allowed}
-.ev-modal-enter-active,.ev-modal-leave-active{transition:all .3s ease}
-.ev-modal-enter-from,.ev-modal-leave-to{opacity:0}
-.ev-modal-enter-from .ev-modal,.ev-modal-leave-to .ev-modal{transform:scale(.95) translateY(10px)}
-.avatar-blue{background:linear-gradient(135deg,#2563eb,#0ea5e9)}
-.avatar-teal{background:linear-gradient(135deg,#0f766e,#14b8a6)}
-.avatar-amber{background:linear-gradient(135deg,#d97706,#f59e0b)}
-.avatar-cyan{background:linear-gradient(135deg,#0891b2,#22d3ee)}
-.avatar-slate{background:linear-gradient(135deg,#334155,#64748b)}
-.avatar-green{background:linear-gradient(135deg,#16a34a,#22c55e)}
-@media(max-width:1100px){
-  .ev-hero-body{flex-direction:column;align-items:flex-start}
-  .ev-hero-stats{width:100%}
-}
-@media(max-width:860px){
-  .ev-content-card{padding:16px}
-  .ev-toolbar,.ev-toolbar-left,.ev-toolbar-right{align-items:stretch;width:100%}
-  .ev-toolbar-left,.ev-toolbar-right{justify-content:space-between}
-  .ev-search{max-width:none}
-  .ev-list-item{grid-template-columns:1fr}
-  .ev-item-index{display:none}
-  .ev-meta-grid{padding-left:54px}
-  .ev-item-side{justify-content:space-between}
-}
-@media(max-width:640px){
-  .ev-hero{padding:24px 20px}
-  .ev-hero-title{font-size:26px}
-  .ev-hero-stats{flex-direction:column}
-  .ev-stat-card{width:100%}
-  .ev-tabs,.ev-btn-add{width:100%}
-  .ev-tab{flex:1;justify-content:center}
-  .ev-btn-add{justify-content:center}
-  .ev-meta-grid{padding-left:0}
-  .ev-cell-title{align-items:flex-start}
-  .ev-item-side{align-items:flex-start;flex-direction:column}
-  .ev-title-main,.ev-title-sub{max-width:100%}
-}
+<style src="../../assets/css/event-berita.css"></style>
 
-/* Polished redesign overrides */
-.ev-shell{padding:2px}
-.ev-hero{background:linear-gradient(135deg,#0f1f57 0%,#2454d8 52%,#0ea5e9 100%);color:#fff;border:none;box-shadow:0 22px 58px rgba(37,84,216,.24)}
-.ev-hero::before{content:"";position:absolute;inset:auto -80px -120px auto;width:360px;height:360px;border-radius:999px;background:radial-gradient(circle,rgba(255,255,255,.26),transparent 64%);pointer-events:none}
-.ev-hero::after{content:"";position:absolute;left:-110px;top:-140px;width:310px;height:310px;border-radius:999px;background:radial-gradient(circle,rgba(45,212,191,.22),transparent 62%);pointer-events:none}
-.ev-hero-grid{opacity:.34;mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.44) 62%,transparent 100%)}
-.ev-hero-tiles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.ev-hero-tile{position:absolute;border:0;border-radius:999px;mix-blend-mode:screen;opacity:.5;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.32),rgba(255,255,255,.1) 38%,rgba(96,165,250,.13) 58%,transparent 76%);animation:ev-tile-float 8s ease-in-out infinite}
-.ev-hero-tile.tile-a{width:390px;height:200px;right:-78px;top:-40px;transform:rotate(-8deg);animation-duration:9s}
-.ev-hero-tile.tile-b{width:270px;height:270px;left:10%;top:-118px;animation-delay:-1.6s}
-.ev-hero-tile.tile-c{width:240px;height:240px;right:25%;top:-88px;animation-delay:-3s}
-.ev-hero-tile.tile-d{width:205px;height:205px;left:32%;bottom:-112px;animation-delay:-44s}
-.ev-hero-tile.tile-e{width:220px;height:220px;right:8%;bottom:-130px;animation-delay:-2.4s}
-.ev-hero-tile.tile-f{width:165px;height:165px;left:-20px;bottom:-64px;animation-delay:-5s}
-@keyframes ev-tile-float{0%,100%{translate:0 0;scale:1;opacity:.42}50%{translate:0 -12px;scale:1.035;opacity:.58}}
-.ev-breadcrumb{color:#bae6fd}
-.ev-breadcrumb span{color:rgba(255,255,255,.42)}
-.ev-hero-title{color:#fff;text-shadow:0 10px 28px rgba(15,23,42,.2)}
-.ev-hero-desc{color:rgba(255,255,255,.86)}
-.ev-stat-card{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.24);box-shadow:0 16px 34px rgba(15,23,42,.16)}
-.ev-stat-head span,.ev-stat-card strong{color:#fff}
-.ev-stat-head i{color:#fde68a}
-.ev-content-card{background:linear-gradient(180deg,#f8fbff 0%,#eef5ff 100%);border-color:#cfe0ff;box-shadow:0 22px 54px rgba(30,64,175,.11)}
-.ev-toolbar{padding:12px;background:rgba(255,255,255,.72);border:1px solid rgba(203,213,225,.72);border-radius:14px;box-shadow:0 12px 28px rgba(30,64,175,.08)}
-.ev-tabs{background:#eaf2ff;border-color:#d6e5ff}
-.ev-tab.active{background:#fff;color:#1d4ed8}
-.ev-search{background:#f8fbff;border-color:#cbdcf8}
-.ev-btn-add{background:linear-gradient(135deg,#1d4ed8,#2563eb 55%,#0ea5e9);box-shadow:0 12px 24px rgba(37,99,235,.22)}
-.ev-list-wrap{padding:12px;border-radius:16px;background:linear-gradient(180deg,#eaf3ff 0%,#f5f9ff 100%);border:1px solid #d7e7ff;box-shadow:inset 0 1px 0 rgba(255,255,255,.75)}
-.ev-list-item{grid-template-columns:50px minmax(0,1fr) 190px;gap:18px;min-height:116px;padding:16px 18px;border:1px solid #dce8fb;border-left:5px solid #2563eb;border-radius:14px;background:linear-gradient(135deg,#ffffff 0%,#f6fbff 58%,#eef7ff 100%);box-shadow:0 12px 28px rgba(30,64,175,.08)}
-.ev-list-item:nth-of-type(3n+1){border-left-color:#2563eb}
-.ev-list-item:nth-of-type(3n+2){border-left-color:#0f766e}
-.ev-list-item:nth-of-type(3n+3){border-left-color:#f59e0b}
-.ev-list-item:hover{transform:translateY(-3px) scale(1.003);background:linear-gradient(135deg,#ffffff 0%,#eff6ff 55%,#dbeafe 100%);box-shadow:0 18px 36px rgba(30,64,175,.16),0 0 0 1px rgba(37,99,235,.12)}
-.ev-list-item:hover .ev-item-index{background:#0f172a;box-shadow:0 8px 16px rgba(15,23,42,.24)}
-.ev-list-item:hover .ev-avatar{transform:translateY(-1px);box-shadow:0 12px 22px rgba(37,99,235,.18),inset 0 -10px 18px rgba(0,0,0,.12)}
-.ev-list-item:hover .ev-title-main{color:#1d4ed8}
-.ev-list-item:hover .ev-cell-meta{background:#f8fbff;border-color:#bfdbfe;color:#1e3a8a}
-.ev-item-index{background:linear-gradient(135deg,#1d4ed8,#0ea5e9);border:none;color:#fff;box-shadow:0 10px 22px rgba(37,99,235,.22)}
-.ev-avatar{width:46px;height:46px;border-radius:12px}
-.ev-title-main{display:block;border:0!important;outline:none!important;background:transparent!important;box-shadow:none!important;padding:0!important;font-size:15px;line-height:1.25;max-width:100%;color:#10203b}
-.ev-title-main:focus-visible{color:#1d4ed8;text-decoration:underline;text-underline-offset:3px}
-.ev-title-sub{max-width:100%;color:#64748b}
-.ev-meta-grid{padding-left:58px;gap:8px}
-.ev-cell-meta{background:#eef6ff;border-color:#d8e8ff;color:#42526b}
-.ev-cell-meta i{color:#2563eb}
-.ev-item-side{align-self:stretch;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:14px;padding-left:14px;border-left:1px solid #e2eaf7}
-.ev-actions{padding:5px;background:#f8fbff;border:1px solid #e1ebf8;border-radius:12px;box-shadow:0 8px 18px rgba(15,23,42,.05)}
-.ev-act{width:36px;height:36px;border-radius:10px}
-.ev-badge{box-shadow:0 8px 16px rgba(15,23,42,.04)}
-@media(max-width:860px){
-  .ev-list-item{grid-template-columns:1fr;min-height:auto}
-  .ev-item-side{align-items:flex-start;border-left:0;border-top:1px solid #e2eaf7;padding-left:0;padding-top:12px;flex-direction:row;justify-content:space-between}
-}
-@media(max-width:640px){
-  .ev-toolbar{padding:10px}
-  .ev-meta-grid{padding-left:0}
-  .ev-item-side{flex-direction:column}
-}
-
-/* Final row positioning */
-.ev-list-wrap{gap:12px}
-.ev-list-item{grid-template-columns:30px 50px minmax(0,1fr) auto;align-items:center;min-height:104px;padding:16px 18px;gap:14px}
-.ev-item-main{gap:11px}
-.ev-item-top{display:flex;align-items:center;min-width:0}
-.ev-item-index{width:28px;height:28px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:900;letter-spacing:.02em;color:#fff;background:#111827;box-shadow:0 4px 10px rgba(15,23,42,.16);justify-self:center;align-self:center}
-.ev-avatar{width:48px;height:48px;border-radius:14px;font-size:16px;transition:transform .22s ease,box-shadow .22s ease}
-.ev-title-wrap{justify-content:center;gap:4px}
-.ev-title-main{font-size:15.5px;line-height:1.25}
-.ev-title-sub{font-size:12.5px;line-height:1.35}
-.ev-meta-grid{padding-left:0;gap:8px}
-.ev-item-side{min-width:178px;align-items:flex-end}
-.ev-actions{display:inline-flex}
-@media(max-width:860px){
-  .ev-list-item{grid-template-columns:30px 48px minmax(0,1fr)}
-  .ev-item-index{display:inline-flex}
-  .ev-item-side{grid-column:1/-1;min-width:0;width:100%;align-items:center}
-  .ev-meta-grid{padding-left:0}
-}
-@media(max-width:640px){
-  .ev-list-item{grid-template-columns:28px 46px minmax(0,1fr);gap:10px;padding:14px}
-  .ev-item-index{width:25px;height:25px;font-size:9.5px;border-radius:8px}
-  .ev-avatar{width:46px;height:46px}
-  .ev-meta-grid{padding-left:0}
-  .ev-cell-meta{width:100%;justify-content:flex-start}
-  .ev-item-side{align-items:flex-start}
-}
-
-.ev-hero-tile{animation:none}
-@media(max-width:860px){
-  :global(html[data-theme-mode="dark"]) .ev-shell .ev-item-side{
-    border-left:0;
-    border-top-color:#274263 !important;
-  }
-}
-
-.ev-shell.is-dark {
-  color-scheme: dark;
-}
-
-.ev-shell.is-dark .ev-hero,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-hero,
-:global(html.dark) .ev-shell .ev-hero {
-  background: linear-gradient(135deg, #081225 0%, #11294d 52%, #164e77 100%);
-  border-color: rgba(71, 85, 105, 0.5);
-  box-shadow: 0 22px 58px rgba(2, 6, 23, 0.42);
-  color: #f8fafc;
-}
-
-.ev-shell.is-dark .ev-breadcrumb,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-breadcrumb,
-:global(html.dark) .ev-shell .ev-breadcrumb {
-  color: #93c5fd;
-}
-
-.ev-shell.is-dark .ev-breadcrumb span,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-breadcrumb span,
-:global(html.dark) .ev-shell .ev-breadcrumb span {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.ev-shell.is-dark .ev-hero-title,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-hero-title,
-:global(html.dark) .ev-shell .ev-hero-title {
-  color: #f8fafc;
-}
-
-.ev-shell.is-dark .ev-hero-desc,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-hero-desc,
-:global(html.dark) .ev-shell .ev-hero-desc {
-  color: rgba(226, 232, 240, 0.84);
-}
-
-.ev-shell.is-dark .ev-stat-card,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-stat-card,
-:global(html.dark) .ev-shell .ev-stat-card {
-  background: rgba(15, 23, 42, 0.55);
-  border-color: rgba(148, 163, 184, 0.18);
-  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.28);
-}
-
-.ev-shell.is-dark .ev-stat-head span,
-.ev-shell.is-dark .ev-stat-card strong,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-stat-head span,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-stat-card strong,
-:global(html.dark) .ev-shell .ev-stat-head span,
-:global(html.dark) .ev-shell .ev-stat-card strong {
-  color: #f8fafc;
-}
-
-.ev-shell.is-dark .ev-content-card,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-content-card,
-:global(html.dark) .ev-shell .ev-content-card {
-  background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
-  border-color: #22314a;
-  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.34);
-}
-
-.ev-shell.is-dark .ev-toolbar,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-toolbar,
-:global(html.dark) .ev-shell .ev-toolbar {
-  background: rgba(15, 23, 42, 0.78);
-  border-color: rgba(51, 65, 85, 0.85);
-  box-shadow: none;
-}
-
-.ev-shell.is-dark .ev-tabs,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-tabs,
-:global(html.dark) .ev-shell .ev-tabs {
-  background: #111c2e;
-  border-color: #24364f;
-}
-
-.ev-shell.is-dark .ev-tab,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-tab,
-:global(html.dark) .ev-shell .ev-tab {
-  color: #94a3b8;
-}
-
-.ev-shell.is-dark .ev-tab:hover,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-tab:hover,
-:global(html.dark) .ev-shell .ev-tab:hover {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.ev-shell.is-dark .ev-tab.active,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-tab.active,
-:global(html.dark) .ev-shell .ev-tab.active {
-  background: #17243a;
-  color: #f8fafc;
-  box-shadow: none;
-}
-
-.ev-shell.is-dark .ev-search,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-search,
-:global(html.dark) .ev-shell .ev-search {
-  background: #0b1220;
-  border-color: #22314a;
-}
-
-.ev-shell.is-dark .ev-search i,
-.ev-shell.is-dark .ev-search input,
-.ev-shell.is-dark .ev-search-clear,
-.ev-shell.is-dark .ev-per-page span,
-.ev-shell.is-dark .ev-select,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-search i,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-search input,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-search-clear,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-per-page span,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-select,
-:global(html.dark) .ev-shell .ev-search i,
-:global(html.dark) .ev-shell .ev-search input,
-:global(html.dark) .ev-shell .ev-search-clear,
-:global(html.dark) .ev-shell .ev-per-page span,
-:global(html.dark) .ev-shell .ev-select {
-  color: #cbd5e1;
-}
-
-.ev-shell.is-dark .ev-search input::placeholder,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-search input::placeholder,
-:global(html.dark) .ev-shell .ev-search input::placeholder {
-  color: #64748b;
-}
-
-.ev-shell.is-dark .ev-select,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-select,
-:global(html.dark) .ev-shell .ev-select {
-  background: #0b1220;
-  border-color: #22314a;
-}
-
-.ev-shell.is-dark .ev-btn-add,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-btn-add,
-:global(html.dark) .ev-shell .ev-btn-add {
-  background: linear-gradient(135deg, #1d4ed8, #2563eb 55%, #0ea5e9);
-  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24);
-}
-
-.ev-shell.is-dark .ev-list-wrap,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-list-wrap,
-:global(html.dark) .ev-shell .ev-list-wrap {
-  background: linear-gradient(180deg, #0b1220 0%, #0f1a2d 100%);
-  border-color: #22314a;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.ev-shell.is-dark .ev-list-item,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-list-item,
-:global(html.dark) .ev-shell .ev-list-item {
-  background: linear-gradient(180deg, #0f172a 0%, #111c2e 100%);
-  border-color: #22314a;
-  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.24);
-}
-
-.ev-shell.is-dark .ev-list-item:hover,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-list-item:hover,
-:global(html.dark) .ev-shell .ev-list-item:hover {
-  background: linear-gradient(180deg, #13213a 0%, #16253f 100%);
-  border-color: rgba(96, 165, 250, 0.42);
-  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.34);
-}
-
-.ev-shell.is-dark .ev-item-index,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-item-index,
-:global(html.dark) .ev-shell .ev-item-index {
-  background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
-  color: #fff;
-  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.25);
-}
-
-.ev-shell.is-dark .ev-title-main,
-.ev-shell.is-dark .ev-title-sub,
-.ev-shell.is-dark .ev-page-info,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-title-main,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-title-sub,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-page-info,
-:global(html.dark) .ev-shell .ev-title-main,
-:global(html.dark) .ev-shell .ev-title-sub,
-:global(html.dark) .ev-shell .ev-page-info {
-  color: #e2e8f0;
-}
-
-.ev-shell.is-dark .ev-title-main:hover,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-title-main:hover,
-:global(html.dark) .ev-shell .ev-title-main:hover {
-  color: #93c5fd;
-}
-
-.ev-shell.is-dark .ev-cell-meta,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-cell-meta,
-:global(html.dark) .ev-shell .ev-cell-meta {
-  background: #0b1220 !important;
-  border-color: #24364f !important;
-  color: #cbd5e1 !important;
-}
-
-.ev-shell.is-dark .ev-cell-meta i,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-cell-meta i,
-:global(html.dark) .ev-shell .ev-cell-meta i {
-  color: #38bdf8 !important;
-}
-
-.ev-shell.is-dark .ev-list-item:hover .ev-cell-meta,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-list-item:hover .ev-cell-meta,
-:global(html.dark) .ev-shell .ev-list-item:hover .ev-cell-meta {
-  background: #111c2e !important;
-  border-color: rgba(96, 165, 250, 0.36) !important;
-  color: #e2e8f0 !important;
-}
-
-.ev-shell.is-dark .ev-item-side,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-item-side,
-:global(html.dark) .ev-shell .ev-item-side {
-  border-left-color: #24364f;
-}
-
-.ev-shell.is-dark .ev-actions,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-actions,
-:global(html.dark) .ev-shell .ev-actions {
-  background: #0b1220;
-  border-color: #22314a;
-  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.2);
-}
-
-.ev-shell.is-dark .ev-act-view,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-act-view,
-:global(html.dark) .ev-shell .ev-act-view {
-  background: rgba(14, 165, 233, 0.16);
-  color: #7dd3fc;
-}
-
-.ev-shell.is-dark .ev-act-edit,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-act-edit,
-:global(html.dark) .ev-shell .ev-act-edit {
-  background: rgba(34, 197, 94, 0.16);
-  color: #86efac;
-}
-
-.ev-shell.is-dark .ev-act-del,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-act-del,
-:global(html.dark) .ev-shell .ev-act-del {
-  background: rgba(239, 68, 68, 0.16);
-  color: #fca5a5;
-}
-
-.ev-shell.is-dark .ev-badge-upcoming,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-upcoming,
-:global(html.dark) .ev-shell .ev-badge-upcoming {
-  background: rgba(180, 83, 9, 0.18);
-  border-color: rgba(253, 186, 116, 0.24);
-  color: #fdba74;
-}
-
-.ev-shell.is-dark .ev-badge-ongoing,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-ongoing,
-:global(html.dark) .ev-shell .ev-badge-ongoing {
-  background: rgba(4, 120, 87, 0.18);
-  border-color: rgba(110, 231, 183, 0.24);
-  color: #6ee7b7;
-}
-
-.ev-shell.is-dark .ev-badge-completed,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-completed,
-:global(html.dark) .ev-shell .ev-badge-completed {
-  background: rgba(7, 89, 133, 0.18);
-  border-color: rgba(56, 189, 248, 0.24);
-  color: #38bdf8;
-}
-
-.ev-shell.is-dark .ev-badge-active,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-badge-active,
-:global(html.dark) .ev-shell .ev-badge-active {
-  background: rgba(29, 78, 216, 0.18);
-  border-color: rgba(147, 197, 253, 0.24);
-  color: #93c5fd;
-}
-
-.ev-shell.is-dark .ev-skeleton-row,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-skeleton-row,
-:global(html.dark) .ev-shell .ev-skeleton-row {
-  background: #0f172a;
-  border-color: #22314a;
-}
-
-.ev-shell.is-dark .ev-skel,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-skel,
-:global(html.dark) .ev-shell .ev-skel {
-  background: linear-gradient(90deg, #162338 25%, #23344d 50%, #162338 75%);
-  background-size: 200% 100%;
-}
-
-.ev-shell.is-dark .ev-empty,
-:global(html[data-theme-mode="dark"]) .ev-shell .ev-empty,
-:global(html.dark) .ev-shell .ev-empty {
-  background: #0b1220;
-  border-color: #22314a;
-}
-</style>

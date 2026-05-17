@@ -14,9 +14,16 @@ export const seEditService = {
      * - User: Returns only requests created by the user.
      */
     async getRequests(): Promise<SeEditRequest[]> {
-        const res = await api.get<any>('/api/se/edit-requests');
-        // Standard unwrap if backend returns { data: [] }
-        return Array.isArray(res) ? res : (res.data || []);
+        try {
+            const res = await api.get<any>('/api/se/edit-requests', undefined, {
+                suppressErrorStatuses: [401, 403],
+            });
+            // Standard unwrap if backend returns { data: [] }
+            return Array.isArray(res) ? res : (res.data || []);
+        } catch (error: any) {
+            if (error?.status === 401 || error?.status === 403) return [];
+            throw error;
+        }
     },
 
     /**

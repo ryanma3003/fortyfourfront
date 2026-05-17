@@ -86,12 +86,47 @@ const pickFirstArray = (value: any): any[] => {
   return [];
 };
 
+const readPath = (source: any, path: string): any => {
+  if (!source || !path) return undefined;
+  return path.split('.').reduce((acc: any, part: string) => (acc && acc[part] !== undefined ? acc[part] : undefined), source);
+};
+
+const normalizeKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const findNestedValue = (source: any, keys: string[], depth = 0, seen = new Set<any>()): any => {
+  if (!source || typeof source !== 'object' || depth > 4 || seen.has(source)) return undefined;
+  seen.add(source);
+
+  const normalizedKeys = keys.map(normalizeKey);
+  for (const [key, value] of Object.entries(source)) {
+    if (normalizedKeys.includes(normalizeKey(key)) && value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+
+  for (const value of Object.values(source)) {
+    const nested = findNestedValue(value, keys, depth + 1, seen);
+    if (nested !== undefined && nested !== null && nested !== '') return nested;
+  }
+
+  return undefined;
+};
+
 const valueOf = (row: any, keys: string[], fallback = '-') => {
   for (const key of keys) {
-    const value = row?.[key];
+    const value = readPath(row, key) ?? readPath(row?.master_risiko, key);
     if (value !== undefined && value !== null && value !== '') return String(value);
   }
+  const nestedValue = findNestedValue(row, keys);
+  if (nestedValue !== undefined && nestedValue !== null && nestedValue !== '') return String(nestedValue);
   return fallback;
+};
+
+const numberOf = (value: any): number | null => {
+  const raw = String(value ?? '').replace(',', '.').match(/\d+(\.\d+)?/)?.[0];
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const normalizeLevel = (value: any) => {
@@ -111,23 +146,83 @@ const parsedRiskRows = computed(() => {
 });
 
 const riskRows = computed(() => parsedRiskRows.value.map((row: any, index: number) => {
-  const level = normalizeLevel(valueOf(row, [
+  const impact = valueOf(row, [
+    'impact',
+    'dampak',
+    'nilai_dampak',
+    'nilaiDampak',
+    'score_dampak',
+    'skor_dampak',
+    'bobot_dampak',
+    'impact_level',
+    'impactLevel',
+    'level_dampak',
+    'id_impact',
+    'impact_id',
+    'master_risiko.impact',
+    'master_risiko.dampak',
+    'master_risiko.nilai_dampak',
+    'master_risiko.impact_level',
+  ]);
+  const probability = valueOf(row, [
+    'prob',
+    'probability',
+    'probabilitas',
+    'kemungkinan',
+    'likelihood',
+    'nilai_kemungkinan',
+    'nilaiKemungkinan',
+    'nilai_probabilitas',
+    'nilaiProbabilitas',
+    'score_probabilitas',
+    'skor_probabilitas',
+    'skor_kemungkinan',
+    'bobot_probabilitas',
+    'probability_level',
+    'probabilityLevel',
+    'level_probabilitas',
+    'id_probability',
+    'probability_id',
+    'id_probabilitas',
+    'probabilitas_id',
+    'master_risiko.prob',
+    'master_risiko.probability',
+    'master_risiko.probabilitas',
+    'master_risiko.kemungkinan',
+    'master_risiko.likelihood',
+    'master_risiko.nilai_kemungkinan',
+  ]);
+  const explicitLevel = valueOf(row, [
     'level',
     'level_risiko',
+    'levelRisiko',
     'tingkat_risiko',
+    'tingkatRisiko',
     'nilai_risiko',
+    'nilaiRisiko',
     'risk_level',
+    'riskLevel',
     'skor_risiko',
-  ], ''));
+    'skorRisiko',
+    'kategori_risiko',
+    'kategoriRisiko',
+    'master_risiko.level',
+    'master_risiko.level_risiko',
+    'master_risiko.tingkat_risiko',
+  ], '');
+  const impactScore = numberOf(impact);
+  const probabilityScore = numberOf(probability);
+  const calculatedRiskScore = impactScore && probabilityScore ? impactScore * probabilityScore : null;
+  const level = explicitLevel ? normalizeLevel(explicitLevel) : normalizeLevel(calculatedRiskScore);
 
   return {
     id: row?.id || row?.kode || `risk-${index}`,
-    asset: valueOf(row, ['aset', 'asset', 'nama_aset', 'namaAset', 'objek', 'komponen']),
-    description: valueOf(row, ['deskripsi_risiko', 'deskripsiRisiko', 'risiko', 'risk', 'ancaman', 'kerentanan', 'pertanyaan']),
-    impact: valueOf(row, ['impact', 'dampak', 'nilai_dampak', 'impact_level']),
-    probability: valueOf(row, ['prob', 'probability', 'probabilitas', 'kemungkinan', 'likelihood', 'nilai_kemungkinan']),
+    asset: valueOf(row, ['aset', 'asset', 'nama_aset', 'namaAset', 'aset_terdampak', 'asetTerdampak', 'jenis_aset', 'jenisAset', 'kategori_aset', 'kategoriAset', 'objek', 'komponen', 'kategori', 'nama_kategori', 'namaKategori', 'kelompok', 'kelompok_risiko', 'master_risiko.aset', 'master_risiko.nama_aset', 'master_risiko.namaAset', 'master_risiko.kategori', 'master_risiko.nama_kategori'], 'Risiko Umum'),
+    description: valueOf(row, ['deskripsi_risiko', 'deskripsiRisiko', 'deskripsi', 'nama_risiko', 'namaRisiko', 'risiko', 'risk', 'ancaman', 'kerentanan', 'pertanyaan', 'master_risiko.deskripsi', 'master_risiko.nama_risiko', 'master_risiko.namaRisiko', 'master_risiko.pertanyaan']),
+    impact,
+    probability,
     level,
-    status: valueOf(row, ['status', 'status_mitigasi', 'mitigasi_status', 'status_risiko'], 'Terekam'),
+    status: valueOf(row, ['status', 'status_mitigasi', 'mitigasi_status', 'status_risiko', 'master_risiko.status'], 'Terekam'),
   };
 }));
 
@@ -159,13 +254,10 @@ const riskLevels = computed(() => ['Sangat Tinggi', 'Tinggi', 'Sedang', 'Rendah'
 })));
 
 const respondentFields = computed(() => [
-  { label: 'ID Responden', value: respondent.value?.id || '-' },
   { label: 'Nama Lengkap', value: respondent.value?.nama_lengkap || '-' },
   { label: 'Jabatan', value: respondent.value?.jabatan || '-' },
   { label: 'Email', value: respondent.value?.email || '-' },
   { label: 'No. Telepon', value: respondent.value?.no_telepon || '-' },
-  { label: 'User ID', value: respondent.value?.user_id || '-' },
-  { label: 'ID Perusahaan', value: respondent.value?.id_perusahaan || '-' },
   { label: 'Nama Perusahaan', value: respondent.value?.nama_perusahaan || currentStakeholder.value?.nama_perusahaan || '-' },
   { label: 'Sektor', value: respondent.value?.nama_sektor || '-' },
   { label: 'Sub Sektor', value: respondent.value?.nama_sub_sektor || '-' },

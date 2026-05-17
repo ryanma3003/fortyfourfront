@@ -4,6 +4,7 @@ import vueFilePond from "vue-filepond";
 import { useRoute } from "vue-router";
 import { useStakeholdersStore } from "../../stores/stakeholders";
 import type { Stakeholder } from "../../types/stakeholders.types";
+import { stakeholdersService } from "../../services/stakeholders.service";
 import { computed, ref, onMounted, onActivated, onUnmounted, watch, nextTick } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
@@ -48,6 +49,7 @@ import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import SpkReusableAnlyticsCard from "../../shared/components/@spk/dashboards/spk-reusable-anlyticsStakeholder.vue";
 
 const router = useRouter();
+const route = useRoute();
 const stakeholdersStore = useStakeholdersStore();
 
 // Create component
@@ -71,6 +73,8 @@ const isProfileDarkMode = ref(false);
 const selectedIkasYear = ref("");
 const isIkasYearMenuOpen = ref(false);
 const ikasDomainRailRef = ref<HTMLElement | null>(null);
+const currentProfileIkasRecords = ref<any[]>([]);
+const profileStakeholder = ref<Stakeholder | undefined>();
 const editingAktivitasId = ref<number | null>(null);
 const auditLogPage = ref(1);
 const auditLogPageSize = ref(5);
@@ -113,16 +117,9 @@ const initializeProfileDependencies = async () => {
   if (profileDependenciesPromise) return profileDependenciesPromise;
 
   profileDependenciesPromise = (async () => {
-    if (!stakeholdersStore.initialized) {
-      await stakeholdersStore.initialize();
-    }
-
     await Promise.all([
-      ikasStore.initialize(),
       Promise.resolve(kseStore.initialize()),
       Promise.resolve(resikoStore.initialize()),
-      Promise.resolve(konversiStore.initialize()),
-      csirtStore.initialized ? Promise.resolve() : csirtStore.initialize(),
       loadJenisAktivitas(),
     ]);
   })();
@@ -516,13 +513,11 @@ const resolveCurrentIkasRecords = async (
 ): Promise<any[]> => {
   if (!stakeholder?.id || !slug) return [];
   const response = await ikasService.getIkasByPerusahaan(String(stakeholder.id));
-  const freshRecords = ikasStore.normalizeIkasRecords(response)
-    .filter((record) => recordBelongsToStakeholder(record, stakeholder));
-  const cachedRecords = ikasStore.ikasRawRecords
+  const scopedRecords = ikasStore.normalizeIkasRecords(response)
     .filter((record) => recordBelongsToStakeholder(record, stakeholder));
   const recordsById = new Map<string, any>();
 
-  [...freshRecords, ...cachedRecords].forEach((record) => {
+  scopedRecords.forEach((record) => {
     const id = String(record?.id || "");
     if (id) recordsById.set(id, record);
   });
@@ -534,6 +529,7 @@ const resolveCurrentIkasRecords = async (
     if (record?.id) result[String(record.id)] = record;
     return result;
   }, {} as Record<string, any>);
+  currentProfileIkasRecords.value = records;
   records.forEach((record) => ikasStore.upsertSummaryRecord(record));
   return records;
 };
@@ -727,6 +723,48 @@ const loadPics = async (
   }
 };
 
+const normalizeProfileStakeholder = (stakeholder: Stakeholder): Stakeholder => ({
+  ...stakeholder,
+  slug: stakeholder.slug || stakeholdersStore.generateSlug(stakeholder.nama_perusahaan),
+  photo: stakeholdersStore.formatImageUrl(stakeholder.photo),
+});
+
+const profilePerusahaanId = computed(() => String(
+  route.query.id_perusahaan ||
+  route.query.perusahaan_id ||
+  route.query.id ||
+  ''
+));
+
+const resolveProfileStakeholder = async (): Promise<Stakeholder | undefined> => {
+  const slug = stakeholderSlug.value;
+  const current = profileStakeholder.value;
+  if (current && (!slug || current.slug === slug) && (!profilePerusahaanId.value || String(current.id) === profilePerusahaanId.value)) {
+    return current;
+  }
+
+  const cachedBySlug = slug ? stakeholdersStore.getStakeholderBySlug(slug) : undefined;
+  if (cachedBySlug) {
+    profileStakeholder.value = normalizeProfileStakeholder(cachedBySlug);
+    return profileStakeholder.value;
+  }
+
+  const id = profilePerusahaanId.value;
+  if (id) {
+    const fetched = normalizeProfileStakeholder(await stakeholdersService.getById(id));
+    profileStakeholder.value = fetched;
+    const existingIndex = stakeholdersStore.stakeholders.findIndex((item) => String(item.id) === String(fetched.id));
+    if (existingIndex >= 0) {
+      stakeholdersStore.stakeholders.splice(existingIndex, 1, fetched);
+    } else {
+      stakeholdersStore.stakeholders.push(fetched);
+    }
+    return fetched;
+  }
+
+  return undefined;
+};
+
 const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } = {}) => {
   const slug = stakeholderSlug.value;
   if (!slug) return;
@@ -758,6 +796,7 @@ const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } =
 
   try {
     await initializeProfileDependencies();
+    await resolveProfileStakeholder();
     if (!isLatestProfileLoad(token, slug)) return;
 
     const stakeholder = currentStakeholder.value;
@@ -765,6 +804,8 @@ const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } =
       friends.value = [];
       aktivitasList.value = [];
       ikasAuditLogs.value = [];
+      currentProfileIkasRecords.value = [];
+      ikasAuditRecordMap.value = {};
       isLoadingPics.value = false;
       isLoadingAktivitas.value = false;
       isLoadingIkasAuditLogs.value = false;
@@ -776,15 +817,21 @@ const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } =
     const aktivitasPromise = loadAktivitas(stakeholder, token);
     await delay(PROFILE_LOAD_STAGGER_MS);
     const auditPromise = loadIkasAuditLogs(stakeholder, token);
+    const csirtPromise = csirtStore.refresh({
+      fetchGlobal: false,
+      targetCompanyId: stakeholder.id,
+    });
     const konversiPromise = konversiStore.fetchForPerusahaanId(stakeholder.id, options.force);
     const resikoPromise = resikoStore.loadSurveyResultByCompany(stakeholder.id, stakeholder.slug);
 
-    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise, konversiPromise, resikoPromise]);
+    await Promise.allSettled([picsPromise, aktivitasPromise, auditPromise, csirtPromise, konversiPromise, resikoPromise]);
   } catch {
     if (isLatestProfileLoad(token, slug)) {
       friends.value = [];
       aktivitasList.value = [];
       ikasAuditLogs.value = [];
+      currentProfileIkasRecords.value = [];
+      ikasAuditRecordMap.value = {};
       isLoadingPics.value = false;
       isLoadingAktivitas.value = false;
       isLoadingIkasAuditLogs.value = false;
@@ -797,6 +844,11 @@ const loadProfileData = async (options: { force?: boolean; resetUi?: boolean } =
 };
 
 const editPIC = (pic: Pic) => {
+  if (!pic?.id) {
+    alert("ID PIC tidak tersedia.");
+    return;
+  }
+
   router.push({
     path: "/pic-add",
     query: {
@@ -808,6 +860,11 @@ const editPIC = (pic: Pic) => {
 };
 
 const deletePIC = async (pic: Pic) => {
+  if (!pic?.id) {
+    alert("ID PIC tidak tersedia.");
+    return;
+  }
+
   if (!confirm("Yakin ingin menghapus PIC ini?")) return;
   try {
     await picService.delete(pic.id);
@@ -817,14 +874,13 @@ const deletePIC = async (pic: Pic) => {
   }
 };
 
-const route = useRoute();
 let myFiles = [];
 
 const stakeholderSlug = computed(() => route.params.slug as string);
 
 // Cari stakeholder berdasarkan slug
 const currentStakeholder = computed<Stakeholder | undefined>(() => {
-  return stakeholdersStore.getStakeholderBySlug(stakeholderSlug.value);
+  return profileStakeholder.value || stakeholdersStore.getStakeholderBySlug(stakeholderSlug.value);
 });
 
 onMounted(async () => {
@@ -852,6 +908,8 @@ onActivated(async () => {
 watch(stakeholderSlug, async (newSlug, oldSlug) => {
     if (newSlug && newSlug !== oldSlug) {
         selectedIkasYear.value = "";
+        currentProfileIkasRecords.value = [];
+        ikasAuditRecordMap.value = {};
         await loadProfileData({ force: true, resetUi: true });
     }
 });
@@ -984,18 +1042,29 @@ const sdmCount = ref(0);
 const loadCsirtCounts = async (csirtId: string | number | null) => {
   if (!csirtId) { seCount.value = 0; sdmCount.value = 0; return; }
   try {
-    // Use csirtStore refresh to load SDM/SE (same approach as csirt.vue)
     const companyId = currentStakeholder.value?.id;
-    await csirtStore.refresh({
-      fetchGlobal: false,
-      targetCsirtId: csirtId,
-      targetCompanyId: companyId,
-    });
-
-    // Count from store's seList/sdmList using same multi-field matching as csirt.vue
     const sid = String(csirtId);
     const currentPerusahaanId = String(companyId || '');
+    const cachedCsirt = csirtStore.csirtByPerusahaanMap[currentPerusahaanId];
+    const hasStoredSdm = csirtStore.sdmList.some((item: any) =>
+      String(item.id_csirt) === sid || String(item.csirt?.id) === sid
+    );
+    const hasStoredSe = csirtStore.seList.some((item: any) =>
+      String(item.id_csirt) === sid ||
+      String(item.csirt_id) === sid ||
+      String(item.csirt?.id) === sid ||
+      (item.id_perusahaan && String(item.id_perusahaan) === currentPerusahaanId)
+    );
 
+    if (!cachedCsirt || !hasStoredSdm || !hasStoredSe) {
+      await csirtStore.refresh({
+        fetchGlobal: false,
+        targetCsirtId: csirtId,
+        targetCompanyId: companyId,
+      });
+    }
+
+    // Count from store's seList/sdmList using same multi-field matching as csirt.vue
     seCount.value = csirtStore.seList.filter((item: any) =>
       String(item.id_csirt) === sid ||
       String(item.csirt_id) === sid ||
@@ -1126,18 +1195,7 @@ const profileCompletion = computed(() => {
 });
 
 const currentStakeholderIkasRecords = computed(() => {
-  const stakeholder = currentStakeholder.value;
-  if (!stakeholder) return [];
-
-  const recordsById = new Map<string, any>();
-  ikasStore.ikasRawRecords
-    .filter((record) => recordBelongsToStakeholder(record, stakeholder))
-    .forEach((record, index) => {
-      const id = String(record?.id || `${getIkasRecordYear(record)}-${index}`);
-      recordsById.set(id, record);
-    });
-
-  return Array.from(recordsById.values()).sort((a, b) => {
+  return [...currentProfileIkasRecords.value].sort((a, b) => {
     const yearDiff = Number(getIkasRecordYear(b) || 0) - Number(getIkasRecordYear(a) || 0);
     if (yearDiff) return yearDiff;
     return (parseIkasDate(b?.updated_at || b?.created_at)?.getTime() || 0) - (parseIkasDate(a?.updated_at || a?.created_at)?.getTime() || 0);
@@ -1233,7 +1291,8 @@ watch(selectedIkasYear, async (year) => {
   const stakeholder = currentStakeholder.value;
   if (!stakeholder || !year) return;
   isIkasYearMenuOpen.value = false;
-  await ikasStore.fetchFromBackend(stakeholder.slug, String(stakeholder.id), year);
+  const record = getIkasRecordForYear(year);
+  await ikasStore.fetchFromBackend(stakeholder.slug, String(stakeholder.id), year, String(record?.id || ""));
   await animateIkasDomainPanel();
 });
 
@@ -1351,6 +1410,7 @@ const animateIkasDomainPanel = async () => {
 
   const items = root.querySelectorAll<HTMLElement>(".ikas-domain-animate");
   const fills = root.querySelectorAll<HTMLElement>(".ikas-domain-fill");
+  if (!items.length && !fills.length) return;
   gsap.killTweensOf(items);
   gsap.killTweensOf(fills);
 

@@ -182,9 +182,10 @@ import { useAuthStore } from "../../../stores/auth";
 import RecursiveMenu from "../../UI/recursiveMenu.vue";
 import ChatModal from "../chatbot/ChatModal.vue";
 import { seEditService } from "../../../services/se-edit.service";
-import { ikasService } from "../../../services/ikas.service";
+import { useIkasStore } from "../../../stores/ikas";
 
 const authStore = useAuthStore();
+const ikasStore = useIkasStore();
 
 // Filter menu based on user role
 const filterMenuByRole = (items) => {
@@ -259,13 +260,13 @@ const isPendingRequest = (value) => {
 async function updatePendingBadge() {
   if (authStore.isAdmin || authStore.currentUser?.role === 'staff') {
     try {
-      const [requests, ikasRecords] = await Promise.all([
+      const [requests] = await Promise.all([
         seEditService.getRequests(),
-        ikasService.getIkasList().catch(() => []),
+        ikasStore.initialize().catch(() => undefined),
       ]);
 
       const seList = normalizeListResponse(requests);
-      const ikasList = normalizeListResponse(ikasRecords);
+      const ikasList = normalizeListResponse(ikasStore.ikasRawRecords);
       const pendingCount = seList.filter((item) => isPendingRequest(item?.status)).length;
       const pendingIkasCount = ikasList.filter((item) =>
         isPendingRequest(item?.edit_request_status || item?.editRequestStatus)

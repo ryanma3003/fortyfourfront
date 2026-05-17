@@ -41,14 +41,14 @@ export const useLmsStore = defineStore('lms', () => {
   const activeKelasId = ref<string | number | null>(null)
 
   // ─── Per-Kelas Cache ──────────────────────────────────────
-  // Keyed by kelas ID, stores { materi, kuis, timestamp }
-  const kelasCache = ref<Record<string, { materi: LmsMateri[], kuis: LmsKuis[], ts: number }>>({})
+  // Keyed by kelas ID, stores { kelas, materi, kuis, timestamp }
+  const kelasCache = ref<Record<string, { kelas?: LmsKelas, materi: LmsMateri[], kuis: LmsKuis[], ts: number }>>({})
   // Soal cache keyed by kuis ID
   const soalCache = ref<Record<string, { soal: LmsSoal[], ts: number }>>({})
   // Cache TTL: 5 minutes
   const CACHE_TTL = 5 * 60 * 1000
   let kelasFetchPromise: Promise<void> | null = null
-  const kelasDetailInFlight = new Map<string, Promise<{ materi: LmsMateri[], kuis: LmsKuis[] }>>()
+  const kelasDetailInFlight = new Map<string, Promise<{ kelas?: LmsKelas, materi: LmsMateri[], kuis: LmsKuis[] }>>()
 
   const isCacheValid = (ts: number) => Date.now() - ts < CACHE_TTL
 
@@ -61,6 +61,7 @@ export const useLmsStore = defineStore('lms', () => {
 
     kelasFetchPromise = (async () => {
       kelasList.value = await lmsService.getKelas()
+      hydrateKelasCacheFromList()
     })()
 
     try {
@@ -82,6 +83,32 @@ export const useLmsStore = defineStore('lms', () => {
 
   const getKelasById = (id: string | number) =>
     kelasList.value.find(k => String(k.id) === String(id))
+
+  const upsertKelas = (kelas: LmsKelas) => {
+    const idx = kelasList.value.findIndex(k => String(k.id) === String(kelas.id))
+    if (idx !== -1) {
+      kelasList.value[idx] = { ...kelasList.value[idx], ...kelas }
+    } else {
+      kelasList.value.push(kelas)
+    }
+  }
+
+  const hydrateKelasCacheFromList = () => {
+    for (const kelas of kelasList.value) {
+      const hasMateri = Array.isArray((kelas as any).materi)
+      const hasKuis = Array.isArray((kelas as any).kuis) || Array.isArray((kelas as any).kuis_list)
+      if (!hasMateri && !hasKuis) continue
+
+      const key = String(kelas.id)
+      const cached = kelasCache.value[key]
+      kelasCache.value[key] = {
+        kelas,
+        materi: hasMateri ? ((kelas as any).materi || []) : (cached?.materi || []),
+        kuis: hasKuis ? (((kelas as any).kuis || (kelas as any).kuis_list) || []) : (cached?.kuis || []),
+        ts: Date.now()
+      }
+    }
+  }
 
   const createKelas = async (payload: CreateKelasPayload) => {
     loading.value = true
@@ -153,9 +180,10 @@ export const useLmsStore = defineStore('lms', () => {
     loading.value = true
     error.value = null
     const request = (async () => {
-      const { materi, kuis } = await lmsService.getKelasDetail(kelasId)
+      const { kelas, materi, kuis } = await lmsService.getKelasDetail(kelasId)
+      if (kelas?.id) upsertKelas(kelas)
       // Update cache
-      kelasCache.value[key] = { materi, kuis, ts: Date.now() }
+      kelasCache.value[key] = { kelas, materi, kuis, ts: Date.now() }
       // Update reactive lists
       materiList.value = materi
       kuisList.value = kuis
@@ -181,7 +209,12 @@ export const useLmsStore = defineStore('lms', () => {
     loading.value = true
     error.value = null
     try {
-      materiList.value = await lmsService.getMateriByKelas(kelasId)
+      if (kelasId) {
+        const detail = await fetchKelasDetail(kelasId)
+        materiList.value = detail.materi
+      } else {
+        materiList.value = await lmsService.getMateriByKelas()
+      }
       activeKelasId.value = kelasId
       // Update cache if kelasId specified
       if (kelasId) {
@@ -317,7 +350,12 @@ export const useLmsStore = defineStore('lms', () => {
     loading.value = true
     error.value = null
     try {
-      kuisList.value = await lmsService.getKuisByKelas(kelasId)
+      if (kelasId) {
+        const detail = await fetchKelasDetail(kelasId)
+        kuisList.value = detail.kuis
+      } else {
+        kuisList.value = await lmsService.getKuisByKelas()
+      }
       activeKelasId.value = kelasId
       // Update cache if kelasId specified
       if (kelasId) {
@@ -411,6 +449,13 @@ export const useLmsStore = defineStore('lms', () => {
     const cached = soalCache.value[key]
     if (cached && isCacheValid(cached.ts)) {
       soalList.value = cached.soal
+      return soalList.value
+    }
+
+    const kuis = getKuisById(kuisId)
+    if (kuis && Array.isArray((kuis as any).soal) && (kuis as any).soal.length > 0) {
+      soalList.value = (kuis as any).soal
+      soalCache.value[key] = { soal: soalList.value, ts: Date.now() }
       return soalList.value
     }
 

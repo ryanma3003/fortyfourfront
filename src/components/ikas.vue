@@ -143,7 +143,16 @@ watch(
 // Get current stakeholder slug and source
 const currentSlug = computed(() => String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
-const currentIkasId = computed(() => String(route.query.ikas_id || ikasStore.getBackendIkasId(currentSlug.value) || ''));
+const currentIkasSummary = computed(() => (
+    currentSlug.value ? ikasStore.getIkasSummary(currentSlug.value) : null
+));
+const currentIkasId = computed(() => {
+    const summaryId = String(currentIkasSummary.value?.id || '');
+    const backendId = String(ikasStore.getBackendIkasId(currentSlug.value) || '');
+    const resolvedId = summaryId || backendId;
+    return resolvedId && !ikasStore.isHiddenIkasId(resolvedId) ? resolvedId : '';
+});
+const hasActiveIkasRecord = computed(() => !!currentIkasId.value);
 const currentPerusahaanId = computed(() => String(route.query.perusahaan_id || currentStakeholder.value?.id || ''));
 const canRequestEdit = computed(() => authStore.isFullAdmin);
 
@@ -308,6 +317,22 @@ const toastState = reactive({
     message: '',
 });
 
+const importModalCardRef = ref(null);
+const importModalState = reactive({
+    open: false,
+    stage: 'idle',
+    title: 'Import Excel IKAS',
+    message: '',
+    fileName: '',
+    saveLoading: false,
+    finishLoading: false,
+});
+
+const importIsComplete = computed(() => {
+    const total = Number(assessmentStore.totalQuestions || 0);
+    return total > 0 && Number(assessmentStore.answeredQuestions || 0) >= total;
+});
+
 const openPopup = async ({
     mode = 'alert',
     variant = 'info',
@@ -393,6 +418,103 @@ const showToastPopup = async ({
                 toastState.visible = false;
             },
         });
+    }
+};
+
+const openImportModal = async ({
+    stage = 'uploading',
+    title = 'Import Excel IKAS',
+    message = '',
+    fileName = '',
+} = {}) => {
+    importModalState.open = true;
+    importModalState.stage = stage;
+    importModalState.title = title;
+    importModalState.message = message;
+    importModalState.fileName = fileName;
+    importModalState.saveLoading = false;
+    importModalState.finishLoading = false;
+
+    await nextTick();
+    if (importModalCardRef.value) {
+        gsap.fromTo(
+            importModalCardRef.value,
+            { y: 18, opacity: 0, scale: 0.97 },
+            { y: 0, opacity: 1, scale: 1, duration: 0.24, ease: 'power2.out' }
+        );
+    }
+};
+
+const closeImportModal = async (force = false) => {
+    if (!force && (importModalState.saveLoading || importModalState.finishLoading)) return;
+
+    if (importModalCardRef.value) {
+        await gsap.to(importModalCardRef.value, {
+            y: 10,
+            opacity: 0,
+            scale: 0.98,
+            duration: 0.18,
+            ease: 'power2.in',
+        });
+    }
+
+    importModalState.open = false;
+};
+
+const finalizeImportedIkas = async (mode = 'save') => {
+    const slug = currentSlug.value;
+    const stakeholder = currentStakeholder.value;
+
+    if (!slug || !stakeholder?.id) {
+        showCornerToast('error', 'Data stakeholder tidak ditemukan.', 'Gagal');
+        return;
+    }
+
+    const isFinish = mode === 'finish';
+    const loadingKey = isFinish ? 'finishLoading' : 'saveLoading';
+    if (importModalState.saveLoading || importModalState.finishLoading) return;
+
+    importModalState[loadingKey] = true;
+
+    try {
+        const importPayload = getImportMetadata();
+        const result = await ikasStore.submitToBackend(slug, {
+            id_perusahaan: stakeholder.id,
+            responden: importPayload.responden,
+            jabatan: importPayload.jabatan,
+            telepon: importPayload.telepon,
+            tanggal: importPayload.tanggal,
+            tahun_pengukuran: activeMeasurementYear.value || currentMeasurementYear,
+            target_nilai: importPayload.target_nilai,
+        });
+
+        if (!result.success) {
+            throw new Error(result.error || 'Gagal menyimpan data IKAS ke server');
+        }
+
+        if (isFinish) {
+            await hydrateBackendAnswersUntilSettled(slug, stakeholder.id, 5, 1500);
+        }
+
+        if (isFinish) {
+            importModalState.finishLoading = false;
+            await closeImportModal(true);
+        }
+
+        showCornerToast(
+            'success',
+            isFinish
+                ? 'Data IKAS berhasil disimpan.'
+                : 'Data IKAS berhasil disimpan.',
+            'Berhasil'
+        );
+        window.dispatchEvent(new Event('ikas-requests-updated'));
+    } catch (error) {
+        console.error('[IKAS] Finalize import failed:', error);
+        showCornerToast('error', error?.message || 'Terjadi kesalahan saat menyimpan hasil import.', 'Gagal');
+    } finally {
+        importModalState.saveLoading = false;
+        importModalState.finishLoading = false;
     }
 };
 
@@ -482,7 +604,7 @@ const ensureEditableIkas = () => {
 
 const isDeleting = ref(false);
 const deleteAssessment = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) {
         await showToastPopup({
             variant: 'warning',
@@ -510,6 +632,13 @@ const deleteAssessment = async () => {
         await ikasStore.deleteFromBackend(ikasId);
         ikasStore.resetStakeholderData(currentSlug.value);
         assessmentStore.resetStakeholderData(currentSlug.value);
+        await router.replace({
+            path: route.path,
+            query: {
+                ...route.query,
+                ikas_id: undefined,
+            },
+        });
         await hydrateCurrentStakeholderIkas();
         await showToastPopup({
             variant: 'success',
@@ -582,7 +711,7 @@ const syncIkasRecordState = ({ editRequestStatus, editRequestReason, isValidated
 };
 
 const validateAssessment = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) {
         await showToastPopup({
             variant: 'warning',
@@ -637,7 +766,7 @@ const validateAssessment = async () => {
 };
 
 const requestEdit = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) {
         alert('Tidak ada data penilaian untuk diajukan request edit.');
         return;
@@ -676,7 +805,7 @@ const isApproving = ref(false);
 const isRejecting = ref(false);
 
 const approveEdit = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) return;
 
     const confirmation = await openPopup({
@@ -720,7 +849,7 @@ const approveEdit = async () => {
 };
 
 const rejectEdit = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) return;
 
     const promptResult = await openPopup({
@@ -775,6 +904,7 @@ const rejectEdit = async () => {
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);
 const selectedFile = ref(null);
+const lastImportResult = ref(null);
 const tableData = ref([]);
 const loading = ref(false);
 const errorMessage = ref('');
@@ -784,6 +914,18 @@ const getImportMetadata = () => {
     const stakeholder = currentStakeholder.value;
     const summary = slug ? ikasStore.ikasSummaryMap[slug]?.raw || {} : {};
     const profile = slug ? assessmentStore.respondentProfile : null;
+    const targetNilai = Number(
+        profile?.targetNilai ||
+        summary?.target_nilai ||
+        0
+    ) || 0;
+
+    const fallbackRespondent = String(
+        profile?.namaResponden ||
+        summary?.responden ||
+        stakeholder?.nama_perusahaan ||
+        'Import Excel IKAS'
+    ).trim();
 
     return {
         id_perusahaan: currentPerusahaanId.value || stakeholder?.id || summary?.perusahaan?.id || '',
@@ -794,9 +936,32 @@ const getImportMetadata = () => {
             summary?.tanggal_pengukuran ||
             new Date().toISOString().split('T')[0]
         ).split('T')[0],
-        responden: String(profile?.namaResponden || summary?.responden || '').trim(),
-        telepon: String(profile?.nomorTelepon || summary?.telepon || '').trim(),
-        jabatan: String(profile?.jabatanResponden || summary?.jabatan || '').trim(),
+        responden: fallbackRespondent || 'Import Excel IKAS',
+        telepon: String(profile?.nomorTelepon || summary?.telepon || '-').trim() || '-',
+        jabatan: String(profile?.jabatanResponden || summary?.jabatan || '-').trim() || '-',
+        target_nilai: targetNilai,
+    };
+};
+
+const buildRespondentProfileFromImport = () => {
+    const stakeholder = currentStakeholder.value;
+    const metadata = getImportMetadata();
+
+    return {
+        instansi: stakeholder?.nama_perusahaan || '',
+        sektor: stakeholder?.sub_sektor?.nama_sub_sektor || stakeholder?.sektor || '',
+        alamat: stakeholder?.alamat || '',
+        email: stakeholder?.email || '',
+        namaResponden: metadata.responden,
+        jabatanResponden: metadata.jabatan,
+        nomorTelepon: metadata.telepon,
+        tahunPengukuran: activeMeasurementYear.value || currentMeasurementYear,
+        targetLevel: metadata.target_nilai,
+        targetNilai: String(metadata.target_nilai || ''),
+        acuan: '',
+        tanggalPengisian: metadata.tanggal,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
     };
 };
 
@@ -841,6 +1006,12 @@ const uploadExcel = async () => {
 
     loading.value = true;
     errorMessage.value = '';
+    await openImportModal({
+        stage: 'uploading',
+        title: 'Memproses Import Excel',
+        message: 'File sedang diunggah dan data IKAS sedang disiapkan.',
+        fileName: selectedFile.value?.name || '',
+    });
 
     const formData = new FormData();
     const importMetadata = getImportMetadata();
@@ -861,6 +1032,7 @@ const uploadExcel = async () => {
         });
 
         const result = await response.json();
+        lastImportResult.value = result;
         const isSuccess = resolveUploadSuccess(response, result);
         const resolvedMessage = resolveUploadErrorMessage(result, response.ok ? '' : 'Gagal mengupload file');
 
@@ -869,16 +1041,58 @@ const uploadExcel = async () => {
         }
 
         tableData.value = Array.isArray(result?.data) ? result.data : [];
+        const stakeholder = currentStakeholder.value;
+        const slug = currentSlug.value;
+        const importPayload = getImportMetadata();
+
         await ikasStore.refresh();
         await hydrateCurrentStakeholderIkas();
+
+        if (slug && stakeholder?.id) {
+            assessmentStore.saveRespondentProfile(buildRespondentProfileFromImport());
+
+            let finalIkasId = ikasStore.getBackendIkasId(slug);
+            if (!finalIkasId) {
+                const ensureResult = await ikasStore.ensureBackendIkasRecord(slug, {
+                    id_perusahaan: stakeholder.id,
+                    responden: importPayload.responden,
+                    jabatan: importPayload.jabatan,
+                    telepon: importPayload.telepon,
+                    tanggal: importPayload.tanggal,
+                    tahun_pengukuran: activeMeasurementYear.value || currentMeasurementYear,
+                    target_nilai: importPayload.target_nilai,
+                });
+
+                if (!ensureResult.success) {
+                    throw new Error(ensureResult.error || 'Gagal menyiapkan data IKAS setelah import');
+                }
+
+                await ikasStore.refresh();
+                await hydrateCurrentStakeholderIkas();
+                finalIkasId = ikasStore.getBackendIkasId(slug);
+            }
+
+            if (!finalIkasId) {
+                throw new Error('IKAS ID tidak ditemukan setelah import');
+            }
+
+            await hydrateBackendAnswersUntilSettled(slug, stakeholder.id, 5, 1500);
+        }
+
+        importModalState.stage = 'ready';
+        importModalState.title = 'Import Excel Selesai';
+        importModalState.message = 'Data berhasil diperbarui dari file Excel. Pilih Simpan atau Selesai untuk melanjutkan.';
+        importModalState.fileName = selectedFile.value?.name || importModalState.fileName;
         window.dispatchEvent(new Event('ikas-requests-updated'));
-        showCornerToast('success', resolvedMessage || 'Data IKAS berhasil diperbarui dari file Excel.', 'Berhasil');
 
     } catch (error) {
         // Handle error response
         console.error('Upload error:', error);
         errorMessage.value = error?.message || 'Terjadi kesalahan saat upload file IKAS.';
         showCornerToast('error', errorMessage.value, 'Gagal upload');
+        importModalState.stage = 'error';
+        importModalState.title = 'Import Gagal';
+        importModalState.message = errorMessage.value;
     } finally {
         // Handle loading state
         loading.value = false;
@@ -891,6 +1105,25 @@ const uploadExcel = async () => {
 const formatValue = (value) => {
     if (value === null || value === 0) return '-';
     return value;
+};
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const hydrateBackendAnswersUntilSettled = async (slug, perusahaanId, attempts = 5, waitMs = 1200) => {
+    let previousCount = -1;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        await assessmentStore.hydrateAnswersFromBackend(slug, perusahaanId, { syncIkas: false });
+        const currentCount = assessmentStore.answeredQuestions || 0;
+        if (currentCount === previousCount) {
+            break;
+        }
+        previousCount = currentCount;
+
+        if (attempt < attempts - 1) {
+            await delay(waitMs);
+        }
+    }
 };
 
 const showCornerToast = (type, message, title = '') => {
@@ -2084,6 +2317,111 @@ const exportToPdf = async () => {
   box-shadow: none;
 }
 
+.ikas-import-modal-card {
+  text-align: left;
+}
+
+.ikas-import-modal-icon {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
+.ikas-import-modal-card.is-ready .ikas-import-modal-icon {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.ikas-import-modal-card.is-error .ikas-import-modal-icon {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.ikas-import-file {
+  align-items: center;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 16px;
+  color: #1e3a8a;
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 12px 14px;
+}
+
+.ikas-import-file i {
+  font-size: 1.1rem;
+}
+
+.ikas-import-file span {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ikas-import-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.ikas-import-summary > div {
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.ikas-import-summary span {
+  color: #64748b;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.ikas-import-summary strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ikas-import-actions {
+  justify-content: flex-end;
+}
+
+.ikas-import-actions .ikas-popup-btn {
+  min-width: 118px;
+}
+
+.ikas-import-modal-card.is-dark {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(17, 24, 39, 0.96) 100%);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.ikas-import-modal-card.is-dark .ikas-popup-title,
+.ikas-import-modal-card.is-dark .ikas-popup-message,
+.ikas-import-modal-card.is-dark .ikas-import-summary strong {
+  color: #f8fafc;
+}
+
+.ikas-import-modal-card.is-dark .ikas-popup-message,
+.ikas-import-modal-card.is-dark .ikas-import-summary span,
+.ikas-import-modal-card.is-dark .ikas-import-file {
+  color: #cbd5e1;
+}
+
+.ikas-import-modal-card.is-dark .ikas-import-file {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.22);
+}
+
+.ikas-import-modal-card.is-dark .ikas-import-summary > div {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
 .ikas-toast-wrap {
   position: fixed;
   top: 24px;
@@ -2359,7 +2697,7 @@ const exportToPdf = async () => {
                     <i v-else class="ri-file-excel-2-line"></i>
                     {{ loading ? 'Mengupload...' : 'Upload Excel' }}
                   </button>
-                  <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !currentIkasId">
+                  <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !hasActiveIkasRecord">
                     <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-file-pdf-line"></i>
                     {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
@@ -2369,27 +2707,27 @@ const exportToPdf = async () => {
               <div class="ikas-action-cluster ikas-action-cluster-admin">
                 <span class="ikas-action-label">Kontrol status</span>
                 <div class="ikas-action-buttons">
-                  <button v-if="canRequestEdit && currentIkasId && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
+                  <button v-if="canRequestEdit && hasActiveIkasRecord && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
                     <span v-if="isRequestingEdit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-edit-2-line"></i>
                     {{ isRequestingEdit ? 'Mengajukan...' : 'Request Edit' }}
                   </button>
-                  <button v-if="currentIkasId && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
+                  <button v-if="hasActiveIkasRecord && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
                     <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-checkbox-circle-line"></i>
                     {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
                   </button>
-                  <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
+                  <button v-if="hasActiveIkasRecord && ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
                     <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-check-line"></i>
                     {{ isApproving ? 'Menyetujui...' : 'Request Acc' }}
                   </button>
-                  <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
+                  <button v-if="hasActiveIkasRecord && ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
                     <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-close-line"></i>
                     {{ isRejecting ? 'Menolak...' : 'Tolak' }}
                   </button>
-                  <button v-if="currentIkasId" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
+                  <button v-if="hasActiveIkasRecord" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
                     <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-delete-bin-line"></i>
                     {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
@@ -2572,6 +2910,91 @@ const exportToPdf = async () => {
     </div>
   </div>
   </div>
+
+  <transition name="ikas-popup-fade">
+    <div v-if="importModalState.open" class="ikas-popup-overlay">
+      <div
+        ref="importModalCardRef"
+        class="ikas-popup-card ikas-import-modal-card"
+        :class="[`is-${importModalState.stage}`, { 'is-dark': isDarkMode }]"
+      >
+        <div class="ikas-popup-icon ikas-import-modal-icon">
+          <span
+            v-if="importModalState.stage === 'uploading'"
+            class="spinner-border spinner-border-sm"
+            role="status"
+            aria-hidden="true"
+          ></span>
+          <i v-else-if="importModalState.stage === 'ready'" class="ri-checkbox-circle-line"></i>
+          <i v-else class="ri-error-warning-line"></i>
+        </div>
+
+        <div class="ikas-popup-title">{{ importModalState.title }}</div>
+        <div class="ikas-popup-message">{{ importModalState.message }}</div>
+
+        <div v-if="importModalState.fileName" class="ikas-import-file">
+          <i class="ri-file-excel-2-line"></i>
+          <span>{{ importModalState.fileName }}</span>
+        </div>
+
+        <div v-if="importModalState.stage === 'ready'" class="ikas-import-summary">
+          <div>
+            <span>Jawaban terisi</span>
+            <strong>{{ ikasAnsweredQuestions }}/{{ ikasTotalQuestions }}</strong>
+          </div>
+          <div>
+            <span>Progress</span>
+            <strong>{{ ikasCompletionPercentage }}%</strong>
+          </div>
+          <div>
+            <span>Status</span>
+            <strong>{{ importIsComplete ? 'Siap selesai' : 'Draft' }}</strong>
+          </div>
+        </div>
+
+        <div v-if="importModalState.stage === 'ready'" class="ikas-popup-actions ikas-import-actions">
+          <button
+            type="button"
+            class="ikas-popup-btn is-warning"
+            :disabled="importModalState.saveLoading || importModalState.finishLoading"
+            @click="finalizeImportedIkas('save')"
+          >
+            <span
+              v-if="importModalState.saveLoading"
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            Simpan
+          </button>
+          <button
+            type="button"
+            class="ikas-popup-btn is-success"
+            :disabled="importModalState.saveLoading || importModalState.finishLoading"
+            :title="importIsComplete ? 'Simpan dan selesaikan import' : 'Coba baca ulang jawaban lalu selesaikan'"
+            @click="finalizeImportedIkas('finish')"
+          >
+            <span
+              v-if="importModalState.finishLoading"
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            Selesai
+          </button>
+        </div>
+
+        <div v-else-if="importModalState.stage === 'error'" class="ikas-popup-actions ikas-import-actions">
+          <button type="button" class="ikas-popup-btn is-ghost" @click="closeImportModal">
+            Tutup
+          </button>
+          <button type="button" class="ikas-popup-btn" @click="triggerFileInput">
+            Upload Ulang
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
 
   <transition name="ikas-popup-fade">
     <div v-if="popupState.open" class="ikas-popup-overlay" @click.self="closePopup(false)">

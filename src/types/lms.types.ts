@@ -22,6 +22,31 @@ export interface LmsKelas {
     updated_at?: string;
     materi?: LmsMateri[];
     kuis?: LmsKuis[];
+    kuis_list?: LmsKuis[];
+    progress?: LmsProgress;
+    sertifikat?: LmsSertifikat | null;
+}
+
+export interface LmsProgress {
+    is_kelas_selesai?: boolean;
+    kuis_akhir_lulus?: boolean;
+    kuis_lulus?: number;
+    materi_selesai?: number;
+    persentase_progress?: number;
+    total_kuis?: number;
+    total_materi?: number;
+}
+
+export interface LmsSertifikat {
+    id: string | number;
+    id_kelas?: string | number;
+    id_user?: string | number;
+    nama_kelas?: string;
+    nama_peserta?: string;
+    nomor_sertifikat?: string;
+    pdf_path?: string;
+    tanggal_terbit?: string;
+    created_at?: string;
 }
 
 export interface CreateKelasPayload {
@@ -67,6 +92,8 @@ export interface LmsMateri {
     durasi_detik?: number;
     urutan?: number;            // ordering within kelas
     file_pendukung?: LmsFilePendukung[];
+    kuis?: LmsKuis;
+    last_watched_seconds?: number;
     created_at?: string;
     updated_at?: string;
 }
@@ -118,6 +145,16 @@ export interface LmsKuis {
     tipe_kuis?: 'per_materi' | 'final' | string;
     id_materi?: string | number | null;  // null for final quiz
     durasi?: number;            // duration in minutes
+    durasi_menit?: number;
+    is_final?: boolean;
+    max_attempt?: number;
+    passing_grade?: number;
+    attempt_count?: number;
+    latest_score?: number;
+    is_passed?: boolean;
+    last_attempt_id?: string | number | null;
+    passed_at?: string | null;
+    urutan?: number;
     soal?: LmsSoal[];
     created_at?: string;
     updated_at?: string;

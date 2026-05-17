@@ -554,7 +554,7 @@ import { Tooltip } from "bootstrap";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import "vue3-perfect-scrollbar/style.css";
 import gsap from "gsap";
-import { ikasService } from "@/services/ikas.service";
+import { useIkasStore } from "@/stores/ikas";
 import {
   Languages,
 } from "../../../data/header";
@@ -570,6 +570,7 @@ const switcher = switcherStore();
 const authStore = useAuthStore();
 const profileStore = useProfileStore();
 const notifStore = useNotificationStore();
+const ikasStore = useIkasStore();
 const { logUserOut } = authStore;
 const router = useRouter();
 const route = useRoute();
@@ -609,8 +610,8 @@ const loadIkasValidationCounts = async () => {
 
   ikasValidationLoading.value = true;
   try {
-    const ikasRecords = await ikasService.getIkasList().catch(() => []);
-    const ikasList = normalizeListResponse(ikasRecords);
+    await ikasStore.initialize();
+    const ikasList = normalizeListResponse(ikasStore.ikasRawRecords);
 
     ikasValidationCounts.value = {
       pending: ikasList.filter((item: any) => !isValidatedStatus(item?.is_validated ?? item?.isValidated ?? item?.status)).length,

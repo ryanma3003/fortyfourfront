@@ -2,6 +2,15 @@ import { api, ApiRequestError } from '@/config/api';
 import type { CsirtMember, SdmCsirt, SeCsirt, CreateCsirtPayload, CreateSePayload } from '@/types/csirt.types';
 import { useNotificationStore } from '@/stores/notifications';
 
+const CSIRT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let allCsirtCache: { data: CsirtMember[]; timestamp: number } | null = null;
+let allCsirtRequest: Promise<CsirtMember[]> | null = null;
+let allSdmCache: { data: SdmCsirt[]; timestamp: number } | null = null;
+let allSdmRequest: Promise<SdmCsirt[]> | null = null;
+let allSeCache: { data: SeCsirt[]; timestamp: number } | null = null;
+let allSeRequest: Promise<SeCsirt[]> | null = null;
+
 /**
  * Robustly unwrap array responses from potentially inconsistent backend endpoints.
  */
@@ -27,6 +36,94 @@ function unwrapObject<T>(res: any, label: string): T | null {
     return res as T;
 }
 
+const getCsirtCompanyId = (item: CsirtMember): string => String(
+    item.perusahaan?.id ||
+    item.id_perusahaan ||
+    (item as any).perusahaan_id ||
+    ''
+);
+
+const mapSdmRecord = (item: any): SdmCsirt => ({
+    ...item,
+    id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
+});
+
+const mapSeRecord = (item: any): SeCsirt => ({
+    ...item,
+    id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
+});
+
+const clearCsirtCache = () => {
+    allCsirtCache = null;
+    allCsirtRequest = null;
+    allSdmCache = null;
+    allSdmRequest = null;
+    allSeCache = null;
+    allSeRequest = null;
+};
+
+const isFresh = (timestamp: number): boolean => Date.now() - timestamp < CSIRT_CACHE_TTL_MS;
+
+const getCachedMembers = async (): Promise<CsirtMember[]> => {
+    if (allCsirtCache && isFresh(allCsirtCache.timestamp)) {
+        return allCsirtCache.data;
+    }
+
+    if (!allCsirtRequest) {
+        allCsirtRequest = api.get<any>('/api/csirt')
+            .then((res) => {
+                const data = unwrapArray<CsirtMember>(res, 'members');
+                allCsirtCache = { data, timestamp: Date.now() };
+                return data;
+            })
+            .finally(() => {
+                allCsirtRequest = null;
+            });
+    }
+
+    return allCsirtRequest;
+};
+
+const getCachedAllSdm = async (): Promise<SdmCsirt[]> => {
+    if (allSdmCache && isFresh(allSdmCache.timestamp)) {
+        return allSdmCache.data;
+    }
+
+    if (!allSdmRequest) {
+        allSdmRequest = api.get<any>('/api/sdm_csirt')
+            .then((res) => {
+                const data = unwrapArray<any>(res, 'all_sdm').map(mapSdmRecord);
+                allSdmCache = { data, timestamp: Date.now() };
+                return data;
+            })
+            .finally(() => {
+                allSdmRequest = null;
+            });
+    }
+
+    return allSdmRequest;
+};
+
+const getCachedAllSe = async (): Promise<SeCsirt[]> => {
+    if (allSeCache && isFresh(allSeCache.timestamp)) {
+        return allSeCache.data;
+    }
+
+    if (!allSeRequest) {
+        allSeRequest = api.get<any>('/api/se')
+            .then((res) => {
+                const data = unwrapArray<any>(res, 'all_se').map(mapSeRecord);
+                allSeCache = { data, timestamp: Date.now() };
+                return data;
+            })
+            .finally(() => {
+                allSeRequest = null;
+            });
+    }
+
+    return allSeRequest;
+};
+
 /**
  * CSIRT Service
  * Handles data fetching for CSIRT domain.
@@ -36,8 +133,7 @@ export const csirtService = {
      * Get all CSIRT members
      */
     async getMembers(): Promise<CsirtMember[]> {
-        const res = await api.get<any>('/api/csirt');
-        return unwrapArray<CsirtMember>(res, 'members');
+        return getCachedMembers();
     },
 
     /**
@@ -52,16 +148,8 @@ export const csirtService = {
      * Get CSIRT member by id_perusahaan (company ID)
      */
     async getCsirtByPerusahaan(perusahaanId: string | number): Promise<CsirtMember | null> {
-        try {
-            const res = await api.get<any>(`/api/csirt/perusahaan/${perusahaanId}`);
-            return unwrapObject<CsirtMember>(res, `member_by_perusahaan(${perusahaanId})`);
-        } catch (e) {
-            try {
-                const list = await this.getMembers();
-                return list.find(c => String(c.id_perusahaan) === String(perusahaanId) || String((c as any).perusahaan?.id) === String(perusahaanId)) || null;
-            } catch (err) {}
-            return null;
-        }
+        const members = await getCachedMembers();
+        return members.find((item) => getCsirtCompanyId(item) === String(perusahaanId)) || null;
     },
 
     /**
@@ -77,7 +165,9 @@ export const csirtService = {
         if (payload.file_rfc2350 instanceof File) form.append('file_rfc2350', payload.file_rfc2350);
         if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
         if (payload.file_surat_tanda_registrasi instanceof File) form.append('file_surat_tanda_registrasi', payload.file_surat_tanda_registrasi);
-        return api.post<CsirtMember>('/api/csirt', form);
+        const result = await api.post<CsirtMember>('/api/csirt', form);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -94,7 +184,9 @@ export const csirtService = {
         if (payload.file_rfc2350 instanceof File) form.append('file_rfc2350', payload.file_rfc2350);
         if (payload.file_public_key_pgp instanceof File) form.append('file_public_key_pgp', payload.file_public_key_pgp);
         if (payload.file_surat_tanda_registrasi instanceof File) form.append('file_surat_tanda_registrasi', payload.file_surat_tanda_registrasi);
-        return api.put<CsirtMember>(`/api/csirt/${id}`, form);
+        const result = await api.put<CsirtMember>(`/api/csirt/${id}`, form);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -102,7 +194,9 @@ export const csirtService = {
      */
     async delete(id: string | number): Promise<void> {
         useNotificationStore().trackSelfAction('csirt', String(id));
-        return api.delete(`/api/csirt/${id}`);
+        const result = await api.delete<void>(`/api/csirt/${id}`);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -128,12 +222,7 @@ export const csirtService = {
      * Get all SDM records
      */
     async getAllSdm(): Promise<SdmCsirt[]> {
-        const res = await api.get<any>('/api/sdm_csirt');
-        const list = unwrapArray<any>(res, 'all_sdm');
-        return list.map((item: any) => ({
-            ...item,
-            id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
-        }));
+        return getCachedAllSdm();
     },
 
     /**
@@ -147,7 +236,9 @@ export const csirtService = {
      * Create a new SDM record
      */
     async createSdm(payload: Omit<SdmCsirt, 'id'>): Promise<SdmCsirt> {
-        return api.post<SdmCsirt>('/api/sdm_csirt', payload);
+        const result = await api.post<SdmCsirt>('/api/sdm_csirt', payload);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -155,7 +246,9 @@ export const csirtService = {
      */
     async updateSdm(id: string | number, payload: Partial<Omit<SdmCsirt, 'id'>>): Promise<SdmCsirt> {
         useNotificationStore().trackSelfAction('sdm_csirt', String(id));
-        return api.put<SdmCsirt>(`/api/sdm_csirt/${id}`, payload);
+        const result = await api.put<SdmCsirt>(`/api/sdm_csirt/${id}`, payload);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -163,14 +256,17 @@ export const csirtService = {
      */
     async deleteSdm(id: string | number): Promise<void> {
         useNotificationStore().trackSelfAction('sdm_csirt', String(id));
-        return api.delete(`/api/sdm_csirt/${id}`);
+        const result = await api.delete<void>(`/api/sdm_csirt/${id}`);
+        clearCsirtCache();
+        return result;
     },
 
     /**
      * Get SE (Systems) for a CSIRT.
      */
     async getSeByCsirtId(id: number | string): Promise<SeCsirt[]> {
-        const list = await this.getAllSe();
+        const res = await api.get<any>(`/api/se?id_csirt=${encodeURIComponent(String(id))}`);
+        const list = unwrapArray<any>(res, `se(id_csirt=${id})`);
         return list.filter((item: any) =>
             String(item.id_csirt) === String(id) ||
             String(item.csirt_id) === String(id) ||
@@ -179,15 +275,26 @@ export const csirtService = {
     },
 
     /**
+     * Get SE (Systems) for a company.
+     */
+    async getSeByPerusahaanId(id: number | string): Promise<SeCsirt[]> {
+        const res = await api.get<any>(`/api/se?id_perusahaan=${encodeURIComponent(String(id))}`);
+        const list = unwrapArray<any>(res, `se(id_perusahaan=${id})`);
+        return list
+            .map((item: any) => ({
+                ...item,
+                id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
+            }))
+            .filter((item: any) =>
+                String(item.id_perusahaan || item.perusahaan_id || item.perusahaan?.id || '') === String(id)
+            );
+    },
+
+    /**
      * Get all SE records
      */
     async getAllSe(): Promise<SeCsirt[]> {
-        const res = await api.get<any>('/api/se');
-        const list = unwrapArray<any>(res, 'all_se');
-        return list.map((item: any) => ({
-            ...item,
-            id_csirt: item.csirt?.id || item.id_csirt || item.csirt_id
-        }));
+        return getCachedAllSe();
     },
 
     /**
@@ -201,7 +308,9 @@ export const csirtService = {
      * Create a new SE record
      */
     async createSe(payload: CreateSePayload): Promise<SeCsirt> {
-        return api.post<SeCsirt>('/api/se', payload);
+        const result = await api.post<SeCsirt>('/api/se', payload);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -209,7 +318,9 @@ export const csirtService = {
      */
     async updateSe(id: number | string, payload: Partial<Omit<SeCsirt, 'id'>>): Promise<SeCsirt> {
         useNotificationStore().trackSelfAction('se', String(id));
-        return api.put<SeCsirt>(`/api/se/${id}`, payload);
+        const result = await api.put<SeCsirt>(`/api/se/${id}`, payload);
+        clearCsirtCache();
+        return result;
     },
 
     /**
@@ -217,6 +328,8 @@ export const csirtService = {
      */
     async deleteSe(id: number): Promise<void> {
         useNotificationStore().trackSelfAction('se', String(id));
-        return api.delete(`/api/se/${id}`);
+        const result = await api.delete<void>(`/api/se/${id}`);
+        clearCsirtCache();
+        return result;
     },
 };

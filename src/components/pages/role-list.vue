@@ -23,6 +23,17 @@ import { usersService } from "../../services/users.service";
 import { casbinService, type CasbinPermission, type CasbinPolicy } from "../../services/casbin.service";
 import type { User } from "../../types/user.types";
 
+type RoleRow = Role & {
+  rowNumber: number;
+  normalizedName: string;
+  colorClass: string;
+  iconClass: string;
+  roleType: string;
+  accessLabel: string;
+  accessClass: string;
+  permissionCount: number;
+};
+
 const dataToPass = {
   title: { label: "Dashboards", path: "/dashboard" },
   currentpage: "Role List",
@@ -36,6 +47,7 @@ const policies = ref<CasbinPolicy[]>([]);
 const loading = ref(true);
 const permissionLoading = ref(false);
 const savingPermissions = ref(false);
+const searchDraft = ref("");
 const searchQuery = ref("");
 const sortField = ref<"name">("name");
 const sortOrder = ref<"asc" | "desc">("asc");
@@ -45,6 +57,9 @@ const rolePageRoot = ref<HTMLElement | null>(null);
 const roleSearchInput = ref<HTMLInputElement | null>(null);
 let roleGsapContext: gsap.Context | null = null;
 const pageHasEntered = ref(false);
+let toastTimeout: ReturnType<typeof setTimeout> | undefined;
+let searchDebounceTimeout: ReturnType<typeof setTimeout> | undefined;
+let rowAnimationFrame = 0;
 
 const showToast = ref(false);
 const toastMessage = ref("");
@@ -61,29 +76,34 @@ const manualGroup = ref("");
 
 
 const showNotification = (message: string, type: "success" | "error" = "success") => {
+  if (toastTimeout) window.clearTimeout(toastTimeout);
   toastMessage.value = message;
   toastType.value = type;
   showToast.value = true;
-  window.setTimeout(() => {
+  toastTimeout = window.setTimeout(() => {
     showToast.value = false;
+    toastTimeout = undefined;
   }, 3200);
 };
 
 const normalizePermissionKey = (obj: string, act: string) => `${obj}::${act}`;
 
+const roleSearchIndex = computed(() =>
+  items.value.map((role) => ({
+    role,
+    searchText: `${role.name} ${role.description || ""}`.toLowerCase(),
+  }))
+);
+
 const filteredData = computed(() => {
-  let data = items.value;
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase();
-    data = data.filter((role) =>
-      role.name.toLowerCase().includes(q) ||
-      (role.description || "").toLowerCase().includes(q)
-    );
-  }
+  const q = searchQuery.value.trim().toLowerCase();
+  const data = q
+    ? roleSearchIndex.value.filter((entry) => entry.searchText.includes(q)).map((entry) => entry.role)
+    : items.value;
 
   return [...data].sort((a, b) => {
     const mod = sortOrder.value === "asc" ? 1 : -1;
-    return a[sortField.value].localeCompare(b[sortField.value]) * mod;
+    return a[sortField.value].localeCompare(b[sortField.value], "id", { sensitivity: "base" }) * mod;
   });
 });
 
@@ -147,8 +167,48 @@ const rolePolicyMap = computed(() => {
   return map;
 });
 
+const rolePermissionCounts = computed(() => {
+  const map = new Map<string, number>();
+  for (const policy of policies.value) {
+    const key = policy.sub.toLowerCase();
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+  return map;
+});
+
 const rolePermissionCount = (roleName: string) =>
-  rolePolicyMap.value.get(roleName.toLowerCase())?.length || 0;
+  rolePermissionCounts.value.get(roleName.toLowerCase()) || 0;
+
+const displayRows = computed<RoleRow[]>(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value;
+  return displayData.value.map((role, i) => {
+    const normalizedName = role.name?.toLowerCase() || "";
+    const isAdmin = normalizedName === "admin";
+    return {
+      ...role,
+      rowNumber: start + i + 1,
+      normalizedName,
+      colorClass: getRoleColorClass(role.name),
+      iconClass: getRoleIcon(role.name),
+      roleType: getRoleType(role.name),
+      accessLabel: isAdmin ? "Full Access" : "Limited Access",
+      accessClass: isAdmin ? "badge-sektor-teal" : "badge-sektor-amber",
+      permissionCount: rolePermissionCount(role.name),
+    };
+  });
+});
+
+const visiblePaginationPages = computed(() => {
+  const pages: Array<number | "..."> = [];
+  for (let page = 1; page <= totalPages.value; page++) {
+    if (page === 1 || page === totalPages.value || (page >= currentPage.value - 1 && page <= currentPage.value + 1)) {
+      pages.push(page);
+    } else if (page === currentPage.value - 2 || page === currentPage.value + 2) {
+      pages.push("...");
+    }
+  }
+  return pages;
+});
 
 const groupedPermissions = computed(() => {
   const groups = new Map<string, CasbinPermission[]>();
@@ -172,11 +232,10 @@ const selectedRolePolicies = computed(() => {
   return rolePolicyMap.value.get(selectedRole.value.name.toLowerCase()) || [];
 });
 
+const selectedPermissionKeySet = computed(() => new Set(selectedPermissionKeys.value));
+
 const availableQuickAddPermissions = computed(() =>
-  permissions.value.filter(
-    (permission) =>
-      !selectedPermissionKeys.value.includes(normalizePermissionKey(permission.obj, permission.act))
-  )
+  permissions.value.filter((permission) => !selectedPermissionKeySet.value.has(normalizePermissionKey(permission.obj, permission.act)))
 );
 
 const syncSelectedPermissionsFromPolicies = (roleName: string) => {
@@ -407,13 +466,25 @@ const handleRemovePermission = async (obj: string, act: string) => {
 };
 
 const clearSearch = () => {
+  searchDraft.value = "";
   searchQuery.value = "";
+  if (searchDebounceTimeout) {
+    window.clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = undefined;
+  }
   currentPage.value = 1;
   nextTick(() => roleSearchInput.value?.focus());
 };
 
 const focusRoleSearch = () => {
   roleSearchInput.value?.focus();
+};
+
+const goToPage = (page: number) => {
+  const nextPage = Math.min(Math.max(page, 1), totalPages.value);
+  if (nextPage !== currentPage.value) {
+    currentPage.value = nextPage;
+  }
 };
 
 const toggleSort = (field: "name") => {
@@ -423,10 +494,11 @@ const toggleSort = (field: "name") => {
     sortField.value = field;
     sortOrder.value = "asc";
   }
+  currentPage.value = 1;
 };
 
 const shouldReduceMotion = () =>
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 const runEntranceAnimations = () => {
   nextTick(() => {
@@ -459,28 +531,31 @@ const runEntranceAnimations = () => {
 
 
 const animateRows = (quick = false) => {
+  if (rowAnimationFrame) {
+    window.cancelAnimationFrame(rowAnimationFrame);
+  }
+
   nextTick(() => {
-    const root = rolePageRoot.value;
-    if (!root || shouldReduceMotion()) return;
+    rowAnimationFrame = window.requestAnimationFrame(() => {
+      rowAnimationFrame = 0;
+      const root = rolePageRoot.value;
+      if (!root || shouldReduceMotion()) return;
 
-    const rows = Array.from(root.querySelectorAll<HTMLElement>(".stakeholder-row"));
-    if (!rows.length) return;
+      const rows = Array.from(root.querySelectorAll<HTMLElement>(".stakeholder-row"));
+      if (!rows.length) return;
 
-    gsap.killTweensOf(rows);
-    rows.forEach((row, index) => {
-      gsap.fromTo(
-        row,
-        { y: quick ? 12 : 18, opacity: 0, scale: quick ? 0.992 : 0.985, force3D: true },
-        {
-          y: 0,
-          opacity: 1,
-          scale: 1,
-          duration: quick ? 0.32 : 0.38,
-          delay: index * (quick ? 0.05 : 0.055),
-          ease: "power2.out",
-          clearProps: "transform,opacity",
-        },
-      );
+      gsap.killTweensOf(rows);
+      gsap.set(rows, { y: quick ? 10 : 16, opacity: 0, scale: quick ? 0.995 : 0.99, force3D: true });
+      gsap.to(rows, {
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        duration: quick ? 0.28 : 0.36,
+        ease: "power2.out",
+        stagger: quick ? 0.035 : 0.045,
+        overwrite: "auto",
+        clearProps: "transform,opacity",
+      });
     });
   });
 };
@@ -519,7 +594,19 @@ const animateHover = (
   }
 };
 
-watch([searchQuery, itemsPerPage], () => {
+watch(searchDraft, (value) => {
+  if (searchDebounceTimeout) window.clearTimeout(searchDebounceTimeout);
+  searchDebounceTimeout = window.setTimeout(() => {
+    searchQuery.value = value;
+    searchDebounceTimeout = undefined;
+  }, 140);
+});
+
+watch(itemsPerPage, () => {
+  currentPage.value = 1;
+});
+
+watch(searchQuery, () => {
   currentPage.value = 1;
 });
 
@@ -556,6 +643,9 @@ onMounted(() => {
 onUnmounted(() => {
   roleGsapContext?.revert();
   roleGsapContext = null;
+  if (toastTimeout) window.clearTimeout(toastTimeout);
+  if (searchDebounceTimeout) window.clearTimeout(searchDebounceTimeout);
+  if (rowAnimationFrame) window.cancelAnimationFrame(rowAnimationFrame);
 });
 </script>
 
@@ -654,7 +744,7 @@ onUnmounted(() => {
           <i class="ri-search-line header-search-icon"></i>
           <input
             ref="roleSearchInput"
-            v-model="searchQuery"
+            v-model="searchDraft"
             type="text"
             class="form-control form-control-sm header-search-input"
             placeholder="Cari nama role atau deskripsi..."
@@ -662,7 +752,7 @@ onUnmounted(() => {
             @click.stop
             @keydown.stop
           />
-          <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
+          <button v-if="searchDraft" @click="clearSearch" class="clear-btn" title="Clear search">
             <i class="ri-close-circle-fill"></i>
           </button>
         </div>
@@ -718,7 +808,7 @@ onUnmounted(() => {
                       <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-shield-keyhole-line"></i></div></div>
                       <h6 class="fw-semibold mb-1 empty-state-title">Data Role Tidak Ditemukan</h6>
                       <p class="text-muted fs-13 mb-3">Tidak ada role yang sesuai dengan kriteria pencarian Anda.</p>
-                      <button v-if="searchQuery" @click="clearSearch" class="btn btn-sm btn-primary-light rounded-pill px-4">
+                      <button v-if="searchDraft || searchQuery" @click="clearSearch" class="btn btn-sm btn-primary-light rounded-pill px-4">
                         <i class="ri-refresh-line me-1"></i> Reset Pencarian
                       </button>
                     </div>
@@ -727,25 +817,25 @@ onUnmounted(() => {
 
                 <template v-else>
                   <tr
-                    v-for="(role, i) in displayData"
+                    v-for="role in displayRows"
                     :key="role.id"
                     class="stakeholder-row"
                     @mouseenter="animateHover($event, true, 'row')"
                     @mouseleave="animateHover($event, false, 'row')"
                   >
                     <td class="align-middle text-center">
-                      <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
+                      <span class="row-number">{{ role.rowNumber }}</span>
                     </td>
                     <td class="align-middle">
                       <div class="stakeholder-company-cell">
-                        <div class="company-avatar" :class="getRoleColorClass(role.name)">
+                        <div class="company-avatar" :class="role.colorClass">
                           <span class="company-avatar-letter">
-                            <i :class="getRoleIcon(role.name)" class="fs-16"></i>
+                            <i :class="role.iconClass" class="fs-16"></i>
                           </span>
                         </div>
                         <div class="company-name-wrap">
                           <span class="company-name d-block fw-bold">{{ role.name }}</span>
-                          <span class="text-muted fs-11 text-uppercase letter-spacing-1">{{ getRoleType(role.name) }}</span>
+                          <span class="text-muted fs-11 text-uppercase letter-spacing-1">{{ role.roleType }}</span>
                         </div>
                       </div>
                     </td>
@@ -753,13 +843,13 @@ onUnmounted(() => {
                       {{ role.description || "-" }}
                     </td>
                     <td class="align-middle text-center">
-                      <span class="badge-sektor" :class="role.name?.toLowerCase() === 'admin' ? 'badge-sektor-teal' : 'badge-sektor-amber'">
-                        {{ role.name?.toLowerCase() === 'admin' ? 'Full Access' : 'Limited Access' }}
+                      <span class="badge-sektor" :class="role.accessClass">
+                        {{ role.accessLabel }}
                       </span>
                     </td>
                     <td class="align-middle text-center">
                       <span class="role-permission-badge">
-                        {{ rolePermissionCount(role.name) }} permission
+                        {{ role.permissionCount }} permission
                       </span>
                     </td>
                     <td class="align-middle text-center">
@@ -782,22 +872,22 @@ onUnmounted(() => {
             <nav v-if="totalPages > 1">
               <ul class="pagination pagination-sm mb-0 gap-1">
                 <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = 1"><i class="ri-skip-back-mini-line"></i></a>
+                  <a class="page-link rounded-circle" href="#" @click.prevent="goToPage(1)"><i class="ri-skip-back-mini-line"></i></a>
                 </li>
                 <li class="page-item" :class="{ disabled: currentPage === 1 }">
-                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage--"><i class="ri-arrow-left-s-line"></i></a>
+                  <a class="page-link rounded-circle" href="#" @click.prevent="goToPage(currentPage - 1)"><i class="ri-arrow-left-s-line"></i></a>
                 </li>
-                <template v-for="p in totalPages" :key="p">
-                  <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
-                    <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
+                <template v-for="(p, index) in visiblePaginationPages" :key="`${p}-${index}`">
+                  <li v-if="p !== '...'" class="page-item" :class="{ active: p === currentPage }">
+                    <a class="page-link rounded-circle" href="#" @click.prevent="goToPage(Number(p))">{{ p }}</a>
                   </li>
-                  <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled"><span class="page-link border-0 bg-transparent">...</span></li>
+                  <li v-else class="page-item disabled"><span class="page-link border-0 bg-transparent">...</span></li>
                 </template>
                 <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a>
+                  <a class="page-link rounded-circle" href="#" @click.prevent="goToPage(currentPage + 1)"><i class="ri-arrow-right-s-line"></i></a>
                 </li>
                 <li class="page-item" :class="{ disabled: currentPage === totalPages }">
-                  <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = totalPages"><i class="ri-skip-forward-mini-line"></i></a>
+                  <a class="page-link rounded-circle" href="#" @click.prevent="goToPage(totalPages)"><i class="ri-skip-forward-mini-line"></i></a>
                 </li>
               </ul>
             </nav>
@@ -932,7 +1022,7 @@ onUnmounted(() => {
                               <td class="text-muted">{{ permission.group }}</td>
                               <td class="text-center">
                                 <button 
-                                  v-if="selectedPermissionKeys.includes(normalizePermissionKey(permission.obj, permission.act))"
+                                  v-if="selectedPermissionKeySet.has(normalizePermissionKey(permission.obj, permission.act))"
                                   class="btn btn-sm btn-danger-light rounded-circle"
                                   style="width: 30px; height: 30px; padding: 0;"
                                   @click="handleRemovePermission(permission.obj, permission.act)"
@@ -1944,6 +2034,24 @@ onUnmounted(() => {
   .role-rows-selector {
     min-width: 0;
     width: 100%;
+  }
+
+  .users-toolbar-left,
+  .users-toolbar-right,
+  .role-search,
+  .role-search.users-toolbar-search {
+    flex: 0 0 auto;
+  }
+
+  .role-toolbar-card {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .role-search .header-search-input,
+  .role-rows-selector {
+    height: 42px;
+    min-height: 42px;
   }
 
   .role-rows-selector {

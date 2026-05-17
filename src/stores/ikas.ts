@@ -323,6 +323,26 @@ const unwrapCollection = (response: any): any[] => {
   return getIkasRecordId(response) ? [response] : [];
 };
 
+const isSoftDeletedIkasRecord = (record: any): boolean => {
+  if (!record || typeof record !== 'object') return false;
+
+  const deletedFlag =
+    record?.deleted_at ||
+    record?.deletedAt ||
+    record?.deleted_by ||
+    record?.deletedBy ||
+    record?.is_deleted ||
+    record?.isDeleted ||
+    record?.trashed ||
+    record?.data?.deleted_at ||
+    record?.data?.is_deleted;
+
+  if (typeof deletedFlag === 'boolean') return deletedFlag;
+  if (deletedFlag !== undefined && deletedFlag !== null && deletedFlag !== '') return true;
+
+  return ['deleted', 'terhapus', 'dihapus'].includes(String(record?.status || '').trim().toLowerCase());
+};
+
 const recordHasMeaningfulIkasSummary = (record: any): boolean => {
   const score = firstValue(record?.nilai_kematangan, record?.total_rata_rata, record?.score);
   const numericScore = typeof score === 'number' ? score : Number(String(score ?? '').replace(',', '.'));
@@ -549,7 +569,7 @@ export const useIkasStore = defineStore('ikas', {
     normalizeIkasRecords(response: any): any[] {
       return unwrapCollection(response).filter((record: any) => {
         const recordId = getIkasRecordId(record);
-        return !recordId || !this.hiddenIkasIds[String(recordId)];
+        return (!recordId || !this.hiddenIkasIds[String(recordId)]) && !isSoftDeletedIkasRecord(record);
       });
     },
 
@@ -810,7 +830,10 @@ export const useIkasStore = defineStore('ikas', {
       this.apiLoading = true;
       try {
         const deletedRecord = this.ikasRawRecords.find((record: any) => getIkasRecordId(record) === String(id));
-        await ikasService.deleteIkas(id);
+        await ikasService.deleteIkas(id, {
+          perusahaanId: deletedRecord ? getIkasRecordPerusahaanId(deletedRecord) : undefined,
+          year: deletedRecord ? getIkasRecordMeasurementYear(deletedRecord) : undefined,
+        });
         this.hideIkasId(id);
         
         // Find slug associated with this ID to clear local state
@@ -1001,7 +1024,35 @@ export const useIkasStore = defineStore('ikas', {
         return { success: false, error: 'ID perusahaan tidak ditemukan' };
       }
 
+      const findExistingBackendRecord = async (): Promise<string> => {
+        const listResponse = await ikasService.refreshIkasByPerusahaan(String(payload.id_perusahaan));
+        const records = unwrapCollection(listResponse).filter((record: any) => !isSoftDeletedIkasRecord(record));
+        const existingRecord = this.findLatestIkasRecord(
+          records,
+          String(payload.id_perusahaan),
+          String(payload.tahun_pengukuran || '')
+        );
+        const existingRecordId = getIkasRecordId(existingRecord);
+
+        if (existingRecordId) {
+          this.unhideIkasId(existingRecordId);
+          this.setBackendIkasId(slug, existingRecordId);
+          this.upsertSummaryRecord(existingRecord);
+          this.ikasRawRecords = [
+            ...this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== existingRecordId),
+            existingRecord,
+          ];
+        }
+
+        return existingRecordId;
+      };
+
       try {
+        const existingRecordId = await findExistingBackendRecord();
+        if (existingRecordId) {
+          return { success: true, id: existingRecordId };
+        }
+
         const created = await ikasService.createIkas(payload);
         const createdId = getIkasRecordId(created);
         if (!createdId) {
@@ -1011,6 +1062,14 @@ export const useIkasStore = defineStore('ikas', {
         this.setBackendIkasId(slug, createdId);
         return { success: true, id: createdId };
       } catch (error: any) {
+        const message = String(error?.message || '');
+        if (Number(error?.status) === 400 && /sudah ada/i.test(message)) {
+          const existingRecordId = await findExistingBackendRecord();
+          if (existingRecordId) {
+            return { success: true, id: existingRecordId };
+          }
+        }
+
         return { success: false, error: error?.message || 'Gagal membuat data IKAS' };
       }
     },
@@ -1282,8 +1341,34 @@ export const useIkasStore = defineStore('ikas', {
       this.setBackendIkasId(slug, null);
 
       try {
-        const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
-        const records = this.normalizeIkasRecords(listResponse);
+        let records: any[] = [];
+
+        if (preferredIkasId) {
+          try {
+            const preferredDetailed = await ikasService.getIkasById(preferredIkasId);
+            const preferredRecord = unwrapIkasResponse(preferredDetailed);
+            const preferredCompanyId = getIkasRecordPerusahaanId(preferredRecord);
+            const preferredYear = getIkasRecordMeasurementYear(preferredRecord);
+            const matchesCompany = !preferredCompanyId || preferredCompanyId === String(perusahaanId);
+            const matchesYear = !targetYear || !preferredYear || preferredYear === String(targetYear);
+
+            if (matchesCompany && matchesYear) {
+              records = [preferredRecord];
+            }
+          } catch (error: any) {
+            if (Number(error?.status) === 404) {
+              this.hideIkasId(preferredIkasId);
+            } else {
+              console.warn('[IKAS Store] Could not fetch preferred IKAS detail, falling back to perusahaan scope');
+            }
+          }
+        }
+
+        if (!records.length) {
+          const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
+          records = this.normalizeIkasRecords(listResponse);
+        }
+
         const buildCandidateRecords = (year = '') => records
           .filter((record: any) => (
             getIkasRecordPerusahaanId(record) === String(perusahaanId) &&

@@ -4,7 +4,7 @@
  */
 
 export interface Berita {
-    id: number;
+    id: number | string;
     judul: string;
     deskripsi: string;
     tags?: string[];

@@ -43,32 +43,36 @@ const animateComparison = async (quick = false) => {
     const elements = gsap.utils.toArray('.comparison-animate, .total-bar-row, .domain-comparison-card');
     const fills = gsap.utils.toArray('.total-bar-fill, .domain-bar-fill');
 
-    gsap.fromTo(
-      elements,
-      { y: quick ? 8 : 14, opacity: 0, scale: 0.99 },
-      {
-        y: 0,
-        opacity: 1,
-        scale: 1,
-        duration: quick ? 0.34 : 0.52,
-        stagger: quick ? 0.025 : 0.045,
-        ease: 'power3.out',
-        overwrite: 'auto',
-      },
-    );
+    if (elements.length) {
+      gsap.fromTo(
+        elements,
+        { y: quick ? 8 : 14, opacity: 0, scale: 0.99 },
+        {
+          y: 0,
+          opacity: 1,
+          scale: 1,
+          duration: quick ? 0.34 : 0.52,
+          stagger: quick ? 0.025 : 0.045,
+          ease: 'power3.out',
+          overwrite: 'auto',
+        },
+      );
+    }
 
-    gsap.fromTo(
-      fills,
-      { scaleX: 0, transformOrigin: 'left center' },
-      {
-        scaleX: 1,
-        duration: quick ? 0.45 : 0.68,
-        stagger: 0.018,
-        ease: 'power3.out',
-        overwrite: 'auto',
-        delay: quick ? 0.06 : 0.12,
-      },
-    );
+    if (fills.length) {
+      gsap.fromTo(
+        fills,
+        { scaleX: 0, transformOrigin: 'left center' },
+        {
+          scaleX: 1,
+          duration: quick ? 0.45 : 0.68,
+          stagger: 0.018,
+          ease: 'power3.out',
+          overwrite: 'auto',
+          delay: quick ? 0.06 : 0.12,
+        },
+      );
+    }
   }, root);
 };
 
@@ -112,6 +116,24 @@ const getRecordId = (record) => String(
   record?.data?.ID ||
   ''
 );
+
+const isSoftDeletedRecord = (record) => {
+  const deletedFlag =
+    record?.deleted_at ||
+    record?.deletedAt ||
+    record?.deleted_by ||
+    record?.deletedBy ||
+    record?.is_deleted ||
+    record?.isDeleted ||
+    record?.trashed ||
+    record?.data?.deleted_at ||
+    record?.data?.is_deleted;
+
+  if (typeof deletedFlag === 'boolean') return deletedFlag;
+  if (deletedFlag !== undefined && deletedFlag !== null && deletedFlag !== '') return true;
+
+  return ['deleted', 'terhapus', 'dihapus'].includes(String(record?.status || '').trim().toLowerCase());
+};
 
 const unwrapDetailedRecord = (response) => response?.data || response?.record || response?.ikas || response || null;
 
@@ -425,27 +447,6 @@ const normalizeIkasRecords = (response) => {
   return [];
 };
 
-const enrichRecordDetails = async (records) => {
-  const detailedRecords = await Promise.all(records.map(async (record) => {
-    if (hasDetailedIkasPayload(record)) return record;
-
-    const recordId = getRecordId(record);
-    if (!recordId) return record;
-
-    try {
-      const detailed = await ikasService.getIkasById(recordId);
-      const payload = unwrapDetailedRecord(detailed);
-      return payload && typeof payload === 'object'
-        ? { ...record, ...payload }
-        : record;
-    } catch {
-      return record;
-    }
-  }));
-
-  return detailedRecords;
-};
-
 // Fetch all IKAS records for the stakeholder
 const fetchAllRecords = async () => {
   if (!props.perusahaanId) return;
@@ -454,7 +455,9 @@ const fetchAllRecords = async () => {
   
   try {
     const response = await ikasService.getIkasByPerusahaan(props.perusahaanId);
-    const records = normalizeIkasRecords(response).filter((record) => !ikasStore.isHiddenIkasId(getRecordId(record)));
+    const records = normalizeIkasRecords(response).filter((record) => (
+      !ikasStore.isHiddenIkasId(getRecordId(record)) && !isSoftDeletedRecord(record)
+    ));
     
     if (records.length) {
       // Filter records for this perusahaan
@@ -462,7 +465,7 @@ const fetchAllRecords = async () => {
         String(r.perusahaan?.id || '') === String(props.perusahaanId) ||
         String(r.id_perusahaan || '') === String(props.perusahaanId)
       );
-      allIkasRecords.value = await enrichRecordDetails(filteredRecords);
+      allIkasRecords.value = filteredRecords.filter((record) => !isSoftDeletedRecord(record));
       
       // Only show years that really have IKAS data.
       const years = new Set();

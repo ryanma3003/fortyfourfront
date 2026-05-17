@@ -2010,7 +2010,7 @@ export default {
                       <td class="text-center align-middle">
                         <div class="d-flex gap-1 justify-content-center">
                           <router-link
-                            :to="`/stakeholders/${item.slug}`"
+                            :to="{ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } }"
                             class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
                             title="Lihat"
                           >
@@ -2167,11 +2167,11 @@ export default {
                     </div>
                   </div>
                   <div class="d-flex gap-1">
-                    <router-link
-                      :to="`/stakeholders/${item.slug}`"
-                      class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
-                      title="Lihat"
-                    >
+                          <router-link
+                            :to="{ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } }"
+                            class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
+                            title="Lihat"
+                          >
                       <i class="ri-eye-line"></i>
                     </router-link>
                     <router-link

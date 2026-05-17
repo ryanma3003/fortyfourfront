@@ -10,6 +10,8 @@ import type { Stakeholder } from '@/types/stakeholders.types';
 
 type StatusFilter = 'all' | 'validated' | 'draft' | 'edit-request';
 type IkasAction = 'validate' | 'approve' | 'reject';
+type SortKey = 'company' | 'score' | 'status' | 'updated';
+type SortDirection = 'asc' | 'desc';
 
 interface IkasRecord {
   id: string;
@@ -53,7 +55,7 @@ const ikasStore = useIkasStore();
 
 const pageData = {
   title: { label: 'Dashboards', path: '/dashboard' },
-  currentpage: 'IKAS Management',
+  currentpage: 'Manajemen IKAS',
   activepage: 'IKAS List',
 };
 
@@ -70,6 +72,8 @@ const filtersOpen = ref(true);
 const selectedRecord = ref<IkasRecord | null>(null);
 const currentPage = ref(1);
 const pageSize = ref(12);
+const sortKey = ref<SortKey>('updated');
+const sortDirection = ref<SortDirection>('desc');
 const lastRefreshAt = ref<Date | null>(null);
 const actionLoading = ref<Record<string, IkasAction | undefined>>({});
 const actionError = ref('');
@@ -91,6 +95,24 @@ const normalizeResponse = (response: any): any[] => {
   if (Array.isArray(response?.records)) return response.records;
   if (response?.id) return [response];
   return [];
+};
+
+const isSoftDeletedRecord = (record: any): boolean => {
+  const deletedFlag =
+    record?.deleted_at ||
+    record?.deletedAt ||
+    record?.deleted_by ||
+    record?.deletedBy ||
+    record?.is_deleted ||
+    record?.isDeleted ||
+    record?.trashed ||
+    record?.data?.deleted_at ||
+    record?.data?.is_deleted;
+
+  if (typeof deletedFlag === 'boolean') return deletedFlag;
+  if (deletedFlag !== undefined && deletedFlag !== null && deletedFlag !== '') return true;
+
+  return ['deleted', 'terhapus', 'dihapus'].includes(String(record?.status || '').trim().toLowerCase());
 };
 
 const numberValue = (value: unknown): number => {
@@ -326,9 +348,9 @@ const getStatus = (record: any, slug: string): IkasRecord['status'] => {
 };
 
 const statusLabelMap: Record<IkasRecord['status'], string> = {
-  validated: 'Active',
-  draft: 'Inactive',
-  'edit-request': 'Edit Request',
+  validated: 'Tervalidasi',
+  draft: 'Belum Divalidasi',
+  'edit-request': 'Permintaan Edit',
 };
 
 /**
@@ -442,10 +464,75 @@ const months = [
   { value: '12', label: 'Desember' },
 ];
 
+const sortDefaults: Record<SortKey, SortDirection> = {
+  company: 'asc',
+  score: 'asc',
+  status: 'asc',
+  updated: 'desc',
+};
+
+const sortLabels: Record<SortKey, string> = {
+  company: 'Nama perusahaan',
+  score: 'Skor IKAS',
+  status: 'Status',
+  updated: 'Terakhir diperbarui',
+};
+
+const statusSortOrder: Record<IkasRecord['status'], number> = {
+  'edit-request': 0,
+  draft: 1,
+  validated: 2,
+};
+
+const compareText = (a: string, b: string) => a.localeCompare(b, 'id-ID', { sensitivity: 'base' });
+
+const compareRecords = (a: IkasRecord, b: IkasRecord): number => {
+  if (sortKey.value === 'company') {
+    return compareText(a.companyName, b.companyName);
+  }
+
+  if (sortKey.value === 'score') {
+    return a.score - b.score || compareText(a.companyName, b.companyName);
+  }
+
+  if (sortKey.value === 'status') {
+    return statusSortOrder[a.status] - statusSortOrder[b.status] || a.score - b.score;
+  }
+
+  return (parseIkasDate(a.updatedAt)?.getTime() || 0) - (parseIkasDate(b.updatedAt)?.getTime() || 0);
+};
+
+const sortRecords = (items: IkasRecord[]) => {
+  const direction = sortDirection.value === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => compareRecords(a, b) * direction);
+};
+
+const toggleSort = (key: SortKey) => {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+    return;
+  }
+
+  sortKey.value = key;
+  sortDirection.value = sortDefaults[key];
+};
+
+const getSortAria = (key: SortKey) => {
+  if (sortKey.value !== key) return 'none';
+  return sortDirection.value === 'asc' ? 'ascending' : 'descending';
+};
+
+const getSortIcon = (key: SortKey) => {
+  if (sortKey.value !== key) return 'ri-expand-up-down-line';
+  return sortDirection.value === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line';
+};
+
+const getSortTitle = (key: SortKey) => `Urutkan berdasarkan ${sortLabels[key]}`;
+
 const filteredRecords = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
 
-  return records.value
+  const filtered = records.value
     .filter((item) => {
       const measurementDate = parseIkasDate(item.measurementDate || item.createdAt || item.updatedAt || '');
       const itemMonth = measurementDate ? String(measurementDate.getMonth() + 1) : '';
@@ -459,8 +546,9 @@ const filteredRecords = computed(() => {
       const matchesMonth = monthFilter.value === 'all' || itemMonth === monthFilter.value;
 
       return matchesQuery && matchesSector && matchesSubSector && matchesStatus && matchesMonth;
-    })
-    .sort((a, b) => (parseIkasDate(b.updatedAt)?.getTime() || 0) - (parseIkasDate(a.updatedAt)?.getTime() || 0));
+    });
+
+  return sortRecords(filtered);
 });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRecords.value.length / pageSize.value)));
@@ -475,7 +563,7 @@ const latestUpdate = computed(() => {
     .filter(Boolean)
     .sort((a, b) => b - a)[0];
 
-  return latest ? formatRelativeTime(latest) : 'No updates';
+  return latest ? formatRelativeTime(latest) : 'Belum ada pembaruan';
 });
 
 const averageScore = computed(() => {
@@ -559,23 +647,23 @@ const attentionStats = computed(() => {
 
   return [
     {
-      label: 'Edit Request',
+      label: 'Permintaan Edit',
       value: statusCounts.value.editRequest,
-      hint: 'Butuh keputusan Acc / Reject',
+      hint: 'Butuh keputusan setujui / tolak',
       tone: 'edit-request',
       icon: 'ri-edit-2-line',
     },
     {
       label: 'Di Bawah Target',
       value: belowTarget,
-      hint: 'Score belum mencapai target',
+      hint: 'Skor belum mencapai target',
       tone: 'risk',
       icon: 'ri-arrow-down-line',
     },
     {
-      label: 'Inactive',
+      label: 'Belum Divalidasi',
       value: statusCounts.value.draft,
-      hint: 'Belum active / validasi',
+      hint: 'Menunggu validasi admin',
       tone: 'draft',
       icon: 'ri-time-line',
     },
@@ -610,7 +698,7 @@ const attentionRecords = computed(() => records.value
         priority: 2,
         tone: 'risk',
         icon: 'ri-arrow-down-line',
-        reason: `Di bawah target ${(record.targetScore - record.score).toFixed(2)} poin`,
+        reason: targetComparisonLabel(record),
       };
     }
 
@@ -630,7 +718,7 @@ const attentionRecords = computed(() => records.value
         priority: 4,
         tone: 'draft',
         icon: 'ri-time-line',
-        reason: 'Belum active / perlu validasi',
+        reason: 'Belum divalidasi admin',
       };
     }
 
@@ -659,41 +747,57 @@ const visibleRangeStart = computed(() => {
 
 const visibleRangeEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredRecords.value.length));
 
+const getTargetGap = (record: Pick<IkasRecord, 'score' | 'targetScore'>) => record.targetScore - record.score;
+
+const targetComparisonLabel = (record: Pick<IkasRecord, 'score' | 'targetScore'>) => {
+  if (!record.targetScore) return 'Target belum diatur';
+
+  const gap = getTargetGap(record);
+  const value = Math.abs(gap).toFixed(2);
+  const target = record.targetScore.toFixed(2);
+
+  return gap > 0
+    ? `Kurang ${value} dari target ${target}`
+    : `Memenuhi target ${target}`;
+};
+
+const targetDeltaLabel = (record: Pick<IkasRecord, 'score' | 'targetScore'>) => {
+  if (!record.targetScore) return 'Belum diatur';
+
+  const gap = getTargetGap(record);
+  const value = Math.abs(gap).toFixed(2);
+
+  return gap > 0 ? `Kurang ${value}` : `Aman +${value}`;
+};
+
 const kpiItems = computed<KpiItem[]>(() => [
   {
     label: 'Total IKAS',
     value: String(records.value.length),
-    hint: `${filteredRecords.value.length} visible after filters`,
+    hint: `${filteredRecords.value.length} terlihat setelah filter`,
     icon: 'ri-database-2-line',
     tone: 'blue',
   },
   {
-    label: 'Active IKAS',
+    label: 'Tervalidasi',
     value: String(statusCounts.value.validated),
-    hint: 'Validated assessments',
+    hint: 'Assessment sudah disahkan',
     icon: 'ri-shield-check-line',
     tone: 'green',
   },
   {
-    label: 'Inactive IKAS',
+    label: 'Belum Divalidasi',
     value: String(statusCounts.value.draft),
-    hint: 'Draft or incomplete',
+    hint: 'Menunggu validasi admin',
     icon: 'ri-time-line',
     tone: 'amber',
   },
   {
-    label: 'Average Score',
+    label: 'Skor Rata-rata',
     value: averageScore.value.toFixed(2),
     hint: getMaturityLabel(averageScore.value),
     icon: 'ri-pulse-line',
     tone: 'cyan',
-  },
-  {
-    label: 'Last Updated',
-    value: latestUpdate.value,
-    hint: lastRefreshAt.value ? `Synced ${formatRelativeTime(lastRefreshAt.value)}` : 'Waiting for sync',
-    icon: 'ri-refresh-line',
-    tone: 'slate',
   },
 ]);
 
@@ -708,7 +812,10 @@ const clearFilters = () => {
 
 let loadDataPromise: Promise<void> | null = null;
 
-const loadData = async (showLoading = true) => {
+const loadData = async (
+  showLoading = true,
+  options: { forceRefresh?: boolean } = {},
+) => {
   if (loadDataPromise) return loadDataPromise;
   if (!showLoading && document.visibilityState === 'hidden') return;
 
@@ -717,10 +824,10 @@ const loadData = async (showLoading = true) => {
   loadDataPromise = (async () => {
     try {
       await Promise.all([
-        ikasStore.initialized ? ikasStore.refresh() : ikasStore.initialize(),
+        options.forceRefresh ? ikasStore.refresh() : (ikasStore.initialized ? Promise.resolve() : ikasStore.initialize()),
         stakeholdersStore.initialize(),
       ]);
-      rawIkasRecords.value = normalizeResponse(ikasStore.ikasRawRecords);
+      rawIkasRecords.value = normalizeResponse(ikasStore.ikasRawRecords).filter((record) => !isSoftDeletedRecord(record));
       lastRefreshAt.value = new Date();
       if (!records.value.length) {
         selectedRecord.value = null;
@@ -738,6 +845,8 @@ const loadData = async (showLoading = true) => {
 
   return loadDataPromise;
 };
+
+const handleManualRefresh = () => loadData(true, { forceRefresh: true });
 
 const scrollDetailPreviewIntoView = () => {
   if (typeof window === 'undefined') return;
@@ -960,8 +1069,8 @@ const actionConfirmMeta = computed(() => {
   if (pending.action === 'validate') {
     return {
       title: 'Validasi data IKAS?',
-      message: `Pastikan data IKAS ${pending.record.companyName} sudah benar sebelum diubah menjadi Active.`,
-      confirmLabel: 'Validate',
+      message: `Pastikan data IKAS ${pending.record.companyName} sudah benar sebelum ditandai tervalidasi.`,
+      confirmLabel: 'Validasi',
       icon: 'ri-shield-check-line',
       tone: 'validate',
     };
@@ -971,7 +1080,7 @@ const actionConfirmMeta = computed(() => {
     return {
       title: 'Setujui permintaan edit?',
       message: `Permintaan edit IKAS ${pending.record.companyName} akan disetujui dan status validasinya dibuka.`,
-      confirmLabel: 'Acc',
+      confirmLabel: 'Setujui',
       icon: 'ri-check-line',
       tone: 'approve',
     };
@@ -980,7 +1089,7 @@ const actionConfirmMeta = computed(() => {
   return {
     title: 'Tolak permintaan edit?',
     message: `Permintaan edit IKAS ${pending.record.companyName} akan ditolak.`,
-    confirmLabel: 'Reject',
+    confirmLabel: 'Tolak',
     icon: 'ri-close-line',
     tone: 'reject',
   };
@@ -1377,7 +1486,7 @@ watch(sectorFilter, () => {
   subSectorFilter.value = 'all';
 });
 
-watch([searchQuery, sectorFilter, subSectorFilter, statusFilter, yearFilter, monthFilter, pageSize], () => {
+watch([searchQuery, sectorFilter, subSectorFilter, statusFilter, yearFilter, monthFilter, pageSize, sortKey, sortDirection], () => {
   currentPage.value = 1;
 });
 
@@ -1527,7 +1636,7 @@ const FilterBar = defineComponent({
             onClick: () => emit('update:filtersOpen', !props.filtersOpen),
           }, [
             h('i', { class: props.filtersOpen ? 'ri-arrow-up-s-line' : 'ri-equalizer-line', 'aria-hidden': 'true' }),
-            h('span', props.filtersOpen ? 'Hide' : 'Filters'),
+            h('span', props.filtersOpen ? 'Sembunyikan' : 'Filter'),
             props.activeFiltersCount ? h('b', props.activeFiltersCount) : null,
           ]),
         ]),
@@ -1560,9 +1669,9 @@ const FilterBar = defineComponent({
             onChange: (event: Event) => emit('update:statusFilter', (event.target as HTMLSelectElement).value),
           }, [
             h('option', { value: 'all' }, 'Semua status'),
-            h('option', { value: 'validated' }, 'Active'),
-            h('option', { value: 'draft' }, 'Inactive'),
-            h('option', { value: 'edit-request' }, 'Edit request'),
+            h('option', { value: 'validated' }, 'Tervalidasi'),
+            h('option', { value: 'draft' }, 'Belum divalidasi'),
+            h('option', { value: 'edit-request' }, 'Permintaan edit'),
           ]),
         ]),
         h('label', { class: 'ikas-field' }, [
@@ -1646,18 +1755,18 @@ const IkasRecordActions = defineComponent({
     return () => {
       if (props.item.status === 'edit-request') {
         return h('div', { class: ['ikas-record-actions', isEditRequest.value ? 'is-request-actions' : ''] }, [
-          button('approve', 'Acc', 'ri-check-line', 'approve'),
-          button('reject', 'Reject', 'ri-close-line', 'reject'),
+          button('approve', 'Setujui', 'ri-check-line', 'approve'),
+          button('reject', 'Tolak', 'ri-close-line', 'reject'),
         ]);
       }
 
       if (props.item.status === 'draft') {
         return h('div', { class: 'ikas-record-actions' }, [
-          button('validate', 'Validate', 'ri-shield-check-line', 'validate'),
+          button('validate', 'Validasi', 'ri-shield-check-line', 'validate'),
         ]);
       }
 
-      return h('span', { class: 'ikas-no-action' }, 'Validated');
+      return h('span', { class: 'ikas-no-action' }, 'Tervalidasi');
     };
   },
 });
@@ -1692,7 +1801,7 @@ const IkasTableRow = defineComponent({
     return () => h('tr', {
       class: ['ikas-table-row', props.selected ? 'is-selected' : ''],
       tabindex: 0,
-      'aria-label': `Open IKAS preview for ${props.item.companyName}`,
+      'aria-label': `Buka pratinjau IKAS untuk ${props.item.companyName}`,
       onClick: () => emit('select', props.item),
       onKeydown,
     }, [
@@ -1713,15 +1822,23 @@ const IkasTableRow = defineComponent({
       h('td', [h(IkasScore, { score: props.item.score })]),
       h('td', [
         h('div', { class: 'ikas-target-cell' }, [
-          h('span', props.item.targetScore > 0 ? props.item.targetScore.toFixed(2) : '-'),
-          props.item.targetScore > 0 && props.item.score < props.item.targetScore
-            ? h('i', { 
-                class: 'ri-error-warning-fill ms-1 text-warning', 
-                style: 'font-size: 1.1rem;',
-                title: `Di bawah target! Selisih ${(props.item.targetScore - props.item.score).toFixed(2)}` 
-              })
-            : null
-        ])
+          h('div', { class: 'ikas-target-main' }, [
+            h('span', 'Target'),
+            h('strong', props.item.targetScore > 0 ? props.item.targetScore.toFixed(2) : '-'),
+          ]),
+          props.item.targetScore > 0
+            ? h('small', {
+                class: ['ikas-target-delta', props.item.score < props.item.targetScore ? 'is-negative' : 'is-positive'],
+                title: targetComparisonLabel(props.item),
+              }, [
+                h('span', { class: 'ikas-target-dot', 'aria-hidden': 'true' }),
+                h('span', targetDeltaLabel(props.item)),
+              ])
+            : h('small', { class: 'ikas-target-delta is-neutral' }, [
+                h('span', { class: 'ikas-target-dot', 'aria-hidden': 'true' }),
+                h('span', 'Belum diatur'),
+              ]),
+        ]),
       ]),
       h('td', [statusBadge()]),
       h('td', [
@@ -1741,8 +1858,8 @@ const IkasTableRow = defineComponent({
         h('button', {
           class: 'ikas-row-action',
           type: 'button',
-          'aria-label': `Preview ${props.item.companyName}`,
-          title: 'Preview detail',
+          'aria-label': `Pratinjau ${props.item.companyName}`,
+          title: 'Pratinjau detail',
           onClick: (event: MouseEvent) => {
             event.stopPropagation();
             emit('select', props.item);
@@ -1786,7 +1903,7 @@ const IkasCard = defineComponent({
       role: 'button',
       onClick: () => emit('select', props.item),
       onKeydown,
-      'aria-label': `Open IKAS preview for ${props.item.companyName}`,
+      'aria-label': `Buka pratinjau IKAS untuk ${props.item.companyName}`,
     }, [
       h('div', { class: 'ikas-mobile-card-top' }, [
         props.item.logo
@@ -1805,9 +1922,9 @@ const IkasCard = defineComponent({
         h('div', { class: 'ikas-mobile-score' }, [
           h(IkasScore, { score: props.item.score }),
           props.item.targetScore > 0 && props.item.score < props.item.targetScore
-            ? h('span', { class: 'ikas-below-target-badge', title: `Di bawah target ${props.item.targetScore.toFixed(2)}` }, [
+            ? h('span', { class: 'ikas-below-target-badge', title: targetComparisonLabel(props.item) }, [
                 h('i', { class: 'ri-alarm-warning-line', 'aria-hidden': 'true' }),
-                h('span', `Target ${props.item.targetScore.toFixed(2)}`),
+                h('span', targetComparisonLabel(props.item)),
               ])
             : null,
         ]),
@@ -1834,8 +1951,8 @@ const IkasCard = defineComponent({
     <header class="ikas-hero-header">
       <div class="ikas-hero-content">
         <div class="ikas-hero-copy">
-          <div class="ikas-inline-breadcrumb">Dashboard <span>/</span> IKAS <span>/</span> Management</div>
-          <h1>IKAS Management</h1>
+          <div class="ikas-inline-breadcrumb">Dashboard <span>/</span> IKAS <span>/</span> Manajemen</div>
+          <h1>Manajemen IKAS</h1>
           <p>Monitoring penilaian keamanan siber perusahaan dengan ringkasan skor, status validasi, dan rincian domain.</p>
           <div class="mt-3">
             <button class="btn btn-primary btn-wave" @click="router.push('/dashboard/ikasview')">
@@ -1870,7 +1987,7 @@ const IkasCard = defineComponent({
 
     <template v-if="loading">
       <section class="ikas-kpi-grid" aria-label="IKAS summary loading">
-        <article v-for="index in 5" :key="index" class="ikas-kpi-card ikas-kpi-skeleton">
+        <article v-for="index in 4" :key="index" class="ikas-kpi-card ikas-kpi-skeleton">
           <div class="ikas-kpi-topline">
             <div class="ikas-kpi-icon ikas-skel-icon"></div>
           </div>
@@ -1931,7 +2048,7 @@ const IkasCard = defineComponent({
           </div>
         </div>
 
-        <aside class="ikas-detail-panel is-summary" aria-label="IKAS insight panel loading">
+        <aside class="ikas-detail-panel is-summary" aria-label="Panel ringkasan IKAS sedang dimuat">
           <div class="ikas-skeleton-panel-shell">
             <div class="ikas-skeleton-summary-header">
               <div>
@@ -2001,7 +2118,7 @@ const IkasCard = defineComponent({
         :months="months"
         :loading="loading"
         :active-filters-count="activeFiltersCount"
-        @refresh="loadData"
+        @refresh="handleManualRefresh"
         @clear="clearFilters"
       />
 
@@ -2009,14 +2126,16 @@ const IkasCard = defineComponent({
         <div class="ikas-list-shell">
           <div class="ikas-list-header">
             <div>
-              <h2>All IKAS Records</h2>
+              <h2>Daftar Assessment IKAS</h2>
               <p>
-                Showing {{ visibleRangeStart }}-{{ visibleRangeEnd }} of {{ filteredRecords.length }} assessments
+                Menampilkan {{ visibleRangeStart }}-{{ visibleRangeEnd }} dari {{ filteredRecords.length }} assessment
+                <span v-if="records.length"> · Data terbaru {{ latestUpdate }}</span>
+                <span v-if="lastRefreshAt"> · Sinkron {{ formatRelativeTime(lastRefreshAt) }}</span>
               </p>
             </div>
             <label class="ikas-page-size">
-              <span>Rows</span>
-              <select v-model.number="pageSize" aria-label="Rows per page">
+              <span>Baris</span>
+              <select v-model.number="pageSize" aria-label="Baris per halaman">
                 <option :value="8">8</option>
                 <option :value="12">12</option>
                 <option :value="20">20</option>
@@ -2028,9 +2147,9 @@ const IkasCard = defineComponent({
             <div class="ikas-empty-illustration" aria-hidden="true">
               <i class="ri-folder-search-line"></i>
             </div>
-            <h3>No IKAS data found</h3>
-            <p>Try adjusting the search, sector, status, or date range filters.</p>
-            <button class="ikas-refresh-btn" type="button" @click="clearFilters">Clear filters</button>
+            <h3>Data IKAS tidak ditemukan</h3>
+            <p>Coba ubah pencarian, sektor, status, atau filter periode.</p>
+            <button class="ikas-refresh-btn" type="button" @click="clearFilters">Reset filter</button>
           </div>
 
           <template v-else>
@@ -2047,11 +2166,31 @@ const IkasCard = defineComponent({
                 </colgroup>
                 <thead>
                   <tr>
-                    <th scope="col">Company Name</th>
-                    <th scope="col">IKAS Score</th>
+                    <th scope="col" :aria-sort="getSortAria('company')">
+                      <button class="ikas-sort-button" type="button" :title="getSortTitle('company')" @click="toggleSort('company')">
+                        <span>Nama Perusahaan</span>
+                        <i :class="getSortIcon('company')" aria-hidden="true"></i>
+                      </button>
+                    </th>
+                    <th scope="col" :aria-sort="getSortAria('score')">
+                      <button class="ikas-sort-button" type="button" :title="getSortTitle('score')" @click="toggleSort('score')">
+                        <span>Skor IKAS</span>
+                        <i :class="getSortIcon('score')" aria-hidden="true"></i>
+                      </button>
+                    </th>
                     <th scope="col">Target</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Last Updated</th>
+                    <th scope="col" :aria-sort="getSortAria('status')">
+                      <button class="ikas-sort-button" type="button" :title="getSortTitle('status')" @click="toggleSort('status')">
+                        <span>Status</span>
+                        <i :class="getSortIcon('status')" aria-hidden="true"></i>
+                      </button>
+                    </th>
+                    <th scope="col" :aria-sort="getSortAria('updated')">
+                      <button class="ikas-sort-button" type="button" :title="getSortTitle('updated')" @click="toggleSort('updated')">
+                        <span>Diperbarui</span>
+                        <i :class="getSortIcon('updated')" aria-hidden="true"></i>
+                      </button>
+                    </th>
                     <th scope="col">Tindakan</th>
                     <th scope="col">Detail</th>
                   </tr>
@@ -2085,11 +2224,11 @@ const IkasCard = defineComponent({
             <nav class="ikas-pagination" aria-label="IKAS pagination">
               <button type="button" :disabled="currentPage === 1" @click="goToPage(currentPage - 1)">
                 <i class="ri-arrow-left-s-line" aria-hidden="true"></i>
-                Previous
+                Sebelumnya
               </button>
-              <span>Page {{ currentPage }} of {{ totalPages }}</span>
+              <span>Halaman {{ currentPage }} dari {{ totalPages }}</span>
               <button type="button" :disabled="currentPage === totalPages" @click="goToPage(currentPage + 1)">
-                Next
+                Berikutnya
                 <i class="ri-arrow-right-s-line" aria-hidden="true"></i>
               </button>
             </nav>
@@ -2100,11 +2239,11 @@ const IkasCard = defineComponent({
           ref="ikasDetailPanelRef"
           class="ikas-detail-panel"
           :class="{ 'is-summary': !selectedRecord }"
-          aria-label="IKAS insight panel"
+          aria-label="Panel insight IKAS"
           tabindex="-1"
         >
         <template v-if="selectedRecord">
-        <button class="ikas-panel-close" type="button" aria-label="Show IKAS analytics" @click="closePanel">
+        <button class="ikas-panel-close" type="button" aria-label="Tampilkan ringkasan IKAS" @click="closePanel">
           <i class="ri-close-line" aria-hidden="true"></i>
         </button>
 
@@ -2119,7 +2258,7 @@ const IkasCard = defineComponent({
             {{ initials(selectedRecord.companyName) }}
           </span>
           <div>
-            <span class="ikas-eyebrow">Detail Preview</span>
+            <span class="ikas-eyebrow">Pratinjau Detail</span>
             <h2>{{ selectedRecord.companyName }}</h2>
             <p>{{ selectedRecord.sector }} / {{ selectedRecord.subSector }}</p>
           </div>
@@ -2134,7 +2273,7 @@ const IkasCard = defineComponent({
           <i class="ri-error-warning-fill text-warning" aria-hidden="true" style="font-size: 1.5rem;"></i>
           <div>
             <strong>Peringatan: Skor Di Bawah Target</strong>
-            <span>Skor saat ini ({{ selectedRecord.score.toFixed(2) }}) tidak mencapai target ({{ selectedRecord.targetScore.toFixed(2) }}).</span>
+            <span>{{ targetComparisonLabel(selectedRecord) }}. Skor saat ini {{ selectedRecord.score.toFixed(2) }}.</span>
           </div>
         </div>
 
@@ -2143,7 +2282,7 @@ const IkasCard = defineComponent({
           <span>{{ actionError }}</span>
         </div>
 
-        <div class="ikas-detail-actions" aria-label="IKAS actions">
+        <div class="ikas-detail-actions" aria-label="Aksi IKAS">
           <IkasRecordActions
             :item="selectedRecord"
             :pending-action="pendingActionFor(selectedRecord)"
@@ -2156,7 +2295,7 @@ const IkasCard = defineComponent({
           <p>{{ selectedRecord.editRequestReason }}</p>
         </div>
 
-        <div class="ikas-detail-facts" aria-label="Selected IKAS summary">
+        <div class="ikas-detail-facts" aria-label="Ringkasan IKAS terpilih">
           <div>
             <span>Sektor</span>
             <strong>{{ selectedRecord.sector }}</strong>
@@ -2169,13 +2308,13 @@ const IkasCard = defineComponent({
 
         <div class="ikas-panel-score">
           <div>
-            <span>IKAS Score</span>
+            <span>Skor IKAS</span>
             <strong>{{ selectedRecord.score.toFixed(2) }}</strong>
             <small>{{ getMaturityLabel(selectedRecord.score) }}</small>
             <div class="ikas-score-target">
               <span>Target {{ selectedRecord.targetScore ? selectedRecord.targetScore.toFixed(2) : '-' }}</span>
               <b :class="!selectedRecord.targetScore ? 'is-neutral' : selectedRecord.score >= selectedRecord.targetScore ? 'is-positive' : 'is-negative'">
-                {{ selectedRecord.targetScore ? (selectedRecord.score - selectedRecord.targetScore).toFixed(2) : '-' }}
+                {{ selectedRecord.targetScore ? targetComparisonLabel(selectedRecord) : '-' }}
               </b>
             </div>
           </div>
@@ -2202,7 +2341,7 @@ const IkasCard = defineComponent({
 
         <div class="ikas-domain-card">
           <div class="ikas-card-title">
-            <h3>Domain Breakdown</h3>
+            <h3>Rincian Domain</h3>
             <span>{{ selectedRecord.domains.length }} domain</span>
           </div>
           <div v-for="domain in selectedRecord.domains" :key="domain.key" class="ikas-domain-row">
@@ -2217,26 +2356,32 @@ const IkasCard = defineComponent({
         </div>
 
         <div class="ikas-panel-meta">
-          <div>
-            <span>Respondent</span>
-            <strong>{{ selectedRecord.respondent }}</strong>
+          <div class="ikas-meta-heading">
+            <h3>Informasi Pengisi</h3>
+            <span>{{ selectedRecord.statusLabel }}</span>
           </div>
-          <div>
-            <span>Position</span>
-            <strong>{{ selectedRecord.position }}</strong>
-          </div>
-          <div>
-            <span>Phone</span>
-            <strong>{{ selectedRecord.phone || '-' }}</strong>
-          </div>
-          <div>
-            <span>Target</span>
-            <strong>{{ selectedRecord.targetScore ? selectedRecord.targetScore.toFixed(2) : '-' }}</strong>
-          </div>
-          <div>
-            <span>Updated</span>
-            <strong>{{ formatDate(selectedRecord.updatedAt) }}</strong>
-          </div>
+          <dl class="ikas-meta-list">
+            <div>
+              <dt>Responden</dt>
+              <dd>{{ selectedRecord.respondent }}</dd>
+            </div>
+            <div>
+              <dt>Jabatan</dt>
+              <dd>{{ selectedRecord.position }}</dd>
+            </div>
+            <div>
+              <dt>Telepon</dt>
+              <dd>{{ selectedRecord.phone || '-' }}</dd>
+            </div>
+            <div>
+              <dt>Target</dt>
+              <dd>{{ selectedRecord.targetScore ? selectedRecord.targetScore.toFixed(2) : '-' }}</dd>
+            </div>
+            <div>
+              <dt>Diperbarui</dt>
+              <dd>{{ formatDate(selectedRecord.updatedAt) }}</dd>
+            </div>
+          </dl>
         </div>
 
         <button class="ikas-open-detail" type="button" @click="openFullDetail">
@@ -2253,14 +2398,14 @@ const IkasCard = defineComponent({
             :class="exportLoadingId === selectedRecord.id ? 'ri-loader-4-line ikas-action-spin' : 'ri-file-pdf-line'"
             aria-hidden="true"
           ></i>
-          <span>{{ exportLoadingId === selectedRecord.id ? 'Mengekspor...' : 'Export PDF' }}</span>
+          <span>{{ exportLoadingId === selectedRecord.id ? 'Mengekspor...' : 'Ekspor PDF' }}</span>
         </button>
         </template>
 
         <template v-else>
           <div class="ikas-summary-hero">
             <div>
-              <span class="ikas-eyebrow">Admin Attention</span>
+              <span class="ikas-eyebrow">Perlu Ditindak</span>
               <h2>Yang perlu ditindak</h2>
               <p>{{ attentionRecords.length }} prioritas teratas dari {{ records.length }} assessment IKAS.</p>
             </div>
@@ -2269,7 +2414,7 @@ const IkasCard = defineComponent({
             </span>
           </div>
 
-          <div class="ikas-attention-grid" aria-label="IKAS admin attention counters">
+          <div class="ikas-attention-grid" aria-label="Jumlah IKAS yang perlu ditindak">
             <div v-for="item in attentionStats" :key="item.label" :class="['ikas-attention-stat', item.tone]">
               <i :class="item.icon" aria-hidden="true"></i>
               <span>{{ item.label }}</span>
@@ -2667,7 +2812,7 @@ const IkasCard = defineComponent({
 .ikas-kpi-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .ikas-kpi-card {
@@ -5845,25 +5990,6 @@ const IkasCard = defineComponent({
   margin-top: 12px;
 }
 
-.ikas-panel-meta > div {
-  background: #f8fafc;
-  border-color: #e8eef7;
-  border-radius: 8px;
-  padding: 9px;
-}
-
-.ikas-panel-meta span {
-  font-size: 9.5px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.ikas-panel-meta strong {
-  font-size: 11.5px;
-  font-weight: 800;
-  margin-top: 4px;
-}
-
 .ikas-open-detail {
   align-items: center;
   background: #0f172a;
@@ -5960,14 +6086,12 @@ const IkasCard = defineComponent({
 }
 
 .ikas-detail-facts > div,
-.ikas-detail-timeline > div,
-.ikas-panel-meta > div {
+.ikas-detail-timeline > div {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .ikas-detail-facts > div:hover,
-.ikas-detail-timeline > div:hover,
-.ikas-panel-meta > div:hover {
+.ikas-detail-timeline > div:hover {
   border-color: #c7d7ee;
 }
 
@@ -6013,12 +6137,81 @@ const IkasCard = defineComponent({
 }
 
 .ikas-panel-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: block;
 }
 
-.ikas-panel-meta > div:nth-child(5) {
-  grid-column: span 1;
+.ikas-meta-heading {
+  align-items: center;
+  border-bottom: 1px solid #e8eef7;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 2px;
+  padding-bottom: 10px;
+}
+
+.ikas-meta-heading h3 {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.ikas-meta-heading span {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  padding: 5px 7px;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.ikas-meta-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.ikas-meta-list > div {
+  align-items: baseline;
+  border-bottom: 1px solid #eef2f7;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-width: 0;
+  padding: 9px 0;
+}
+
+.ikas-meta-list > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.ikas-meta-list dt {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ikas-meta-list dd {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ikas-open-detail {
@@ -6492,39 +6685,121 @@ const IkasCard = defineComponent({
 }
 
 .ikas-col-company {
-  width: 30%;
+  width: 27%;
 }
 
 .ikas-col-score {
-  width: 15%;
-}
-
-.ikas-col-target {
-  width: 10%;
-}
-
-.ikas-col-status {
   width: 14%;
 }
 
+.ikas-col-target {
+  width: 12%;
+}
+
+.ikas-col-status {
+  width: 16%;
+}
+
 .ikas-col-updated {
-  width: 15%;
+  width: 12%;
 }
 
 .ikas-col-actions {
-  width: 10%;
+  width: 12%;
 }
 
 .ikas-col-detail {
-  width: 6%;
+  width: 7%;
 }
 
-.ikas-target-cell {
-  display: flex;
+.ikas-page :deep(.ikas-target-cell) {
   align-items: center;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.ikas-page :deep(.ikas-target-main) {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: inline-flex;
+  gap: 5px;
+  min-height: 0;
+  padding: 0;
+}
+
+.ikas-page :deep(.ikas-target-main span) {
+  color: #64748b;
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.ikas-page :deep(.ikas-target-main strong) {
+  color: #0f172a;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ikas-page :deep(.ikas-target-delta) {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
   gap: 4px;
-  font-weight: 600;
-  color: #475569;
+  line-height: 1.2;
+  max-width: 100%;
+  min-height: 18px;
+  overflow: hidden;
+  padding: 2px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ikas-page :deep(.ikas-target-dot) {
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 5px;
+  width: 5px;
+}
+
+.ikas-page :deep(.ikas-target-delta.is-negative) {
+  background: #fff1f2;
+  border: 0;
+  color: #be123c;
+}
+
+.ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot) {
+  background: #e11d48;
+}
+
+.ikas-page :deep(.ikas-target-delta.is-positive) {
+  background: #ecfdf5;
+  border: 0;
+  color: #166534;
+}
+
+.ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot) {
+  background: #16a34a;
+}
+
+.ikas-page :deep(.ikas-target-delta.is-neutral) {
+  background: #f8fafc;
+  border: 0;
+  color: #64748b;
+}
+
+.ikas-page :deep(.ikas-target-delta.is-neutral .ikas-target-dot) {
+  background: #94a3b8;
 }
 
 .ikas-warning-top {
@@ -6548,6 +6823,41 @@ const IkasCard = defineComponent({
   white-space: nowrap;
 }
 
+.ikas-sort-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 4px;
+  justify-content: flex-start;
+  line-height: 1;
+  padding: 0;
+  text-align: inherit;
+  text-transform: inherit;
+  white-space: nowrap;
+}
+
+.ikas-sort-button i {
+  color: #2563eb;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.72;
+}
+
+.ikas-sort-button:hover i,
+.ikas-sort-button:focus-visible i {
+  opacity: 1;
+}
+
+.ikas-sort-button:focus-visible {
+  border-radius: 6px;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  outline: 0;
+}
+
 .ikas-table th,
 .ikas-table td {
   box-sizing: border-box;
@@ -6555,32 +6865,37 @@ const IkasCard = defineComponent({
 
 .ikas-table th:nth-child(1),
 .ikas-table td:nth-child(1) {
-  width: 39%;
+  width: 27%;
 }
 
 .ikas-table th:nth-child(2),
 .ikas-table td:nth-child(2) {
-  width: 15%;
+  width: 14%;
 }
 
 .ikas-table th:nth-child(3),
 .ikas-table td:nth-child(3) {
-  width: 15%;
+  width: 12%;
 }
 
 .ikas-table th:nth-child(4),
 .ikas-table td:nth-child(4) {
-  width: 15%;
+  width: 16%;
 }
 
 .ikas-table th:nth-child(5),
 .ikas-table td:nth-child(5) {
-  width: 10%;
+  width: 12%;
 }
 
 .ikas-table th:nth-child(6),
 .ikas-table td:nth-child(6) {
-  width: 6%;
+  width: 12%;
+}
+
+.ikas-table th:nth-child(7),
+.ikas-table td:nth-child(7) {
+  width: 7%;
 }
 
 .ikas-table th:nth-child(1),
@@ -6597,7 +6912,9 @@ const IkasCard = defineComponent({
 .ikas-table th:nth-child(5),
 .ikas-table td:nth-child(5),
 .ikas-table th:nth-child(6),
-.ikas-table td:nth-child(6) {
+.ikas-table td:nth-child(6),
+.ikas-table th:nth-child(7),
+.ikas-table td:nth-child(7) {
   text-align: center;
 }
 
@@ -6824,12 +7141,14 @@ const IkasCard = defineComponent({
 }
 
 .ikas-page :deep(.ikas-table-row td:nth-child(5)),
-.ikas-page :deep(.ikas-table-row td:nth-child(6)) {
+.ikas-page :deep(.ikas-table-row td:nth-child(6)),
+.ikas-page :deep(.ikas-table-row td:nth-child(7)) {
   padding-left: 8px;
   padding-right: 8px;
 }
 
-.ikas-page :deep(.ikas-table-row td:nth-child(6)) {
+.ikas-page :deep(.ikas-table-row td:nth-child(6)),
+.ikas-page :deep(.ikas-table-row td:nth-child(7)) {
   text-align: center;
 }
 
@@ -6885,6 +7204,7 @@ const IkasCard = defineComponent({
   height: 28px;
   justify-content: center;
   margin-inline: auto;
+  min-width: 28px;
   opacity: 0.78;
   transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease, transform 160ms ease;
   width: 28px;
@@ -6893,16 +7213,16 @@ const IkasCard = defineComponent({
 .ikas-page :deep(.ikas-record-actions) {
   align-items: center;
   display: grid;
-  gap: 5px;
+  gap: 6px;
   justify-items: stretch;
   margin-inline: auto;
-  max-width: 78px;
-  transform: translateX(-18px);
+  max-width: 106px;
+  transform: none;
   width: 100%;
 }
 
 .ikas-page :deep(.ikas-record-actions.is-request-actions) {
-  max-width: 78px;
+  max-width: 118px;
 }
 
 .ikas-page :deep(.ikas-action-btn) {
@@ -6910,14 +7230,14 @@ const IkasCard = defineComponent({
   border: 1px solid transparent;
   border-radius: 8px;
   display: inline-flex;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 850;
-  gap: 4px;
+  gap: 5px;
   justify-content: center;
   line-height: 1;
-  min-height: 28px;
+  min-height: 32px;
   min-width: 0;
-  padding: 0 7px;
+  padding: 0 10px;
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease, opacity 160ms ease, transform 160ms ease;
   width: 100%;
   white-space: nowrap;
@@ -6934,10 +7254,11 @@ const IkasCard = defineComponent({
 }
 
 .ikas-page :deep(.ikas-action-btn.validate) {
-  background: #dcfce7;
-  border-color: #bbf7d0;
-  color: #166534;
-  max-width: 78px;
+  background: #16a34a;
+  border-color: #15803d;
+  box-shadow: 0 8px 18px rgba(22, 163, 74, 0.18);
+  color: #ffffff;
+  max-width: 106px;
 }
 
 .ikas-page :deep(.ikas-action-btn.approve) {
@@ -7641,9 +7962,9 @@ const IkasCard = defineComponent({
 
 :global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-action-btn.validate),
 :global(html.dark) .ikas-page :deep(.ikas-action-btn.validate) {
-  background: rgba(34, 197, 94, 0.16);
-  border-color: rgba(74, 222, 128, 0.24);
-  color: #86efac;
+  background: #16a34a;
+  border-color: #22c55e;
+  color: #ffffff;
 }
 
 :global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-action-btn.approve),
@@ -7998,9 +8319,9 @@ const IkasCard = defineComponent({
 }
 
 .ikas-page.is-dark :deep(.ikas-action-btn.validate) {
-  background: rgba(34, 197, 94, 0.16) !important;
-  border-color: rgba(74, 222, 128, 0.24) !important;
-  color: #86efac !important;
+  background: #16a34a !important;
+  border-color: #22c55e !important;
+  color: #ffffff !important;
 }
 
 .ikas-page.is-dark :deep(.ikas-action-btn.approve) {
@@ -8517,9 +8838,9 @@ const IkasCard = defineComponent({
 .ikas-page.is-dark :deep(.ikas-action-btn.validate),
 :global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-action-btn.validate),
 :global(html.dark) .ikas-page :deep(.ikas-action-btn.validate) {
-  background: rgba(34, 197, 94, 0.16) !important;
-  border-color: rgba(74, 222, 128, 0.24) !important;
-  color: #86efac !important;
+  background: #16a34a !important;
+  border-color: #22c55e !important;
+  color: #ffffff !important;
 }
 
 .ikas-page.is-dark :deep(.ikas-action-btn.approve),
@@ -8870,15 +9191,51 @@ const IkasCard = defineComponent({
     grid-template-columns: auto minmax(0, 1fr);
   }
 
+  .ikas-mobile-company-copy {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ikas-mobile-company-copy strong {
+    display: block;
+    font-size: 13px;
+    line-height: 1.28;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    width: 100%;
+  }
+
+  .ikas-mobile-company-copy small {
+    display: block;
+    font-size: 11px;
+    line-height: 1.35;
+    max-width: 100%;
+    overflow: visible;
+    width: 100%;
+    -webkit-line-clamp: initial;
+  }
+
+  .ikas-mobile-company-copy small span {
+    display: inline;
+    overflow-wrap: anywhere;
+  }
+
   .ikas-mobile-company-copy :deep(.ikas-status) {
     justify-self: start;
+    margin-top: 0;
+    max-width: 100%;
+    white-space: normal;
   }
 
   .ikas-mobile-card-content {
     align-items: stretch;
-    gap: 22px;
+    gap: 10px;
     grid-template-columns: 1fr;
-    padding-top: 16px;
+    padding-top: 12px;
   }
 
   .ikas-mobile-card :deep(.ikas-score-track),
@@ -8892,22 +9249,22 @@ const IkasCard = defineComponent({
 
   .ikas-mobile-score,
   .ikas-page .ikas-mobile-card .ikas-mobile-score {
-    margin-bottom: 12px;
+    margin-bottom: 2px;
   }
 
   .ikas-mobile-meta,
   .ikas-page .ikas-mobile-card .ikas-mobile-meta {
-    margin-top: 12px;
+    margin-top: 2px;
   }
 
   .ikas-mobile-actions {
     justify-self: stretch;
-    margin-top: 14px;
+    margin-top: 4px;
     width: 100%;
   }
 
   .ikas-page .ikas-mobile-card .ikas-mobile-actions {
-    margin-top: 14px;
+    margin-top: 4px;
   }
 
   .ikas-mobile-card :deep(.ikas-record-actions),
@@ -8966,6 +9323,186 @@ const IkasCard = defineComponent({
   .ikas-mobile-card :deep(.ikas-no-action) {
     min-width: 0;
     width: 100%;
+  }
+}
+
+/* Final mobile card rhythm, aligned with Event/Berita list spacing */
+@media (max-width: 640px) {
+  .ikas-page .ikas-mobile-card {
+    border-radius: 12px !important;
+    gap: 14px !important;
+    padding: 14px !important;
+  }
+
+  .ikas-page .ikas-mobile-card-top {
+    align-items: flex-start !important;
+    display: grid !important;
+    gap: 12px !important;
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-avatar) {
+    border-radius: 10px !important;
+    flex-basis: 42px !important;
+    height: 42px !important;
+    max-height: 42px !important;
+    max-width: 42px !important;
+    width: 42px !important;
+  }
+
+  .ikas-page :deep(.ikas-mobile-company-copy) {
+    align-items: flex-start !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 7px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .ikas-page :deep(.ikas-mobile-company-copy strong) {
+    display: block !important;
+    font-size: 13.5px !important;
+    line-height: 1.35 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+    width: 100% !important;
+  }
+
+  .ikas-page :deep(.ikas-mobile-company-copy small) {
+    color: #475569 !important;
+    display: grid !important;
+    font-size: 12px !important;
+    gap: 3px !important;
+    line-height: 1.35 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    white-space: normal !important;
+    width: 100% !important;
+    -webkit-box-orient: initial !important;
+    -webkit-line-clamp: initial !important;
+  }
+
+  .ikas-page :deep(.ikas-mobile-company-copy small span) {
+    display: block !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .ikas-page :deep(.ikas-mobile-company-copy small span + span)::before {
+    content: "" !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-status) {
+    align-self: flex-start !important;
+    justify-content: flex-start !important;
+    line-height: 1.2 !important;
+    margin-top: 0 !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 6px 9px !important;
+    white-space: normal !important;
+    width: fit-content !important;
+  }
+
+  .ikas-page .ikas-mobile-card-content {
+    border-top: 1px solid #e2eaf7 !important;
+    gap: 12px !important;
+    padding-top: 14px !important;
+  }
+
+  .ikas-page .ikas-mobile-score,
+  .ikas-page .ikas-mobile-card .ikas-mobile-score {
+    display: grid !important;
+    gap: 9px !important;
+    margin: 0 !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-score-cell) {
+    gap: 8px !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-score-summary) {
+    margin-bottom: 1px !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-score-badge) {
+    font-size: 10.5px !important;
+    min-width: 42px !important;
+    padding: 5px 8px !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-score-track) {
+    height: 5px !important;
+    margin-top: 2px !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-score-caption) {
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+    margin-top: 3px !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    white-space: normal !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-below-target-badge) {
+    align-items: flex-start !important;
+    border-radius: 12px !important;
+    gap: 7px !important;
+    line-height: 1.35 !important;
+    margin-top: 0 !important;
+    max-width: 100% !important;
+    padding: 8px 10px !important;
+    white-space: normal !important;
+    width: 100% !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-below-target-badge i) {
+    flex: 0 0 auto !important;
+    margin-top: 1px !important;
+  }
+
+  .ikas-page .ikas-mobile-meta,
+  .ikas-page .ikas-mobile-card .ikas-mobile-meta {
+    background: #f8fafc !important;
+    border: 1px solid #eef2f7 !important;
+    border-radius: 12px !important;
+    margin-top: 0 !important;
+    padding: 8px 10px !important;
+    width: 100% !important;
+  }
+
+  .ikas-page .ikas-mobile-meta span:first-child {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .ikas-page .ikas-mobile-actions,
+  .ikas-page .ikas-mobile-card .ikas-mobile-actions {
+    margin-top: 0 !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-action-btn) {
+    border-radius: 8px !important;
+    min-height: 36px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .ikas-page .ikas-mobile-card {
+    padding: 12px !important;
+  }
+
+  .ikas-page .ikas-mobile-card-top {
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+  }
+
+  .ikas-page .ikas-mobile-card :deep(.ikas-avatar) {
+    flex-basis: 38px !important;
+    height: 38px !important;
+    max-height: 38px !important;
+    max-width: 38px !important;
+    width: 38px !important;
   }
 }
 
@@ -9030,6 +9567,136 @@ const IkasCard = defineComponent({
 
   .ikas-list-header h2 {
     font-size: 14px;
+  }
+}
+
+/* Final responsive polish for IKAS side panels */
+.ikas-page.is-dark .ikas-meta-heading,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-meta-heading,
+:global(html.dark) .ikas-page .ikas-meta-heading {
+  background: transparent !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+  box-shadow: none !important;
+}
+
+.ikas-page.is-dark .ikas-meta-heading h3,
+.ikas-page.is-dark .ikas-meta-list dd,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-meta-heading h3,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-meta-list dd,
+:global(html.dark) .ikas-page .ikas-meta-heading h3,
+:global(html.dark) .ikas-page .ikas-meta-list dd {
+  color: var(--ikas-text) !important;
+}
+
+.ikas-page.is-dark .ikas-meta-heading span,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-meta-heading span,
+:global(html.dark) .ikas-page .ikas-meta-heading span {
+  background: var(--ikas-dark-panel-2) !important;
+  border-color: var(--ikas-border) !important;
+  color: var(--ikas-muted) !important;
+}
+
+.ikas-page.is-dark .ikas-meta-list > div,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-meta-list > div,
+:global(html.dark) .ikas-page .ikas-meta-list > div {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.ikas-page.is-dark .ikas-meta-list dt,
+:global(html[data-theme-mode="dark"]) .ikas-page .ikas-meta-list dt,
+:global(html.dark) .ikas-page .ikas-meta-list dt {
+  color: var(--ikas-muted) !important;
+}
+
+@media (max-width: 992px) {
+  .ikas-content-grid {
+    gap: 14px;
+  }
+
+  .ikas-detail-panel {
+    position: relative;
+    top: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .ikas-detail-panel {
+    border-radius: 10px;
+  }
+
+  .ikas-panel-score {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .ikas-panel-score .vue-apexcharts {
+    justify-self: center;
+    margin-top: -4px;
+  }
+
+  .ikas-score-target {
+    align-items: flex-start;
+    border-radius: 10px;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .ikas-detail-timeline,
+  .ikas-detail-facts,
+  .ikas-attention-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ikas-meta-list > div {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .ikas-summary-hero {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ikas-page {
+    padding-inline: 10px;
+  }
+
+  .ikas-list-shell,
+  .ikas-detail-panel {
+    padding: 12px;
+  }
+
+  .ikas-panel-hero {
+    gap: 10px;
+  }
+
+  .ikas-detail-facts,
+  .ikas-detail-timeline,
+  .ikas-attention-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ikas-meta-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ikas-meta-list > div {
+    align-items: start;
+    gap: 6px;
+    grid-template-columns: 1fr;
+    padding: 8px 0;
+  }
+
+  .ikas-meta-list dd {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .ikas-attention-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    padding: 8px;
   }
 }
 </style>
