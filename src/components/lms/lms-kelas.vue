@@ -515,10 +515,15 @@ export default {
       syarat_pendaftaran: '',
       target_peserta: '',
       thumbnail: '',
+      thumbnail_file: null as File | null,
       status: 'published'
     });
     const formKelas = ref(emptyKelasForm());
-    const thumbnailPreview = computed(() => formKelas.value.thumbnail || null);
+    const thumbnailInput = ref<HTMLInputElement | null>(null);
+    const thumbnailPreview = computed(() => {
+      if (formKelas.value.thumbnail_file) return URL.createObjectURL(formKelas.value.thumbnail_file);
+      return formKelas.value.thumbnail || null;
+    });
 
     const openKelasModal = (item?: any) => {
       formErrors.value = {};
@@ -536,6 +541,7 @@ export default {
           syarat_pendaftaran: item.syarat_pendaftaran || '',
           target_peserta: item.target_peserta || '',
           thumbnail: item.thumbnail || '',
+          thumbnail_file: null,
           status: item.status || 'published' 
         };
       } else {
@@ -551,6 +557,9 @@ export default {
       if (!formKelas.value.deskripsi) formErrors.value.deskripsi = "Wajib diisi";
       if (!formKelas.value.kategori) formErrors.value.kategori = "Wajib diisi";
       if (Number(formKelas.value.durasi_jp) < 0) formErrors.value.durasi_jp = "Durasi tidak boleh negatif";
+      if (formKelas.value.thumbnail_file && !formKelas.value.thumbnail_file.type.startsWith('image/')) {
+        formErrors.value.thumbnail = "File thumbnail harus berupa gambar";
+      }
       if (Object.keys(formErrors.value).length > 0) return;
       
       isSaving.value = true;
@@ -567,6 +576,28 @@ export default {
         showNotification(e.message || "Gagal menyimpan kelas", "error"); 
       }
       finally { isSaving.value = false; }
+    };
+
+    const handleThumbnailChange = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0] ?? null;
+      formKelas.value.thumbnail_file = file;
+      if (file) {
+        formKelas.value.thumbnail = '';
+        delete formErrors.value.thumbnail;
+      }
+    };
+
+    const triggerThumbnailPicker = () => {
+      thumbnailInput.value?.click();
+    };
+
+    const removeThumbnail = () => {
+      formKelas.value.thumbnail = '';
+      formKelas.value.thumbnail_file = null;
+      if (thumbnailInput.value) {
+        thumbnailInput.value.value = '';
+      }
     };
 
     // MATERI ROUTING
@@ -676,7 +707,8 @@ export default {
       getShortDescription,
       getClassTopic,
       getClassCode,
-      thumbnailPreview, kategoriOptions
+      thumbnailPreview, kategoriOptions,
+      thumbnailInput, handleThumbnailChange, triggerThumbnailPicker, removeThumbnail
     };
   }
 };
@@ -1069,26 +1101,41 @@ export default {
                 <textarea v-model="formKelas.syarat_pendaftaran" class="form-control kse-modal-input kelas-modal-textarea" rows="3" placeholder="Syarat pendaftaran peserta..."></textarea>
               </div>
               <div class="col-12 kelas-thumbnail-section">
-                <label class="form-label fw-semibold">Thumbnail URL</label>
-                
+                <label class="form-label fw-semibold">Thumbnail Kelas</label>
+
                 <div class="d-flex flex-column gap-3 kelas-thumbnail-field">
                   <input
-                    v-model="formKelas.thumbnail"
-                    type="text"
-                    class="form-control kse-modal-input"
-                    placeholder="Masukkan URL Gambar (Misal: https://example.com/foto.jpg)"
+                    ref="thumbnailInput"
+                    type="file"
+                    class="d-none"
+                    accept="image/*"
+                    @change="handleThumbnailChange"
                   />
 
                   <div v-if="thumbnailPreview" class="thumbnail-preview-box kelas-thumbnail-preview rounded-4 border p-2 bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative">
-                    <img :src="thumbnailPreview" class="w-100 h-100 object-fit-cover rounded-3" alt="Preview" @error="formKelas.thumbnail = ''" />
-                    <button @click="formKelas.thumbnail = ''" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width: 28px; height: 28px; padding: 0;">
+                    <img :src="thumbnailPreview" class="w-100 h-100 object-fit-cover rounded-3" alt="Preview" @error="removeThumbnail" />
+                    <button @click="removeThumbnail" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width: 28px; height: 28px; padding: 0;">
                       <i class="ri-close-line"></i>
                     </button>
                   </div>
                   <div v-else class="thumbnail-placeholder kelas-thumbnail-preview rounded-4 border-dashed p-4 text-center bg-light">
-                    <i class="ri-image-line fs-1 text-muted opacity-50"></i>
-                    <p class="text-muted fs-12 mb-0">Belum ada URL gambar</p>
+                    <i class="ri-image-add-line fs-1 text-muted opacity-50"></i>
+                    <p class="text-muted fs-12 mb-0">Pilih gambar dari device untuk thumbnail kelas</p>
                   </div>
+
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" @click="triggerThumbnailPicker">
+                      <i class="ri-upload-2-line me-1"></i>{{ thumbnailPreview ? 'Ganti Gambar' : 'Upload Gambar' }}
+                    </button>
+                    <button v-if="thumbnailPreview" type="button" class="btn btn-outline-danger btn-sm" @click="removeThumbnail">
+                      <i class="ri-delete-bin-line me-1"></i>Hapus
+                    </button>
+                  </div>
+
+                  <div v-if="formKelas.thumbnail_file" class="small text-success">
+                    <i class="ri-check-line"></i> {{ formKelas.thumbnail_file.name }} siap diupload
+                  </div>
+                  <div v-if="formErrors.thumbnail" class="text-danger small">{{ formErrors.thumbnail }}</div>
                 </div>
               </div>
             </div>
@@ -2282,10 +2329,34 @@ html.dark .kelas-thumbnail-preview {
 
   .ikas-hero-tools {
     max-width: none;
+    gap: 10px;
+    width: 100%;
   }
 
   .ikas-hero-stat-card {
-    min-height: 84px;
+    flex: 1 1 calc(33.333% - 7px);
+    width: auto;
+    min-width: 0;
+    min-height: 72px;
+    gap: 10px;
+    padding: 12px 10px;
+  }
+
+  .ikas-stat-top {
+    gap: 8px;
+  }
+
+  .ikas-stat-top span {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .ikas-stat-top i {
+    font-size: 18px;
+  }
+
+  .ikas-hero-stat-card strong {
+    font-size: 22px;
   }
 
   .lms-kelas-toolbar {
@@ -2302,6 +2373,34 @@ html.dark .kelas-thumbnail-preview {
     margin-left: 0 !important;
     justify-content: center;
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .ikas-hero-header {
+    padding: 16px;
+  }
+
+  .ikas-hero-tools {
+    gap: 8px;
+  }
+
+  .ikas-hero-stat-card {
+    min-height: 64px;
+    padding: 10px 8px;
+    border-radius: 6px;
+  }
+
+  .ikas-stat-top span {
+    font-size: 8px;
+  }
+
+  .ikas-stat-top i {
+    font-size: 16px;
+  }
+
+  .ikas-hero-stat-card strong {
+    font-size: 18px;
   }
 }
 

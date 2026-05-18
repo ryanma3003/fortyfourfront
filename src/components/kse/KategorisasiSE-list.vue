@@ -47,6 +47,41 @@ const newNamaSistem   = ref('');
 const addError        = ref('');
 const editRequests    = ref<SeEditRequest[]>([]);
 
+function dedupeSeEntries(entries: SeCsirt[]): SeCsirt[] {
+  const uniqueMap = new Map<string, SeCsirt>();
+
+  entries.forEach((entry) => {
+    const stableKey = String(
+      entry.id ??
+      `${entry.id_perusahaan ?? ''}-${entry.id_csirt ?? ''}-${(entry.nama_se || '').trim().toLowerCase()}`
+    );
+
+    if (!uniqueMap.has(stableKey)) {
+      uniqueMap.set(stableKey, entry);
+    }
+  });
+
+  return [...uniqueMap.values()];
+}
+
+function dedupeKseEntries(entries: KseListEntry[]): KseListEntry[] {
+  const uniqueMap = new Map<string, KseListEntry>();
+
+  entries.forEach((entry) => {
+    const stableKey = String(
+      entry.seId ||
+      entry.id ||
+      entry.namaSistem.trim().toLowerCase()
+    );
+
+    if (!uniqueMap.has(stableKey)) {
+      uniqueMap.set(stableKey, entry);
+    }
+  });
+
+  return [...uniqueMap.values()];
+}
+
 // ── Initialise ───────────────────────────────────────────────
 onMounted(async () => {
   if (!stakeholdersStore.initialized) await stakeholdersStore.initialize();
@@ -95,17 +130,21 @@ async function loadEntries() {
 
         // Filter SE from store seList (same matching logic as csirt.vue seItems computed)
         const csirtId = String(myCsirt.id);
-        companySe = csirtStore.seList.filter((item: any) => {
-          return String(item.id_csirt) === csirtId ||
-                 String(item.csirt_id) === csirtId ||
-                 String(item.csirt?.id) === csirtId ||
-                 (item.id_perusahaan && String(item.id_perusahaan) === String(companyId));
-        });
+        companySe = dedupeSeEntries(
+          csirtStore.seList.filter((item: any) => {
+            return String(item.id_csirt) === csirtId ||
+                   String(item.csirt_id) === csirtId ||
+                   String(item.csirt?.id) === csirtId ||
+                   (item.id_perusahaan && String(item.id_perusahaan) === String(companyId));
+          })
+        );
       } else {
         // No CSIRT yet — try direct API fallback
         const csirtFromApi = await csirtService.getCsirtByPerusahaan(companyId).catch(() => null);
         if (csirtFromApi && csirtFromApi.id) {
-          companySe = await csirtService.getSeByCsirtId(csirtFromApi.id).catch(() => []);
+          companySe = dedupeSeEntries(
+            await csirtService.getSeByCsirtId(csirtFromApi.id).catch(() => [])
+          );
         }
       }
 
@@ -141,7 +180,7 @@ async function loadEntries() {
     !mappedIds.has(e.id) &&
     !(e.seId && mappedSeIds.has(e.seId))
   );
-  kseEntries.value = [...apiEntries, ...uniqueLocal];
+  kseEntries.value = dedupeKseEntries([...apiEntries, ...uniqueLocal]);
 }
 
 function saveEntries() {
@@ -539,7 +578,6 @@ function progressFillClass(pct: number): string {
                             PENDING REVIEW
                           </span>
                         </div>
-                        <div class="text-muted fs-11">ID: {{ entry.seId || entry.id.split('_').pop() }}</div>
                       </div>
                     </div>
                   </td>

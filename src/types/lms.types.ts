@@ -60,6 +60,7 @@ export interface CreateKelasPayload {
     syarat_pendaftaran?: string;
     target_peserta?: string;
     thumbnail?: string | null;
+    thumbnail_file?: File | null;
     status?: string;
 }
 
@@ -74,6 +75,7 @@ export interface UpdateKelasPayload {
     syarat_pendaftaran?: string;
     target_peserta?: string;
     thumbnail?: string | null;
+    thumbnail_file?: File | null;
     status?: string;
 }
 

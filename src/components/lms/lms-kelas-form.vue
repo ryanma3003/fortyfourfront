@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useLmsStore } from "../../stores/lms";
 import { useRouter, useRoute } from "vue-router";
+import type { CreateKelasPayload } from "../../types/lms.types";
 
 export default {
   components: { Pageheader },
@@ -30,9 +31,15 @@ export default {
     const syaratPendaftaran = ref("");
     const targetPeserta = ref("");
     const thumbnail = ref("");
+    const thumbnailFile = ref<File | null>(null);
+    const thumbnailInput = ref<HTMLInputElement | null>(null);
     const status = ref("published");
     const formErrors = ref<Record<string, string>>({});
     const isSaving = ref(false);
+    const thumbnailPreview = computed(() => {
+      if (thumbnailFile.value) return URL.createObjectURL(thumbnailFile.value);
+      return thumbnail.value || "";
+    });
 
     // Toast
     const showToast = ref(false);
@@ -66,6 +73,7 @@ export default {
           syaratPendaftaran.value = kelas.syarat_pendaftaran || "";
           targetPeserta.value = kelas.target_peserta || "";
           thumbnail.value = kelas.thumbnail || "";
+          thumbnailFile.value = null;
           status.value = kelas.status || "published";
         } else {
           showNotification("Kelas tidak ditemukan", "error");
@@ -79,10 +87,13 @@ export default {
       if (!namaKelas.value.trim()) formErrors.value.nama_kelas = "Judul kelas wajib diisi";
       if (!deskripsi.value.trim()) formErrors.value.deskripsi = "Deskripsi wajib diisi";
       if (Number(durasiJp.value) < 0) formErrors.value.durasi_jp = "Durasi tidak boleh negatif";
+      if (thumbnailFile.value && !thumbnailFile.value.type.startsWith("image/")) {
+        formErrors.value.thumbnail = "File thumbnail harus berupa gambar";
+      }
       return Object.keys(formErrors.value).length === 0;
     };
 
-    const buildPayload = () => ({
+    const buildPayload = (): CreateKelasPayload => ({
       judul: namaKelas.value,
       nama_kelas: namaKelas.value,
       deskripsi: deskripsi.value,
@@ -92,9 +103,32 @@ export default {
       penyelenggara: penyelenggara.value,
       syarat_pendaftaran: syaratPendaftaran.value,
       target_peserta: targetPeserta.value,
-      thumbnail: thumbnail.value,
+      thumbnail: thumbnailFile.value ? null : (thumbnail.value || null),
+      thumbnail_file: thumbnailFile.value,
       status: status.value,
     });
+
+    const handleThumbnailChange = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0] ?? null;
+      thumbnailFile.value = file;
+      if (file) {
+        thumbnail.value = "";
+        delete formErrors.value.thumbnail;
+      }
+    };
+
+    const triggerThumbnailPicker = () => {
+      thumbnailInput.value?.click();
+    };
+
+    const removeThumbnail = () => {
+      thumbnail.value = "";
+      thumbnailFile.value = null;
+      if (thumbnailInput.value) {
+        thumbnailInput.value.value = "";
+      }
+    };
 
     const handleSubmit = async () => {
       if (!validate()) return;
@@ -132,9 +166,15 @@ export default {
       syaratPendaftaran,
       targetPeserta,
       thumbnail,
+      thumbnailFile,
+      thumbnailInput,
+      thumbnailPreview,
       status,
       formErrors,
       handleSubmit,
+      handleThumbnailChange,
+      triggerThumbnailPicker,
+      removeThumbnail,
       goBack,
       showToast,
       toastMessage,
@@ -263,13 +303,43 @@ export default {
               </div>
 
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Thumbnail URL</label>
+                <label class="form-label fw-semibold">Thumbnail Kelas</label>
                 <input
-                  v-model="thumbnail"
-                  type="text"
-                  class="form-control kse-modal-input"
-                  placeholder="https://example.com/thumbnail.jpg"
+                  ref="thumbnailInput"
+                  type="file"
+                  class="d-none"
+                  accept="image/*"
+                  @change="handleThumbnailChange"
                 />
+                <div class="border rounded-3 p-3 bg-light-subtle">
+                  <div
+                    v-if="thumbnailPreview"
+                    class="rounded-3 overflow-hidden border bg-white mb-3 d-flex align-items-center justify-content-center"
+                    style="min-height: 180px;"
+                  >
+                    <img :src="thumbnailPreview" class="w-100 h-100 object-fit-cover" alt="Preview thumbnail kelas" />
+                  </div>
+                  <div
+                    v-else
+                    class="rounded-3 border border-dashed text-center text-muted d-flex flex-column align-items-center justify-content-center mb-3"
+                    style="min-height: 180px;"
+                  >
+                    <i class="ri-image-add-line fs-1 mb-2"></i>
+                    <span>Pilih gambar thumbnail dari device</span>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" @click="triggerThumbnailPicker">
+                      <i class="ri-upload-2-line me-1"></i>{{ thumbnailPreview ? 'Ganti Gambar' : 'Upload Gambar' }}
+                    </button>
+                    <button v-if="thumbnailPreview" type="button" class="btn btn-outline-danger btn-sm" @click="removeThumbnail">
+                      <i class="ri-delete-bin-line me-1"></i>Hapus
+                    </button>
+                  </div>
+                  <div v-if="thumbnailFile" class="small text-success mt-2">
+                    <i class="ri-check-line"></i> {{ thumbnailFile.name }}
+                  </div>
+                  <div v-if="formErrors.thumbnail" class="text-danger small mt-2">{{ formErrors.thumbnail }}</div>
+                </div>
               </div>
 
               <div class="col-12">

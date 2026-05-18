@@ -1,6 +1,6 @@
-```typescript
 <script lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from "vue";
+import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 import { useCsirtStore } from "../../stores/csirt";
@@ -39,6 +39,9 @@ export default {
     } = useListPage("nama_csirt");
 
     const searchValue2 = ref("");
+    const csirtPageRef = ref<HTMLElement | null>(null);
+    let gsapCtx: gsap.Context | null = null;
+    let hasRunInitialEntrance = false;
 
     // CRUD state
     const showCreateModal = ref(false);
@@ -139,6 +142,154 @@ export default {
         return valA.localeCompare(valB) * mod;
       });
     });
+
+    const totalSdmCount = computed(() => csirtStore.sdmList.length);
+    const totalSeCount = computed(() => csirtStore.seList.length);
+    const incompleteCsirtCount = computed(() => Math.max(filteredData.value.length - completeCSIRTCount.value, 0));
+    const csirtReadinessCoverage = computed(() => {
+      const total = filteredData.value.length;
+      if (!total) return 0;
+      return Math.round((completeCSIRTCount.value / total) * 100);
+    });
+
+    const getStakeholderForItem = (item: CsirtMember) => (
+      item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan))
+    );
+
+    const getStatusSummary = (item: CsirtMember) => {
+      const status = csirtStatus(String(item.id));
+      const isReady = status.sdmCount > 0 && status.seCount > 0 && status.seIncomplete === 0;
+      const isProgress = !isReady && (status.sdmCount > 0 || status.seCount > 0);
+
+      if (isReady) {
+        return {
+          tone: "ready",
+          label: "Siap operasional",
+          hint: "Data SDM dan SE sudah lengkap",
+          icon: "ri-checkbox-circle-line",
+        };
+      }
+
+      if (isProgress) {
+        return {
+          tone: "progress",
+          label: "Perlu dilengkapi",
+          hint: status.seIncomplete > 0 ? "Masih ada SE yang belum lengkap" : "Masih ada data inti yang belum diisi",
+          icon: "ri-time-line",
+        };
+      }
+
+      return {
+        tone: "empty",
+        label: "Perlu mulai dilengkapi",
+        hint: "Belum ada SDM atau SE yang terhubung",
+        icon: "ri-alert-line",
+      };
+    };
+
+    const getWebsiteLabel = (value: string) => {
+      const cleaned = String(value || "").replace(/^https?:\/\//i, "").replace(/\/$/, "");
+      return cleaned || "-";
+    };
+
+    const prefersReducedMotion = () => (
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+
+    const getMotionItems = () => {
+      const root = csirtPageRef.value;
+      if (!root) return [];
+      return Array.from(root.querySelectorAll<HTMLElement>(".csirt-table-row, .csirt-mobile-card"));
+    };
+
+    const animateListItems = (quick = false) => {
+      const items = getMotionItems();
+      if (!items.length) return;
+
+      gsap.killTweensOf(items);
+
+      if (prefersReducedMotion()) {
+        gsap.set(items, { clearProps: "all", opacity: 1, y: 0, scale: 1 });
+        return;
+      }
+
+      gsap.set(items, {
+        y: quick ? 14 : 20,
+        opacity: 0,
+        scale: quick ? 0.992 : 0.985,
+        force3D: true,
+      });
+
+      gsap.to(items, {
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        duration: quick ? 0.32 : 0.42,
+        stagger: quick ? 0.035 : 0.055,
+        ease: "power3.out",
+        clearProps: "transform,opacity",
+        overwrite: "auto",
+      });
+    };
+
+    const runEntranceAnimations = () => {
+      const root = csirtPageRef.value;
+      if (!root) return;
+
+      if (prefersReducedMotion()) {
+        animateListItems(true);
+        return;
+      }
+
+      gsapCtx?.revert();
+      gsapCtx = gsap.context(() => {
+        const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+        tl.from(".csirt-hero-shell", {
+          y: 18,
+          opacity: 0,
+          duration: 0.48,
+          clearProps: "transform,opacity",
+        })
+          .from(".csirt-inline-breadcrumb", {
+            y: -8,
+            opacity: 0,
+            duration: 0.28,
+            clearProps: "transform,opacity",
+          }, "-=0.28")
+          .from(".csirt-hero-copy > *", {
+            y: 16,
+            opacity: 0,
+            duration: 0.34,
+            stagger: 0.06,
+            clearProps: "transform,opacity",
+          }, "-=0.2")
+          .from(".csirt-kpi-card", {
+            y: 18,
+            opacity: 0,
+            scale: 0.96,
+            duration: 0.38,
+            stagger: 0.05,
+            ease: "back.out(1.35)",
+            clearProps: "transform,opacity",
+          }, "-=0.08")
+          .from(".csirt-filter-shell", {
+            y: 20,
+            opacity: 0,
+            duration: 0.36,
+            clearProps: "transform,opacity",
+          }, "-=0.14")
+          .from(".csirt-list-shell", {
+            y: 24,
+            opacity: 0,
+            duration: 0.42,
+            clearProps: "transform,opacity",
+          }, "-=0.12");
+      }, root);
+
+      animateListItems(true);
+    };
 
     const { totalPages, displayData, paginationInfo } = makePagination(filteredData);
 
@@ -296,7 +447,32 @@ export default {
       }
     };
 
-    onMounted(loadCsirtMembers);
+    onMounted(async () => {
+      await loadCsirtMembers();
+    });
+
+    watch(loading, (isLoading) => {
+      if (!isLoading) {
+        nextTick(() => {
+          if (!hasRunInitialEntrance) {
+            hasRunInitialEntrance = true;
+            runEntranceAnimations();
+            return;
+          }
+          animateListItems();
+        });
+      }
+    });
+
+    watch([displayData, currentPage, itemsPerPage], () => {
+      if (!loading.value) {
+        nextTick(() => animateListItems(true));
+      }
+    });
+
+    onUnmounted(() => {
+      gsapCtx?.revert();
+    });
 
     const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -484,6 +660,14 @@ export default {
       handleCountryCodeChange,
       csirtStatus,
       completeCSIRTCount,
+      incompleteCsirtCount,
+      csirtReadinessCoverage,
+      totalSdmCount,
+      totalSeCount,
+      csirtPageRef,
+      getStakeholderForItem,
+      getStatusSummary,
+      getWebsiteLabel,
       getAvatarClass: (letter: string) => {
         const variants = [
           'avatar-blue', 'avatar-indigo', 'avatar-violet', 'avatar-purple',
@@ -568,70 +752,119 @@ export default {
     </div>
   </transition>
 
+  <section ref="csirtPageRef" class="csirt-page">
   <div class="row">
     <div class="col-xl-12">
-     <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
-        <div class="stakeholder-header stakeholders-premium-header">
-          <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="stakeholders-hero-copy1 d-flex flex-column gap-1">
-              <div>
-                <div class="stakeholders-inline-breadcrumb">Dashboards <span>/</span> CSIRT</div>
-                <div class="card-title mb-0 fw-bold header-card-title stakeholders-hero-title">Daftar CSIRT</div>
-                <div class="header-subtitle mt-1 stakeholders-hero-subtitle">Manajemen data Computer Security Incident Response Team</div>
-              </div>
-              <div class="stakeholders-meta-stack">
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total CSIRT</span>
-                  <strong><i class="ri-shield-user-line text-primary"></i> {{ filteredData.length }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">CSIRT Lengkap</span>
-                  <strong><i class="ri-user-3-line text-success"></i> {{ completeCSIRTCount }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total SDM</span>
-                  <strong><i class="ri-user-3-line text-info"></i> {{ csirtStore.sdmList.length }}</strong>
-                </div>
-                <div class="stakeholders-meta-card">
-                  <span class="stakeholders-meta-label">Total SE</span>
-                  <strong><i class="ri-server-line text-warning"></i> {{ csirtStore.seList.length }}</strong>
-                </div>
-              </div>
+      <div class="csirt-page-shell">
+        <header class="csirt-hero-shell">
+          <div class="csirt-hero-header">
+            <div class="csirt-hero-copy">
+              <div class="csirt-inline-breadcrumb">Dashboards <span>/</span> CSIRT</div>
+              <h1>Daftar CSIRT</h1>
+              <p>Kelola profil tim, pantau kesiapan operasional, dan bantu admin non teknis membaca status dengan cepat.</p>
             </div>
-            
-            <div class="stakeholders-hero-tools d-flex flex-column gap-3">
-              <div class="stakeholders-search position-relative w-100 mt-auto">
-                <i class="ri-search-line header-search-icon"></i>
-                <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" 
-                  placeholder="Cari nama CSIRT..." />
-                <button v-if="searchQuery" @click="clearSearch" class="clear-btn" title="Clear search">
-                  <i class="ri-close-circle-fill"></i>
-                </button>
+
+            <div class="csirt-hero-tools">
+              <div class="csirt-hero-summary-card">
+                <div class="csirt-hero-card-title">
+                  <span>Kesiapan CSIRT</span>
+                  <strong>{{ csirtReadinessCoverage }}%</strong>
+                </div>
+                <div class="csirt-hero-card-stats">
+                  <div>
+                    <span>Siap</span>
+                    <strong>{{ completeCSIRTCount }}</strong>
+                  </div>
+                  <div>
+                    <span>Perlu Tindak</span>
+                    <strong>{{ incompleteCsirtCount }}</strong>
+                  </div>
+                </div>
+                <div class="csirt-hero-progress" aria-hidden="true">
+                  <span :style="{ width: `${csirtReadinessCoverage}%` }"></span>
+                </div>
+                <div class="csirt-hero-note">
+                  <i class="ri-information-line"></i>
+                  <span>{{ filteredData.length }} data tampil{{ searchQuery ? " sesuai pencarian" : "" }}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </header>
 
-        <div class="card-body p-4 stakeholders-premium-body">
-          <div class="stakeholders-filter-bar mb-3">
-            <div class="d-flex justify-content-between align-items-center w-100">
-              <div class="stakeholders-per-page">
-                <span class="me-2 fw-medium text-muted" style="font-size: 12px;">ROWS</span>
+        <section class="csirt-kpi-grid" aria-label="Ringkasan CSIRT">
+          <article class="csirt-kpi-card tone-blue">
+            <div class="csirt-kpi-icon">
+              <i class="ri-shield-user-line"></i>
+            </div>
+            <div class="csirt-kpi-body">
+              <span class="csirt-kpi-label">Total CSIRT</span>
+              <strong class="csirt-kpi-value">{{ filteredData.length }}</strong>
+              <small class="csirt-kpi-hint">Seluruh tim yang sudah terdaftar</small>
+            </div>
+          </article>
+          <article class="csirt-kpi-card tone-green">
+            <div class="csirt-kpi-icon">
+              <i class="ri-checkbox-circle-line"></i>
+            </div>
+            <div class="csirt-kpi-body">
+              <span class="csirt-kpi-label">Siap Operasional</span>
+              <strong class="csirt-kpi-value">{{ completeCSIRTCount }}</strong>
+              <small class="csirt-kpi-hint">SDM dan SE sudah lengkap</small>
+            </div>
+          </article>
+          <article class="csirt-kpi-card tone-amber">
+            <div class="csirt-kpi-icon">
+              <i class="ri-time-line"></i>
+            </div>
+            <div class="csirt-kpi-body">
+              <span class="csirt-kpi-label">Perlu Ditindaklanjuti</span>
+              <strong class="csirt-kpi-value">{{ incompleteCsirtCount }}</strong>
+              <small class="csirt-kpi-hint">Masih butuh pelengkapan data</small>
+            </div>
+          </article>
+          <article class="csirt-kpi-card tone-cyan">
+            <div class="csirt-kpi-icon">
+              <i class="ri-team-line"></i>
+            </div>
+            <div class="csirt-kpi-body">
+              <span class="csirt-kpi-label">Total SDM / SE</span>
+              <strong class="csirt-kpi-value">{{ totalSdmCount }} / {{ totalSeCount }}</strong>
+              <small class="csirt-kpi-hint">Ringkasan personel dan sistem elektronik</small>
+            </div>
+          </article>
+        </section>
+
+        <div class="card-body p-0 stakeholders-premium-body csirt-content">
+          <div class="stakeholders-filter-bar csirt-filter-shell mb-3">
+            <div class="csirt-toolbar-row">
+              <div class="stakeholders-per-page csirt-rows-control">
+                <i class="ri-list-check-2"></i>
+                <span>Baris</span>
                 <select v-model="itemsPerPage" class="form-select form-select-sm entries-select">
                   <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
                 </select>
               </div>
-              <div class="d-flex gap-2 ms-auto">
+              <div class="csirt-toolbar-search">
+                <label class="csirt-search-field">
+                  <i class="ri-search-line header-search-icon"></i>
+                  <input v-model="searchQuery" type="text" class="form-control form-control-sm header-search-input" placeholder="Cari nama CSIRT, website, telepon, atau email..." />
+                  <button v-if="searchQuery" @click="clearSearch" class="clear-btn csirt-search-clear" title="Reset pencarian">
+                    <i class="ri-close-circle-fill"></i>
+                  </button>
+                </label>
+              </div>
+              <div class="csirt-filter-actions">
                 <button
                   @click="exportAllCsirtPdf"
-                  class="btn btn-danger d-flex align-items-center gap-2"
+                  class="btn btn-danger d-flex align-items-center gap-2 csirt-btn csirt-btn-danger"
                 >
                   <i class="ri-file-pdf-line fs-13"></i>
                   <span class="btn-text">Rekap CSIRT</span>
                 </button>
                 <button v-if="isAdmin"
                   @click="openCreateModal"
-                  class="btn stakeholders-add-btn btn-primary ms-auto d-flex align-items-center gap-2"
+                  class="btn stakeholders-add-btn btn-primary d-flex align-items-center gap-2 csirt-btn csirt-btn-primary"
                 >
                   <i class="ri-add-circle-line fs-13"></i>
                   <span class="btn-text">Tambah CSIRT</span>
@@ -653,7 +886,7 @@ export default {
           <template v-else>
 
             <!-- Table -->
-            <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
+            <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell csirt-list-shell d-none d-lg-block">
               <table class="table stakeholder-table text-nowrap mb-0">
                 <thead class="stakeholder-thead">
                   <tr>
@@ -738,10 +971,10 @@ export default {
                         <span>Email</span>
                       </div>
                     </th>
-                    <th class="fw-semibold" style="width:160px;white-space:nowrap">
+                    <th class="fw-semibold" style="width:170px;white-space:nowrap">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-bar-chart-box-line text-primary"></i>
-                        <span>Status</span>
+                        <i class="ri-pulse-line text-primary"></i>
+                        <span>Status Ringkas</span>
                       </div>
                     </th>
                     <th class="text-center fw-semibold" style="width:100px">Aksi</th>
@@ -764,7 +997,7 @@ export default {
                       </div>
                     </td>
                   </tr>
-                  <tr v-for="(item, i) in displayData" :key="item.id" class="stakeholder-row">
+                  <tr v-for="(item, i) in displayData" :key="item.id" class="stakeholder-row csirt-table-row">
                     <td class="align-middle text-center">
                       <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
@@ -776,27 +1009,28 @@ export default {
                         </div>
                         <div class="company-name-wrap">
                           <span class="company-name d-block">{{ item.nama_csirt }}</span>
+                          <span class="csirt-inline-meta">Profil tim respons insiden</span>
                         </div>
                       </div>
                     </td>
                     <td class="align-middle">
-                      <template v-if="item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan))">
+                      <template v-if="getStakeholderForItem(item)">
                         <div class="d-flex align-items-center gap-2">
                           <div>
                             <span class="company-name d-block">
-                              {{ (item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan)))?.nama_perusahaan }}
+                              {{ getStakeholderForItem(item)?.nama_perusahaan }}
                             </span>
                             <span class="text-muted fs-12">
-                              {{ (item.perusahaan?.sub_sektor || stakeholdersStore.getStakeholderById(String(item.id_perusahaan))?.sub_sektor)?.nama_sub_sektor }}
+                              {{ getStakeholderForItem(item)?.sub_sektor?.nama_sub_sektor || "-" }}
                             </span>
                           </div>
                         </div>
                       </template>
-                      <span v-else class="text-muted fs-12">—</span>
+                      <span v-else class="text-muted fs-12">-</span>
                     </td>
-                    <td class="align-middle" style="white-space:nowrap">
+                    <td class="align-middle csirt-web-cell" style="white-space:nowrap">
                       <a :href="item.web_csirt" target="_blank" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;display:inline-block!important">
-                        <span class="email-text">{{ item.web_csirt }}</span>
+                        <span class="email-text">{{ getWebsiteLabel(item.web_csirt) }}</span>
                       </a>
                     </td>
                     <td class="align-middle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
@@ -806,20 +1040,21 @@ export default {
                       <a :href="`mailto:${item.email_csirt}`" v-if="item.email_csirt" class="text-muted text-decoration-none email-link">
                          {{ item.email_csirt }}
                       </a>
-                      <span v-else class="text-muted">—</span>
+                      <span v-else class="text-muted">-</span>
                     </td>
                     <td class="align-middle" style="white-space:normal;min-width:140px">
-                      <div class="d-flex flex-column gap-1">
+                      <div class="d-flex flex-column gap-1 csirt-status-stack">
+                        <div class="csirt-readiness-badge" :class="`tone-${getStatusSummary(item).tone}`">
+                          <i :class="getStatusSummary(item).icon"></i>
+                          <span>{{ getStatusSummary(item).label }}</span>
+                        </div>
+                        <span class="csirt-status-hint">{{ getStatusSummary(item).hint }}</span>
                         <!-- SDM badge -->
                         <div class="d-flex align-items-center gap-1">
                           <span class="badge-sektor"
                             :class="csirtStatus(item.id).sdmCount > 0 ? 'badge-sektor-green' : 'badge-sektor-red'">
                             <i :class="csirtStatus(item.id).sdmCount > 0 ? 'ri-user-3-line me-1' : 'ri-user-unfollow-line me-1'"></i>
-                            SDM:
-                            <template v-if="csirtStatus(item.id).sdmCount > 0">
-                              {{ csirtStatus(item.id).sdmCount }} personel
-                            </template>
-                            <template v-else>Belum Ada</template>
+                            SDM {{ csirtStatus(item.id).sdmCount > 0 ? `${csirtStatus(item.id).sdmCount} personel` : "belum ada" }}
                           </span>
                         </div>
                         <!-- SE badge -->
@@ -835,12 +1070,11 @@ export default {
                               : csirtStatus(item.id).seIncomplete > 0
                                 ? 'ri-error-warning-line me-1'
                                 : 'ri-server-fill me-1'"></i>
-                            SE:
-                            <template v-if="csirtStatus(item.id).seCount === 0">Belum Ada</template>
+                            <template v-if="csirtStatus(item.id).seCount === 0">SE belum ada</template>
                             <template v-else-if="csirtStatus(item.id).seIncomplete > 0">
-                              {{ csirtStatus(item.id).seCount }} ({{ csirtStatus(item.id).seIncomplete }} blm lengkap)
+                              SE {{ csirtStatus(item.id).seCount }} / {{ csirtStatus(item.id).seIncomplete }} belum lengkap
                             </template>
-                            <template v-else>{{ csirtStatus(item.id).seCount }} SE</template>
+                            <template v-else>SE {{ csirtStatus(item.id).seCount }} lengkap</template>
                           </span>
                         </div>
                       </div>
@@ -876,6 +1110,75 @@ export default {
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <div class="d-lg-none csirt-mobile-list">
+              <article v-for="(item, i) in displayData" :key="`mobile-${item.id}`" class="csirt-mobile-card">
+                <div class="csirt-mobile-top">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="company-avatar" :class="getAvatarClass(item.nama_csirt.charAt(0).toUpperCase())">
+                      <img v-if="item.photo_csirt" :src="item.photo_csirt" :alt="item.nama_csirt" class="company-avatar-img" />
+                      <span v-else class="company-avatar-letter">{{ item.nama_csirt.charAt(0).toUpperCase() }}</span>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="csirt-mobile-index">#{{ (currentPage - 1) * itemsPerPage + i + 1 }}</div>
+                      <h3>{{ item.nama_csirt }}</h3>
+                      <p>{{ getStakeholderForItem(item)?.nama_perusahaan || "Stakeholder belum terhubung" }}</p>
+                    </div>
+                  </div>
+                  <div class="csirt-readiness-badge" :class="`tone-${getStatusSummary(item).tone}`">
+                    <i :class="getStatusSummary(item).icon"></i>
+                    <span>{{ getStatusSummary(item).label }}</span>
+                  </div>
+                </div>
+
+                <div class="csirt-mobile-grid">
+                  <div>
+                    <span>Website</span>
+                    <a :href="item.web_csirt" target="_blank">{{ getWebsiteLabel(item.web_csirt) }}</a>
+                  </div>
+                  <div>
+                    <span>Telepon</span>
+                    <strong>{{ item.telepon_csirt || "-" }}</strong>
+                  </div>
+                  <div>
+                    <span>Email</span>
+                    <strong>{{ item.email_csirt || "-" }}</strong>
+                  </div>
+                  <div>
+                    <span>Sektor</span>
+                    <strong>{{ getStakeholderForItem(item)?.sub_sektor?.nama_sub_sektor || "-" }}</strong>
+                  </div>
+                </div>
+
+                <div class="csirt-mobile-status">
+                  <span class="badge-sektor" :class="csirtStatus(item.id).sdmCount > 0 ? 'badge-sektor-green' : 'badge-sektor-red'">
+                    <i :class="csirtStatus(item.id).sdmCount > 0 ? 'ri-user-3-line me-1' : 'ri-user-unfollow-line me-1'"></i>
+                    SDM {{ csirtStatus(item.id).sdmCount > 0 ? `${csirtStatus(item.id).sdmCount} personel` : "belum ada" }}
+                  </span>
+                  <span class="badge-sektor" :class="csirtStatus(item.id).seCount === 0 ? 'badge-sektor-red' : csirtStatus(item.id).seIncomplete > 0 ? 'badge-sektor-amber' : 'badge-sektor-green'">
+                    <i :class="csirtStatus(item.id).seCount === 0 ? 'ri-server-line me-1' : csirtStatus(item.id).seIncomplete > 0 ? 'ri-error-warning-line me-1' : 'ri-server-fill me-1'"></i>
+                    <template v-if="csirtStatus(item.id).seCount === 0">SE belum ada</template>
+                    <template v-else-if="csirtStatus(item.id).seIncomplete > 0">SE {{ csirtStatus(item.id).seCount }} / {{ csirtStatus(item.id).seIncomplete }} belum lengkap</template>
+                    <template v-else>SE {{ csirtStatus(item.id).seCount }} lengkap</template>
+                  </span>
+                </div>
+
+                <div class="csirt-mobile-actions">
+                  <router-link :to="`/csirt/${toCsirtSlug(item)}`" class="btn btn-sm btn-info-light">
+                    <i class="ri-eye-line"></i><span>Lihat</span>
+                  </router-link>
+                  <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-success-light">
+                    <i class="ri-edit-2-line"></i><span>Edit</span>
+                  </button>
+                  <button v-if="isAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-danger-light">
+                    <i class="ri-delete-bin-3-line"></i><span>Hapus</span>
+                  </button>
+                  <button @click="exportPdf(item)" class="btn btn-sm btn-secondary-light">
+                    <i class="ri-file-pdf-line"></i><span>PDF</span>
+                  </button>
+                </div>
+              </article>
             </div>
 
             <!-- Pagination -->
@@ -924,6 +1227,7 @@ export default {
       </div>
     </div>
   </div>
+  </section>
 
   <!-- Create Modal -->
   <div v-if="showCreateModal" class="modal fade show d-block modal-overlay" tabindex="-1" @click.self="showCreateModal = false">
@@ -1987,6 +2291,587 @@ export default {
 
 [data-theme-mode='dark'] .stakeholders-per-page .entries-select {
   color: #f1f5f9 !important;
+}
+
+.csirt-page {
+  --csirt-bg: linear-gradient(135deg, #0f1f53 0%, #1d4ed8 58%, #60a5fa 100%);
+  --csirt-panel: #ffffff;
+  --csirt-panel-soft: #f8fbff;
+  --csirt-border: #dbe7f5;
+  --csirt-text: #0f172a;
+  --csirt-muted: #64748b;
+}
+
+.csirt-page-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.csirt-hero-shell {
+  padding: 1.45rem 1.55rem;
+  background: var(--csirt-bg);
+  color: #fff;
+  border-radius: 24px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.csirt-hero-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1.25rem;
+  justify-content: space-between;
+}
+
+.csirt-inline-breadcrumb {
+  display: inline-flex;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 0.85rem;
+}
+
+.csirt-hero-copy h1 {
+  color: #fff;
+  font-size: clamp(1.9rem, 3vw, 2.4rem);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.csirt-hero-copy p {
+  color: rgba(255, 255, 255, 0.84);
+  max-width: 700px;
+  font-size: 0.97rem;
+  line-height: 1.6;
+  margin: 0.7rem 0 0;
+}
+
+.csirt-kpi-grid {
+  display: grid;
+  gap: 0.95rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.csirt-kpi-card {
+  align-items: flex-start;
+  background: var(--csirt-panel);
+  border: 1px solid var(--csirt-border);
+  border-radius: 18px;
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.06);
+  display: flex;
+  gap: 14px;
+  overflow: hidden;
+  padding: 18px;
+  position: relative;
+}
+
+.csirt-kpi-card::before {
+  background: var(--accent, #2563eb);
+  content: "";
+  height: 4px;
+  inset: 0 0 auto;
+  position: absolute;
+}
+
+.csirt-kpi-icon {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  border-radius: 14px;
+  color: var(--accent);
+  display: flex;
+  flex: 0 0 42px;
+  font-size: 20px;
+  height: 42px;
+  justify-content: center;
+}
+
+.csirt-kpi-body {
+  min-width: 0;
+}
+
+.csirt-kpi-label {
+  color: var(--csirt-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.csirt-kpi-value {
+  color: var(--csirt-text);
+  display: block;
+  font-size: 24px;
+  font-weight: 850;
+  line-height: 1.1;
+  margin-top: 4px;
+}
+
+.csirt-kpi-hint {
+  color: var(--csirt-muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 6px;
+}
+
+.csirt-kpi-card.tone-blue {
+  --accent: #2563eb;
+}
+
+.csirt-kpi-card.tone-green {
+  --accent: #16a34a;
+}
+
+.csirt-kpi-card.tone-amber {
+  --accent: #f59e0b;
+}
+
+.csirt-kpi-card.tone-cyan {
+  --accent: #0891b2;
+}
+
+.csirt-hero-tools {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 320px;
+}
+
+.csirt-hero-summary-card {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+  min-width: 290px;
+  padding: 0.9rem;
+  width: min(100%, 390px);
+}
+
+.csirt-search-field {
+  display: block;
+  position: relative;
+}
+
+.csirt-search-field .header-search-input {
+  background: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: none !important;
+  height: 38px !important;
+}
+
+.csirt-hero-card-title {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.csirt-hero-card-title span,
+.csirt-hero-card-stats span {
+  color: rgba(255, 255, 255, 0.72);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.csirt-hero-card-title strong {
+  color: #fff;
+  font-size: 1.55rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.csirt-hero-card-stats {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.csirt-hero-card-stats strong {
+  color: #fff;
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 850;
+  line-height: 1.1;
+  margin-top: 0.2rem;
+}
+
+.csirt-hero-progress {
+  background: rgba(15, 23, 42, 0.28);
+  border-radius: 999px;
+  height: 5px;
+  overflow: hidden;
+}
+
+.csirt-hero-progress span {
+  background: linear-gradient(90deg, #86efac 0%, #22d3ee 100%);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.csirt-hero-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.85rem;
+}
+
+.csirt-content {
+  padding: 0;
+}
+
+.csirt-filter-shell,
+.csirt-list-shell {
+  border-radius: 22px;
+  border: 1px solid var(--csirt-border);
+  background: var(--csirt-panel);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.csirt-filter-shell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem !important;
+}
+
+.csirt-toolbar-row {
+  align-items: center;
+  display: flex;
+  gap: 0.85rem;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.csirt-rows-control {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 42px;
+  min-width: 150px;
+  padding: 0.45rem 0.7rem !important;
+  background: #f8fafc !important;
+  border: 1px solid #dbe7f5 !important;
+  border-radius: 10px !important;
+}
+
+.csirt-rows-control::before {
+  display: none !important;
+}
+
+.csirt-rows-control i {
+  align-items: center;
+  background: #dbeafe;
+  border-radius: 8px;
+  color: #2563eb;
+  display: flex;
+  flex: 0 0 28px;
+  font-size: 15px;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.csirt-rows-control span {
+  color: var(--csirt-text) !important;
+  font-size: 0.72rem !important;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.csirt-rows-control .entries-select {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--csirt-text) !important;
+  font-weight: 800 !important;
+  height: 26px !important;
+  min-width: 58px;
+  padding: 0 1.45rem 0 0.2rem !important;
+}
+
+.csirt-toolbar-search {
+  flex: 1 1 420px;
+  max-width: 560px;
+  min-width: 260px;
+}
+
+.csirt-toolbar-search .csirt-search-field .header-search-input {
+  background: #ffffff !important;
+  border: 1px solid #dbe7f5 !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04) !important;
+  height: 42px !important;
+}
+
+.csirt-toolbar-search .header-search-icon {
+  color: #64748b;
+}
+
+.csirt-filter-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  justify-content: flex-end;
+}
+
+.csirt-btn {
+  min-height: 40px;
+  padding: 0.55rem 0.95rem !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.csirt-btn-danger {
+  background: #ff6458 !important;
+  border-color: #ff6458 !important;
+  box-shadow: 0 8px 18px rgba(255, 100, 88, 0.22);
+}
+
+.csirt-btn-primary {
+  background: #2457e6 !important;
+  border-color: #2457e6 !important;
+  box-shadow: 0 8px 18px rgba(36, 87, 230, 0.22) !important;
+}
+
+.csirt-list-shell {
+  padding: 0.55rem;
+}
+
+.csirt-inline-meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--csirt-muted);
+}
+
+.csirt-status-stack {
+  gap: 0.42rem !important;
+}
+
+.csirt-readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  width: fit-content;
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.csirt-readiness-badge.tone-ready {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.csirt-readiness-badge.tone-progress {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+.csirt-readiness-badge.tone-empty {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.csirt-status-hint {
+  font-size: 0.74rem;
+  color: var(--csirt-muted);
+  line-height: 1.45;
+}
+
+.csirt-mobile-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.csirt-mobile-card {
+  border: 1px solid var(--csirt-border);
+  border-radius: 20px;
+  background: var(--csirt-panel-soft);
+  padding: 1rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.csirt-mobile-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.csirt-mobile-index {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #2563eb;
+  margin-bottom: 0.18rem;
+}
+
+.csirt-mobile-top h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--csirt-text);
+}
+
+.csirt-mobile-top p {
+  margin: 0.18rem 0 0;
+  font-size: 0.82rem;
+  color: var(--csirt-muted);
+}
+
+.csirt-mobile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.csirt-mobile-grid span {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--csirt-muted);
+}
+
+.csirt-mobile-grid strong,
+.csirt-mobile-grid a {
+  color: var(--csirt-text);
+  font-size: 0.84rem;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.csirt-mobile-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.csirt-mobile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.csirt-mobile-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 12px;
+}
+
+.csirt-empty-state {
+  padding: 2.5rem 1rem;
+}
+
+@media (max-width: 991.98px) {
+  .csirt-hero-header {
+    flex-direction: column;
+  }
+
+  .csirt-hero-tools {
+    justify-content: flex-start;
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .csirt-hero-summary-card {
+    width: 100%;
+  }
+
+  .csirt-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .csirt-filter-shell,
+  .csirt-filter-actions {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .csirt-toolbar-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .csirt-rows-control,
+  .csirt-toolbar-search {
+    max-width: none;
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .csirt-content,
+  .csirt-hero-shell {
+    padding: 1rem;
+  }
+
+  .csirt-mobile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .csirt-kpi-card {
+    padding: 16px;
+  }
+
+  .csirt-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme-mode='dark'] .csirt-filter-shell,
+[data-theme-mode='dark'] .csirt-list-shell,
+[data-theme-mode='dark'] .csirt-mobile-card,
+[data-theme-mode='dark'] .csirt-kpi-card {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e2e8f0;
+}
+
+[data-theme-mode='dark'] .csirt-inline-meta,
+[data-theme-mode='dark'] .csirt-status-hint,
+[data-theme-mode='dark'] .csirt-mobile-top p,
+[data-theme-mode='dark'] .csirt-mobile-grid span {
+  color: #94a3b8;
+}
+
+[data-theme-mode='dark'] .csirt-mobile-grid strong,
+[data-theme-mode='dark'] .csirt-mobile-grid a,
+[data-theme-mode='dark'] .csirt-rows-control span {
+  color: #e2e8f0;
+}
+
+[data-theme-mode='dark'] .csirt-rows-control {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+[data-theme-mode='dark'] .csirt-rows-control .entries-select {
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode='dark'] .csirt-toolbar-search .csirt-search-field .header-search-input {
+  background: rgba(15, 23, 42, 0.82) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e2e8f0 !important;
 }
 
 </style>

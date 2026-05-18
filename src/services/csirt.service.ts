@@ -15,7 +15,6 @@ let allSeRequest: Promise<SeCsirt[]> | null = null;
  * Robustly unwrap array responses from potentially inconsistent backend endpoints.
  */
 function unwrapArray<T>(res: any, label: string): T[] {
-    console.debug(`[csirtService] ${label} raw response:`, res);
     if (!res) return [];
     if (Array.isArray(res)) return res as T[];
     if (Array.isArray(res.data)) return res.data as T[];
@@ -30,7 +29,6 @@ function unwrapArray<T>(res: any, label: string): T[] {
  * Robustly unwrap object responses from potentially inconsistent backend endpoints.
  */
 function unwrapObject<T>(res: any, label: string): T | null {
-    console.debug(`[csirtService] ${label} raw response:`, res);
     if (!res) return null;
     if (res.data && typeof res.data === 'object' && !Array.isArray(res.data)) return res.data as T;
     return res as T;

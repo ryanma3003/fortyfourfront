@@ -1,4 +1,5 @@
 import { api } from '@/config/api';
+import { formatImageUrl } from '@/utils/media';
 import type {
     LmsKelas, CreateKelasPayload, UpdateKelasPayload,
     LmsMateri, CreateMateriPayload, UpdateMateriPayload,
@@ -484,7 +485,7 @@ function normalizeKelas(item: any): LmsKelas {
         penyelenggara: String(item?.penyelenggara ?? ''),
         syarat_pendaftaran: String(item?.syarat_pendaftaran ?? ''),
         target_peserta: String(item?.target_peserta ?? ''),
-        thumbnail: item?.thumbnail ?? item?.thumnail ?? '',
+        thumbnail: formatImageUrl(item?.thumbnail ?? item?.thumnail ?? ''),
         status: normalizeKelasStatus(item?.status),
     };
     if (hasMateriPayload) normalized.materi = materi;

@@ -1208,7 +1208,7 @@ html.dark .brd-shell .brd-tag-chip {
 @media(max-width:640px){
   .ev-hero{padding:24px 20px}
   .ev-hero-title{font-size:26px}
-  .ev-hero-stats{flex-direction:column}
+  .ev-hero-stats{flex-direction:column;height:50%;}
   .ev-stat-card{width:100%}
   .ev-tabs,.ev-btn-add{width:100%}
   .ev-tab{flex:1;justify-content:center}

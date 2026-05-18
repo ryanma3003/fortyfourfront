@@ -75,6 +75,7 @@ const pickFirstArray = (value: any): any[] => {
     'surveyRisiko',
     'jawaban',
     'responses',
+    'items',
     'data',
   ];
 
@@ -122,107 +123,79 @@ const valueOf = (row: any, keys: string[], fallback = '-') => {
   return fallback;
 };
 
-const numberOf = (value: any): number | null => {
-  const raw = String(value ?? '').replace(',', '.').match(/\d+(\.\d+)?/)?.[0];
-  if (!raw) return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const normalizeLevel = (value: any) => {
-  const text = String(value || '').trim().toLowerCase();
-  const score = Number(String(value || '').replace(',', '.'));
-  if (text.includes('sangat') || score >= 20 || score === 4) return 'Sangat Tinggi';
-  if (text.includes('tinggi') || score >= 12 || score === 3) return 'Tinggi';
-  if (text.includes('sedang') || score >= 6 || score === 2) return 'Sedang';
-  if (text.includes('rendah') || score >= 1 || score === 1) return 'Rendah';
-  return 'Belum Dinilai';
-};
-
 const parsedRiskRows = computed(() => {
   const fromStore = currentResult.value?.risks || [];
   const fromPayload = pickFirstArray(unwrapRiskData.value);
   return fromStore.length ? fromStore : fromPayload;
 });
 
+const isFilled = (value: any) => value !== undefined && value !== null && String(value).trim() !== '' && String(value).trim() !== '-';
+
+const answerOf = (row: any, keys: string[], fallback = '') => valueOf(row, keys, fallback);
+
+const booleanOf = (value: any): boolean | null => {
+  if (!isFilled(value)) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+
+  const text = String(value).trim().toLowerCase();
+  if (['false', '0', 'tidak', 'no', 'n', 'belum', 'none', 'null'].includes(text) || text.includes('tidak')) return false;
+  if (['true', '1', 'ya', 'yes', 'y', 'ada', 'pernah', 'sudah', 'terjadi'].includes(text) || text.includes('pernah')) return true;
+  return null;
+};
+
+const formatOccurrence = (value: any) => {
+  const parsed = booleanOf(value);
+  if (parsed === true) return 'Pernah Terjadi';
+  if (parsed === false) return 'Tidak Pernah';
+  return 'Belum Dijawab';
+};
+
+const formatControl = (value: any) => {
+  const parsed = booleanOf(value);
+  if (parsed === true) return 'Ada';
+  if (parsed === false) return 'Tidak Ada';
+  return 'Belum Dijawab';
+};
+
+const joinFilled = (items: string[]) => items.filter(isFilled).join(', ') || '-';
+
+const getImpactSummary = (row: any) => {
+  const impacts = [
+    ['Reputasi', answerOf(row, ['dampak_reputasi', 'dampakReputasi', 'reputasi', 'risiko_dampak_reputasi', 'risiko_dampak.dampak_reputasi'])],
+    ['Operasional', answerOf(row, ['dampak_operasional', 'dampakOperasional', 'operasional', 'risiko_dampak_operasional', 'risiko_dampak.dampak_operasional'])],
+    ['Finansial', answerOf(row, ['dampak_finansial', 'dampakFinansial', 'finansial', 'risiko_dampak_finansial', 'risiko_dampak.dampak_finansial'])],
+    ['Hukum', answerOf(row, ['dampak_hukum', 'dampakHukum', 'hukum', 'risiko_dampak_hukum', 'risiko_dampak.dampak_hukum'])],
+  ]
+    .filter(([, value]) => isFilled(value))
+    .map(([label, value]) => `${label}: ${value}`);
+
+  return impacts.join(' | ') || answerOf(row, ['dampak', 'impact', 'nilai_dampak', 'level_dampak'], '-');
+};
+
 const riskRows = computed(() => parsedRiskRows.value.map((row: any, index: number) => {
-  const impact = valueOf(row, [
-    'impact',
-    'dampak',
-    'nilai_dampak',
-    'nilaiDampak',
-    'score_dampak',
-    'skor_dampak',
-    'bobot_dampak',
-    'impact_level',
-    'impactLevel',
-    'level_dampak',
-    'id_impact',
-    'impact_id',
-    'master_risiko.impact',
-    'master_risiko.dampak',
-    'master_risiko.nilai_dampak',
-    'master_risiko.impact_level',
-  ]);
-  const probability = valueOf(row, [
-    'prob',
-    'probability',
-    'probabilitas',
-    'kemungkinan',
-    'likelihood',
-    'nilai_kemungkinan',
-    'nilaiKemungkinan',
-    'nilai_probabilitas',
-    'nilaiProbabilitas',
-    'score_probabilitas',
-    'skor_probabilitas',
-    'skor_kemungkinan',
-    'bobot_probabilitas',
-    'probability_level',
-    'probabilityLevel',
-    'level_probabilitas',
-    'id_probability',
-    'probability_id',
-    'id_probabilitas',
-    'probabilitas_id',
-    'master_risiko.prob',
-    'master_risiko.probability',
-    'master_risiko.probabilitas',
-    'master_risiko.kemungkinan',
-    'master_risiko.likelihood',
-    'master_risiko.nilai_kemungkinan',
-  ]);
-  const explicitLevel = valueOf(row, [
-    'level',
-    'level_risiko',
-    'levelRisiko',
-    'tingkat_risiko',
-    'tingkatRisiko',
-    'nilai_risiko',
-    'nilaiRisiko',
-    'risk_level',
-    'riskLevel',
-    'skor_risiko',
-    'skorRisiko',
-    'kategori_risiko',
-    'kategoriRisiko',
-    'master_risiko.level',
-    'master_risiko.level_risiko',
-    'master_risiko.tingkat_risiko',
-  ], '');
-  const impactScore = numberOf(impact);
-  const probabilityScore = numberOf(probability);
-  const calculatedRiskScore = impactScore && probabilityScore ? impactScore * probabilityScore : null;
-  const level = explicitLevel ? normalizeLevel(explicitLevel) : normalizeLevel(calculatedRiskScore);
+  const occurredValue = answerOf(row, ['pernah_terjadi', 'pernahTerjadi', 'is_pernah_terjadi', 'eligibility', 'eligibility_pernah_terjadi', 'risiko_eligibility.pernah_terjadi']);
+  const controlValue = answerOf(row, ['ada_pengendalian', 'adaPengendalian', 'has_control', 'pengendalian', 'pengendalian_ada', 'risiko_pengendalian.ada_pengendalian']);
+  const reason = answerOf(row, ['alasan', 'alasan_tidak_terjadi', 'alasanTidakTerjadi', 'reason', 'risiko_alasan_alasan', 'risiko_alasan.alasan'], '-');
+  const frequency = answerOf(row, ['frekuensi', 'frequency', 'dampak_frekuensi', 'risiko_dampak_frekuensi', 'risiko_dampak.frekuensi'], '-');
+  const controlDescription = answerOf(row, ['deskripsi_pengendalian', 'deskripsiPengendalian', 'control_description', 'pengendalian_deskripsi', 'risiko_pengendalian_deskripsi', 'risiko_pengendalian.deskripsi_pengendalian'], '-');
+  const impact = getImpactSummary(row);
+  const hasAssessment = [occurredValue, reason, impact, frequency, controlValue, controlDescription].some(isFilled);
 
   return {
     id: row?.id || row?.kode || `risk-${index}`,
-    asset: valueOf(row, ['aset', 'asset', 'nama_aset', 'namaAset', 'aset_terdampak', 'asetTerdampak', 'jenis_aset', 'jenisAset', 'kategori_aset', 'kategoriAset', 'objek', 'komponen', 'kategori', 'nama_kategori', 'namaKategori', 'kelompok', 'kelompok_risiko', 'master_risiko.aset', 'master_risiko.nama_aset', 'master_risiko.namaAset', 'master_risiko.kategori', 'master_risiko.nama_kategori'], 'Risiko Umum'),
+    asset: valueOf(row, ['aset', 'asset', 'nama_aset', 'namaAset', 'aset_terdampak', 'asetTerdampak', 'jenis_aset', 'jenisAset', 'kategori_aset', 'kategoriAset', 'objek', 'komponen', 'kategori', 'nama_kategori', 'namaKategori', 'kelompok', 'kelompok_risiko', 'master_risiko.aset', 'master_risiko.nama_aset', 'master_risiko.namaAset', 'master_risiko.kategori', 'master_risiko.nama_kategori'], `Risiko ${index + 1}`),
     description: valueOf(row, ['deskripsi_risiko', 'deskripsiRisiko', 'deskripsi', 'nama_risiko', 'namaRisiko', 'risiko', 'risk', 'ancaman', 'kerentanan', 'pertanyaan', 'master_risiko.deskripsi', 'master_risiko.nama_risiko', 'master_risiko.namaRisiko', 'master_risiko.pertanyaan']),
+    occurred: formatOccurrence(occurredValue),
+    occurredClass: booleanOf(occurredValue) === true ? 'is-complete' : (booleanOf(occurredValue) === false ? 'is-pending' : ''),
+    reason,
     impact,
-    probability,
-    level,
-    status: valueOf(row, ['status', 'status_mitigasi', 'mitigasi_status', 'status_risiko', 'master_risiko.status'], 'Terekam'),
+    frequency,
+    control: formatControl(controlValue),
+    controlClass: booleanOf(controlValue) === true ? 'is-complete' : (booleanOf(controlValue) === false ? 'is-pending' : ''),
+    controlDescription,
+    answerSummary: booleanOf(occurredValue) === false ? reason : joinFilled([impact, frequency !== '-' ? `Frekuensi: ${frequency}` : '']),
+    status: hasAssessment ? 'Terisi' : 'Belum Terisi',
   };
 }));
 
@@ -248,22 +221,24 @@ const statusClass = computed(() => {
   return 'is-pending';
 });
 
-const riskLevels = computed(() => ['Sangat Tinggi', 'Tinggi', 'Sedang', 'Rendah'].map((label) => ({
-  label,
-  count: riskRows.value.filter((row) => row.level === label).length,
-})));
+const riskLevels = computed(() => [
+  { label: 'Total Risiko', count: riskRows.value.length },
+  { label: 'Pernah Terjadi', count: riskRows.value.filter((row) => row.occurred === 'Pernah Terjadi').length },
+  { label: 'Tidak Pernah', count: riskRows.value.filter((row) => row.occurred === 'Tidak Pernah').length },
+  { label: 'Ada Pengendalian', count: riskRows.value.filter((row) => row.control === 'Ada').length },
+]);
 
 const respondentFields = computed(() => [
-  { label: 'Nama Lengkap', value: respondent.value?.nama_lengkap || '-' },
-  { label: 'Jabatan', value: respondent.value?.jabatan || '-' },
-  { label: 'Email', value: respondent.value?.email || '-' },
-  { label: 'No. Telepon', value: respondent.value?.no_telepon || '-' },
-  { label: 'Nama Perusahaan', value: respondent.value?.nama_perusahaan || currentStakeholder.value?.nama_perusahaan || '-' },
-  { label: 'Sektor', value: respondent.value?.nama_sektor || '-' },
-  { label: 'Sub Sektor', value: respondent.value?.nama_sub_sektor || '-' },
-  { label: 'Sertifikat Training', value: respondent.value?.sertifikat_training || '-' },
-  { label: 'Dibuat', value: formatDate(respondent.value?.created_at) },
-  { label: 'Diperbarui', value: formatDate(respondent.value?.updated_at) },
+  { icon: 'ri-user-3-line', label: 'Nama Lengkap', value: respondent.value?.nama_lengkap || '-' },
+  { icon: 'ri-briefcase-4-line', label: 'Jabatan', value: respondent.value?.jabatan || '-' },
+  { icon: 'ri-mail-line', label: 'Email', value: respondent.value?.email || '-' },
+  { icon: 'ri-phone-line', label: 'No. Telepon', value: respondent.value?.no_telepon || '-' },
+  { icon: 'ri-building-4-line', label: 'Nama Perusahaan', value: respondent.value?.nama_perusahaan || currentStakeholder.value?.nama_perusahaan || '-' },
+  { icon: 'ri-node-tree', label: 'Sektor', value: respondent.value?.nama_sektor || '-' },
+  { icon: 'ri-git-branch-line', label: 'Sub Sektor', value: respondent.value?.nama_sub_sektor || '-' },
+  { icon: 'ri-award-line', label: 'Sertifikat Training', value: respondent.value?.sertifikat_training || '-' },
+  { icon: 'ri-calendar-check-line', label: 'Dibuat', value: formatDate(respondent.value?.created_at) },
+  { icon: 'ri-refresh-line', label: 'Diperbarui', value: formatDate(respondent.value?.updated_at) },
 ]);
 
 const loadSurveyResult = async () => {
@@ -399,6 +374,7 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
           <div class="risk-section-header" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; border-bottom: 1px solid #dbe5f2; background: #f8fafc;">
             <div>
               <h3 style="margin: 0; color: #061b3a; font-size: .95rem; font-weight: 950;">Data Responden</h3>
+              <p>Profil pengisi asesmen dan informasi organisasi.</p>
             </div>
             <span style="color: #2563eb; font-size: .75rem; font-weight: 900;">{{ respondent ? 'Terekam' : 'Belum Ada' }}</span>
           </div>
@@ -410,8 +386,11 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
           </div>
           <div v-else class="respondent-grid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .85rem; padding: 1rem;">
             <div v-for="field in respondentFields" :key="field.label" class="respondent-field" style="min-height: 70px; padding: .8rem; border: 1px solid #e7eef7; border-radius: 8px; background: #fbfdff;">
-              <span style="display: block; color: #6b7f9c; font-size: .68rem; line-height: 1.2; font-weight: 900; text-transform: uppercase;">{{ field.label }}</span>
-              <strong style="display: block; margin-top: .35rem; color: #10233f; font-size: .82rem; line-height: 1.35; font-weight: 850; overflow-wrap: anywhere;">{{ field.value }}</strong>
+              <span class="respondent-icon"><i :class="field.icon"></i></span>
+              <span class="respondent-copy">
+                <span class="respondent-label" style="display: block; color: #6b7f9c; font-size: .68rem; line-height: 1.2; font-weight: 900; text-transform: uppercase;">{{ field.label }}</span>
+                <strong class="respondent-value" style="display: block; margin-top: .35rem; color: #10233f; font-size: .82rem; line-height: 1.35; font-weight: 850; overflow-wrap: anywhere;">{{ field.value }}</strong>
+              </span>
             </div>
           </div>
         </div>
@@ -421,6 +400,7 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
             <div class="risk-section-header" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; border-bottom: 1px solid #dbe5f2; background: #f8fafc;">
               <div>
                 <h3 style="margin: 0; color: #061b3a; font-size: .95rem; font-weight: 950;">Data Risiko</h3>
+                <p>Ringkasan jawaban asesmen untuk setiap risiko.</p>
               </div>
               <span style="color: #2563eb; font-size: .75rem; font-weight: 900;">{{ riskRows.length }} Baris</span>
             </div>
@@ -432,25 +412,36 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
               <p>{{ resikoStore.surveyResultError }}</p>
             </div>
             <div v-else-if="riskRows.length" class="risk-table-wrap" style="overflow: auto;">
-              <table class="risk-table" style="width: 100%; min-width: 780px; border-collapse: collapse;">
+              <table class="risk-table" style="width: 100%; min-width: 1180px; border-collapse: collapse;">
                 <thead>
                   <tr>
-                    <th style="padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Aset</th>
+                    <th style="width: 120px; padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Risiko</th>
                     <th style="padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Deskripsi Risiko</th>
-                    <th style="padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Impact</th>
-                    <th style="padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Prob</th>
-                    <th style="padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Level</th>
-                    <th style="padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Status</th>
+                    <th style="width: 145px; padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Pernah Terjadi</th>
+                    <th style="width: 290px; padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Alasan / Dampak</th>
+                    <th style="width: 115px; padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Frekuensi</th>
+                    <th style="width: 260px; padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Pengendalian</th>
+                    <th style="width: 105px; padding: .85rem 1rem; color: #34445f; background: #f3f6fa; border-bottom: 1px solid #dbe5f2; font-size: .68rem; font-weight: 950; text-transform: uppercase;">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="row in riskRows" :key="row.id">
-                    <td style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.asset }}</td>
-                    <td style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.description }}</td>
-                    <td style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.impact }}</td>
-                    <td style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.probability }}</td>
-                    <td style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;"><span class="risk-pill" style="display: inline-flex; align-items: center; min-height: 24px; padding: 0 .6rem; border-radius: 999px; color: #0f3f62; background: #eaf3ff; font-size: .7rem; font-weight: 900;">{{ row.level }}</span></td>
-                    <td style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.status }}</td>
+                    <td class="risk-name-cell" data-label="Risiko" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 800; vertical-align: top;">
+                      <span class="risk-name-text" style="display: block;">{{ row.asset }}</span>
+                    </td>
+                    <td data-label="Deskripsi" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.description }}</td>
+                    <td data-label="Pernah Terjadi" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">
+                      <span class="risk-pill" :class="row.occurredClass">{{ row.occurred }}</span>
+                    </td>
+                    <td data-label="Alasan / Dampak" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.answerSummary }}</td>
+                    <td data-label="Frekuensi" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">{{ row.frequency }}</td>
+                    <td data-label="Pengendalian" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">
+                      <span class="risk-pill" :class="row.controlClass">{{ row.control }}</span>
+                      <span style="display: block; margin-top: .45rem; color: #203653;">{{ row.controlDescription }}</span>
+                    </td>
+                    <td data-label="Status" style="padding: .9rem 1rem; color: #203653; border-bottom: 1px solid #edf2f7; font-size: .8rem; font-weight: 700; vertical-align: top;">
+                      <span class="risk-status-chip" :class="{ 'is-complete': row.status === 'Terisi', 'is-pending': row.status !== 'Terisi' }">{{ row.status }}</span>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -637,6 +628,7 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   border: 1px solid #dbe5f2;
   border-radius: 10px;
   background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
 
 .risk-section + .risk-section {
@@ -650,7 +642,7 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   gap: 1rem;
   padding: 1rem 1.15rem;
   border-bottom: 1px solid #dbe5f2;
-  background: #f8fafc;
+  background: linear-gradient(180deg, #fbfdff 0%, #f5f8fc 100%);
 }
 
 .risk-section-header h3 {
@@ -682,14 +674,42 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
 }
 
 .respondent-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
   min-height: 70px;
   padding: 0.8rem;
   border: 1px solid #e7eef7;
   border-radius: 8px;
   background: #fbfdff;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.respondent-field span {
+.respondent-field:hover {
+  border-color: #bfd4f0;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.08);
+  transform: translateY(-1px);
+}
+
+.respondent-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+  color: #2563eb !important;
+  background: #eaf3ff;
+  font-size: 1rem !important;
+}
+
+.respondent-copy {
+  display: block;
+  min-width: 0;
+}
+
+.respondent-label {
   display: block;
   color: #6b7f9c;
   font-size: 0.68rem;
@@ -698,7 +718,7 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   text-transform: uppercase;
 }
 
-.respondent-field strong {
+.respondent-value {
   display: block;
   margin-top: 0.35rem;
   color: #10233f;
@@ -717,22 +737,38 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
 
 .risk-table-wrap {
   overflow: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .risk-table {
   width: 100%;
-  min-width: 780px;
-  border-collapse: collapse;
+  min-width: 1180px;
+  border-collapse: separate !important;
+  border-spacing: 0;
+  table-layout: fixed;
 }
 
 .risk-table th {
   padding: 0.85rem 1rem;
   color: #34445f;
-  background: #f3f6fa;
+  background: #f3f7fc !important;
   border-bottom: 1px solid #dbe5f2;
   font-size: 0.68rem;
   font-weight: 950;
   text-transform: uppercase;
+}
+
+.risk-table tbody tr {
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.risk-table tbody tr:nth-child(even) td {
+  background: #fbfdff !important;
+}
+
+.risk-table tbody tr:hover td {
+  background: #f2f7ff !important;
 }
 
 .risk-table td {
@@ -742,6 +778,25 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   font-size: 0.8rem;
   font-weight: 700;
   vertical-align: top;
+}
+
+.risk-name-cell {
+  position: relative;
+  background: #f8fbff !important;
+}
+
+.risk-name-cell::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #2f7df6;
+}
+
+.risk-name-text {
+  color: #10233f !important;
+  font-weight: 950 !important;
+  line-height: 1.35;
 }
 
 .risk-pill {
@@ -754,6 +809,47 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   background: #eaf3ff;
   font-size: 0.7rem;
   font-weight: 900;
+}
+
+.risk-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  color: #1e3a8a;
+  background: #dbeafe;
+  font-size: 0.7rem;
+  font-weight: 950;
+}
+
+.risk-status-chip.is-complete {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.risk-status-chip.is-pending {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.risk-pill.is-complete {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.risk-pill.is-pending {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.risk-table td,
+.risk-table th {
+  overflow-wrap: anywhere;
+}
+
+.risk-table td span:not(.risk-pill) {
+  overflow-wrap: anywhere;
 }
 
 .risk-loading,
@@ -809,6 +905,11 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18) !important;
 }
 
+.risk-page.is-dark .respondent-icon {
+  color: #bfdbfe !important;
+  background: rgba(59, 130, 246, 0.18) !important;
+}
+
 .risk-page.is-dark .risk-section-header {
   border-color: #2b395a !important;
   background: #1d2940 !important;
@@ -827,6 +928,10 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
 .risk-page.is-dark .risk-empty,
 .risk-page.is-dark .risk-empty p {
   color: #a8b6d1 !important;
+}
+
+.risk-page.is-dark .respondent-icon {
+  color: #bfdbfe !important;
 }
 
 .risk-page.is-dark .risk-section-header > span,
@@ -852,11 +957,25 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   background: #172033 !important;
 }
 
+.risk-page.is-dark .risk-table tbody tr:nth-child(even) td,
+.risk-page.is-dark .risk-name-cell {
+  background: #182338 !important;
+}
+
+.risk-page.is-dark .risk-table td span:not(.risk-pill) {
+  color: #d9e3f5 !important;
+}
+
 .risk-page.is-dark .risk-table tbody tr:hover td {
   background: #1b2942 !important;
 }
 
 .risk-page.is-dark .risk-pill {
+  color: #bfdbfe !important;
+  background: rgba(59, 130, 246, 0.18) !important;
+}
+
+.risk-page.is-dark .risk-status-chip {
   color: #bfdbfe !important;
   background: rgba(59, 130, 246, 0.18) !important;
 }
@@ -893,6 +1012,13 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   border-color: #2b395a !important;
   background: #172033 !important;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .respondent-icon,
+:global(html.dark) .respondent-icon,
+:global(.dark-mode) .respondent-icon {
+  color: #bfdbfe !important;
+  background: rgba(59, 130, 246, 0.18) !important;
 }
 
 :global(html[data-theme-mode="dark"]) .risk-section-header,
@@ -935,6 +1061,12 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   color: #a8b6d1 !important;
 }
 
+:global(html[data-theme-mode="dark"]) .respondent-icon,
+:global(html.dark) .respondent-icon,
+:global(.dark-mode) .respondent-icon {
+  color: #bfdbfe !important;
+}
+
 :global(html[data-theme-mode="dark"]) .risk-section-header > span,
 :global(html[data-theme-mode="dark"]) .risk-empty i,
 :global(html.dark) .risk-section-header > span,
@@ -968,6 +1100,21 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   background: #172033 !important;
 }
 
+:global(html[data-theme-mode="dark"]) .risk-table tbody tr:nth-child(even) td,
+:global(html[data-theme-mode="dark"]) .risk-name-cell,
+:global(html.dark) .risk-table tbody tr:nth-child(even) td,
+:global(html.dark) .risk-name-cell,
+:global(.dark-mode) .risk-table tbody tr:nth-child(even) td,
+:global(.dark-mode) .risk-name-cell {
+  background: #182338 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .risk-table td span:not(.risk-pill),
+:global(html.dark) .risk-table td span:not(.risk-pill),
+:global(.dark-mode) .risk-table td span:not(.risk-pill) {
+  color: #d9e3f5 !important;
+}
+
 :global(html[data-theme-mode="dark"]) .risk-table tbody tr:hover td,
 :global(html.dark) .risk-table tbody tr:hover td,
 :global(.dark-mode) .risk-table tbody tr:hover td {
@@ -977,6 +1124,13 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
 :global(html[data-theme-mode="dark"]) .risk-pill,
 :global(html.dark) .risk-pill,
 :global(.dark-mode) .risk-pill {
+  color: #bfdbfe !important;
+  background: rgba(59, 130, 246, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .risk-status-chip,
+:global(html.dark) .risk-status-chip,
+:global(.dark-mode) .risk-status-chip {
   color: #bfdbfe !important;
   background: rgba(59, 130, 246, 0.18) !important;
 }
@@ -991,38 +1145,240 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
 }
 
 @media (max-width: 1199px) {
+  .risk-hero {
+    align-items: flex-start !important;
+  }
+
+  .risk-hero-right {
+    flex: 0 0 auto;
+  }
+
   .risk-level-grid,
   .respondent-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   .risk-content-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+  }
+
+  .risk-table {
+    min-width: 1080px !important;
   }
 }
 
 @media (max-width: 767px) {
+  .risk-page {
+    padding-bottom: 1rem !important;
+  }
+
+  .risk-shell {
+    border-radius: 10px !important;
+  }
+
   .risk-hero,
   .risk-hero-left,
   .risk-hero-right {
-    align-items: flex-start;
-    flex-direction: column;
+    width: 100% !important;
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+
+  .risk-hero {
+    gap: 1rem !important;
+    padding: 1rem !important;
+  }
+
+  .risk-hero-left {
+    gap: 0.75rem !important;
+  }
+
+  .risk-hero-icon {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+  }
+
+  .risk-hero h2 {
+    font-size: 0.98rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .risk-hero p {
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
   }
 
   .risk-status {
-    width: 100%;
-    padding-right: 0;
-    border-right: 0;
-    text-align: left;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 0.8rem !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+    text-align: left !important;
+  }
+
+  .risk-action {
+    width: 100% !important;
+    min-height: 42px !important;
+    padding: 0 0.9rem !important;
   }
 
   .risk-body {
-    padding: 1rem;
+    padding: 1rem !important;
   }
 
   .risk-level-grid,
   .respondent-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .risk-level-grid {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .risk-level-card {
+    min-height: 66px !important;
+    padding: 0.8rem !important;
+  }
+
+  .risk-level-icon {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+  }
+
+  .risk-section-header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 0.35rem !important;
+    padding: 0.9rem 1rem !important;
+  }
+
+  .risk-section-header > span {
+    align-self: flex-start !important;
+  }
+
+  .respondent-grid {
+    padding: 0.8rem !important;
+  }
+
+  .respondent-field {
+    min-height: auto !important;
+    padding: 0.75rem !important;
+  }
+
+  .risk-table-wrap {
+    overflow: visible !important;
+  }
+
+  .risk-table {
+    display: block !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    border-collapse: separate !important;
+    table-layout: auto !important;
+  }
+
+  .risk-table thead {
+    display: none !important;
+  }
+
+  .risk-table tbody {
+    display: grid !important;
+    gap: 0.75rem !important;
+    padding: 0.8rem !important;
+  }
+
+  .risk-table tr {
+    display: block !important;
+    overflow: hidden !important;
+    border: 1px solid #dbe5f2 !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05) !important;
+  }
+
+  .risk-page.is-dark .risk-table tr,
+  :global(html[data-theme-mode="dark"]) .risk-table tr,
+  :global(html.dark) .risk-table tr,
+  :global(.dark-mode) .risk-table tr {
+    border-color: #2b395a !important;
+    background: #172033 !important;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18) !important;
+  }
+
+  .risk-table td {
+    display: grid !important;
+    grid-template-columns: minmax(102px, 34%) minmax(0, 1fr) !important;
+    gap: 0.7rem !important;
+    align-items: start !important;
+    padding: 0.75rem 0.85rem !important;
+    border-bottom: 1px solid #edf2f7 !important;
+    font-size: 0.78rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .risk-table td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  .risk-table td::before {
+    content: attr(data-label);
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    background: transparent !important;
+    color: #6b7f9c;
+    font-size: 0.66rem;
+    font-weight: 950;
+    line-height: 1.3;
+    text-transform: uppercase;
+  }
+
+  .risk-page.is-dark .risk-table td::before,
+  :global(html[data-theme-mode="dark"]) .risk-table td::before,
+  :global(html.dark) .risk-table td::before,
+  :global(.dark-mode) .risk-table td::before {
+    color: #a8b6d1 !important;
+  }
+
+  .risk-pill {
+    width: fit-content !important;
+    max-width: 100% !important;
+    min-height: 22px !important;
+    white-space: normal !important;
+  }
+
+  .risk-loading,
+  .risk-empty {
+    min-height: 130px !important;
+    padding: 1rem !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .risk-body {
+    padding: 0.75rem !important;
+  }
+
+  .risk-hero {
+    padding: 0.9rem !important;
+  }
+
+  .risk-table tbody {
+    padding: 0.65rem !important;
+  }
+
+  .risk-table td {
+    grid-template-columns: 1fr !important;
+    gap: 0.3rem !important;
+  }
+
+  .risk-level-card strong {
+    font-size: 1.2rem !important;
   }
 }
 </style>

@@ -54,6 +54,7 @@ const pickArray = (payload: any): any[] => {
         data.surveyRisiko,
         data.jawaban,
         data.responses,
+        data.items,
     ];
 
     const found = candidates.find(Array.isArray);

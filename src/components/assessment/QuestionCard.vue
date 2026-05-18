@@ -7,6 +7,7 @@ const props = defineProps<{
   questionNumber: number;
   selectedIndex?: number;
   readOnly?: boolean;
+  showAnsweredBadge?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -63,7 +64,7 @@ const scopeColor = computed(() => {
           <span :class="['badge', scopeColor, 'me-2']">{{ question.scope }}</span>
           <span class="text-muted">Pertanyaan {{ questionNumber }}</span>
         </div>
-        <span v-if="selectedAnswer !== undefined" class="badge bg-success">
+        <span v-if="showAnsweredBadge !== false && selectedAnswer !== undefined" class="badge bg-success">
           <i class="ri-check-line"></i> Terjawab
         </span>
       </div>
