@@ -4,8 +4,8 @@ import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 import { useCsirtStore } from "../../stores/csirt";
-import { useStakeholdersStore } from "../../stores/stakeholders";
 import { csirtService } from "../../services/csirt.service";
+import { stakeholdersService } from "../../services/stakeholders.service";
 import type { CsirtMember, CreateCsirtPayload } from "../../types/csirt.types";
 import EasyDataTable from "vue3-easy-data-table";
 import "vue3-easy-data-table/dist/style.css";
@@ -27,7 +27,6 @@ export default {
   setup() {
     const authStore = useAuthStore();
     const csirtStore = useCsirtStore();
-    const stakeholdersStore = useStakeholdersStore();
     const isAdmin = computed(() => authStore.isAdmin);
 
     const loading = computed(() => csirtStore.loading);
@@ -40,6 +39,7 @@ export default {
 
     const searchValue2 = ref("");
     const csirtPageRef = ref<HTMLElement | null>(null);
+    const stakeholderOptions = ref<Array<{ id: string | number; nama_perusahaan: string; sub_sektor?: any }>>([]);
     let gsapCtx: gsap.Context | null = null;
     let hasRunInitialEntrance = false;
 
@@ -112,15 +112,26 @@ export default {
 
     const headers = [
       { text: "Nama CSIRT", value: "nama_csirt", sortable: true },
-      { text: "Website", value: "web_csirt", sortable: true },
       { text: "Telepon", value: "telepon_csirt", sortable: true },
       { text: "Email", value: "email_csirt", sortable: true },
       { text: "Aksi", value: "id" },
     ];
 
+    const loadStakeholderOptions = async () => {
+      try {
+        const options = await stakeholdersService.getDropdown();
+        stakeholderOptions.value = Array.isArray(options) ? options : [];
+      } catch (error) {
+        console.warn("Gagal memuat daftar stakeholder ringan:", error);
+        stakeholderOptions.value = [];
+      }
+    };
+
     const loadCsirtMembers = async () => {
-      await stakeholdersStore.initialize();
-      await csirtStore.initialize({ fetchGlobal: true });
+      await Promise.all([
+        csirtStore.initialize({ fetchGlobal: true }),
+        loadStakeholderOptions(),
+      ]);
     };
 
     const filteredData = computed(() => {
@@ -143,8 +154,112 @@ export default {
       });
     });
 
-    const totalSdmCount = computed(() => csirtStore.sdmList.length);
-    const totalSeCount = computed(() => csirtStore.seList.length);
+    const normalizeRecordId = (value: unknown) => String(value ?? "").trim();
+
+    const hasUsableId = (value: unknown) => {
+      const id = normalizeRecordId(value);
+      return !!id && id !== "undefined" && id !== "null";
+    };
+
+    const getCsirtCompanyId = (item: any) => normalizeRecordId(
+      item?.id_perusahaan ||
+      item?.perusahaan_id ||
+      item?.company_id ||
+      item?.perusahaan?.id
+    );
+
+    const recordBelongsToCsirt = (record: any, csirtId: string) => (
+      normalizeRecordId(record?.id_csirt) === csirtId ||
+      normalizeRecordId(record?.csirt_id) === csirtId ||
+      normalizeRecordId(record?.csirt?.id) === csirtId
+    );
+
+    const recordBelongsToCompany = (record: any, companyId: string) => (
+      hasUsableId(companyId) && (
+        normalizeRecordId(record?.id_perusahaan) === companyId ||
+        normalizeRecordId(record?.perusahaan_id) === companyId ||
+        normalizeRecordId(record?.company_id) === companyId ||
+        normalizeRecordId(record?.perusahaan?.id) === companyId
+      )
+    );
+
+    const uniqueRecords = <T extends Record<string, any>>(records: T[], fallbackPrefix: string) => {
+      const seen = new Set<string>();
+      return records.filter((record, index) => {
+        const key = normalizeRecordId(record?.id) ||
+          normalizeRecordId(record?.uuid) ||
+          `${fallbackPrefix}-${normalizeRecordId(record?.nama_personel || record?.nama_se || record?.nama || index)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
+    const getNestedSdmRecords = (item: any): any[] => [
+      ...(Array.isArray(item?.sdm_csirt) ? item.sdm_csirt : []),
+      ...(Array.isArray(item?.sdms) ? item.sdms : []),
+      ...(Array.isArray(item?.sdm) ? item.sdm : []),
+    ];
+
+    const getNestedSeRecords = (item: any): any[] => [
+      ...(Array.isArray(item?.se_csirt) ? item.se_csirt : []),
+      ...(Array.isArray(item?.ses) ? item.ses : []),
+      ...(Array.isArray(item?.se) ? item.se : []),
+      ...(Array.isArray(item?.sistem_elektronik) ? item.sistem_elektronik : []),
+    ];
+
+    const getSdmForCsirt = (item: CsirtMember) => {
+      const csirtId = normalizeRecordId(item.id);
+      const nested = getNestedSdmRecords(item);
+      const fromStore = csirtStore.sdmList.filter((record: any) => recordBelongsToCsirt(record, csirtId));
+      return uniqueRecords([...nested, ...fromStore], `sdm-${csirtId}`);
+    };
+
+    const getSeForCsirt = (item: CsirtMember) => {
+      const csirtId = normalizeRecordId(item.id);
+      const companyId = getCsirtCompanyId(item);
+      const nested = getNestedSeRecords(item);
+      const fromStore = csirtStore.seList.filter((record: any) => (
+        recordBelongsToCsirt(record, csirtId) || recordBelongsToCompany(record, companyId)
+      ));
+      return uniqueRecords([...nested, ...fromStore], `se-${csirtId || companyId}`);
+    };
+
+    const isSeIncomplete = (item: any) => {
+      const category = String(item?.kategori_se || item?.kategori || item?.status_kategori || "")
+        .trim()
+        .toLowerCase();
+      return !category || ["-", "n/a", "draft", "belum lengkap", "belum dikategorikan"].includes(category);
+    };
+
+    const totalSdmCount = computed(() => {
+      const linked = csirtStore.csirts.flatMap((item) => getSdmForCsirt(item));
+      return uniqueRecords([...csirtStore.sdmList, ...linked], "sdm-total").length;
+    });
+
+    const totalSeCount = computed(() => {
+      const linked = csirtStore.csirts.flatMap((item) => getSeForCsirt(item));
+      return uniqueRecords([...csirtStore.seList, ...linked], "se-total").length;
+    });
+
+    const stakeholderOptionMap = computed(() => {
+      const map = new Map<string, { id: string | number; nama_perusahaan: string; sub_sektor?: any }>();
+      stakeholderOptions.value.forEach((item) => {
+        map.set(normalizeRecordId(item.id), item);
+      });
+      return map;
+    });
+
+    const totalStakeholderCount = computed(() => stakeholderOptions.value.length);
+
+    const completeCSIRTCount = computed(() => {
+      return filteredData.value.filter((item) => {
+        const sdm = getSdmForCsirt(item);
+        const se = getSeForCsirt(item);
+        return sdm.length > 0 && se.length > 0 && se.every((record) => !isSeIncomplete(record));
+      }).length;
+    });
+
     const incompleteCsirtCount = computed(() => Math.max(filteredData.value.length - completeCSIRTCount.value, 0));
     const csirtReadinessCoverage = computed(() => {
       const total = filteredData.value.length;
@@ -153,7 +268,7 @@ export default {
     });
 
     const getStakeholderForItem = (item: CsirtMember) => (
-      item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan))
+      item.perusahaan || stakeholderOptionMap.value.get(getCsirtCompanyId(item))
     );
 
     const getStatusSummary = (item: CsirtMember) => {
@@ -164,7 +279,7 @@ export default {
       if (isReady) {
         return {
           tone: "ready",
-          label: "Siap operasional",
+          label: "CSIRT lengkap",
           hint: "Data SDM dan SE sudah lengkap",
           icon: "ri-checkbox-circle-line",
         };
@@ -185,11 +300,6 @@ export default {
         hint: "Belum ada SDM atau SE yang terhubung",
         icon: "ri-alert-line",
       };
-    };
-
-    const getWebsiteLabel = (value: string) => {
-      const cleaned = String(value || "").replace(/^https?:\/\//i, "").replace(/\/$/, "");
-      return cleaned || "-";
     };
 
     const prefersReducedMotion = () => (
@@ -547,52 +657,22 @@ export default {
 
     // Status SDM & SE per CSIRT
     const csirtStatus = (csirtId: string) => {
-      const id = String(csirtId);
-      
-      // Find the CSIRT object to get its id_perusahaan
-      const csirtObj = csirtStore.csirts.find(c => String(c.id) === id);
-      const currentPerusahaanId = String(csirtObj?.id_perusahaan || csirtObj?.perusahaan?.id);
+      const id = normalizeRecordId(csirtId);
+      const csirtObj = csirtStore.csirts.find(c => normalizeRecordId(c.id) === id);
+      if (!csirtObj) return { sdmCount: 0, seCount: 0, seIncomplete: 0 };
 
-      const sdmCount = csirtStore.sdmList.filter(
-        s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id || String((s as any).csirt_id) === id
-      ).length;
-      
-      const seAll = csirtStore.seList.filter(
-        s => String(s.id_csirt) === id || 
-             String((s as any).csirt?.id) === id || 
-             String((s as any).csirt_id) === id || 
-             (s.id_perusahaan && String(s.id_perusahaan) === currentPerusahaanId)
-      );
+      const sdmCount = getSdmForCsirt(csirtObj).length;
+      const seAll = getSeForCsirt(csirtObj);
       const seCount = seAll.length;
-      const seIncomplete = seAll.filter(
-        s => !s.kategori_se || s.kategori_se === 'Belum Lengkap'
-      ).length;
+      const seIncomplete = seAll.filter(isSeIncomplete).length;
       return { sdmCount, seCount, seIncomplete };
     };
 
-    // Count CSIRT yang benar-benar lengkap (memiliki SDM dan SE lengkap)
-    const completeCSIRTCount = computed(() => {
-      return csirtStore.csirts.filter(csirt => {
-        const id = String(csirt.id);
-        // Check if has SDM
-        const hasSdm = csirtStore.sdmList.some(
-          s => String(s.id_csirt) === id || String((s as any).csirt?.id) === id
-        );
-        // Check if has SE yang lengkap (not 'Belum Lengkap')
-        const hasCompleteSe = csirtStore.seList.some(se =>
-          (String(se.id_csirt) === id || String((se as any).csirt?.id) === id) &&
-          se.kategori_se && se.kategori_se !== 'Belum Lengkap'
-        );
-        return hasSdm && hasCompleteSe;
-      }).length;
-    });
-
     // Filter stakeholders to show only those without CSIRT in create modal
     const availableStakeholders = computed(() => {
-      return stakeholdersStore.stakeholders.filter(stakeholder => {
+      return stakeholderOptions.value.filter(stakeholder => {
         const hasExistingCsirt = csirtStore.csirts.some(c =>
-          String(c.id_perusahaan) === String(stakeholder.id) ||
-          String((c as any).perusahaan?.id) === String(stakeholder.id)
+          getCsirtCompanyId(c) === normalizeRecordId(stakeholder.id)
         );
         return !hasExistingCsirt;
       });
@@ -604,17 +684,17 @@ export default {
       if (!query) return availableStakeholders.value;
       return availableStakeholders.value.filter(s =>
         s.nama_perusahaan.toLowerCase().includes(query) ||
-        s.sub_sektor?.nama_sub_sektor.toLowerCase().includes(query)
+        s.sub_sektor?.nama_sub_sektor?.toLowerCase().includes(query)
       );
     });
 
     return {
       isAdmin,
-      stakeholdersStore,
       csirtStore,
       loading,
       searchQuery,
       availableStakeholders,
+      stakeholderOptions,
       searchValue2,
       headers,
       sortField,
@@ -664,10 +744,10 @@ export default {
       csirtReadinessCoverage,
       totalSdmCount,
       totalSeCount,
+      totalStakeholderCount,
       csirtPageRef,
       getStakeholderForItem,
       getStatusSummary,
-      getWebsiteLabel,
       getAvatarClass: (letter: string) => {
         const variants = [
           'avatar-blue', 'avatar-indigo', 'avatar-violet', 'avatar-purple',
@@ -679,7 +759,7 @@ export default {
       },
       exportPdf: async (item: any) => {
         const id = item.id;
-        const p = item.perusahaan || stakeholdersStore.getStakeholderById(String(item.id_perusahaan));
+        const p = getStakeholderForItem(item);
         const companyName = p?.nama_perusahaan || item.nama_csirt || 'csirt';
         const safeName = companyName.replace(/[^a-z0-9]/gi, '_');
         const filename = `Data_CSIRT_${safeName}.pdf`;
@@ -761,7 +841,7 @@ export default {
             <div class="csirt-hero-copy">
               <div class="csirt-inline-breadcrumb">Dashboards <span>/</span> CSIRT</div>
               <h1>Daftar CSIRT</h1>
-              <p>Kelola profil tim, pantau kesiapan operasional, dan bantu admin non teknis membaca status dengan cepat.</p>
+              <p>Kelola data CSIRT, SDM CSIRT, dan sistem elektronik untuk kelengkapan data.</p>
             </div>
 
             <div class="csirt-hero-tools">
@@ -779,13 +859,17 @@ export default {
                     <span>Perlu Tindak</span>
                     <strong>{{ incompleteCsirtCount }}</strong>
                   </div>
+                  <div>
+                    <span>SDM / SE</span>
+                    <strong>{{ totalSdmCount }} / {{ totalSeCount }}</strong>
+                  </div>
                 </div>
                 <div class="csirt-hero-progress" aria-hidden="true">
                   <span :style="{ width: `${csirtReadinessCoverage}%` }"></span>
                 </div>
                 <div class="csirt-hero-note">
                   <i class="ri-information-line"></i>
-                  <span>{{ filteredData.length }} data tampil{{ searchQuery ? " sesuai pencarian" : "" }}</span>
+                  <span>{{ filteredData.length }} CSIRT dari {{ totalStakeholderCount }} stakeholder{{ searchQuery ? " sesuai pencarian" : "" }}</span>
                 </div>
               </div>
             </div>
@@ -800,7 +884,7 @@ export default {
             <div class="csirt-kpi-body">
               <span class="csirt-kpi-label">Total CSIRT</span>
               <strong class="csirt-kpi-value">{{ filteredData.length }}</strong>
-              <small class="csirt-kpi-hint">Seluruh tim yang sudah terdaftar</small>
+              <small class="csirt-kpi-hint">Dari total {{ totalStakeholderCount }} stakeholder</small>
             </div>
           </article>
           <article class="csirt-kpi-card tone-green">
@@ -808,7 +892,7 @@ export default {
               <i class="ri-checkbox-circle-line"></i>
             </div>
             <div class="csirt-kpi-body">
-              <span class="csirt-kpi-label">Siap Operasional</span>
+              <span class="csirt-kpi-label">CSIRT Lengkap</span>
               <strong class="csirt-kpi-value">{{ completeCSIRTCount }}</strong>
               <small class="csirt-kpi-hint">SDM dan SE sudah lengkap</small>
             </div>
@@ -820,7 +904,7 @@ export default {
             <div class="csirt-kpi-body">
               <span class="csirt-kpi-label">Perlu Ditindaklanjuti</span>
               <strong class="csirt-kpi-value">{{ incompleteCsirtCount }}</strong>
-              <small class="csirt-kpi-hint">Masih butuh pelengkapan data</small>
+              <small class="csirt-kpi-hint">Masih butuh kelengkapan data</small>
             </div>
           </article>
           <article class="csirt-kpi-card tone-cyan">
@@ -828,9 +912,19 @@ export default {
               <i class="ri-team-line"></i>
             </div>
             <div class="csirt-kpi-body">
-              <span class="csirt-kpi-label">Total SDM / SE</span>
-              <strong class="csirt-kpi-value">{{ totalSdmCount }} / {{ totalSeCount }}</strong>
-              <small class="csirt-kpi-hint">Ringkasan personel dan sistem elektronik</small>
+              <span class="csirt-kpi-label">SDM CSIRT</span>
+              <strong class="csirt-kpi-value">{{ totalSdmCount }}</strong>
+              <small class="csirt-kpi-hint">Total personel yang terhubung</small>
+            </div>
+          </article>
+          <article class="csirt-kpi-card tone-indigo">
+            <div class="csirt-kpi-icon">
+              <i class="ri-server-line"></i>
+            </div>
+            <div class="csirt-kpi-body">
+              <span class="csirt-kpi-label">SE CSIRT</span>
+              <strong class="csirt-kpi-value">{{ totalSeCount }}</strong>
+              <small class="csirt-kpi-hint">Total sistem elektronik yang terhubung</small>
             </div>
           </article>
         </section>
@@ -887,97 +981,37 @@ export default {
 
             <!-- Table -->
             <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell csirt-list-shell d-none d-lg-block">
-              <table class="table stakeholder-table text-nowrap mb-0">
+              <table class="table stakeholder-table csirt-data-table mb-0">
                 <thead class="stakeholder-thead">
                   <tr>
-                    <th class="th-no" style="width:50px">No</th>
-                    <th class="sortable fw-semibold" style="width:18%">
+                    <th class="th-no">No</th>
+                    <th class="sortable fw-semibold" @click="toggleSort('nama_csirt')">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-shield-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('nama_csirt')" title="Click to toggle sort">Nama CSIRT</span>
-                        <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'nama_csirt' &&
-                                sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'nama_csirt';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'nama_csirt' &&
-                                sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'nama_csirt';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
-                        </div>
+                        <span>Nama CSIRT</span>
+                        <i :class="sortField === 'nama_csirt' ? (sortOrder === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-expand-up-down-line'" class="fs-14 opacity-50"></i>
                       </div>
                     </th>
-                    <th class="fw-semibold" style="width:18%">
+                    <th class="fw-semibold">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-building-2-line text-primary"></i>
                         <span>Stakeholder</span>
                       </div>
                     </th>
-                    <th class="sortable fw-semibold" style="width:16%">
+                    <th class="fw-semibold">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-global-line text-primary"></i>
-                        <span class="column-label" @click="toggleSort('web_csirt')" title="Click to toggle sort">Website</span>
-                        <div class="sort-arrows">
-                          <i class="ri-arrow-up-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'web_csirt' && sortOrder === 'asc',
-                            }"
-                            @click.stop="
-                              sortField = 'web_csirt';
-                              sortOrder = 'asc';
-                            "
-                            title="Sort A-Z"
-                          ></i>
-                          <i class="ri-arrow-down-s-line" 
-                            :class="{
-                              active:
-                                sortField === 'web_csirt' && sortOrder === 'desc',
-                            }"
-                            @click.stop="
-                              sortField = 'web_csirt';
-                              sortOrder = 'desc';
-                            "
-                            title="Sort Z-A"
-                          ></i>
-                        </div>
-                      </div>
-                    </th>
-                    <th class="fw-semibold" style="width:13%">
-                      <div class="d-flex align-items-center gap-2">
-                        <i class="ri-phone-line text-primary"></i>
                         <span>Telepon</span>
                       </div>
                     </th>
-                    <th class="fw-semibold" style="width:15%">
+                    <th class="fw-semibold">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-mail-line text-primary"></i>
                         <span>Email</span>
                       </div>
                     </th>
-                    <th class="fw-semibold" style="width:170px;white-space:nowrap">
+                    <th class="fw-semibold" style="white-space:nowrap">
                       <div class="d-flex align-items-center gap-2">
-                        <i class="ri-pulse-line text-primary"></i>
                         <span>Status Ringkas</span>
                       </div>
                     </th>
-                    <th class="text-center fw-semibold" style="width:100px">Aksi</th>
+                    <th class="text-center fw-semibold csirt-th-aksi">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1028,11 +1062,6 @@ export default {
                       </template>
                       <span v-else class="text-muted fs-12">-</span>
                     </td>
-                    <td class="align-middle csirt-web-cell" style="white-space:nowrap">
-                      <a :href="item.web_csirt" target="_blank" class="email-link d-inline-flex align-items-center gap-1 text-decoration-none" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;display:inline-block!important">
-                        <span class="email-text">{{ getWebsiteLabel(item.web_csirt) }}</span>
-                      </a>
-                    </td>
                     <td class="align-middle" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                       <span class="text-muted">{{ item.telepon_csirt }}</span>
                     </td>
@@ -1042,67 +1071,77 @@ export default {
                       </a>
                       <span v-else class="text-muted">-</span>
                     </td>
-                    <td class="align-middle" style="white-space:normal;min-width:140px">
-                      <div class="d-flex flex-column gap-1 csirt-status-stack">
-                        <div class="csirt-readiness-badge" :class="`tone-${getStatusSummary(item).tone}`">
-                          <i :class="getStatusSummary(item).icon"></i>
-                          <span>{{ getStatusSummary(item).label }}</span>
+                    <td class="align-middle csirt-status-cell">
+                      <div class="csirt-status-card" :class="`tone-${getStatusSummary(item).tone}`">
+                        <div class="csirt-status-main">
+                          <span class="csirt-status-dot"></span>
+                          <div class="min-w-0">
+                            <span class="csirt-status-label">{{ getStatusSummary(item).label }}</span>
+                            <span class="csirt-status-hint">{{ getStatusSummary(item).hint }}</span>
+                          </div>
                         </div>
-                        <span class="csirt-status-hint">{{ getStatusSummary(item).hint }}</span>
-                        <!-- SDM badge -->
-                        <div class="d-flex align-items-center gap-1">
-                          <span class="badge-sektor"
-                            :class="csirtStatus(item.id).sdmCount > 0 ? 'badge-sektor-green' : 'badge-sektor-red'">
-                            <i :class="csirtStatus(item.id).sdmCount > 0 ? 'ri-user-3-line me-1' : 'ri-user-unfollow-line me-1'"></i>
-                            SDM {{ csirtStatus(item.id).sdmCount > 0 ? `${csirtStatus(item.id).sdmCount} personel` : "belum ada" }}
+                        <div class="csirt-status-metrics">
+                          <span
+                            class="csirt-status-metric"
+                            :class="csirtStatus(item.id).sdmCount > 0 ? 'metric-good' : 'metric-danger'"
+                          >
+                            <i :class="csirtStatus(item.id).sdmCount > 0 ? 'ri-user-3-line' : 'ri-user-unfollow-line'"></i>
+                            {{ csirtStatus(item.id).sdmCount > 0 ? `${csirtStatus(item.id).sdmCount} SDM` : "SDM 0" }}
                           </span>
-                        </div>
-                        <!-- SE badge -->
-                        <div class="d-flex align-items-center gap-1 mt-1">
-                          <span class="badge-sektor"
+                          <span
+                            class="csirt-status-metric"
                             :class="csirtStatus(item.id).seCount === 0
-                              ? 'badge-sektor-red'
+                              ? 'metric-danger'
                               : csirtStatus(item.id).seIncomplete > 0
-                                ? 'badge-sektor-amber'
-                                : 'badge-sektor-green'">
+                                ? 'metric-warning'
+                                : 'metric-good'"
+                          >
                             <i :class="csirtStatus(item.id).seCount === 0
-                              ? 'ri-server-line me-1'
+                              ? 'ri-server-line'
                               : csirtStatus(item.id).seIncomplete > 0
-                                ? 'ri-error-warning-line me-1'
-                                : 'ri-server-fill me-1'"></i>
-                            <template v-if="csirtStatus(item.id).seCount === 0">SE belum ada</template>
+                                ? 'ri-error-warning-line'
+                                : 'ri-server-fill'"></i>
+                            <template v-if="csirtStatus(item.id).seCount === 0">SE 0</template>
                             <template v-else-if="csirtStatus(item.id).seIncomplete > 0">
-                              SE {{ csirtStatus(item.id).seCount }} / {{ csirtStatus(item.id).seIncomplete }} belum lengkap
+                              SE {{ csirtStatus(item.id).seCount }} / {{ csirtStatus(item.id).seIncomplete }}
                             </template>
-                            <template v-else>SE {{ csirtStatus(item.id).seCount }} lengkap</template>
+                            <template v-else>{{ csirtStatus(item.id).seCount }} SE</template>
                           </span>
                         </div>
                       </div>
                     </td>
                     <td class="text-center align-middle">
-                      <div class="d-flex gap-1 justify-content-center">
+                      <div class="csirt-action-group users-action-group">
                         <router-link
                           :to="`/csirt/${toCsirtSlug(item)}`"
                           class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
-                          title="Lihat Profil">
+                          data-tooltip="Lihat"
+                          title="Lihat profil CSIRT"
+                          aria-label="Lihat profil CSIRT">
                           <i class="ri-eye-line"></i>
                         </router-link>
                         <button v-if="isAdmin"
                           @click="openEditModal(item)"
                           class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn"
-                          title="Edit">
-                          <i class="ri-edit-2-line"></i>
+                          data-tooltip="Edit"
+                          title="Edit CSIRT"
+                          aria-label="Edit CSIRT">
+                          <i class="ri-pencil-line"></i>
                         </button>
                         <button v-if="isAdmin"
                           @click="openDeleteModal(item)"
                           class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn"
-                          title="Hapus">
-                          <i class="ri-delete-bin-3-line"></i>
+                          data-tooltip="Hapus"
+                          title="Hapus CSIRT"
+                          aria-label="Hapus CSIRT">
+                          <i class="ri-delete-bin-line"></i>
                         </button>
                         <button
                           @click="exportPdf(item)"
                           class="btn btn-sm btn-icon btn-wave btn-secondary-light stakeholders-action-btn"
-                          title="Export PDF">
+                          data-tooltip="PDF"
+                          title="Export PDF"
+                          aria-label="Export PDF">
                           <i class="ri-file-pdf-line"></i>
                         </button>
                       </div>
@@ -1133,10 +1172,6 @@ export default {
                 </div>
 
                 <div class="csirt-mobile-grid">
-                  <div>
-                    <span>Website</span>
-                    <a :href="item.web_csirt" target="_blank">{{ getWebsiteLabel(item.web_csirt) }}</a>
-                  </div>
                   <div>
                     <span>Telepon</span>
                     <strong>{{ item.telepon_csirt || "-" }}</strong>
@@ -1182,7 +1217,7 @@ export default {
             </div>
 
             <!-- Pagination -->
-            <div class="pagination-container stakeholders-pagination mt-4">
+            <div class="pagination-container stakeholders-pagination csirt-table-pagination">
               <div class="stakeholders-pagination-copy">
                 Showing {{ displayData.length ? (currentPage - 1) * itemsPerPage + 1 : 0 }}-{{ Math.min(currentPage * itemsPerPage, filteredData.length) }} of {{ filteredData.length }} CSIRT
               </div>
@@ -1297,7 +1332,7 @@ export default {
                   <!-- Search Stakeholder -->
                   <div class="mb-2">
                     <input type="text" v-model="searchStakeholder" class="form-control form-control-sm" 
-                      placeholder="Cari nama perusahaan atau sektor..." 
+                      placeholder="Cari nama perusahaan..." 
                       style="max-width:100%" />
                     <small class="text-muted d-block mt-1">
                       {{ filteredAvailableStakeholders.length }} dari {{ availableStakeholders.length }} stakeholder
@@ -1313,7 +1348,7 @@ export default {
                   <div v-if="formErrors.id_perusahaan" class="invalid-feedback">
                     {{ formErrors.id_perusahaan }}
                   </div>
-                  <div v-if="availableStakeholders.length < stakeholdersStore.stakeholders.length" class="form-text text-muted fs-12 mt-1">
+                  <div v-if="availableStakeholders.length < totalStakeholderCount" class="form-text text-muted fs-12 mt-1">
                     <i class="ri-information-line me-1"></i> Beberapa stakeholder sudah memiliki CSIRT
                   </div>
                 </div>
@@ -1510,7 +1545,7 @@ export default {
                   </div>
                   <select v-else class="form-select" v-model="formData.id_perusahaan" :class="{ 'is-invalid': formErrors.id_perusahaan }" disabled>
                     <option value="0" disabled>-- Pilih Perusahaan / Stakeholder --</option>
-                    <option v-for="s in stakeholdersStore.stakeholders" :key="s.id" :value="s.id">{{ s.nama_perusahaan }}</option>
+                    <option v-for="s in stakeholderOptions" :key="s.id" :value="s.id">{{ s.nama_perusahaan }}</option>
                   </select>
                   <div v-if="formErrors.id_perusahaan" class="invalid-feedback">
                     {{ formErrors.id_perusahaan }}
@@ -2352,7 +2387,7 @@ export default {
 .csirt-kpi-grid {
   display: grid;
   gap: 0.95rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .csirt-kpi-card {
@@ -2362,9 +2397,9 @@ export default {
   border-radius: 18px;
   box-shadow: 0 14px 38px rgba(15, 23, 42, 0.06);
   display: flex;
-  gap: 14px;
+  gap: 12px;
   overflow: hidden;
-  padding: 18px;
+  padding: 16px;
   position: relative;
 }
 
@@ -2382,9 +2417,9 @@ export default {
   border-radius: 14px;
   color: var(--accent);
   display: flex;
-  flex: 0 0 42px;
-  font-size: 20px;
-  height: 42px;
+  flex: 0 0 40px;
+  font-size: 19px;
+  height: 40px;
   justify-content: center;
 }
 
@@ -2395,7 +2430,7 @@ export default {
 .csirt-kpi-label {
   color: var(--csirt-muted);
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.2;
   text-transform: uppercase;
@@ -2404,7 +2439,7 @@ export default {
 .csirt-kpi-value {
   color: var(--csirt-text);
   display: block;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 850;
   line-height: 1.1;
   margin-top: 4px;
@@ -2413,7 +2448,7 @@ export default {
 .csirt-kpi-hint {
   color: var(--csirt-muted);
   display: block;
-  font-size: 12px;
+  font-size: 11.5px;
   line-height: 1.35;
   margin-top: 6px;
 }
@@ -2432,6 +2467,10 @@ export default {
 
 .csirt-kpi-card.tone-cyan {
   --accent: #0891b2;
+}
+
+.csirt-kpi-card.tone-indigo {
+  --accent: #4f46e5;
 }
 
 .csirt-hero-tools {
@@ -2489,8 +2528,8 @@ export default {
 
 .csirt-hero-card-stats {
   display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .csirt-hero-card-stats strong {
@@ -2599,8 +2638,8 @@ export default {
 }
 
 .csirt-toolbar-search {
-  flex: 1 1 420px;
-  max-width: 560px;
+  flex: 1 1 720px;
+  max-width: 820px;
   min-width: 260px;
 }
 
@@ -2620,6 +2659,7 @@ export default {
   display: flex;
   gap: 0.55rem;
   justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
 .csirt-btn {
@@ -2632,19 +2672,493 @@ export default {
 }
 
 .csirt-btn-danger {
-  background: #ff6458 !important;
-  border-color: #ff6458 !important;
-  box-shadow: 0 8px 18px rgba(255, 100, 88, 0.22);
+  background: #fff5f5 !important;
+  border: 1px solid #f7d7d7 !important;
+  color: #b94a4a !important;
+  box-shadow: 0 8px 18px rgba(185, 74, 74, 0.08);
 }
 
 .csirt-btn-primary {
-  background: #2457e6 !important;
-  border-color: #2457e6 !important;
-  box-shadow: 0 8px 18px rgba(36, 87, 230, 0.22) !important;
+  background: #f3f7ff !important;
+  border: 1px solid #dbe7ff !important;
+  color: #315bc7 !important;
+  box-shadow: 0 8px 18px rgba(49, 91, 199, 0.08) !important;
+}
+
+.csirt-btn-danger:hover,
+.csirt-btn-danger:focus-visible {
+  background: #ffecec !important;
+  border-color: #f1c4c4 !important;
+  color: #9f3f3f !important;
+}
+
+.csirt-btn-primary:hover,
+.csirt-btn-primary:focus-visible {
+  background: #eaf1ff !important;
+  border-color: #c8d8ff !important;
+  color: #284faf !important;
+}
+
+[data-theme-mode='dark'] .csirt-btn {
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22) !important;
+}
+
+[data-theme-mode='dark'] .csirt-btn-danger {
+  background: rgba(248, 113, 113, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.42) !important;
+  color: #fecaca !important;
+}
+
+[data-theme-mode='dark'] .csirt-btn-primary {
+  background: rgba(96, 165, 250, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.44) !important;
+  color: #bfdbfe !important;
+}
+
+[data-theme-mode='dark'] .csirt-btn-danger:hover,
+[data-theme-mode='dark'] .csirt-btn-danger:focus-visible {
+  background: rgba(248, 113, 113, 0.24) !important;
+  border-color: rgba(252, 165, 165, 0.62) !important;
+  color: #fee2e2 !important;
+}
+
+[data-theme-mode='dark'] .csirt-btn-primary:hover,
+[data-theme-mode='dark'] .csirt-btn-primary:focus-visible {
+  background: rgba(96, 165, 250, 0.24) !important;
+  border-color: rgba(147, 197, 253, 0.64) !important;
+  color: #dbeafe !important;
 }
 
 .csirt-list-shell {
-  padding: 0.55rem;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  width: 100%;
+}
+
+.csirt-data-table {
+  margin-bottom: 0;
+  min-width: 960px;
+  width: 100%;
+  table-layout: auto;
+}
+
+.csirt-data-table thead th {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 15px 14px !important;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.csirt-data-table thead th.sortable {
+  cursor: pointer;
+}
+
+/* Col 1 – No */
+.csirt-data-table th:nth-child(1),
+.csirt-data-table td:nth-child(1) {
+  min-width: 46px;
+  width: 46px;
+}
+
+/* Col 2 – Nama CSIRT */
+.csirt-data-table th:nth-child(2),
+.csirt-data-table td:nth-child(2) {
+  min-width: 180px;
+}
+
+/* Col 3 – Stakeholder */
+.csirt-data-table th:nth-child(3),
+.csirt-data-table td:nth-child(3) {
+  min-width: 160px;
+}
+
+/* Col 4 – Telepon */
+.csirt-data-table th:nth-child(4),
+.csirt-data-table td:nth-child(4) {
+  min-width: 120px;
+}
+
+/* Col 5 – Email */
+.csirt-data-table th:nth-child(5),
+.csirt-data-table td:nth-child(5) {
+  min-width: 150px;
+}
+
+/* Col 6 – Status Ringkas */
+.csirt-data-table th:nth-child(6),
+.csirt-data-table td:nth-child(6) {
+  min-width: 210px;
+}
+
+/* Col 7 – Aksi */
+.csirt-data-table th:nth-child(7),
+.csirt-data-table td:nth-child(7) {
+  min-width: 140px;
+  width: 140px;
+}
+
+.csirt-th-aksi {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #f8fafc !important;
+}
+
+.csirt-data-table tbody td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+.csirt-data-table tbody td:nth-child(7) {
+  overflow: visible !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+.csirt-data-table tbody td {
+  border-bottom: 1px solid #eef2f7 !important;
+  color: #475569;
+  font-size: 13.5px;
+  line-height: 1.45;
+  padding: 14px !important;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+  vertical-align: middle;
+}
+
+.csirt-data-table .csirt-table-row td:last-child {
+  background: #fff;
+}
+
+.csirt-data-table .csirt-table-row:hover td {
+  background: #f8fbff !important;
+}
+
+.csirt-data-table .csirt-table-row:hover {
+  position: relative;
+  z-index: 20;
+}
+
+.csirt-data-table .th-no,
+.csirt-data-table .csirt-table-row td:first-child,
+.csirt-data-table .csirt-table-row:hover td:first-child {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.csirt-data-table .row-number {
+  background: transparent !important;
+}
+
+.csirt-data-table .company-avatar {
+  flex: 0 0 42px;
+  height: 42px !important;
+  width: 42px !important;
+}
+
+.csirt-data-table .company-name-wrap,
+.csirt-data-table .company-name {
+  min-width: 0;
+}
+
+.csirt-data-table .company-name {
+  color: var(--csirt-text);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.csirt-data-table .email-link,
+.csirt-data-table .email-text,
+.csirt-data-table td > .text-muted {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.csirt-status-cell {
+  overflow: hidden !important;
+  white-space: normal;
+}
+
+.csirt-status-card {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  display: grid;
+  gap: 0.48rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.65rem 0.72rem;
+}
+
+.csirt-status-card.tone-ready {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.csirt-status-card.tone-progress {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.csirt-status-card.tone-empty {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.csirt-status-main {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.csirt-status-dot {
+  border-radius: 999px;
+  flex: 0 0 9px;
+  height: 9px;
+  margin-top: 0.3rem;
+  width: 9px;
+}
+
+.tone-ready .csirt-status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.tone-progress .csirt-status-dot {
+  background: #f97316;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.14);
+}
+
+.tone-empty .csirt-status-dot {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+}
+
+.csirt-status-label {
+  color: var(--csirt-text);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.csirt-status-card .csirt-status-hint {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  margin-top: 0.12rem;
+  overflow-wrap: anywhere;
+}
+
+.csirt-status-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.csirt-status-metric {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 0.28rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0.32rem 0.5rem;
+  white-space: nowrap;
+}
+
+.csirt-status-metric.metric-good {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.csirt-status-metric.metric-warning {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.csirt-status-metric.metric-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.csirt-action-group {
+  align-items: center;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 7px;
+  justify-content: center;
+  min-width: 166px;
+  white-space: nowrap;
+}
+
+.csirt-action-group .stakeholders-action-btn {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 34px;
+  height: 34px;
+  justify-content: center;
+  min-width: 34px;
+  overflow: visible !important;
+  position: relative;
+  width: 34px;
+}
+
+.csirt-action-group .stakeholders-action-btn.btn-info-light {
+  background: #f3f9ff !important;
+  border-color: #d8ebfb !important;
+  color: #377da8 !important;
+}
+
+.csirt-action-group .stakeholders-action-btn.btn-success-light {
+  background: #f3fbf7 !important;
+  border-color: #d5efe2 !important;
+  color: #3f8b66 !important;
+}
+
+.csirt-action-group .stakeholders-action-btn.btn-danger-light {
+  background: #fff5f5 !important;
+  border-color: #f3d7d7 !important;
+  color: #a65252 !important;
+}
+
+.csirt-action-group .stakeholders-action-btn.btn-secondary-light {
+  background: #fff9f1 !important;
+  border-color: #f4e0c3 !important;
+  color: #b06b24 !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn {
+  border-width: 1px !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22) !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-info-light {
+  background: rgba(56, 189, 248, 0.16) !important;
+  border-color: rgba(56, 189, 248, 0.42) !important;
+  color: #7dd3fc !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-success-light {
+  background: rgba(52, 211, 153, 0.16) !important;
+  border-color: rgba(52, 211, 153, 0.42) !important;
+  color: #86efac !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-danger-light {
+  background: rgba(248, 113, 113, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.42) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-secondary-light {
+  background: rgba(251, 191, 36, 0.16) !important;
+  border-color: rgba(251, 191, 36, 0.42) !important;
+  color: #fde68a !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn:hover,
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn:focus-visible {
+  transform: translateY(-1px);
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-info-light:hover,
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-info-light:focus-visible {
+  background: rgba(56, 189, 248, 0.24) !important;
+  border-color: rgba(125, 211, 252, 0.62) !important;
+  color: #bae6fd !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-success-light:hover,
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-success-light:focus-visible {
+  background: rgba(52, 211, 153, 0.24) !important;
+  border-color: rgba(134, 239, 172, 0.62) !important;
+  color: #bbf7d0 !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-danger-light:hover,
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-danger-light:focus-visible {
+  background: rgba(248, 113, 113, 0.24) !important;
+  border-color: rgba(252, 165, 165, 0.62) !important;
+  color: #fecaca !important;
+}
+
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-secondary-light:hover,
+[data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-secondary-light:focus-visible {
+  background: rgba(251, 191, 36, 0.24) !important;
+  border-color: rgba(253, 230, 138, 0.62) !important;
+  color: #fef3c7 !important;
+}
+
+.csirt-action-group .stakeholders-action-btn[data-tooltip]::after {
+  background: #0f172a;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  bottom: calc(100% + 9px);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 800;
+  left: 50%;
+  line-height: 1;
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+  z-index: 300;
+}
+
+.csirt-action-group .stakeholders-action-btn[data-tooltip]::before {
+  border: 5px solid transparent;
+  border-top-color: #0f172a;
+  bottom: calc(100% + 4px);
+  content: "";
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 301;
+}
+
+.csirt-action-group .stakeholders-action-btn[data-tooltip]:hover::after,
+.csirt-action-group .stakeholders-action-btn[data-tooltip]:focus-visible::after,
+.csirt-action-group .stakeholders-action-btn[data-tooltip]:hover::before,
+.csirt-action-group .stakeholders-action-btn[data-tooltip]:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.csirt-table-pagination {
+  border-top: 1px solid #eef2f7;
+  margin-top: 0 !important;
+  padding: 16px 18px;
 }
 
 .csirt-inline-meta {
@@ -2780,6 +3294,76 @@ export default {
   padding: 2.5rem 1rem;
 }
 
+@media (max-width: 1199.98px) {
+  .csirt-page-shell {
+    gap: 0.9rem;
+  }
+
+  .csirt-hero-shell {
+    border-radius: 20px;
+    padding: 1.35rem;
+  }
+
+  .csirt-hero-header {
+    flex-direction: column;
+  }
+
+  .csirt-hero-copy p {
+    max-width: none;
+  }
+
+  .csirt-hero-tools {
+    justify-content: flex-start;
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .csirt-hero-summary-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .csirt-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .csirt-kpi-card {
+    min-height: 128px;
+  }
+
+  .csirt-filter-shell {
+    padding: 0.85rem !important;
+  }
+
+  .csirt-toolbar-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .csirt-rows-control {
+    flex: 0 0 150px;
+  }
+
+  .csirt-toolbar-search {
+    flex: 1 1 420px;
+    max-width: none;
+    min-width: 280px;
+  }
+
+  .csirt-filter-actions {
+    flex: 1 0 100%;
+    justify-content: flex-end;
+  }
+
+  .csirt-list-shell.d-lg-block {
+    display: none !important;
+  }
+
+  .csirt-mobile-list.d-lg-none {
+    display: grid !important;
+  }
+}
+
 @media (max-width: 991.98px) {
   .csirt-hero-header {
     flex-direction: column;
@@ -2837,13 +3421,116 @@ export default {
   }
 }
 
+[data-theme-mode='dark'] .csirt-hero-shell {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(96, 165, 250, 0.32), transparent 34%),
+    linear-gradient(135deg, #111b34 0%, #15316f 54%, #1f5fcf 100%) !important;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme-mode='dark'] .csirt-hero-copy h1 {
+  color: #ffffff;
+}
+
+[data-theme-mode='dark'] .csirt-hero-copy p {
+  color: #dbeafe;
+}
+
+[data-theme-mode='dark'] .csirt-inline-breadcrumb {
+  color: #dbeafe !important;
+}
+
+[data-theme-mode='dark'] .csirt-inline-breadcrumb span {
+  color: rgba(191, 219, 254, 0.62) !important;
+}
+
+[data-theme-mode='dark'] .csirt-hero-summary-card {
+  background: rgba(15, 23, 42, 0.36);
+  border-color: rgba(191, 219, 254, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 30px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme-mode='dark'] .csirt-hero-card-title span,
+[data-theme-mode='dark'] .csirt-hero-card-stats span {
+  color: #bfdbfe;
+}
+
+[data-theme-mode='dark'] .csirt-hero-card-title strong,
+[data-theme-mode='dark'] .csirt-hero-card-stats strong {
+  color: #ffffff;
+}
+
+[data-theme-mode='dark'] .csirt-hero-progress {
+  background: rgba(15, 23, 42, 0.62);
+}
+
+[data-theme-mode='dark'] .csirt-hero-progress span {
+  background: linear-gradient(90deg, #5eead4 0%, #60a5fa 100%);
+}
+
+[data-theme-mode='dark'] .csirt-hero-note {
+  color: #dbeafe;
+}
+
 [data-theme-mode='dark'] .csirt-filter-shell,
 [data-theme-mode='dark'] .csirt-list-shell,
 [data-theme-mode='dark'] .csirt-mobile-card,
 [data-theme-mode='dark'] .csirt-kpi-card {
-  background: #0f172a !important;
+  background: #111827 !important;
   border-color: rgba(148, 163, 184, 0.22) !important;
   color: #e2e8f0;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card {
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card::before {
+  height: 3px;
+  opacity: 0.92;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-label {
+  color: #cbd5e1;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-value {
+  color: #f8fafc;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-hint {
+  color: #94a3b8;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-icon {
+  border: 1px solid currentColor;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card.tone-blue .csirt-kpi-icon {
+  background: rgba(96, 165, 250, 0.16);
+  color: #93c5fd;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card.tone-green .csirt-kpi-icon {
+  background: rgba(52, 211, 153, 0.16);
+  color: #86efac;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card.tone-amber .csirt-kpi-icon {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fde68a;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card.tone-cyan .csirt-kpi-icon {
+  background: rgba(34, 211, 238, 0.16);
+  color: #67e8f9;
+}
+
+[data-theme-mode='dark'] .csirt-kpi-card.tone-indigo .csirt-kpi-icon {
+  background: rgba(129, 140, 248, 0.16);
+  color: #c4b5fd;
 }
 
 [data-theme-mode='dark'] .csirt-inline-meta,
@@ -2856,12 +3543,17 @@ export default {
 [data-theme-mode='dark'] .csirt-mobile-grid strong,
 [data-theme-mode='dark'] .csirt-mobile-grid a,
 [data-theme-mode='dark'] .csirt-rows-control span {
-  color: #e2e8f0;
+  color: #e2e8f0 !important;
 }
 
 [data-theme-mode='dark'] .csirt-rows-control {
   background: rgba(255, 255, 255, 0.03) !important;
   border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+[data-theme-mode='dark'] .csirt-rows-control .entries-select option {
+  background-color: #111827;
+  color: #e2e8f0;
 }
 
 [data-theme-mode='dark'] .csirt-rows-control .entries-select {
@@ -2872,6 +3564,64 @@ export default {
   background: rgba(15, 23, 42, 0.82) !important;
   border-color: rgba(148, 163, 184, 0.22) !important;
   color: #e2e8f0 !important;
+}
+
+[data-theme-mode='dark'] .csirt-data-table thead th {
+  background: #111c31 !important;
+  border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode='dark'] .csirt-th-aksi {
+  background: #111c31 !important;
+}
+
+[data-theme-mode='dark'] .csirt-data-table tbody td {
+  border-bottom-color: rgba(148, 163, 184, 0.12) !important;
+  color: #cbd5e1;
+}
+
+[data-theme-mode='dark'] .csirt-data-table .csirt-table-row td:last-child {
+  background: #111827 !important;
+}
+
+[data-theme-mode='dark'] .csirt-data-table .csirt-table-row:hover td {
+  background: rgba(37, 99, 235, 0.08) !important;
+}
+
+[data-theme-mode='dark'] .csirt-data-table .company-name,
+[data-theme-mode='dark'] .csirt-status-label {
+  color: #f8fafc;
+}
+
+[data-theme-mode='dark'] .csirt-status-card.tone-ready {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+[data-theme-mode='dark'] .csirt-status-card.tone-progress {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.28);
+}
+
+[data-theme-mode='dark'] .csirt-status-card.tone-empty {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+[data-theme-mode='dark'] .csirt-status-metric.metric-good {
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+}
+
+[data-theme-mode='dark'] .csirt-status-metric.metric-warning {
+  background: rgba(249, 115, 22, 0.14);
+  color: #fdba74;
+}
+
+[data-theme-mode='dark'] .csirt-status-metric.metric-danger {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
 }
 
 </style>
