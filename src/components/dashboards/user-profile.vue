@@ -809,7 +809,7 @@ const getRoleBadgeClass = (role: string) => {
 
 .stakeholders-shell-card, .stakeholder-profile-shell {
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
-  border: 1px solid rgba(212, 224, 255, 0.6) !important;
+  border: 0 !important;
 }
 
 .premium-breadcrumb { display: flex; align-items: center; gap: 0.5rem; margin-top: -0.25rem; }
@@ -1154,7 +1154,7 @@ const getRoleBadgeClass = (role: string) => {
 .profile-user-page.is-dark .stakeholder-profile-shell,
 .profile-user-page.is-dark .skel-card {
   background: #111827 !important;
-  border-color: rgba(148, 163, 184, 0.22) !important;
+  border: 0 !important;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
   color: #dbeafe !important;
 }
@@ -1432,7 +1432,7 @@ const getRoleBadgeClass = (role: string) => {
 :global(html.dark) .profile-user-page .stakeholder-profile-shell,
 .profile-user-page.is-dark .stakeholder-profile-shell {
   background: linear-gradient(180deg, rgba(16, 26, 45, 0.98) 0%, rgba(11, 18, 36, 0.98) 100%) !important;
-  border-color: rgba(125, 211, 252, 0.16) !important;
+  border: 0 !important;
   box-shadow: 0 22px 50px rgba(0, 0, 0, 0.34) !important;
 }
 

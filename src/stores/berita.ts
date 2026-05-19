@@ -6,6 +6,7 @@ import type {
     UpdateBeritaPayload,
 } from '@/types/berita.types';
 import { sanitizeRichText } from '@/utils/richText';
+import { buildContentSlug, slugifyContentTitle } from '@/utils/contentSlug';
 
 const firstValue = (...values: any[]) => values.find((value) => value !== undefined && value !== null && value !== '');
 const CACHE_TTL_MS = 2 * 60 * 1000;
@@ -29,13 +30,15 @@ const normalizeBerita = (record: any): Berita | null => {
     if (!record || typeof record !== 'object') return null;
     const id = getBeritaId(record);
     if (!id) return null;
+    const title = String(firstValue(record.judul, record.title, record.nama_berita, '') || '');
 
     const rawDescription = String(firstValue(record.deskripsi, record.description, record.keterangan, '') || '');
 
     return {
         ...record,
         id,
-        judul: String(firstValue(record.judul, record.title, record.nama_berita, '') || ''),
+        slug: String(firstValue(record.slug, record.slug_berita, record.news_slug, '') || '') || buildContentSlug(title, id),
+        judul: title,
         deskripsi: sanitizeRichText(rawDescription) || rawDescription,
         created_at: String(firstValue(record.created_at, record.createdAt, '') || ''),
         updated_at: String(firstValue(record.updated_at, record.updatedAt, '') || ''),
@@ -61,6 +64,17 @@ export const useBeritaStore = defineStore('berita', {
         totalBerita: (state) => state.berita.length,
         getBeritaById: (state) => (id: number | string) =>
             state.beritaById[String(id)] || state.berita.find((item) => String(item.id) === String(id)),
+        getBeritaBySlug: (state) => (slug: string) => {
+            const normalizedSlug = slugifyContentTitle(slug);
+            return state.berita.find((item) => {
+                const candidates = [
+                    String(item.slug || '').trim(),
+                    buildContentSlug(item.judul, item.id),
+                ].filter(Boolean).map(slugifyContentTitle);
+
+                return candidates.includes(normalizedSlug);
+            });
+        },
     },
 
     actions: {
@@ -166,6 +180,26 @@ export const useBeritaStore = defineStore('berita', {
             } finally {
                 detailFetchPromises.delete(resolvedId);
             }
+        },
+
+        async fetchBeritaByIdentifier(identifier: number | string, options?: { force?: boolean; maxAgeMs?: number }) {
+            const resolvedIdentifier = String(identifier).trim();
+            if (!resolvedIdentifier || resolvedIdentifier === 'NaN' || resolvedIdentifier === 'undefined' || resolvedIdentifier === 'null') {
+                throw new Error('Identifier berita tidak valid');
+            }
+
+            const cachedById = this.getBeritaById(resolvedIdentifier);
+            if (cachedById) return cachedById;
+
+            const cachedBySlug = this.getBeritaBySlug(resolvedIdentifier);
+            if (cachedBySlug) return cachedBySlug;
+
+            await this.fetchBerita({ force: Boolean(options?.force), maxAgeMs: options?.maxAgeMs });
+
+            const fromList = this.getBeritaById(resolvedIdentifier) || this.getBeritaBySlug(resolvedIdentifier);
+            if (fromList) return fromList;
+
+            return this.fetchBeritaById(resolvedIdentifier, { force: options?.force });
         },
 
         async createBerita(payload: CreateBeritaPayload) {

@@ -6,6 +6,7 @@ import { useRouter } from "vue-router";
 import type { Kegiatan } from "../../types/kegiatan.types";
 import { richTextToPlainText } from "../../utils/richText";
 import { formatEventDateShort } from "../../utils/eventDate";
+import { buildContentSlug } from "../../utils/contentSlug";
 
 export default {
   data() {
@@ -170,12 +171,12 @@ export default {
       router.push(`/event/edit/${encodeURIComponent(id)}`);
     };
     const openView = (item: Kegiatan) => {
-      const id = getItemId(item);
-      if (!id) {
-        showNotification("ID event tidak valid", "error");
+      const slug = buildContentSlug(item.slug || item.judul, getItemId(item));
+      if (!slug) {
+        showNotification("Slug event tidak valid", "error");
         return;
       }
-      router.push(`/event/view/${encodeURIComponent(id)}`);
+      router.push(`/event/view/${encodeURIComponent(slug)}`);
     };
     const switchToBerita = () => router.push("/event/berita");
 

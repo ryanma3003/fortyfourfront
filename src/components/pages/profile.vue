@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useProfileStore } from "../../stores/profile";
-import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 // Profile store
 const profileStore = useProfileStore();
@@ -30,12 +29,6 @@ const {
   isLoading,
 } = storeToRefs(profileStore);
 
-const dataToPass = {
-  title: { label: "Dashboards", path: "/dashboards" },
-  currentpage: "Profile",
-  activepage: "Profile",
-};
-
 // Initialize profile data on mount
 onMounted(async () => {
   await profileStore.switchUser();
@@ -46,53 +39,51 @@ const displayName = computed(() => profileStore.displayName);
 const displayEmail = computed(() => profileStore.displayEmail);
 const displayJabatan = computed(() => profileStore.displayJabatan);
 const displayRole = computed(() => profileStore.displayRole);
+const displayRoleLabel = computed(() => formatRoleLabel(displayRole.value));
 const displayPhone = computed(() => profileStore.displayPhone);
 const displayLocation = computed(() => profileStore.displayLocation);
 const displayJoined = computed(() => profileStore.displayJoined);
 const displayPerusahaan = computed(() => profileStore.namaPerusahaan || 'Belum terkait');
 const displaySubSektor = computed(() => profileStore.namaSubSektor || 'Belum terkait');
 
+const toTitleCase = (value) =>
+  String(value || "")
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatRoleLabel = (role) => {
+  const normalized = String(role || "").trim();
+  if (!normalized) return "Belum diatur";
+  if (normalized.toLowerCase() === "user_pic") return "User PIC";
+  return toTitleCase(normalized);
+};
+
+const getRoleBadgeClass = (role) => {
+  const r = String(role || "").toLowerCase();
+  if (r.includes("admin")) return "p-badge--role-red";
+  if (r === "user") return "p-badge--role-green";
+  if (r === "user_pic" || r === "pic") return "p-badge--role-orange";
+  return "p-badge--role-sky";
+};
+
 // Account details grid
 const accountDetails = computed(() => [
-  { icon: 'ri-mail-line',        label: 'Email',           value: displayEmail.value,       colorClass: 'stat-icon-teal',   wrap: false },
-  { icon: 'ri-phone-line',       label: 'Telepon',         value: displayPhone.value,       colorClass: 'stat-icon-violet', wrap: false },
-  { icon: 'ri-map-pin-line',     label: 'Lokasi',          value: displayLocation.value,    colorClass: 'stat-icon-amber',  wrap: true  },
+  { icon: 'ri-mail-line',        label: 'Email',           value: displayEmail.value,       colorClass: 'stat-icon-indigo', wrap: false },
+  { icon: 'ri-phone-line',       label: 'Telepon',         value: displayPhone.value,       colorClass: 'stat-icon-violet', wrap: false, badge: 'Sinkron stakeholder' },
+  { icon: 'ri-map-pin-line',     label: 'Lokasi',          value: displayLocation.value,    colorClass: 'stat-icon-amber',  wrap: true,  badge: 'Sinkron stakeholder' },
   { icon: 'ri-briefcase-line',   label: 'Jabatan',         value: displayJabatan.value,     colorClass: 'stat-icon-blue',   wrap: false },
-  { icon: 'ri-building-line',    label: 'Perusahaan',      value: displayPerusahaan.value,  colorClass: 'stat-icon-amber',  wrap: true  },
-  { icon: 'ri-shield-user-line', label: 'Role',            value: displayRole.value,        colorClass: 'stat-icon-red',    wrap: false },
+  { icon: 'ri-building-line',    label: 'Perusahaan',      value: displayPerusahaan.value,  colorClass: 'stat-icon-amber',  wrap: true,  badge: 'Data registrasi' },
+  { icon: 'ri-pie-chart-line',   label: 'Sektor',          value: displaySubSektor.value,   colorClass: 'stat-icon-blue',   wrap: true,  badge: 'Sinkron stakeholder' },
+  { icon: 'ri-shield-user-line', label: 'Role',            value: displayRoleLabel.value,   colorClass: 'stat-icon-red',    wrap: false },
   { icon: 'ri-calendar-line',    label: 'Bergabung Sejak', value: displayJoined.value,      colorClass: 'stat-icon-teal',   wrap: false },
 ]);
 </script>
 
 <template>
-  <div class="row">
-    <div class="col-xxl-9 col-xl-10 col-lg-12 mx-auto">
-      <Pageheader :propData="dataToPass" />
-
-      <!-- HEADER BAR -->
-      <div class="card custom-card gradient-header-card mb-4 shadow-sm border-0">
-        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header border-bottom-0 pb-3 pt-3">
-          <div class="d-flex align-items-center gap-3">
-            <div class="header-icon-box">
-              <i class="ri-account-circle-line"></i>
-            </div>
-            <div>
-              <div class="card-title mb-0 text-white fw-bold header-card-title">
-                {{ displayName || 'Profil Saya' }}
-              </div>
-              <div class="header-subtitle mt-1">Informasi akun & data pribadi</div>
-            </div>
-          </div>
-          <router-link to="/profile-settings" class="btn-edit-profile">
-            <i class="ri-edit-2-line"></i>
-            <span class="d-none d-sm-inline">Edit Profil</span>
-          </router-link>
-        </div>
-      </div>
-
-      <!-- HERO CARD -->
-      <div class="card custom-card hero-card-shell mb-4 shadow-sm border-0 rounded-4 overflow-hidden">
-        <!-- Banner Image -->
+  <div class="row profile-user-page">
+    <div class="col-xl-12">
+      <div class="card custom-card hero-card-shell mb-4 border-0 rounded-4 overflow-hidden stakeholder-profile-shell">
         <div
           class="profile-banner"
           :class="{ 'profile-banner-nophoto': !bannerUrl }"
@@ -101,10 +92,29 @@ const accountDetails = computed(() => [
             backgroundPosition: `${bannerPositionX ?? 50}% ${bannerPositionY ?? 50}%`
           } : {}"
         >
+          <div class="profile-banner-overlay-premium">
+            <div class="profile-banner-top">
+              <div class="hero-text-block">
+                <div class="premium-breadcrumb mb-1">
+                  <span class="breadcrumb-item">PROFILE</span>
+                  <span class="breadcrumb-sep"><i class="ri-arrow-right-s-line"></i></span>
+                  <span class="breadcrumb-item active">DETAIL</span>
+                </div>
+                <h2 class="hero-main-title">Profil Saya</h2>
+                <p class="hero-sub-title mb-0">Informasi akun dan data pribadi pengguna</p>
+              </div>
+
+              <div class="hero-action-tools">
+                <router-link to="/profile-settings" class="btn-premium btn-premium--glass shadow-sm">
+                  <i class="ri-pencil-fill me-1"></i>
+                  <span>Edit Profil</span>
+                </router-link>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Profile Content Body -->
-        <div class="profile-content-body">
+        <div class="profile-content-body profile-content-body--premium">
           <div class="profile-foto-profile-container">
             <div class="profile-foto-profile-wrap">
               <img
@@ -117,59 +127,81 @@ const accountDetails = computed(() => [
           </div>
 
           <div class="profile-info-block">
-            <h4 class="profile-user-name mb-1">{{ displayName }}</h4>
-            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-              <span :class="['profile-role-badge', `profile-role-badge--${(displayRole || '').toLowerCase()}`]">
-                <i :class="(displayRole || '').toLowerCase() === 'admin' ? 'ri-shield-user-line' : 'ri-user-line'"></i>
-                {{ displayRole }}
+            <h4 class="profile-user-name mb-2">{{ displayName }}</h4>
+            <div class="profile-badges-row mb-3">
+              <span :class="['p-badge p-badge--role', getRoleBadgeClass(displayRole)]">
+                <i :class="(displayRole || '').toLowerCase() === 'admin' ? 'ri-shield-flash-line' : 'ri-user-6-line'"></i>
+                {{ displayRoleLabel }}
               </span>
-              <span class="profile-jabatan-badge">
-                <i class="ri-briefcase-line"></i>{{ displayJabatan }}
+              <span class="p-badge p-badge--jabatan">
+                <i class="ri-medal-line"></i>{{ displayJabatan }}
               </span>
-              <span class="profile-perusahaan-badge">
-                <i class="ri-building-line"></i>{{ displayPerusahaan }}
+              <span class="p-badge p-badge--company">
+                <i class="ri-community-line"></i>{{ displayPerusahaan }}
               </span>
-              <span class="profile-sektor-badge">
-                <i class="ri-pie-chart-line"></i>{{ displaySubSektor }}
+              <span class="p-badge p-badge--sector">
+                <i class="ri-microscope-line"></i>{{ displaySubSektor }}
               </span>
             </div>
-            <p class="profile-email-text mb-1">
-              <i class="ri-mail-line me-1"></i>{{ displayEmail }}
-            </p>
-            <div class="profile-meta-row">
-              <span><i class="ri-phone-line me-1"></i>{{ displayPhone }}</span>
-              <span class="contact-bar-sep-inline d-none d-sm-inline"></span>
-              <span><i class="ri-map-pin-line me-1"></i>{{ displayLocation }}</span>
+
+            <div class="profile-contact-grid">
+              <div class="contact-item contact-item--email">
+                <div class="contact-icon contact-icon--email"><i class="ri-mail-send-line"></i></div>
+                <div class="contact-content">
+                  <span class="contact-label">Email</span>
+                  <span class="contact-value contact-value--email" :title="displayEmail">{{ displayEmail }}</span>
+                </div>
+              </div>
+              <div class="contact-item">
+                <div class="contact-icon contact-icon--phone"><i class="ri-phone-camera-line"></i></div>
+                <div class="contact-content">
+                  <span class="contact-label">Nomor Telepon</span>
+                  <span class="contact-value">{{ displayPhone }}</span>
+                </div>
+              </div>
+              <div class="contact-item">
+                <div class="contact-icon contact-icon--location"><i class="ri-map-pin-user-line"></i></div>
+                <div class="contact-content">
+                  <span class="contact-label">Lokasi</span>
+                  <span class="contact-value">{{ displayLocation }}</span>
+                </div>
+              </div>
+              <div class="contact-item">
+                <div class="contact-icon contact-icon--joined"><i class="ri-calendar-check-line"></i></div>
+                <div class="contact-content">
+                  <span class="contact-label">Bergabung Sejak</span>
+                  <span class="contact-value">{{ displayJoined }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- INFORMASI AKUN -->
-      <div class="card custom-card mb-4 shadow-sm border-0 rounded-4">
-        <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom py-3 px-4">
+      <div class="card custom-card mb-4 border-0 rounded-4 stakeholders-shell-card overflow-hidden">
+        <div class="card-header border-bottom py-3 px-4 bg-transparent d-flex align-items-center justify-content-between">
           <div class="d-flex align-items-center gap-2">
-            <div class="avatar avatar-sm bg-primary-transparent rounded-circle">
-              <i class="ri-user-settings-line text-primary fs-18"></i>
-            </div>
-            <div class="card-title mb-0 fw-bold text-dark fs-15">Informasi Akun</div>
-            <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Detail profil pengguna</div>
+            <div class="header-icon-wrap text-primary fs-18"><i class="ri-user-settings-line"></i></div>
+            <h5 class="card-title mb-0 fw-bold fs-15">Informasi Akun</h5>
           </div>
+          <div class="badge bg-light text-muted rounded-pill px-3 py-2 fs-11 fw-semibold border">{{ accountDetails.length }} Atribut</div>
         </div>
-        <div class="card-body p-4 p-md-5">
-          <div class="row g-4">
-            <!-- Iterate accountDetails for consistent structure -->
+        <div class="card-body p-4 pt-3">
+          <div class="row g-3">
             <div v-for="(item, idx) in accountDetails" :key="idx" class="col-xl-6 col-lg-6 col-md-6">
               <div class="form-group-split">
                 <div class="form-group-split-label-card">
-                  <div class="form-item-icon" :class="item.colorClass" style="width:32px;height:32px">
-                    <i :class="item.icon" style="font-size:0.95rem"></i>
+                  <div class="form-item-icon" :class="item.colorClass" style="width:28px;height:28px">
+                    <i :class="item.icon" style="font-size:0.85rem"></i>
                   </div>
-                  <label class="form-item-label mb-0">{{ item.label }}</label>
+                  <div class="d-flex align-items-center gap-2">
+                    <label class="form-item-label mb-0 text-uppercase fs-10 fw-bold text-muted">{{ item.label }}</label>
+                    <span v-if="item.badge" class="badge-source-info">{{ item.badge }}</span>
+                  </div>
                 </div>
-                <div class="form-group-split-input-card form-item-card--readonly">
-                  <div class="form-item-value" :class="{ 'wrap-text': item.wrap }">{{ item.value }}</div>
-                  <i class="ri-lock-2-line form-item-edit-action" style="color: #cbd5e1; opacity: 1;"></i>
+                <div class="form-group-split-input-card bg-light form-item-card--readonly">
+                  <div class="form-item-value text-muted" :class="{ 'wrap-text': item.wrap }">{{ item.value }}</div>
+                  <i class="ri-lock-line form-item-edit-action text-light-muted"></i>
                 </div>
               </div>
             </div>

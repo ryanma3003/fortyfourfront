@@ -5,6 +5,7 @@
 
 export interface Kegiatan {
     id: number | string;
+    slug?: string;
     id_kegiatan?: number | string;
     kegiatan_id?: number | string;
     event_id?: number | string;

@@ -33,6 +33,21 @@ const error = ref('');
 const comparisonRoot = ref(null);
 let comparisonAnimationCtx = null;
 
+// --- DARK MODE DETECTION ---
+const isDarkMode = ref(false);
+let themeObserver = null;
+
+function syncThemeMode() {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const body = document.body;
+  isDarkMode.value =
+    root.getAttribute('data-theme-mode') === 'dark' ||
+    body?.getAttribute('data-theme-mode') === 'dark' ||
+    root.classList.contains('dark') ||
+    body?.classList.contains('dark');
+}
+
 const animateComparison = async (quick = false) => {
   await nextTick();
   const root = comparisonRoot.value;
@@ -354,74 +369,93 @@ const getMaturityLabel = (score) => {
   return 'Level 5';
 };
 
-// ApexCharts options for the trend line chart
-const trendChartOptions = computed(() => ({
-  chart: {
-    type: 'line',
-    height: 300,
-    toolbar: { show: false },
-    fontFamily: 'Inter, system-ui, sans-serif',
-    animations: {
+// ApexCharts options for the trend bar chart
+const trendChartOptions = computed(() => {
+  const dark = isDarkMode.value;
+  return {
+    chart: {
+      type: 'bar',
+      height: 320,
+      toolbar: { show: false },
+      fontFamily: 'Inter, system-ui, sans-serif',
+      animations: {
+        enabled: true,
+        easing: 'easeinout',
+        speed: 800,
+      },
+      background: 'transparent',
+    },
+    plotOptions: {
+      bar: {
+        horizontal: false,
+        columnWidth: '60%',
+        borderRadius: 5,
+        borderRadiusApplication: 'end',
+        dataLabels: {
+          position: 'top',
+        },
+      },
+    },
+    dataLabels: {
       enabled: true,
-      easing: 'easeinout',
-      speed: 800,
+      formatter: (val) => val > 0 ? val.toFixed(1) : '',
+      offsetY: -20,
+      style: {
+        fontSize: '10px',
+        fontWeight: 700,
+        colors: [dark ? '#94a3b8' : '#475569'],
+      },
     },
-    dropShadow: {
-      enabled: true,
-      top: 3,
-      left: 0,
-      blur: 6,
-      opacity: 0.15,
+    stroke: {
+      show: true,
+      width: 2,
+      colors: ['transparent'],
     },
-  },
-  stroke: {
-    curve: 'smooth',
-    width: 3,
-  },
-  markers: {
-    size: 6,
-    strokeWidth: 2,
-    strokeColors: '#fff',
-    hover: { sizeOffset: 3 },
-  },
-  colors: ['#2563eb', '#7c3aed', '#d97706', '#059669', '#1e3a5f'],
-  xaxis: {
-    categories: comparisonData.value.map(d => d.year.toString()),
-    labels: {
-      style: { fontSize: '12px', fontWeight: 600, colors: '#64748b' },
+    colors: ['#2563eb', '#7c3aed', '#d97706', '#059669', '#1e3a5f'],
+    fill: {
+      opacity: dark ? 0.85 : 1,
     },
-    axisBorder: { show: false },
-    axisTicks: { show: false },
-  },
-  yaxis: {
-    min: 0,
-    max: 5,
-    tickAmount: 5,
-    labels: {
-      style: { fontSize: '11px', colors: '#94a3b8' },
-      formatter: (val) => val.toFixed(1),
+    xaxis: {
+      categories: comparisonData.value.map(d => d.year.toString()),
+      labels: {
+        style: { fontSize: '12px', fontWeight: 600, colors: dark ? '#94a3b8' : '#64748b' },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
     },
-  },
-  grid: {
-    borderColor: '#e2e8f0',
-    strokeDashArray: 4,
-    xaxis: { lines: { show: false } },
-  },
-  legend: {
-    position: 'top',
-    horizontalAlign: 'center',
-    fontSize: '12px',
-    fontWeight: 600,
-    markers: { width: 10, height: 10, radius: 50 },
-    itemMargin: { horizontal: 12, vertical: 4 },
-  },
-  tooltip: {
-    theme: 'light',
-    y: {
-      formatter: (val) => `${val.toFixed(2)} / 5.00`,
+    yaxis: {
+      min: 0,
+      max: 5,
+      tickAmount: 5,
+      labels: {
+        style: { fontSize: '11px', colors: dark ? '#64748b' : '#94a3b8' },
+        formatter: (val) => val.toFixed(1),
+      },
     },
-  },
-}));
+    grid: {
+      borderColor: dark ? 'rgba(148, 163, 184, 0.15)' : '#e2e8f0',
+      strokeDashArray: 4,
+      xaxis: { lines: { show: false } },
+    },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'center',
+      fontSize: '12px',
+      fontWeight: 600,
+      labels: {
+        colors: dark ? '#cbd5e1' : '#475569',
+      },
+      markers: { width: 10, height: 10, radius: 4 },
+      itemMargin: { horizontal: 12, vertical: 4 },
+    },
+    tooltip: {
+      theme: dark ? 'dark' : 'light',
+      y: {
+        formatter: (val) => `${val.toFixed(2)} / 5.00`,
+      },
+    },
+  };
+});
 
 const trendChartSeries = computed(() => {
   const sorted = [...comparisonData.value].sort((a, b) => a.year - b.year);
@@ -508,6 +542,18 @@ const fetchAllRecords = async () => {
 };
 
 onMounted(async () => {
+  syncThemeMode();
+  themeObserver = new MutationObserver(syncThemeMode);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme-mode', 'class'],
+  });
+  if (document.body) {
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-theme-mode', 'class'],
+    });
+  }
   await fetchAllRecords();
   window.addEventListener('ikas-requests-updated', fetchAllRecords);
 });
@@ -515,6 +561,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('ikas-requests-updated', fetchAllRecords);
   comparisonAnimationCtx?.revert();
+  themeObserver?.disconnect();
 });
 
 watch(() => props.perusahaanId, () => {
@@ -719,15 +766,15 @@ watch(availableYears, (years) => {
             </div>
           </div>
 
-          <!-- Trend Line Chart -->
+          <!-- Trend Bar Chart -->
           <div class="trend-chart-wrapper" v-if="comparisonData.length >= 2">
             <div class="trend-chart-title">
-              <i class="ri-line-chart-line"></i>
-              <span>Tren Nilai Kematangan</span>
+              <i class="ri-bar-chart-grouped-line"></i>
+              <span>Perbandingan Nilai Kematangan</span>
             </div>
             <apexchart
-              type="line"
-              :height="300"
+              type="bar"
+              :height="320"
               :options="trendChartOptions"
               :series="trendChartSeries"
             />
@@ -1029,27 +1076,98 @@ html.dark .domain-bar-year {
   color: #9fb0c5;
 }
 
-[data-theme-mode="dark"] .year-pill,
-[data-theme-mode="dark"] .comparison-year-btn,
+[data-theme-mode="dark"] .year-pill:not(.active),
+[data-theme-mode="dark"] .comparison-year-btn:not(.active),
 [data-theme-mode="dark"] .domain-comparison-card,
 [data-theme-mode="dark"] .total-comparison-strip,
 [data-theme-mode="dark"] .trend-chart-wrapper,
 [data-theme-mode="dark"] .comparison-table-wrapper,
-.dark-mode .year-pill,
-.dark-mode .comparison-year-btn,
+.dark-mode .year-pill:not(.active),
+.dark-mode .comparison-year-btn:not(.active),
 .dark-mode .domain-comparison-card,
 .dark-mode .total-comparison-strip,
 .dark-mode .trend-chart-wrapper,
 .dark-mode .comparison-table-wrapper,
-html.dark .year-pill,
-html.dark .comparison-year-btn,
-html.dark .domain-comparison-card,
-html.dark .total-comparison-strip,
-html.dark .trend-chart-wrapper,
+html.dark .year-pill:not(.active),
 html.dark .comparison-table-wrapper {
   background: rgba(17, 24, 39, 0.82);
   border-color: rgba(148, 163, 184, 0.2);
   color: #dbe7f3;
+}
+
+[data-theme-mode="dark"] .comparison-table th,
+.dark-mode .comparison-table th,
+html.dark .comparison-table th {
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom-color: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+[data-theme-mode="dark"] .comparison-table td,
+.dark-mode .comparison-table td,
+html.dark .comparison-table td {
+  border-bottom-color: rgba(148, 163, 184, 0.1);
+  color: #e2e8f0;
+}
+
+[data-theme-mode="dark"] .total-row td,
+.dark-mode .total-row td,
+html.dark .total-row td {
+  background: rgba(15, 23, 42, 0.6);
+  border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+[data-theme-mode="dark"] .comparison-empty-text,
+.dark-mode .comparison-empty-text,
+html.dark .comparison-empty-text {
+  color: #e2e8f0;
+}
+
+[data-theme-mode="dark"] .empty-icon-wrapper,
+.dark-mode .empty-icon-wrapper,
+html.dark .empty-icon-wrapper {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(37, 99, 235, 0.08));
+}
+
+
+[data-theme-mode="dark"] .year-pill.active,
+.dark-mode .year-pill.active,
+html.dark .year-pill.active {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
+}
+
+[data-theme-mode="dark"] .year-pill:not(.active):hover,
+.dark-mode .year-pill:not(.active):hover,
+html.dark .year-pill:not(.active):hover {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+
+[data-theme-mode="dark"] .year-pill.active:hover,
+.dark-mode .year-pill.active:hover,
+html.dark .year-pill.active:hover {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55);
+}
+
+[data-theme-mode="dark"] .comparison-year-btn.active,
+.dark-mode .comparison-year-btn.active,
+html.dark .comparison-year-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+[data-theme-mode="dark"] .comparison-year-btn.disabled,
+.dark-mode .comparison-year-btn.disabled,
+html.dark .comparison-year-btn.disabled {
+  background: rgba(17, 24, 39, 0.5);
+  color: #4b5563;
+  border-color: rgba(148, 163, 184, 0.12);
 }
 
 [data-theme-mode="dark"] .total-bar-track,
@@ -1569,6 +1687,41 @@ html.dark .domain-bar-track {
   color: #94a3b8;
 }
 
+/* ── Dark Mode: Table ─────────────────────────────────── */
+:global(html[data-theme-mode="dark"]) .comparison-table th,
+:global(html.dark) .comparison-table th,
+:global(.dark-mode) .comparison-table th {
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom-color: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-table td,
+:global(html.dark) .comparison-table td,
+:global(.dark-mode) .comparison-table td {
+  border-bottom-color: rgba(148, 163, 184, 0.1);
+  color: #e2e8f0;
+}
+
+:global(html[data-theme-mode="dark"]) .total-row td,
+:global(html.dark) .total-row td,
+:global(.dark-mode) .total-row td {
+  background: rgba(15, 23, 42, 0.6);
+  border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-empty-text,
+:global(html.dark) .comparison-empty-text,
+:global(.dark-mode) .comparison-empty-text {
+  color: #e2e8f0;
+}
+
+:global(html[data-theme-mode="dark"]) .empty-icon-wrapper,
+:global(html.dark) .empty-icon-wrapper,
+:global(.dark-mode) .empty-icon-wrapper {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(37, 99, 235, 0.08));
+}
+
 /* ── Responsive ────────────────────────────────────────── */
 :global(html[data-theme-mode="dark"]) .year-selector-bar,
 :global(html.dark) .year-selector-bar,
@@ -1633,12 +1786,12 @@ html.dark .domain-bar-track {
   color: #9fb0c5;
 }
 
-:global(html[data-theme-mode="dark"]) .year-pill,
-:global(html.dark) .year-pill,
-:global(.dark-mode) .year-pill,
-:global(html[data-theme-mode="dark"]) .comparison-year-btn,
-:global(html.dark) .comparison-year-btn,
-:global(.dark-mode) .comparison-year-btn,
+:global(html[data-theme-mode="dark"]) .year-pill:not(.active),
+:global(html.dark) .year-pill:not(.active),
+:global(.dark-mode) .year-pill:not(.active),
+:global(html[data-theme-mode="dark"]) .comparison-year-btn:not(.active),
+:global(html.dark) .comparison-year-btn:not(.active),
+:global(.dark-mode) .comparison-year-btn:not(.active),
 :global(html[data-theme-mode="dark"]) .domain-comparison-card,
 :global(html.dark) .domain-comparison-card,
 :global(.dark-mode) .domain-comparison-card,
@@ -1657,6 +1810,46 @@ html.dark .domain-bar-track {
   background: rgba(17, 24, 39, 0.82);
   border-color: rgba(148, 163, 184, 0.2);
   color: #dbe7f3;
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill.active,
+:global(html.dark) .year-pill.active,
+:global(.dark-mode) .year-pill.active {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill:not(.active):hover,
+:global(html.dark) .year-pill:not(.active):hover,
+:global(.dark-mode) .year-pill:not(.active):hover {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill.active:hover,
+:global(html.dark) .year-pill.active:hover,
+:global(.dark-mode) .year-pill.active:hover {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55);
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-year-btn.active,
+:global(html.dark) .comparison-year-btn.active,
+:global(.dark-mode) .comparison-year-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-year-btn.disabled,
+:global(html.dark) .comparison-year-btn.disabled,
+:global(.dark-mode) .comparison-year-btn.disabled {
+  background: rgba(17, 24, 39, 0.5);
+  color: #4b5563;
+  border-color: rgba(148, 163, 184, 0.12);
 }
 
 :global(html[data-theme-mode="dark"]) .total-bar-track,

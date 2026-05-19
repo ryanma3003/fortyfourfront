@@ -1163,33 +1163,32 @@ export default {
               <thead class="stakeholder-thead">
                 <tr>
                   <th class="th-no" style="width: 50px;">No</th>
-                  <th class="sortable" @click="toggleSort('name')">
+                  <th class="sortable th-name-wide" @click="toggleSort('name')">
                     <div class="d-flex align-items-center gap-2">
                       <span>User</span>
                       <i :class="sortField === 'name' ? (sortOrder === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-expand-up-down-line'" class="fs-14 opacity-50"></i>
                     </div>
                   </th>
-                  <th>Email</th>
-                  <th>Jabatan</th>
-                  <th>Perusahaan</th>
-                  <th class="sortable text-center" @click="toggleCreatedSort">
+                  <th class="th-sektor">Jabatan</th>
+                  <th class="th-name">Perusahaan</th>
+                  <th class="sortable text-center th-status" @click="toggleCreatedSort">
                     <div class="d-flex align-items-center justify-content-center gap-2">
                       <span>Dibuat</span>
                       <i :class="sortField === 'createdAtMs' ? (sortOrder === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-expand-up-down-line'" class="fs-14 opacity-50"></i>
                     </div>
                   </th>
-                  <th class="sortable text-center" @click="toggleSort('role')">
+                  <th class="sortable text-center th-status" @click="toggleSort('role')">
                     <div class="d-flex align-items-center justify-content-center gap-2">
                       <span>Role</span>
                       <i :class="sortField === 'role' ? (sortOrder === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-expand-up-down-line'" class="fs-14 opacity-50"></i>
                     </div>
                   </th>
-                  <th class="text-center">Aksi</th>
+                  <th class="text-center th-actions-md">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="isInitialLoading">
-                  <td colspan="8" class="p-0">
+                  <td colspan="7" class="p-0">
                     <div class="skeleton-table-body">
                       <div v-for="n in 5" :key="n" class="skeleton-row p-3 d-flex align-items-center gap-3 border-bottom">
                         <div class="skel skel-circle" style="width: 40px; height: 40px;"></div>
@@ -1204,7 +1203,7 @@ export default {
                   </td>
                 </tr>
                 <tr v-else-if="!displayData.length">
-                  <td colspan="8" class="text-center py-5">
+                  <td colspan="7" class="text-center py-5">
                     <div class="empty-state">
                       <div class="empty-icon-ring mb-3"><div class="empty-icon-inner"><i class="ri-user-search-line"></i></div></div>
                       <h6 class="fw-semibold mb-1 empty-state-title">Tidak Ada User</h6>
@@ -1228,17 +1227,17 @@ export default {
                       <div class="company-name-wrap">
                         <span class="company-name d-block fw-bold">{{ item.displayName }}</span>
                         <div class="users-user-meta-line">
-                          <span class="text-muted fs-12">@{{ item.username }}</span>
                           <span class="users-inline-status" :class="item.statusText === 'Aktif' ? 'is-active' : 'is-inactive'">
                             <i :class="item.statusText === 'Aktif' ? 'ri-checkbox-circle-line' : 'ri-close-circle-line'"></i>
                             {{ item.statusText }}
                           </span>
                         </div>
+                        <div class="users-email-text mt-1 text-muted fs-12 d-flex align-items-center gap-1">
+                          <i class="ri-mail-line"></i>
+                          <span>{{ item.email || item.username }}</span>
+                        </div>
                       </div>
                     </div>
-                  </td>
-                  <td class="align-middle">
-                    <span class="users-email-text">{{ item.email || item.username }}</span>
                   </td>
                   <td class="align-middle">
                     <span v-if="item.hasJabatan" class="users-jabatan-badge">
@@ -2148,13 +2147,10 @@ export default {
 
 .role-hero-card {
   align-items: center;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.24), transparent 30%),
-    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.16), transparent 24%),
-    linear-gradient(135deg, #071b4f 0%, #173783 46%, #2563eb 100%);
-  border: 1px solid rgba(147, 197, 253, 0.28);
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 18px;
-  box-shadow: 0 22px 55px rgba(37, 99, 235, 0.2), 0 8px 18px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
   box-sizing: border-box;
   display: flex;
   gap: 18px;
@@ -2178,7 +2174,7 @@ export default {
 }
 
 .role-hero-card::after {
-  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.78), rgba(255, 255, 255, 0));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(47, 118, 234, 0.72), rgba(255, 255, 255, 0));
   bottom: 0;
   content: "";
   height: 3px;
@@ -2801,8 +2797,30 @@ export default {
   max-width: 100%;
   min-width: 0;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
   width: 100%;
+  padding-bottom: 10px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #93c5fd transparent;
+}
+
+.role-table-card .stakeholder-table-wrap::-webkit-scrollbar {
+  height: 8px;
+}
+
+.role-table-card .stakeholder-table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 8px;
+}
+
+.role-table-card .stakeholder-table-wrap::-webkit-scrollbar-thumb {
+  background: #93c5fd;
+  border-radius: 8px;
+}
+
+.role-table-card .stakeholder-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
 }
 
 .role-table-card .stakeholders-premium-body {
@@ -2920,37 +2938,49 @@ export default {
 .role-table-card .stakeholders-action-btn {
   align-items: center;
   display: inline-flex;
-  height: 34px;
+  border: 0 !important;
+  border-radius: 8px !important;
+  height: 32px;
   justify-content: center;
-  min-width: 34px;
+  min-width: 32px;
   overflow: visible !important;
   position: relative;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  width: 32px;
+}
+
+.role-table-card .stakeholders-action-btn i {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .role-table-card .stakeholders-action-btn.btn-info-light {
-  background: #f3f9ff !important;
-  border-color: #d8ebfb !important;
-  color: #377da8 !important;
+  background: #e9eef8 !important;
+  color: #2563eb !important;
 }
 
 .role-table-card .stakeholders-action-btn.btn-success-light {
-  background: #f3fbf7 !important;
-  border-color: #d5efe2 !important;
-  color: #3f8b66 !important;
+  background: #def8eb !important;
+  color: #10b981 !important;
 }
 
 .role-table-card .stakeholders-action-btn.btn-danger-light {
-  background: #fff5f5 !important;
-  border-color: #f3d7d7 !important;
-  color: #a65252 !important;
+  background: #fdeaea !important;
+  color: #ef4444 !important;
+}
+
+.role-table-card .stakeholders-action-btn:hover,
+.role-table-card .stakeholders-action-btn:focus-visible {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 .users-action-group {
   align-items: center;
   display: inline-flex;
-  gap: 7px;
+  gap: 6px;
   justify-content: center;
-  min-width: 120px;
+  min-width: 114px;
 }
 
 .role-table-card .stakeholders-action-btn[data-tooltip]::after {
@@ -3385,11 +3415,10 @@ html[data-theme-mode="dark"] .role-hero-card,
 html.dark .role-hero-card,
 .dark-mode .role-hero-card {
   background:
-    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
-    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
-    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
-  border-color: rgba(147, 197, 253, 0.2) !important;
-  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 html[data-theme-mode="dark"] .role-toolbar-card,
@@ -3675,25 +3704,22 @@ html.dark .role-table-card .stakeholders-action-btn,
 html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-info-light,
 html.dark .role-table-card .stakeholders-action-btn.btn-info-light,
 .dark-mode .role-table-card .stakeholders-action-btn.btn-info-light {
-  background: rgba(56, 189, 248, 0.1) !important;
-  border-color: rgba(125, 211, 252, 0.2) !important;
-  color: #8fc5df !important;
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #93c5fd !important;
 }
 
 html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-success-light,
 html.dark .role-table-card .stakeholders-action-btn.btn-success-light,
 .dark-mode .role-table-card .stakeholders-action-btn.btn-success-light {
-  background: rgba(52, 211, 153, 0.1) !important;
-  border-color: rgba(110, 231, 183, 0.2) !important;
-  color: #9ad8be !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #6ee7b7 !important;
 }
 
 html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-danger-light,
 html.dark .role-table-card .stakeholders-action-btn.btn-danger-light,
 .dark-mode .role-table-card .stakeholders-action-btn.btn-danger-light {
-  background: rgba(248, 113, 113, 0.1) !important;
-  border-color: rgba(252, 165, 165, 0.2) !important;
-  color: #dfa3a3 !important;
+  background: rgba(239, 68, 68, 0.18) !important;
+  color: #fca5a5 !important;
 }
 
 html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn:hover,
@@ -3702,8 +3728,38 @@ html.dark .role-table-card .stakeholders-action-btn:hover,
 html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn:focus-visible,
 html.dark .role-table-card .stakeholders-action-btn:focus-visible,
 .dark-mode .role-table-card .stakeholders-action-btn:focus-visible {
-  background: rgba(51, 65, 85, 0.72) !important;
-  border-color: rgba(148, 163, 184, 0.34) !important;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
+  transform: translateY(-1px);
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-info-light:hover,
+html.dark .role-table-card .stakeholders-action-btn.btn-info-light:hover,
+.dark-mode .role-table-card .stakeholders-action-btn.btn-info-light:hover,
+html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-info-light:focus-visible,
+html.dark .role-table-card .stakeholders-action-btn.btn-info-light:focus-visible,
+.dark-mode .role-table-card .stakeholders-action-btn.btn-info-light:focus-visible {
+  background: rgba(37, 99, 235, 0.28) !important;
+  color: #bfdbfe !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-success-light:hover,
+html.dark .role-table-card .stakeholders-action-btn.btn-success-light:hover,
+.dark-mode .role-table-card .stakeholders-action-btn.btn-success-light:hover,
+html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-success-light:focus-visible,
+html.dark .role-table-card .stakeholders-action-btn.btn-success-light:focus-visible,
+.dark-mode .role-table-card .stakeholders-action-btn.btn-success-light:focus-visible {
+  background: rgba(16, 185, 129, 0.28) !important;
+  color: #a7f3d0 !important;
+}
+
+html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-danger-light:hover,
+html.dark .role-table-card .stakeholders-action-btn.btn-danger-light:hover,
+.dark-mode .role-table-card .stakeholders-action-btn.btn-danger-light:hover,
+html[data-theme-mode="dark"] .role-table-card .stakeholders-action-btn.btn-danger-light:focus-visible,
+html.dark .role-table-card .stakeholders-action-btn.btn-danger-light:focus-visible,
+.dark-mode .role-table-card .stakeholders-action-btn.btn-danger-light:focus-visible {
+  background: rgba(239, 68, 68, 0.28) !important;
+  color: #fecaca !important;
 }
 
 html[data-theme-mode="dark"] .role-page-shell .badge-sektor,

@@ -412,6 +412,7 @@ function progressFillClass(pct: number): string {
 </script>
 
 <template>
+  <div class="kse-admin-page kse-stakeholder-page">
   <!-- ══════════════════ PAGEHEADER ══════════════════ -->
   <Pageheader :propData="dataToPass" />
 
@@ -419,9 +420,24 @@ function progressFillClass(pct: number): string {
   <div class="row">
     <div class="col-xl-12">
       <!-- Premium Shell Card -->
-      <div class="card custom-card gradient-header-card stakeholders-shell-card" style="overflow: visible !important;">
+      <div class="card custom-card gradient-header-card stakeholders-shell-card kse-shell-card" style="overflow: visible !important;">
         
         <!-- ══ PREMIUM HEADER ══════════════════════════════════════════ -->
+        <header class="kse-hero-header">
+          <div class="kse-hero-content">
+            <div class="kse-hero-copy">
+              <div class="kse-inline-breadcrumb">
+                {{ currentStakeholder?.nama_perusahaan || 'Stakeholder' }} <span>/</span> KSE
+              </div>
+              <h1>Kategorisasi Sistem Elektronik</h1>
+              <p>
+                {{ currentStakeholder?.sub_sektor?.nama_sub_sektor || currentStakeholder?.sektor || 'Manajemen Kategorisasi SE' }}
+                &bull; {{ totalKse }} sistem terdaftar
+              </p>
+            </div>
+          </div>
+        </header>
+
         <div class="stakeholder-header stakeholders-premium-header kse-premium-header">
           <div class="stakeholders-header-main d-flex align-items-center justify-content-between flex-wrap gap-3">
             
@@ -502,15 +518,87 @@ function progressFillClass(pct: number): string {
         <!-- ══ CARD BODY ══════════════════════════════════════════ -->
         <div class="card-body p-4 stakeholders-premium-body">
 
-          <!-- Add Button -->
-          <div class="d-flex justify-content-end mb-4">
-            <button @click="openAdd" class="btn btn-primary-gradient px-4 py-2 rounded-pill shadow-sm d-flex align-items-center gap-2">
-              <div class="btn-icon-pulse"><i class="ri-add-line"></i></div>
-              <span class="fw-bold">Tambah KSE Baru</span>
-            </button>
+          <section class="kse-kpi-grid mb-4" aria-label="Ringkasan KSE">
+            <article class="kse-kpi-card tone-total">
+              <div class="kse-kpi-icon"><i class="ri-server-line"></i></div>
+              <div>
+                <span>Total Sistem</span>
+                <strong>{{ totalKse }}</strong>
+                <small>Data KSE terdaftar</small>
+              </div>
+            </article>
+            <article class="kse-kpi-card tone-danger">
+              <div class="kse-kpi-icon"><i class="ri-shield-keyhole-fill"></i></div>
+              <div>
+                <span>Strategis</span>
+                <strong>{{ countStrategis }}</strong>
+                <small>Aset prioritas utama</small>
+              </div>
+            </article>
+            <article class="kse-kpi-card tone-warning">
+              <div class="kse-kpi-icon"><i class="ri-alarm-warning-fill"></i></div>
+              <div>
+                <span>Tinggi</span>
+                <strong>{{ countTinggi }}</strong>
+                <small>Perlu pemantauan aktif</small>
+              </div>
+            </article>
+            <article class="kse-kpi-card tone-success">
+              <div class="kse-kpi-icon"><i class="ri-shield-check-line"></i></div>
+              <div>
+                <span>Rendah</span>
+                <strong>{{ countRendah }}</strong>
+                <small>Kritikalitas lebih rendah</small>
+              </div>
+            </article>
+            <article class="kse-kpi-card tone-review" :class="{ 'is-hot': countDraft > 0 }">
+              <div class="kse-kpi-icon"><i class="ri-file-edit-line" :class="{ 'pulse-icon': countDraft > 0 }"></i></div>
+              <div>
+                <span>Draft</span>
+                <strong>{{ countDraft }}</strong>
+                <small>Belum final</small>
+              </div>
+            </article>
+          </section>
+
+          <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar mb-4">
+            <div class="stakeholders-toolbar-right w-100 d-flex align-items-center justify-content-between">
+              <div class="stakeholders-per-page">
+                <span>Rows</span>
+                <select v-model.number="perPage" class="form-select form-select-sm entries-select" @change="currentPage = 1">
+                  <option v-for="n in [5, 10, 15, 20, 25, 50]" :key="n" :value="n">{{ n }}</option>
+                </select>
+              </div>
+              <label class="kse-search" aria-label="Cari sistem elektronik">
+                <i class="ri-search-line"></i>
+                <input
+                  v-model="searchQuery"
+                  @input="onSearch"
+                  type="text"
+                  placeholder="Cari sistem elektronik..."
+                />
+                <button v-if="searchQuery" type="button" @click="clearSearch" aria-label="Clear search">
+                  <i class="ri-close-circle-fill"></i>
+                </button>
+              </label>
+              <button
+                v-if="route.query.from === 'dashboard'"
+                class="btn kse-toolbar-secondary d-flex align-items-center gap-2"
+                type="button"
+                @click="goBack"
+              >
+                <i class="ri-arrow-left-line"></i>
+                <span class="btn-text">Dashboard</span>
+              </button>
+              <button class="btn kse-toolbar-btn d-flex align-items-center gap-2" type="button" @click="openAdd">
+                <i class="ri-add-line"></i>
+                <span class="btn-text">Tambah KSE Baru</span>
+              </button>
+            </div>
           </div>
 
           <!-- ══ PREMIUM TABLE ══════════════════════════════════════ -->
+          <div class="card custom-card shadow-sm border-0 overflow-hidden kse-list-shell">
           <div class="table-responsive stakeholder-table-wrap stakeholders-table-shell">
             <table class="table stakeholder-table mb-0">
               <thead class="stakeholder-thead">
@@ -648,7 +736,7 @@ function progressFillClass(pct: number): string {
           </div><!-- /table-wrap -->
 
           <!-- ══ PAGINATION ═════════════════════════════════════ -->
-          <div class="pagination-container stakeholders-pagination mt-4">
+          <div class="pagination-container stakeholders-pagination p-4 border-top">
             <div class="stakeholders-pagination-copy">
               Menampilkan {{ filtered.length ? (currentPage - 1) * perPage + 1 : 0 }}-{{ Math.min(currentPage * perPage, filtered.length) }} dari {{ filtered.length }} KSE
             </div>
@@ -688,6 +776,7 @@ function progressFillClass(pct: number): string {
               </nav>
             </div>
           </div>
+          </div><!-- /kse-list-shell -->
 
         </div><!-- /card-body -->
       </div><!-- /card shell -->
@@ -695,6 +784,8 @@ function progressFillClass(pct: number): string {
   </div>
 
   <!-- ══ ADD MODAL ══════════════════════════════════════════════ -->
+  </div><!-- /kse-admin-page -->
+
   <teleport to="body">
     <div
       v-if="showAddModal"
@@ -704,7 +795,7 @@ function progressFillClass(pct: number): string {
       @click.self="closeAdd"
     >
       <div class="modal-dialog modal-dialog-centered" style="max-width: 400px; width: 100%; margin: 16px;">
-        <div class="modal-content border-0 shadow-lg bg-white" style="border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
+        <div class="modal-content border-0 shadow-lg bg-white kse-modal-content" style="border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
           <!-- Blue Header like Screenshot -->
           <div class="modal-header border-0 p-4 d-flex align-items-center gap-3" style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white;">
             <div class="d-flex align-items-center justify-content-center bg-white bg-opacity-20 rounded-circle" style="width: 48px; height: 48px;">
@@ -781,7 +872,7 @@ function progressFillClass(pct: number): string {
       @click.self="closeDelete"
     >
       <div class="modal-dialog modal-dialog-centered" style="max-width: 400px; width: 100%; margin: 16px;">
-        <div class="modal-content border-0 shadow-lg bg-white" style="border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
+        <div class="modal-content border-0 shadow-lg bg-white kse-modal-content" style="border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;">
           <div class="modal-header border-0 p-4 pb-0 d-flex justify-content-between align-items-center">
             <h5 class="modal-title fw-bold text-dark">Hapus KSE</h5>
             <button
@@ -829,6 +920,263 @@ function progressFillClass(pct: number): string {
 </template>
 
 <style scoped>
+.kse-admin-page {
+  --kse-blue: #2563eb;
+  --kse-blue-dark: #1d4ed8;
+  --kse-border: #e2e8f0;
+  --kse-muted: #64748b;
+  --kse-text: #0f172a;
+}
+
+.kse-shell-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.kse-shell-card > .stakeholder-header {
+  display: none !important;
+}
+
+.kse-hero-header {
+  align-items: center;
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 22px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+  color: #ffffff;
+  display: flex;
+  gap: 28px;
+  justify-content: space-between;
+  min-height: 152px;
+  overflow: hidden;
+  padding: 24px 26px;
+  position: relative;
+}
+
+.kse-hero-header::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  content: "";
+  height: 1px;
+  inset: 0 20px auto;
+  position: absolute;
+}
+
+.kse-hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.kse-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.kse-hero-copy {
+  max-width: 820px;
+}
+
+.kse-inline-breadcrumb {
+  color: #b9d7ff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.kse-inline-breadcrumb span {
+  color: rgba(255, 255, 255, 0.58);
+  margin: 0 5px;
+}
+
+.kse-hero-copy h1 {
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 850;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.kse-hero-copy p {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 16px;
+  line-height: 1.45;
+  margin: 10px 0 0;
+}
+
+.kse-kpi-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.kse-kpi-card {
+  align-items: flex-start;
+  background: #ffffff;
+  border: 1px solid var(--kse-border);
+  border-radius: 16px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+  display: flex;
+  gap: 12px;
+  min-height: 118px;
+  padding: 16px;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.kse-kpi-card:hover {
+  border-color: rgba(37, 99, 235, 0.32);
+  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.12);
+  transform: translateY(-2px);
+}
+
+.kse-kpi-icon {
+  align-items: center;
+  border-radius: 14px;
+  display: inline-flex;
+  flex: 0 0 42px;
+  font-size: 20px;
+  height: 42px;
+  justify-content: center;
+  line-height: 1;
+  width: 42px;
+}
+
+.kse-kpi-icon i {
+  display: inline-flex;
+  line-height: 1;
+}
+
+.kse-kpi-card span {
+  color: var(--kse-muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.kse-kpi-card strong {
+  color: var(--kse-text);
+  display: block;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  margin: 8px 0 6px;
+}
+
+.kse-kpi-card small {
+  color: var(--kse-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.tone-total .kse-kpi-icon { background: #dbeafe; color: #1d4ed8; }
+.tone-danger .kse-kpi-icon { background: #fee2e2; color: #b91c1c; }
+.tone-warning .kse-kpi-icon { background: #fef3c7; color: #b45309; }
+.tone-success .kse-kpi-icon { background: #dcfce7; color: #15803d; }
+.tone-review .kse-kpi-icon { background: #e0e7ff; color: #4f46e5; }
+.tone-review.is-hot { border-color: rgba(79, 70, 229, 0.35); }
+
+.kse-search {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--kse-border);
+  border-radius: 14px;
+  color: var(--kse-muted);
+  display: flex;
+  flex: 1 1 360px;
+  gap: 8px;
+  min-height: 42px;
+  max-width: 520px;
+  padding: 0 14px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.kse-search:focus-within {
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.kse-search input {
+  background: transparent;
+  border: 0;
+  color: var(--kse-text);
+  font-size: 13px;
+  min-width: 0;
+  outline: 0;
+  width: 100%;
+}
+
+.kse-search button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #2563eb;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.kse-list-shell {
+  border-radius: 16px !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08) !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+.kse-list-shell .stakeholders-pagination {
+  background: #ffffff;
+  margin-top: 0 !important;
+}
+
+.kse-list-shell .stakeholders-pagination-copy {
+  line-height: 1.4;
+}
+
+.kse-toolbar-btn,
+.kse-toolbar-secondary {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  justify-content: center;
+  line-height: 1;
+  min-height: 36px;
+  padding: 0 16px;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+  white-space: nowrap;
+}
+
+.kse-toolbar-btn {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: 1px solid transparent;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+  color: #ffffff;
+}
+
+.kse-toolbar-btn:hover {
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.kse-toolbar-secondary {
+  background: #f8fafc;
+  border: 1px solid #dbe5f2;
+  color: #475569;
+}
+
+.kse-toolbar-secondary:hover {
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1d4ed8;
+}
+
+.pulse-icon {
+  animation: pulse-icon 2s infinite;
+}
+
 /* Component Specific Premium Styles */
 .kse-premium-header {
   background: 
@@ -920,5 +1268,383 @@ function progressFillClass(pct: number): string {
   0% { transform: scale(1); }
   50% { transform: scale(1.1); }
   100% { transform: scale(1); }
+}
+
+@media (max-width: 1199.98px) {
+  .kse-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .kse-hero-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kse-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stakeholders-toolbar-right {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .kse-search {
+    flex: 0 0 auto;
+    max-width: none;
+    order: 3;
+    width: 100%;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .kse-hero-header {
+    border-radius: 18px;
+    min-height: 0;
+    padding: 20px;
+  }
+
+  .kse-hero-copy h1 {
+    font-size: 26px;
+  }
+
+  .kse-hero-copy p {
+    font-size: 14px;
+  }
+
+  .kse-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stakeholders-toolbar-right {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 12px;
+    justify-content: flex-start !important;
+  }
+
+  .stakeholders-per-page {
+    align-self: center;
+  }
+
+  .kse-toolbar-btn,
+  .kse-toolbar-secondary {
+    width: 100%;
+  }
+
+  .kse-search {
+    flex: 0 0 auto;
+    min-height: 48px;
+    order: unset;
+    padding: 0 14px;
+    width: 100%;
+  }
+
+  .kse-search input {
+    font-size: 14px;
+  }
+}
+</style>
+
+<style>
+[data-theme-mode="dark"] .kse-admin-page,
+html.dark .kse-admin-page {
+  --kse-border: rgba(148, 163, 184, 0.18);
+  --kse-muted: #94a3b8;
+  --kse-text: #f8fafc;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card,
+html.dark .kse-admin-page .kse-kpi-card,
+[data-theme-mode="dark"] .kse-admin-page .kse-search,
+html.dark .kse-admin-page .kse-search {
+  background: #08111f !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-hero-header,
+html.dark .kse-admin-page .kse-hero-header {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card strong,
+html.dark .kse-admin-page .kse-kpi-card strong,
+[data-theme-mode="dark"] .kse-admin-page .text-dark,
+html.dark .kse-admin-page .text-dark {
+  color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card span,
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-card small,
+[data-theme-mode="dark"] .kse-admin-page .text-muted,
+html.dark .kse-admin-page .kse-kpi-card span,
+html.dark .kse-admin-page .kse-kpi-card small,
+html.dark .kse-admin-page .text-muted {
+  color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .tone-total .kse-kpi-icon,
+html.dark .kse-admin-page .tone-total .kse-kpi-icon {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #60a5fa !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .tone-danger .kse-kpi-icon,
+html.dark .kse-admin-page .tone-danger .kse-kpi-icon {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #f87171 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .tone-warning .kse-kpi-icon,
+html.dark .kse-admin-page .tone-warning .kse-kpi-icon {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #fbbf24 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .tone-success .kse-kpi-icon,
+html.dark .kse-admin-page .tone-success .kse-kpi-icon {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #4ade80 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .tone-review .kse-kpi-icon,
+html.dark .kse-admin-page .tone-review .kse-kpi-icon {
+  background: rgba(99, 102, 241, 0.18) !important;
+  color: #a5b4fc !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-kpi-icon i,
+html.dark .kse-admin-page .kse-kpi-icon i {
+  color: currentColor !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-search input,
+html.dark .kse-admin-page .kse-search input {
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-search input::placeholder,
+html.dark .kse-admin-page .kse-search input::placeholder {
+  color: #64748b !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-search button,
+html.dark .kse-admin-page .kse-search button {
+  color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-toolbar,
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-premium-body,
+[data-theme-mode="dark"] .kse-admin-page .card.custom-card.shadow-sm,
+[data-theme-mode="dark"] .kse-admin-page .kse-list-shell .stakeholders-pagination,
+html.dark .kse-admin-page .stakeholders-toolbar,
+html.dark .kse-admin-page .stakeholders-premium-body,
+html.dark .kse-admin-page .card.custom-card.shadow-sm,
+html.dark .kse-admin-page .kse-list-shell .stakeholders-pagination {
+  background: #08111f !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .entries-select,
+html.dark .kse-admin-page .entries-select {
+  background-color: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .entries-select option,
+html.dark .kse-admin-page .entries-select option {
+  background: #0b1220 !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table-wrap,
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-table-shell,
+html.dark .kse-admin-page .stakeholder-table-wrap,
+html.dark .kse-admin-page .stakeholders-table-shell {
+  background: #08111f !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table,
+html.dark .kse-admin-page .stakeholder-table {
+  --bs-table-bg: #08111f !important;
+  --bs-table-color: #dbeafe !important;
+  --bs-table-hover-bg: rgba(37, 99, 235, 0.12) !important;
+  --bs-table-hover-color: #f8fafc !important;
+  background: #08111f !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table thead,
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table thead tr,
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table thead th,
+html.dark .kse-admin-page .stakeholder-table thead,
+html.dark .kse-admin-page .stakeholder-table thead tr,
+html.dark .kse-admin-page .stakeholder-table thead th {
+  background: #111c2e !important;
+  background-color: #111c2e !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #a9bad2 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table tbody,
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table tbody tr,
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table tbody td,
+html.dark .kse-admin-page .stakeholder-table tbody,
+html.dark .kse-admin-page .stakeholder-table tbody tr,
+html.dark .kse-admin-page .stakeholder-table tbody td {
+  background: #08111f !important;
+  background-color: #08111f !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholder-table tbody tr:hover,
+html.dark .kse-admin-page .stakeholder-table tbody tr:hover {
+  background: rgba(37, 99, 235, 0.12) !important;
+  background-color: rgba(37, 99, 235, 0.12) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .row-number,
+html.dark .kse-admin-page .row-number {
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .progress-xs,
+html.dark .kse-admin-page .progress-xs {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor,
+html.dark .kse-admin-page .badge-sektor {
+  box-shadow: none !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor-red,
+html.dark .kse-admin-page .badge-sektor-red {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(248, 113, 113, 0.42) !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor-amber,
+html.dark .kse-admin-page .badge-sektor-amber {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(251, 191, 36, 0.42) !important;
+  color: #fcd34d !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor-teal,
+html.dark .kse-admin-page .badge-sektor-teal {
+  background: rgba(20, 184, 166, 0.14) !important;
+  border-color: rgba(45, 212, 191, 0.42) !important;
+  color: #5eead4 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor-slate,
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor-default,
+html.dark .kse-admin-page .badge-sektor-slate,
+html.dark .kse-admin-page .badge-sektor-default {
+  background: rgba(148, 163, 184, 0.12) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .badge-sektor i,
+html.dark .kse-admin-page .badge-sektor i {
+  color: currentColor !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-toolbar-secondary,
+html.dark .kse-admin-page .kse-toolbar-secondary {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-page-pill,
+html.dark .kse-admin-page .stakeholders-page-pill {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #dbeafe !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .stakeholders-pagination-copy,
+html.dark .kse-admin-page .stakeholders-pagination-copy {
+  color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .page-link,
+html.dark .kse-admin-page .page-link {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.26) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .page-item.active .page-link,
+html.dark .kse-admin-page .page-item.active .page-link {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content,
+html.dark .kse-modal-content {
+  background: #08111f !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .modal-header,
+[data-theme-mode="dark"] .kse-modal-content .modal-footer,
+html.dark .kse-modal-content .modal-header,
+html.dark .kse-modal-content .modal-footer {
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .modal-title,
+[data-theme-mode="dark"] .kse-modal-content h4,
+[data-theme-mode="dark"] .kse-modal-content .text-dark,
+html.dark .kse-modal-content .modal-title,
+html.dark .kse-modal-content h4,
+html.dark .kse-modal-content .text-dark {
+  color: #f8fafc !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .text-muted,
+html.dark .kse-modal-content .text-muted {
+  color: #94a3b8 !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .form-control,
+html.dark .kse-modal-content .form-control {
+  background: #0b1220 !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .form-control::placeholder,
+html.dark .kse-modal-content .form-control::placeholder {
+  color: #64748b !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .alert-primary,
+html.dark .kse-modal-content .alert-primary {
+  background: rgba(37, 99, 235, 0.14) !important;
+  color: #bfdbfe !important;
+}
+
+[data-theme-mode="dark"] .kse-modal-content .btn-light,
+html.dark .kse-modal-content .btn-light {
+  background: #0b1220 !important;
+  color: #cbd5e1 !important;
 }
 </style>

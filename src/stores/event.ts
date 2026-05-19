@@ -6,6 +6,7 @@ import type {
     UpdateKegiatanPayload,
 } from '@/types/kegiatan.types';
 import { sanitizeRichText } from '@/utils/richText';
+import { buildContentSlug, slugifyContentTitle } from '@/utils/contentSlug';
 
 const firstValue = (...values: any[]) => values.find((value) => value !== undefined && value !== null && value !== '');
 const CACHE_TTL_MS = 2 * 60 * 1000;
@@ -70,13 +71,15 @@ const normalizeKegiatan = (record: any): Kegiatan | null => {
 
     const id = getKegiatanId(record);
     if (!id) return null;
+    const title = String(firstValue(record.judul, record.title, record.nama_kegiatan, record.nama_event, '') || '');
 
     const rawDescription = String(firstValue(record.deskripsi, record.description, record.keterangan, '') || '');
 
     return {
         ...record,
         id,
-        judul: String(firstValue(record.judul, record.title, record.nama_kegiatan, record.nama_event, '') || ''),
+        slug: String(firstValue(record.slug, record.slug_kegiatan, record.event_slug, '') || '') || buildContentSlug(title, id),
+        judul: title,
         deskripsi: sanitizeRichText(rawDescription) || rawDescription,
         lokasi: String(firstValue(record.lokasi, record.location, record.tempat, '') || ''),
         tanggal: String(firstValue(record.tanggal, record.tanggal_kegiatan, record.event_date, record.date, '') || ''),
@@ -106,6 +109,17 @@ export const useEventStore = defineStore('event', {
         totalEvents: (state) => state.events.length,
         getEventById: (state) => (id: number | string) =>
             state.eventById[String(id)] || state.events.find((e) => String(e.id) === String(id)),
+        getEventBySlug: (state) => (slug: string) => {
+            const normalizedSlug = slugifyContentTitle(slug);
+            return state.events.find((event) => {
+                const candidates = [
+                    String(event.slug || '').trim(),
+                    buildContentSlug(event.judul, event.id),
+                ].filter(Boolean).map(slugifyContentTitle);
+
+                return candidates.includes(normalizedSlug);
+            });
+        },
     },
 
     actions: {
@@ -221,6 +235,26 @@ export const useEventStore = defineStore('event', {
             } finally {
                 detailFetchPromises.delete(resolvedId);
             }
+        },
+
+        async fetchEventByIdentifier(identifier: number | string, options?: { force?: boolean; maxAgeMs?: number }) {
+            const resolvedIdentifier = String(identifier).trim();
+            if (!resolvedIdentifier || resolvedIdentifier === 'NaN' || resolvedIdentifier === 'undefined' || resolvedIdentifier === 'null') {
+                throw new Error('Identifier kegiatan tidak valid');
+            }
+
+            const cachedById = this.getEventById(resolvedIdentifier);
+            if (cachedById) return cachedById;
+
+            const cachedBySlug = this.getEventBySlug(resolvedIdentifier);
+            if (cachedBySlug) return cachedBySlug;
+
+            await this.fetchEvents({ force: Boolean(options?.force), maxAgeMs: options?.maxAgeMs });
+
+            const fromList = this.getEventById(resolvedIdentifier) || this.getEventBySlug(resolvedIdentifier);
+            if (fromList) return fromList;
+
+            return this.fetchEventById(resolvedIdentifier, { force: options?.force });
         },
 
         /**

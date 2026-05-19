@@ -8,6 +8,7 @@ import { useRouter } from "vue-router";
 import type { Berita } from "../../types/berita.types";
 import { richTextToPlainText } from "../../utils/richText";
 import { formatEventDateShort } from "../../utils/eventDate";
+import { buildContentSlug } from "../../utils/contentSlug";
 
 export default {
   data() {
@@ -247,12 +248,12 @@ export default {
       router.push(`/event/berita/edit/${encodeURIComponent(id)}`);
     };
     const openView = (item: Berita) => {
-      const id = getItemId(item);
-      if (!id) {
-        showNotification("ID berita tidak valid", "error");
+      const slug = buildContentSlug(item.slug || item.judul, getItemId(item));
+      if (!slug) {
+        showNotification("Slug berita tidak valid", "error");
         return;
       }
-      router.push(`/event/berita/view/${encodeURIComponent(id)}`);
+      router.push(`/event/berita/view/${encodeURIComponent(slug)}`);
     };
     const switchToEvent = () => router.push("/event");
 

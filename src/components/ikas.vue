@@ -1289,8 +1289,9 @@ const exportToPdf = async () => {
 
 /* ── Unified card header ────────────────────────────────── */
 .ikas-unified-header {
-  background: linear-gradient(135deg, #0c1e6b 0%, #1130a0 25%, #1a3fc8 50%, #2563eb 75%, #3b82f6 100%) !important;
-  border-bottom: none !important;
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16) !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1592,6 +1593,16 @@ const exportToPdf = async () => {
   border-radius: 18px;
   padding: 1.2rem 1.35rem;
   min-height: 102px;
+}
+
+:global(html[data-theme-mode="dark"]) .ikas-unified-header,
+:global(html.dark) .ikas-unified-header,
+:global(.dark-mode) .ikas-unified-header {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 .ikas-header-left,

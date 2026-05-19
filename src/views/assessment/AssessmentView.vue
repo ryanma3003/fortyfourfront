@@ -56,13 +56,42 @@ const handleAnswer = async (questionId: string, index: number) => {
   await assessmentStore.saveAnswer(questionId, index);
 };
 
+// --- Theme Detection ---
+const isDarkMode = ref(false);
+let themeObserver: MutationObserver | null = null;
+
+function syncThemeMode() {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const body = document.body;
+  isDarkMode.value =
+    root.getAttribute('data-theme-mode') === 'dark' ||
+    body?.getAttribute('data-theme-mode') === 'dark' ||
+    root.classList.contains('dark') ||
+    body?.classList.contains('dark');
+}
+
 // Auto-sync & Notification control
 onMounted(() => {
+  syncThemeMode();
+  themeObserver = new MutationObserver(syncThemeMode);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme-mode', 'class'],
+  });
+  if (document.body) {
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-theme-mode', 'class'],
+    });
+  }
+
   assessmentStore.startAutoSync();
   notificationStore.stopPolling();
 });
 
 onUnmounted(() => {
+  themeObserver?.disconnect();
   assessmentStore.stopAutoSync();
   notificationStore.startPolling();
 });
@@ -355,7 +384,7 @@ const handleEditData = () => {
 </script>
 
 <template>
-  <div class="assessment-container" :class="{ 'assessment-container-embedded': embedded }">
+  <div class="assessment-container" :class="{ 'assessment-container-embedded': embedded, 'is-dark': isDarkMode }">
   <div class="row sticky-progress-row">
     <div class="col-12">
       <div class="progress-wrapper">
@@ -769,5 +798,112 @@ const handleEditData = () => {
   min-height: 100vh;
   padding-bottom: 3rem;
   font-family: 'Inter', -apple-system, sans-serif;
+}
+
+/* ── Dark Mode ────────────────────────────────────────── */
+.assessment-container.is-dark .accordion-button {
+  color: #cbd5e1;
+}
+
+.assessment-container.is-dark .accordion-button:not(.collapsed) {
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+
+.assessment-container.is-dark .category-toggle {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.assessment-container.is-dark .category-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.assessment-container.is-dark .category-content {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.assessment-container.is-dark .subcategory-item {
+  color: #94a3b8;
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.assessment-container.is-dark .subcategory-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.assessment-container.is-dark .subcategory-item.active {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+  border-left-color: #60a5fa;
+}
+
+.assessment-container.is-dark .bg-primary-transparent {
+  background-color: rgba(96, 165, 250, 0.15) !important;
+  color: #93c5fd !important;
+}
+
+.assessment-container.is-dark .bg-secondary-transparent {
+  background-color: rgba(148, 163, 184, 0.15) !important;
+  color: #cbd5e1 !important;
+}
+
+/* QuestionCard overrides from parent */
+.assessment-container.is-dark :deep(.index-btn) {
+  border-color: rgba(96, 165, 250, 0.4) !important;
+  color: #93c5fd !important;
+  background-color: transparent !important;
+}
+
+.assessment-container.is-dark :deep(.index-btn:hover) {
+  background-color: rgba(96, 165, 250, 0.1) !important;
+  border-color: #60a5fa !important;
+  color: #bfdbfe !important;
+}
+
+.assessment-container.is-dark :deep(.index-btn.active) {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+/* Sidebar Save/Edit Action Block overrides */
+.assessment-container.is-dark .bg-light {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.assessment-container.is-dark .btn-success {
+  background-color: #10b981 !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+.assessment-container.is-dark .btn-success:hover {
+  background-color: #059669 !important;
+  border-color: #059669 !important;
+}
+
+.assessment-container.is-dark .btn-primary {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.assessment-container.is-dark .btn-primary:hover {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+}
+
+.assessment-container.is-dark .btn-warning {
+  background-color: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+
+.assessment-container.is-dark .btn-warning:hover {
+  background-color: #d97706 !important;
+  border-color: #d97706 !important;
 }
 </style>

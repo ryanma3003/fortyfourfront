@@ -32,11 +32,13 @@ const routes: RouteRecordRaw[] = [
           path: 'profile',
           name: "Profile",
           component: () => import("../components/pages/profile.vue"),
+          meta: { borderlessContainer: true },
         },
         {
           path: 'profile-settings',
           name: "Profile Settings",
           component: () => import("../components/pages/profile-settings.vue"),
+          meta: { borderlessContainer: true },
         },
         {
           path: 'stakeholders-profile-settings',
@@ -84,6 +86,7 @@ const routes: RouteRecordRaw[] = [
               path: 'users-profile/:slug',
               name: 'Profile User',
               component: () => import("../components/dashboards/user-profile.vue"),
+              meta: { borderlessContainer: true },
             },
 
             {
@@ -179,7 +182,7 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/event/event-form.vue"),
             },
             {
-              path: 'event/view/:id',
+              path: 'event/view/:slug',
               name: 'Event View',
               component: () => import("../components/event/event-detail.vue"),
             },
@@ -200,7 +203,7 @@ const routes: RouteRecordRaw[] = [
               component: () => import("../components/event/berita-form.vue"),
             },
             {
-              path: 'event/berita/view/:id',
+              path: 'event/berita/view/:slug',
               name: 'Berita View',
               component: () => import("../components/event/berita-detail.vue"),
             },

@@ -1844,6 +1844,8 @@ export default {
                       :class="{
                         'stakeholder-row-expanded': isExpanded(item.slug),
                       }"
+                      @click="toggleExpandedRow(item.slug)"
+                      style="cursor: pointer;"
                     >
                       <td class="align-middle text-center">
                         <span class="row-number">{{
@@ -1854,7 +1856,7 @@ export default {
                         <div class="stakeholder-company-cell">
                           <button
                             class="stakeholder-expand-btn"
-                            @click="toggleExpandedRow(item.slug)"
+                            @click.stop="toggleExpandedRow(item.slug)"
                             :title="
                               isExpanded(item.slug)
                                 ? 'Tutup detail'
@@ -1920,6 +1922,7 @@ export default {
                         <a
                           :href="`mailto:${item.email}`"
                           class="email-link stakeholders-email-link"
+                          @click.stop
                         >
                           <span class="email-text">{{ item.email }}</span>
                         </a>
@@ -2008,7 +2011,7 @@ export default {
                         </div>
                       </td>
                       <td class="text-center align-middle">
-                        <div class="d-flex gap-1 justify-content-center">
+                        <div class="d-flex gap-1 justify-content-center" @click.stop>
                           <router-link
                             :to="{ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } }"
                             class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
@@ -4281,10 +4284,14 @@ export default {
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28) !important;
 }
 
-[data-theme-mode="dark"] .stakeholders-premium-header {
-  border-color: rgba(96, 165, 250, 0.26);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 46px rgba(2, 6, 23, 0.18);
+[data-theme-mode="dark"] .stakeholders-premium-header,
+html.dark .stakeholders-premium-header,
+.dark-mode .stakeholders-premium-header {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 [data-theme-mode="dark"] .stakeholders-hero-status-card {

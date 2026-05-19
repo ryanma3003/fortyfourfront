@@ -822,7 +822,7 @@ export default {
                       <i :class="getSortIcon('status')"></i>
                     </button>
                   </th>
-                  <th class="text-center lms-th-action">
+                  <th class="text-center lms-th-action" style="min-width: 130px;">
                     <span class="lms-th-label justify-content-center">Aksi</span>
                   </th>
                 </tr>
@@ -877,7 +877,7 @@ export default {
                         </div>
                       </div>
                     </td>
-                    <td class="align-middle text-muted fs-13" style="max-width: 450px;">
+                    <td class="align-middle text-muted fs-13 lms-td-description">
                       <div class="lms-description-line">
                         <span class="fw-semibold text-dark lms-description-truncate" :title="getDescriptionPreview(item.deskripsi)">
                           {{ getShortDescription(item.deskripsi) }}
@@ -902,7 +902,7 @@ export default {
                         {{ item.status === 'published' ? 'Publish' : 'Draft' }}
                       </span>
                     </td>
-                    <td class="align-middle text-center">
+                    <td class="align-middle text-center lms-td-action">
                       <div class="d-flex gap-1 justify-content-center">
                         <button @click.stop="router.push('/lms/kelas/view/' + item.id)" class="btn btn-sm btn-icon btn-wave btn-primary-light stakeholders-action-btn" data-tooltip="Lihat" aria-label="Lihat detail kelas">
                           <i class="ri-eye-line"></i>
@@ -2103,8 +2103,22 @@ html.dark .kelas-thumbnail-preview {
 }
 
 .lms-th-description {
-  min-width: 240px;
-  max-width: 500px;
+  min-width: 200px;
+  max-width: 380px;
+}
+
+.lms-th-action {
+  min-width: 130px;
+  white-space: nowrap;
+}
+
+.lms-td-description {
+  max-width: 380px;
+}
+
+.lms-td-action {
+  white-space: nowrap;
+  min-width: 130px;
 }
 
 .lms-description-truncate {
@@ -2447,6 +2461,16 @@ html.dark .kelas-thumbnail-preview {
   background: linear-gradient(180deg, #0b1220 0%, #0f1a2d 100%) !important;
   border-color: #22314a !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+  scrollbar-color: #3b82f6 transparent;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table-wrap::-webkit-scrollbar-thumb {
+  background: #1e3a8a;
+  border: 1px solid #0f172a;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
 }
 
 .lms-kelas-page.is-dark .stakeholder-table {
@@ -2481,6 +2505,7 @@ html.dark .kelas-thumbnail-preview {
   background-color: #13213a !important;
   border-color: rgba(96, 165, 250, 0.42) !important;
 }
+
 
 .lms-kelas-page.is-dark .company-name,
 .lms-kelas-page.is-dark .text-dark,
@@ -2568,13 +2593,37 @@ html.dark .kelas-thumbnail-preview {
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
-  padding: 0 !important;
+  padding: 0 0 10px 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #93c5fd transparent;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar {
+  height: 8px;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 8px;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar-thumb {
+  background: #93c5fd;
+  border-radius: 8px;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
 }
 
 .lms-kelas-page .stakeholder-table {
   border-collapse: separate;
   border-spacing: 0 12px !important;
-  min-width: 860px;
+  min-width: 760px;
+  width: 100%;
 }
 
 .lms-kelas-page .stakeholder-table thead th {
@@ -2693,6 +2742,8 @@ html.dark .kelas-thumbnail-preview {
   height: 34px;
   width: 34px;
 }
+
+
 
 .lms-kelas-page .stakeholder-expanded-wrapper {
   background: linear-gradient(180deg, #f8fbff, #eef7ff) !important;

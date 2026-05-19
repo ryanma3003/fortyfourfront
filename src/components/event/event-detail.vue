@@ -26,10 +26,10 @@ export default {
     const isDarkMode = ref(false);
     let gsapCtx: gsap.Context | null = null;
     let themeObserver: MutationObserver | undefined;
-    const routeEventId = computed(() => {
-      const raw = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
-      const id = String(raw || '').trim();
-      return id && id !== 'NaN' && id !== 'undefined' && id !== 'null' ? id : '';
+    const routeEventIdentifier = computed(() => {
+      const raw = Array.isArray(route.params.slug) ? route.params.slug[0] : (route.params.slug ?? route.params.id);
+      const identifier = String(raw || '').trim();
+      return identifier && identifier !== 'NaN' && identifier !== 'undefined' && identifier !== 'null' ? identifier : '';
     });
 
     // Toast
@@ -74,13 +74,13 @@ export default {
         themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode", "class"] });
       }
       try {
-        if (!routeEventId.value) {
-          showNotification("ID event tidak valid", "error");
+        if (!routeEventIdentifier.value) {
+          showNotification("Identifier event tidak valid", "error");
           router.push("/event");
           return;
         }
 
-        const data = await eventStore.fetchEventById(routeEventId.value);
+        const data = await eventStore.fetchEventByIdentifier(routeEventIdentifier.value);
         if (data) {
           eventData.value = data;
         } else {

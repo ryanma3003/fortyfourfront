@@ -1070,13 +1070,10 @@ onUnmounted(() => {
 
 .role-hero-card {
   align-items: center;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.24), transparent 30%),
-    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.16), transparent 24%),
-    linear-gradient(135deg, #071b4f 0%, #173783 46%, #2563eb 100%);
-  border: 1px solid rgba(147, 197, 253, 0.28);
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 18px;
-  box-shadow: 0 22px 55px rgba(37, 99, 235, 0.2), 0 8px 18px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
   display: flex;
   gap: 18px;
   justify-content: space-between;
@@ -1098,7 +1095,7 @@ onUnmounted(() => {
 }
 
 .role-hero-card::after {
-  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.78), rgba(255, 255, 255, 0));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(47, 118, 234, 0.72), rgba(255, 255, 255, 0));
   bottom: 0;
   content: "";
   height: 3px;
@@ -2162,11 +2159,10 @@ html[data-theme-mode="dark"] .role-hero-card,
 html.dark .role-hero-card,
 .dark-mode .role-hero-card {
   background:
-    radial-gradient(circle at 10% 0%, rgba(96, 165, 250, 0.2), transparent 30%),
-    radial-gradient(circle at 88% 24%, rgba(20, 184, 166, 0.13), transparent 24%),
-    linear-gradient(135deg, #06143e 0%, #102a6f 48%, #1d4ed8 100%) !important;
-  border-color: rgba(147, 197, 253, 0.2) !important;
-  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34) !important;
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 html[data-theme-mode="dark"] .role-toolbar-card,

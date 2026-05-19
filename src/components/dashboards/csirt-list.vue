@@ -267,6 +267,12 @@ export default {
       return Math.round((completeCSIRTCount.value / total) * 100);
     });
 
+    const csirtStakeholderCoverage = computed(() => {
+      const total = totalStakeholderCount.value;
+      if (!total) return 0;
+      return Math.round((csirtStore.csirts.length / total) * 100);
+    });
+
     const getStakeholderForItem = (item: CsirtMember) => (
       item.perusahaan || stakeholderOptionMap.value.get(getCsirtCompanyId(item))
     );
@@ -742,6 +748,7 @@ export default {
       completeCSIRTCount,
       incompleteCsirtCount,
       csirtReadinessCoverage,
+      csirtStakeholderCoverage,
       totalSdmCount,
       totalSeCount,
       totalStakeholderCount,
@@ -847,29 +854,29 @@ export default {
             <div class="csirt-hero-tools">
               <div class="csirt-hero-summary-card">
                 <div class="csirt-hero-card-title">
-                  <span>Kesiapan CSIRT</span>
-                  <strong>{{ csirtReadinessCoverage }}%</strong>
+                  <span>Stakeholder CSIRT</span>
+                  <strong>{{ csirtStakeholderCoverage }}%</strong>
                 </div>
                 <div class="csirt-hero-card-stats">
                   <div>
-                    <span>Siap</span>
+                    <span>Total CSIRT</span>
+                    <strong>{{ csirtStore.csirts.length }}</strong>
+                  </div>
+                  <div>
+                    <span>Data Lengkap</span>
                     <strong>{{ completeCSIRTCount }}</strong>
                   </div>
                   <div>
-                    <span>Perlu Tindak</span>
-                    <strong>{{ incompleteCsirtCount }}</strong>
-                  </div>
-                  <div>
-                    <span>SDM / SE</span>
-                    <strong>{{ totalSdmCount }} / {{ totalSeCount }}</strong>
+                    <span>Belum Ada</span>
+                    <strong>{{ totalStakeholderCount - csirtStore.csirts.length }}</strong>
                   </div>
                 </div>
                 <div class="csirt-hero-progress" aria-hidden="true">
-                  <span :style="{ width: `${csirtReadinessCoverage}%` }"></span>
+                  <span :style="{ width: `${csirtStakeholderCoverage}%` }"></span>
                 </div>
                 <div class="csirt-hero-note">
                   <i class="ri-information-line"></i>
-                  <span>{{ filteredData.length }} CSIRT dari {{ totalStakeholderCount }} stakeholder{{ searchQuery ? " sesuai pencarian" : "" }}</span>
+                  <span>{{ csirtStore.csirts.length }} CSIRT dari {{ totalStakeholderCount }} stakeholder</span>
                 </div>
               </div>
             </div>
@@ -984,34 +991,34 @@ export default {
               <table class="table stakeholder-table csirt-data-table mb-0">
                 <thead class="stakeholder-thead">
                   <tr>
-                    <th class="th-no">No</th>
-                    <th class="sortable fw-semibold" @click="toggleSort('nama_csirt')">
+                    <th class="th-no" style="width: 5%">No</th>
+                    <th class="sortable fw-semibold" style="width: 20%" @click="toggleSort('nama_csirt')">
                       <div class="d-flex align-items-center gap-2">
                         <span>Nama CSIRT</span>
                         <i :class="sortField === 'nama_csirt' ? (sortOrder === 'asc' ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line') : 'ri-expand-up-down-line'" class="fs-14 opacity-50"></i>
                       </div>
                     </th>
-                    <th class="fw-semibold">
+                    <th class="fw-semibold" style="width: 20%">
                       <div class="d-flex align-items-center gap-2">
                         <span>Stakeholder</span>
                       </div>
                     </th>
-                    <th class="fw-semibold">
+                    <th class="fw-semibold" style="width: 12%">
                       <div class="d-flex align-items-center gap-2">
                         <span>Telepon</span>
                       </div>
                     </th>
-                    <th class="fw-semibold">
+                    <th class="fw-semibold" style="width: 15%">
                       <div class="d-flex align-items-center gap-2">
                         <span>Email</span>
                       </div>
                     </th>
-                    <th class="fw-semibold" style="white-space:nowrap">
+                    <th class="fw-semibold" style="width: 20%">
                       <div class="d-flex align-items-center gap-2">
                         <span>Status Ringkas</span>
                       </div>
                     </th>
-                    <th class="text-center fw-semibold csirt-th-aksi">Aksi</th>
+                    <th class="text-center fw-semibold csirt-th-aksi" style="width: 8%">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1076,8 +1083,8 @@ export default {
                         <div class="csirt-status-main">
                           <span class="csirt-status-dot"></span>
                           <div class="min-w-0">
-                            <span class="csirt-status-label">{{ getStatusSummary(item).label }}</span>
-                            <span class="csirt-status-hint">{{ getStatusSummary(item).hint }}</span>
+                            <span class="csirt-status-label d-block">{{ getStatusSummary(item).label }}</span>
+                            <span class="csirt-status-hint d-block mt-1">{{ getStatusSummary(item).hint }}</span>
                           </div>
                         </div>
                         <div class="csirt-status-metrics">
@@ -2329,7 +2336,7 @@ export default {
 }
 
 .csirt-page {
-  --csirt-bg: linear-gradient(135deg, #0f1f53 0%, #1d4ed8 58%, #60a5fa 100%);
+  --csirt-bg: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
   --csirt-panel: #ffffff;
   --csirt-panel-soft: #f8fbff;
   --csirt-border: #dbe7f5;
@@ -2346,13 +2353,14 @@ export default {
 .csirt-hero-shell {
   padding: 1.45rem 1.55rem;
   background: var(--csirt-bg);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   color: #fff;
   border-radius: 24px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
 }
 
 .csirt-hero-header {
-  align-items: flex-start;
+  align-items: center;
   display: flex;
   gap: 1.25rem;
   justify-content: space-between;
@@ -2371,8 +2379,9 @@ export default {
 
 .csirt-hero-copy h1 {
   color: #fff;
-  font-size: clamp(1.9rem, 3vw, 2.4rem);
-  line-height: 1.1;
+  font-size: 24px;
+  font-weight: 820;
+  line-height: 1.12;
   margin: 0;
 }
 
@@ -2900,14 +2909,15 @@ export default {
 }
 
 .csirt-status-card {
-  border: 1px solid transparent;
-  border-radius: 12px;
-  display: grid;
-  gap: 0.48rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
-  padding: 0.65rem 0.72rem;
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
 }
 
 .csirt-status-card.tone-ready {
@@ -3008,107 +3018,163 @@ export default {
   align-items: center;
   display: inline-flex;
   flex-direction: row;
-  gap: 7px;
+  gap: 6px;
   justify-content: center;
-  min-width: 166px;
+  min-width: 152px;
   white-space: nowrap;
 }
 
 .csirt-action-group .stakeholders-action-btn {
   align-items: center;
+  border: 0 !important;
+  border-radius: 8px !important;
   display: inline-flex;
-  flex: 0 0 34px;
-  height: 34px;
+  flex: 0 0 32px;
+  height: 32px;
   justify-content: center;
-  min-width: 34px;
+  min-width: 32px;
   overflow: visible !important;
   position: relative;
-  width: 34px;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  width: 32px;
+}
+
+.csirt-action-group .stakeholders-action-btn i {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .csirt-action-group .stakeholders-action-btn.btn-info-light {
-  background: #f3f9ff !important;
-  border-color: #d8ebfb !important;
-  color: #377da8 !important;
+  background: #e9eef8 !important;
+  color: #2563eb !important;
 }
 
 .csirt-action-group .stakeholders-action-btn.btn-success-light {
-  background: #f3fbf7 !important;
-  border-color: #d5efe2 !important;
-  color: #3f8b66 !important;
+  background: #def8eb !important;
+  color: #10b981 !important;
 }
 
 .csirt-action-group .stakeholders-action-btn.btn-danger-light {
-  background: #fff5f5 !important;
-  border-color: #f3d7d7 !important;
-  color: #a65252 !important;
+  background: #fdeaea !important;
+  color: #ef4444 !important;
 }
 
 .csirt-action-group .stakeholders-action-btn.btn-secondary-light {
-  background: #fff9f1 !important;
-  border-color: #f4e0c3 !important;
-  color: #b06b24 !important;
+  background: #fff4dd !important;
+  color: #d97706 !important;
+}
+
+.csirt-action-group .stakeholders-action-btn:hover,
+.csirt-action-group .stakeholders-action-btn:focus-visible {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn {
-  border-width: 1px !important;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: none !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-info-light {
-  background: rgba(56, 189, 248, 0.16) !important;
-  border-color: rgba(56, 189, 248, 0.42) !important;
-  color: #7dd3fc !important;
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #93c5fd !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-success-light {
-  background: rgba(52, 211, 153, 0.16) !important;
-  border-color: rgba(52, 211, 153, 0.42) !important;
-  color: #86efac !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #6ee7b7 !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-danger-light {
-  background: rgba(248, 113, 113, 0.16) !important;
-  border-color: rgba(248, 113, 113, 0.42) !important;
+  background: rgba(239, 68, 68, 0.18) !important;
   color: #fca5a5 !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-secondary-light {
-  background: rgba(251, 191, 36, 0.16) !important;
-  border-color: rgba(251, 191, 36, 0.42) !important;
+  background: rgba(217, 119, 6, 0.18) !important;
   color: #fde68a !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn:hover,
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn:focus-visible {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
   transform: translateY(-1px);
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-info-light:hover,
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-info-light:focus-visible {
-  background: rgba(56, 189, 248, 0.24) !important;
-  border-color: rgba(125, 211, 252, 0.62) !important;
-  color: #bae6fd !important;
+  background: rgba(37, 99, 235, 0.28) !important;
+  color: #bfdbfe !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-success-light:hover,
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-success-light:focus-visible {
-  background: rgba(52, 211, 153, 0.24) !important;
-  border-color: rgba(134, 239, 172, 0.62) !important;
-  color: #bbf7d0 !important;
+  background: rgba(16, 185, 129, 0.28) !important;
+  color: #a7f3d0 !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-danger-light:hover,
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-danger-light:focus-visible {
-  background: rgba(248, 113, 113, 0.24) !important;
-  border-color: rgba(252, 165, 165, 0.62) !important;
+  background: rgba(239, 68, 68, 0.28) !important;
   color: #fecaca !important;
 }
 
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-secondary-light:hover,
 [data-theme-mode='dark'] .csirt-action-group .stakeholders-action-btn.btn-secondary-light:focus-visible {
-  background: rgba(251, 191, 36, 0.24) !important;
-  border-color: rgba(253, 230, 138, 0.62) !important;
+  background: rgba(217, 119, 6, 0.28) !important;
+  color: #fef3c7 !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn {
+  box-shadow: none !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-info-light {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #93c5fd !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-success-light {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #6ee7b7 !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-danger-light {
+  background: rgba(239, 68, 68, 0.18) !important;
+  color: #fca5a5 !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-secondary-light {
+  background: rgba(217, 119, 6, 0.18) !important;
+  color: #fde68a !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn:hover,
+html.dark .csirt-action-group .stakeholders-action-btn:focus-visible {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
+  transform: translateY(-1px);
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-info-light:hover,
+html.dark .csirt-action-group .stakeholders-action-btn.btn-info-light:focus-visible {
+  background: rgba(37, 99, 235, 0.28) !important;
+  color: #bfdbfe !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-success-light:hover,
+html.dark .csirt-action-group .stakeholders-action-btn.btn-success-light:focus-visible {
+  background: rgba(16, 185, 129, 0.28) !important;
+  color: #a7f3d0 !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-danger-light:hover,
+html.dark .csirt-action-group .stakeholders-action-btn.btn-danger-light:focus-visible {
+  background: rgba(239, 68, 68, 0.28) !important;
+  color: #fecaca !important;
+}
+
+html.dark .csirt-action-group .stakeholders-action-btn.btn-secondary-light:hover,
+html.dark .csirt-action-group .stakeholders-action-btn.btn-secondary-light:focus-visible {
+  background: rgba(217, 119, 6, 0.28) !important;
   color: #fef3c7 !important;
 }
 
@@ -3421,12 +3487,14 @@ export default {
   }
 }
 
-[data-theme-mode='dark'] .csirt-hero-shell {
+[data-theme-mode='dark'] .csirt-hero-shell,
+html.dark .csirt-hero-shell,
+.dark-mode .csirt-hero-shell {
   background:
-    radial-gradient(circle at 82% 12%, rgba(96, 165, 250, 0.32), transparent 34%),
-    linear-gradient(135deg, #111b34 0%, #15316f 54%, #1f5fcf 100%) !important;
-  border: 1px solid rgba(96, 165, 250, 0.24);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 [data-theme-mode='dark'] .csirt-hero-copy h1 {

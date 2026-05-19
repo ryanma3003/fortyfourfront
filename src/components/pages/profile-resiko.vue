@@ -329,7 +329,7 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
 
   <section class="risk-page" :class="{ 'is-dark': isDarkMode }" style="padding-bottom: 1.5rem;">
     <div class="risk-shell" style="overflow: hidden; border: 1px solid #dbe5f2; border-radius: 12px; background: #ffffff; box-shadow: 0 16px 38px rgba(15, 23, 42, 0.08);">
-      <div class="risk-hero" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; color: #ffffff; background: linear-gradient(135deg, #172f9f 0%, #2f7df6 100%);">
+      <div class="risk-hero" style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; color: #ffffff; background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);">
         <div class="risk-hero-left" style="display: flex; align-items: center; gap: 1rem;">
           <span class="risk-hero-icon" style="display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,.14); font-size: 1.35rem;"><i class="ri-shield-check-fill"></i></span>
           <div>
@@ -483,7 +483,20 @@ watch([currentSlug, queryRespondentId], loadSurveyResult);
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   color: #ffffff;
-  background: linear-gradient(135deg, #172f9f 0%, #2f7df6 100%);
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+}
+
+.risk-page.is-dark .risk-hero,
+:global(html[data-theme-mode="dark"]) .risk-hero,
+:global(html.dark) .risk-hero,
+:global(.dark-mode) .risk-hero {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 .risk-hero-left,

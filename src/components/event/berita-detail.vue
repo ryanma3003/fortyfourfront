@@ -33,10 +33,10 @@ export default {
     const isDarkMode = ref(false);
     let gsapCtx: gsap.Context | null = null;
     let themeObserver: MutationObserver | undefined;
-    const routeBeritaId = computed(() => {
-      const raw = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id;
-      const id = String(raw || '').trim();
-      return id && id !== 'NaN' && id !== 'undefined' && id !== 'null' ? id : '';
+    const routeBeritaIdentifier = computed(() => {
+      const raw = Array.isArray(route.params.slug) ? route.params.slug[0] : (route.params.slug ?? route.params.id);
+      const identifier = String(raw || '').trim();
+      return identifier && identifier !== 'NaN' && identifier !== 'undefined' && identifier !== 'null' ? identifier : '';
     });
 
     const showNotification = (msg: string, type: "success" | "error") => {
@@ -77,13 +77,13 @@ export default {
         themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode", "class"] });
       }
       try {
-        if (!routeBeritaId.value) {
-          showNotification("ID berita tidak valid", "error");
+        if (!routeBeritaIdentifier.value) {
+          showNotification("Identifier berita tidak valid", "error");
           router.push("/event/berita");
           return;
         }
         await usersStore.initialize().catch(() => undefined);
-        const data = await beritaStore.fetchBeritaById(routeBeritaId.value);
+        const data = await beritaStore.fetchBeritaByIdentifier(routeBeritaIdentifier.value);
         if (data) {
           beritaData.value = data;
         } else {

@@ -2527,8 +2527,9 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   position: relative;
   min-height: 86px;
   padding: 1.1rem 1.35rem !important;
-  background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 56%, #0f766e 100%) !important;
-  border: 0 !important;
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16) !important;
 }
 
 .stakeholder-header::after {
@@ -3794,6 +3795,16 @@ watch(() => ikasStore.apiLoading, async (loading) => {
   background: #111827 !important;
   border-color: rgba(148, 163, 184, 0.2) !important;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-stakeholder-page .stakeholder-header,
+:global(html.dark) .profile-stakeholder-page .stakeholder-header,
+.profile-stakeholder-page.is-dark .stakeholder-header {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 :global(html[data-theme-mode="dark"]) .profile-stakeholder-page .card-header:not(.stakeholder-header),

@@ -6748,6 +6748,26 @@ const IkasCard = defineComponent({
   line-height: 1;
 }
 
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-main span),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-main span),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-main span),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-main span),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-main span),
+:global(html.dark) .ikas-page :deep(.ikas-target-main span),
+.ikas-page.is-dark :deep(.ikas-target-main span) {
+  color: #94a3b8 !important;
+}
+
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-main strong),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-main strong),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-main strong),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-main strong),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-main strong),
+:global(html.dark) .ikas-page :deep(.ikas-target-main strong),
+.ikas-page.is-dark :deep(.ikas-target-main strong) {
+  color: #f8fafc !important;
+}
+
 .ikas-page :deep(.ikas-target-delta) {
   align-items: center;
   border-radius: 999px;
@@ -6800,6 +6820,59 @@ const IkasCard = defineComponent({
 
 .ikas-page :deep(.ikas-target-delta.is-neutral .ikas-target-dot) {
   background: #94a3b8;
+}
+
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-delta.is-negative),
+:global(html.dark) .ikas-page :deep(.ikas-target-delta.is-negative),
+.ikas-page.is-dark :deep(.ikas-target-delta.is-negative) {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fda4af;
+}
+
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot),
+:global(html.dark) .ikas-page :deep(.ikas-target-delta.is-negative .ikas-target-dot),
+.ikas-page.is-dark :deep(.ikas-target-delta.is-negative .ikas-target-dot) {
+  background: #fb7185;
+}
+
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-delta.is-positive),
+:global(html.dark) .ikas-page :deep(.ikas-target-delta.is-positive),
+.ikas-page.is-dark :deep(.ikas-target-delta.is-positive) {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot),
+:global(html.dark) .ikas-page :deep(.ikas-target-delta.is-positive .ikas-target-dot),
+.ikas-page.is-dark :deep(.ikas-target-delta.is-positive .ikas-target-dot) {
+  background: #4ade80;
+}
+
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-neutral),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-target-delta.is-neutral),
+:global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-neutral),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-target-delta.is-neutral),
+:global(.dark-mode) .ikas-page :deep(.ikas-target-delta.is-neutral),
+:global(html.dark) .ikas-page :deep(.ikas-target-delta.is-neutral),
+.ikas-page.is-dark :deep(.ikas-target-delta.is-neutral) {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
 }
 
 .ikas-warning-top {
@@ -8673,14 +8746,24 @@ const IkasCard = defineComponent({
 .ikas-page.is-dark :deep(.ikas-table-row:hover td),
 .ikas-page.is-dark :deep(.ikas-table-row:focus-visible td),
 .ikas-page.is-dark :deep(.ikas-table-row.is-selected td),
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-table-row:hover td),
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-table-row:focus-visible td),
+:global(html[data-bs-theme="dark"]) .ikas-page :deep(.ikas-table-row.is-selected td),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-table-row:hover td),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-table-row:focus-visible td),
+:global(body[data-bs-theme="dark"]) .ikas-page :deep(.ikas-table-row.is-selected td),
 :global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-table-row:hover td),
 :global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-table-row:focus-visible td),
 :global(html[data-theme-mode="dark"]) .ikas-page :deep(.ikas-table-row.is-selected td),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-table-row:hover td),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-table-row:focus-visible td),
+:global(body[data-theme-mode="dark"]) .ikas-page :deep(.ikas-table-row.is-selected td),
 :global(html.dark) .ikas-page :deep(.ikas-table-row:hover td),
 :global(html.dark) .ikas-page :deep(.ikas-table-row:focus-visible td),
 :global(html.dark) .ikas-page :deep(.ikas-table-row.is-selected td) {
-  background: #17243a !important;
-  border-color: rgba(96, 165, 250, 0.36) !important;
+  background: #132033 !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: none !important;
 }
 
 .ikas-page.is-dark .ikas-panel-hero,
