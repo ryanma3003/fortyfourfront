@@ -937,7 +937,7 @@ onUnmounted(() => {
                     <p class="text-muted mb-0 fs-13">Centang untuk mengganti permission role, atau tambah cepat lewat dropdown.</p>
                   </div>
                   <div class="permission-toolbar-actions d-flex flex-column gap-3 w-100">
-                    <div class="d-flex gap-2 w-100">
+                    <div class="d-flex gap-2 w-100 permission-quick-add-row">
                       <select v-model="quickAddPermissionKey" class="form-select flex-grow-1">
                         <option value="">Pilih permission dari daftar</option>
                         <option
@@ -1006,7 +1006,7 @@ onUnmounted(() => {
                               <td colspan="6">{{ group.group }}</td>
                             </tr>
                             <tr v-for="permission in group.items" :key="permission.id">
-                              <td class="text-center">
+                              <td class="text-center permission-select-cell" data-label="Pilih">
                                 <input
                                   v-model="selectedPermissionKeys"
                                   class="form-check-input permission-checkbox"
@@ -1014,13 +1014,13 @@ onUnmounted(() => {
                                   :value="normalizePermissionKey(permission.obj, permission.act)"
                                 />
                               </td>
-                              <td>
+                              <td data-label="Permission">
                                 <div class="fw-semibold">{{ permission.label }}</div>
                               </td>
-                              <td><code>{{ permission.obj }}</code></td>
-                              <td><span class="badge bg-light text-dark border text-uppercase">{{ permission.act }}</span></td>
-                              <td class="text-muted">{{ permission.group }}</td>
-                              <td class="text-center">
+                              <td data-label="Object"><code>{{ permission.obj }}</code></td>
+                              <td data-label="Action"><span class="badge bg-light text-dark border text-uppercase">{{ permission.act }}</span></td>
+                              <td class="text-muted" data-label="Group">{{ permission.group }}</td>
+                              <td class="text-center permission-action-cell" data-label="Aksi">
                                 <button 
                                   v-if="selectedPermissionKeySet.has(normalizePermissionKey(permission.obj, permission.act))"
                                   class="btn btn-sm btn-danger-light rounded-circle"
@@ -1710,8 +1710,9 @@ onUnmounted(() => {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
   background: rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(4px);
   z-index: 9999;
@@ -1724,12 +1725,14 @@ onUnmounted(() => {
 .permission-modal {
   width: min(84vw, 860px);
   max-width: 860px;
+  min-width: 0;
 }
 
 .permission-modal-content {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24) !important;
 }
 
@@ -1766,6 +1769,10 @@ onUnmounted(() => {
 
 .permission-modal-header-copy {
   min-width: 0;
+}
+
+.permission-modal-header-copy h4 {
+  overflow-wrap: anywhere;
 }
 
 .permission-modal-icon-box {
@@ -1818,6 +1825,7 @@ onUnmounted(() => {
 
 .permission-modal-body {
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  min-width: 0;
 }
 
 .permission-modal-footer {
@@ -1853,8 +1861,12 @@ onUnmounted(() => {
 }
 
 .permission-toolbar-actions .form-select {
-  min-width: 260px;
+  min-width: 0;
   flex: 1 1 260px;
+}
+
+.permission-quick-add-row {
+  min-width: 0;
 }
 
 .permission-table-shell {
@@ -1869,6 +1881,15 @@ onUnmounted(() => {
   max-height: min(48vh, 460px);
   overflow: auto;
   overscroll-behavior: contain;
+}
+
+.permission-table {
+  min-width: 720px;
+}
+
+.permission-table td,
+.permission-table th {
+  overflow-wrap: anywhere;
 }
 
 .permission-table-wrap::-webkit-scrollbar {
@@ -2065,18 +2086,21 @@ onUnmounted(() => {
   }
 
   .modal-overlay {
-    padding: 12px;
+    padding: 10px;
     align-items: flex-start;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .permission-modal {
-    width: min(94vw, 94vw);
-    max-width: 94vw;
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    margin: 0 auto !important;
   }
 
   .permission-modal-content {
-    max-height: calc(100vh - 1.3rem);
+    border-radius: 18px !important;
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
   }
 
   .permission-modal-header {
@@ -2117,16 +2141,45 @@ onUnmounted(() => {
 
   .permission-modal-body,
   .permission-modal-footer {
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
+    padding-left: 0.9rem !important;
+    padding-right: 0.9rem !important;
   }
 
   .permission-toolbar-card {
-    padding: 1rem;
+    border-radius: 16px;
+    padding: 0.9rem;
   }
 
   .permission-toolbar-actions {
     min-width: 100%;
+  }
+
+  .permission-quick-add-row {
+    flex-direction: column;
+  }
+
+  .permission-quick-add-row .form-select,
+  .permission-quick-add-row .btn {
+    width: 100%;
+  }
+
+  .manual-permission-entry {
+    padding: 0.85rem !important;
+  }
+
+  .manual-permission-entry .min-width-150 {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .manual-permission-entry .btn {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .permission-table-shell {
+    border-radius: 14px;
   }
 
   .permission-table-wrap {
@@ -2150,6 +2203,121 @@ onUnmounted(() => {
     padding-top: 1rem !important;
     padding-bottom: 1rem !important;
     box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.08);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .permission-modal-header-main {
+    gap: 0.75rem !important;
+  }
+
+  .permission-modal-icon-box {
+    display: none !important;
+  }
+
+  .permission-modal-meta-pill {
+    width: 100%;
+  }
+
+  .permission-modal-scroll-body {
+    overflow-x: hidden;
+  }
+
+  .permission-modal-body {
+    padding: 0.85rem !important;
+  }
+
+  .permission-toolbar {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .permission-toolbar-copy h6 {
+    font-size: 0.98rem;
+  }
+
+  .permission-toolbar-copy p {
+    line-height: 1.45;
+  }
+
+  .permission-table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .permission-table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .permission-table thead {
+    display: none;
+  }
+
+  .permission-table tbody,
+  .permission-table tr,
+  .permission-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .permission-table tbody {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .permission-table tbody tr:not(.permission-group-row) {
+    background: #fff;
+    border: 1px solid #dbe7f5;
+    border-radius: 14px;
+    overflow: hidden;
+    padding: 0.75rem;
+  }
+
+  .permission-table tbody tr:not(.permission-group-row) td {
+    background: transparent !important;
+    border: 0;
+    padding: 0.3rem 0;
+  }
+
+  .permission-table tbody tr:not(.permission-group-row) td::before {
+    content: attr(data-label);
+    color: #64748b;
+    display: block;
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+  }
+
+  .permission-table tbody tr:not(.permission-group-row) .permission-select-cell,
+  .permission-table tbody tr:not(.permission-group-row) .permission-action-cell {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    text-align: left !important;
+  }
+
+  .permission-table tbody tr:not(.permission-group-row) .permission-select-cell::before,
+  .permission-table tbody tr:not(.permission-group-row) .permission-action-cell::before {
+    margin-bottom: 0;
+  }
+
+  .permission-group-row td {
+    background: transparent !important;
+    border: 0;
+    color: #2563eb;
+    padding: 0.45rem 0.2rem 0.1rem;
+  }
+
+  .permission-action-cell .btn {
+    flex-shrink: 0;
+  }
+
+  .permission-modal-footer {
+    gap: 0.75rem !important;
   }
 }
 </style>
@@ -2511,5 +2679,57 @@ body[data-theme-mode="dark"] .permission-modal-footer .btn-primary-light:hover,
   background: rgba(37, 99, 235, 0.18) !important;
   border-color: rgba(96, 165, 250, 0.34) !important;
   color: #ffffff !important;
+}
+
+@media (max-width: 575.98px) {
+  html[data-theme-mode="dark"] .permission-table-shell,
+  html.dark .permission-table-shell,
+  body[data-theme-mode="dark"] .permission-table-shell,
+  .dark-mode .permission-table-shell {
+    background: transparent !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+  }
+
+  html[data-theme-mode="dark"] .permission-table tbody,
+  html.dark .permission-table tbody,
+  body[data-theme-mode="dark"] .permission-table tbody,
+  .dark-mode .permission-table tbody {
+    background: transparent !important;
+  }
+
+  html[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row),
+  html.dark .permission-table tbody tr:not(.permission-group-row),
+  body[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row),
+  .dark-mode .permission-table tbody tr:not(.permission-group-row) {
+    background: #0f172a !important;
+    border: 1px solid rgba(148, 163, 184, 0.18) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  html[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row) td,
+  html.dark .permission-table tbody tr:not(.permission-group-row) td,
+  body[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row) td,
+  .dark-mode .permission-table tbody tr:not(.permission-group-row) td {
+    background: transparent !important;
+    border: 0 !important;
+    color: #dbe7f3 !important;
+  }
+
+  html[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row) td::before,
+  html.dark .permission-table tbody tr:not(.permission-group-row) td::before,
+  body[data-theme-mode="dark"] .permission-table tbody tr:not(.permission-group-row) td::before,
+  .dark-mode .permission-table tbody tr:not(.permission-group-row) td::before {
+    color: #7f96b5 !important;
+  }
+
+  html[data-theme-mode="dark"] .permission-group-row td,
+  html.dark .permission-group-row td,
+  body[data-theme-mode="dark"] .permission-group-row td,
+  .dark-mode .permission-group-row td {
+    background: transparent !important;
+    border: 0 !important;
+    color: #bfdbfe !important;
+    padding-left: 0.2rem !important;
+  }
 }
 </style>

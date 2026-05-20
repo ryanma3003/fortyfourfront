@@ -898,7 +898,7 @@ const getRoleBadgeClass = (role: string) => {
 
 .contact-content { display: flex; flex-direction: column; min-width: 0; }
 .contact-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
-.contact-value { font-size: 14px; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.contact-value { font-size: 14px; font-weight: 700; color: #1e293b; overflow-wrap: anywhere; word-break: normal; }
 .contact-value--email { display: block; max-width: 100%; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .form-item-edit-action { font-size: 16px; opacity: 0.4; }
@@ -1683,13 +1683,279 @@ const getRoleBadgeClass = (role: string) => {
 }
 
 @media (max-width: 768px) {
-  .profile-banner { min-height: 200px; }
-  .profile-banner-overlay-premium { padding: 1.5rem 1.5rem; }
-  .profile-content-body--premium { padding: 0 1.5rem 2rem; }
-  .profile-foto-profile-container { margin-top: -60px; flex: 0 0 140px; }
-  .profile-foto-profile-wrap { width: 140px; height: 140px; }
-  .profile-content-body { flex-direction: column; gap: 1rem; }
-  .profile-info-block { padding-top: 0.5rem; padding-left: 0; }
-  .profile-user-name { font-size: 1.75rem; }
+  .profile-user-page {
+    margin-inline: 0;
+  }
+
+  .profile-user-page > .col-12 {
+    padding-inline: 0.75rem;
+  }
+
+  .stakeholder-profile-shell,
+  .stakeholders-shell-card {
+    border-radius: 18px !important;
+  }
+
+  .profile-banner {
+    min-height: 285px;
+  }
+
+  .profile-banner-overlay-premium {
+    padding: 1.15rem 1.25rem;
+  }
+
+  .profile-banner-top {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .premium-breadcrumb {
+    flex-wrap: wrap;
+  }
+
+  .hero-main-title {
+    font-size: 1.45rem;
+    line-height: 1.18;
+    letter-spacing: 0;
+  }
+
+  .hero-sub-title {
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .profile-banner-top .d-flex.flex-wrap {
+    display: grid !important;
+    gap: 0.55rem !important;
+    width: 100%;
+  }
+
+  .hero-action-tools {
+    position: relative;
+    z-index: 6;
+    width: 100%;
+  }
+
+  .hero-action-tools > .d-flex {
+    display: grid !important;
+    gap: 0.55rem !important;
+    width: 100%;
+  }
+
+  .btn-premium {
+    min-height: 38px;
+    width: 100%;
+  }
+
+  .profile-content-body--premium {
+    padding: 1rem 1.05rem 1.2rem;
+  }
+
+  .profile-content-body {
+    align-items: center;
+    flex-direction: column;
+    gap: 0.8rem;
+    text-align: center;
+  }
+
+  .profile-foto-profile-container {
+    flex: 0 0 auto;
+    margin-top: -54px !important;
+    position: relative !important;
+    transform: none !important;
+    z-index: 1 !important;
+    width: 100%;
+  }
+
+  .profile-foto-profile-wrap {
+    height: 108px;
+    width: 108px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2), 0 0 0 5px #fff;
+  }
+
+  .btn-upload-camera {
+    bottom: 2px;
+    height: 32px;
+    right: calc(50% - 54px);
+    transform: translateX(42px);
+    width: 32px;
+  }
+
+  .profile-user-page .hero-action-tools,
+  .profile-user-page .hero-action-tools .btn-premium {
+    position: relative !important;
+    z-index: 20 !important;
+  }
+
+  .profile-user-page .profile-content-body,
+  .profile-user-page .profile-content-body--premium {
+    padding-top: 1rem !important;
+  }
+
+  .profile-user-page .profile-foto-profile-container {
+    margin-top: -54px !important;
+    transform: none !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  .profile-info-block {
+    padding-left: 0;
+    padding-top: 0;
+    width: 100%;
+  }
+
+  .profile-user-name {
+    font-size: clamp(1.45rem, 7vw, 1.85rem);
+    letter-spacing: 0;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-user-name-input {
+    font-size: clamp(1.35rem, 7vw, 1.75rem);
+    text-align: center;
+  }
+
+  .profile-badges-row {
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .p-badge {
+    max-width: 100%;
+    min-height: 34px;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .p-badge--company,
+  .p-badge--sector {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .profile-contact-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    text-align: left;
+  }
+
+  .contact-item,
+  .contact-item--email {
+    min-width: 0;
+    padding: 0.78rem;
+    width: 100%;
+  }
+
+  .contact-icon {
+    height: 38px;
+    width: 38px;
+  }
+
+  .contact-value,
+  .contact-value--email {
+    font-size: 0.86rem;
+    white-space: normal;
+  }
+
+  .stakeholders-shell-card .card-header {
+    align-items: flex-start !important;
+    gap: 0.75rem;
+    padding-inline: 1rem !important;
+  }
+
+  .stakeholders-shell-card .card-body {
+    padding: 1rem !important;
+  }
+
+  .profile-user-page .form-group-split {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .profile-user-page .form-group-split-label-card,
+  .profile-user-page .form-group-split-input-card {
+    border-radius: 14px;
+    width: 100%;
+  }
+
+  .profile-user-page .form-group-split-label-card {
+    padding: 8px 10px;
+  }
+
+  .profile-user-page .form-group-split-label-card > .d-flex {
+    min-width: 0;
+  }
+
+  .profile-user-page .form-group-split-input-card {
+    min-height: 42px;
+    padding: 9px 38px 9px 12px;
+  }
+
+  .form-item-value {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .form-group-split-input-card[data-tooltip]::before,
+  .form-group-split-input-card[data-tooltip]::after {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .profile-user-page > .col-12 {
+    padding-inline: 0.35rem;
+  }
+
+  .profile-banner {
+    min-height: 275px;
+  }
+
+  .profile-banner-overlay-premium {
+    padding: 1rem;
+  }
+
+  .profile-content-body--premium {
+    padding-inline: 0.85rem;
+    padding-top: 1rem;
+  }
+
+  .profile-user-page .profile-banner {
+    min-height: 285px;
+  }
+
+  .profile-foto-profile-wrap {
+    height: 100px;
+    width: 100px;
+  }
+
+  .btn-upload-camera {
+    right: calc(50% - 50px);
+  }
+
+  .profile-user-page .profile-foto-profile-container {
+    margin-top: -50px !important;
+  }
+
+  .profile-badges-row {
+    align-items: stretch;
+  }
+
+  .p-badge {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .contact-item {
+    align-items: flex-start;
+  }
+
+  .stakeholders-shell-card .card-header {
+    flex-direction: column;
+  }
 }
 </style>

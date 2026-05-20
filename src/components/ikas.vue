@@ -1224,9 +1224,11 @@ const exportToPdf = async () => {
 /* ── IKAS Table ─────────────────────────────────────────── */
 .table-wrapper { 
   overflow-x: auto; 
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
   border-radius: 16px;
   border: 1px solid #d9e3ef;
-  overflow: hidden;
   background: #fff;
 }
 
@@ -1251,6 +1253,8 @@ const exportToPdf = async () => {
   padding: 7px 10px;
   vertical-align: middle;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 .maturity-table thead th {
   background: #f6f7fa;
@@ -1264,7 +1268,7 @@ const exportToPdf = async () => {
 .left-title   { width: 424px; }
 .year-title   { font-size: 15px; }
 .total        { background: #203a63 !important; color: #fff !important; font-weight: 800; text-align: center; }
-.item         { font-size: 11.5px; color: #334155; min-width: 320px; }
+.item         { font-size: 11.5px; color: #334155; min-width: 0; }
 .center       { text-align: center; }
 .bold         { font-weight: bold; }
 .status-big   { font-size: 19px; font-weight: 800; text-align: center; color: #1e3a5f; letter-spacing: 0.02em; }
@@ -1988,6 +1992,25 @@ const exportToPdf = async () => {
   border-radius: 16px;
   box-shadow: none;
   border: 1px solid #d9e3ef;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: #94a3b8 #e2e8f0;
+  scrollbar-width: thin;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
 }
 
 .maturity-table thead th {
@@ -2037,6 +2060,24 @@ const exportToPdf = async () => {
 @media (max-width: 1199.98px) {
   .domain-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .maturity-table {
+    min-width: 1040px;
+    font-size: 11.5px;
+  }
+
+  .maturity-table .col-domain-label { width: 32px; }
+  .maturity-table .col-question { width: 330px; }
+  .maturity-table .col-target { width: 120px; }
+  .maturity-table .col-score { width: 105px; }
+  .maturity-table .col-domain-score { width: 140px; }
+  .maturity-table .col-domain-category { width: 205px; }
+  .maturity-table .col-total-category { width: 108px; }
+
+  .maturity-table th,
+  .maturity-table td {
+    padding: 7px 8px;
   }
 }
 
@@ -2091,6 +2132,70 @@ const exportToPdf = async () => {
 
   .ikas-action-buttons button {
     justify-content: center;
+  }
+
+  .table-wrapper {
+    border-radius: 12px;
+    margin-inline: -0.25rem;
+  }
+
+  .maturity-table {
+    min-width: 760px;
+    font-size: 10.5px;
+  }
+
+  .maturity-table .col-domain-label { width: 24px; }
+  .maturity-table .col-question { width: 250px; }
+  .maturity-table .col-target { width: 74px; }
+  .maturity-table .col-score { width: 74px; }
+  .maturity-table .col-domain-score { width: 92px; }
+  .maturity-table .col-domain-category { width: 130px; }
+  .maturity-table .col-total-category { width: 116px; }
+
+  .maturity-table th,
+  .maturity-table td {
+    padding: 6px 7px;
+    line-height: 1.22;
+  }
+
+  .maturity-table thead th {
+    font-size: 0.56rem;
+    letter-spacing: 0.02em;
+  }
+
+  .maturity-table .item {
+    font-size: 10.5px;
+  }
+
+  .maturity-table .domain {
+    font-size: 8.5px;
+    letter-spacing: 0.04em;
+    min-width: 22px;
+    width: 22px;
+  }
+
+  .maturity-table .status-big {
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .maturity-table {
+    min-width: 700px;
+  }
+
+  .maturity-table .col-domain-label { width: 22px; }
+  .maturity-table .col-question { width: 220px; }
+  .maturity-table .col-target { width: 68px; }
+  .maturity-table .col-score { width: 68px; }
+  .maturity-table .col-domain-score { width: 86px; }
+  .maturity-table .col-domain-category { width: 122px; }
+  .maturity-table .col-total-category { width: 114px; }
+
+  .maturity-table th,
+  .maturity-table td {
+    padding: 6px;
   }
 }
 

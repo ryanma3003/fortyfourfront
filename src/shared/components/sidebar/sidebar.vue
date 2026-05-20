@@ -317,7 +317,7 @@ let toggledObserver = null;
 
 // Computed property for dynamic dashboard route based on user role
 const dashboardRoute = computed(() => {
-  return authStore.isAdmin ? '/dashboard' : '/dashboards';
+  return authStore.isAdmin ? '/dashboard' : '/pages/error/role-akses';
 });
 
 const toggleChat = () => {

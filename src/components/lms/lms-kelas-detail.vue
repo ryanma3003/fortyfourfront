@@ -17,6 +17,7 @@ export default {
     const loading = ref(true);
     const kelasId = computed(() => route.params.id as string);
     const detailRoot = ref<HTMLElement | null>(null);
+    const learningContentRef = ref<HTMLElement | null>(null);
     const isDarkMode = ref(false);
     let pageGsapCtx: gsap.Context | null = null;
     let mainContentGsapCtx: gsap.Context | null = null;
@@ -221,12 +222,23 @@ export default {
 
     const goBack = () => router.push('/lms/kelas');
 
+    const scrollToLearningContent = async () => {
+      await nextTick();
+      const target = learningContentRef.value;
+      if (!target || typeof window === "undefined") return;
+
+      const topOffset = window.innerWidth < 1200 ? 84 : 96;
+      const targetTop = target.getBoundingClientRect().top + window.scrollY - topOffset;
+      window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+    };
+
     const viewMateri = async (materi: LmsMateri) => {
       selectedMateri.value = materi;
       selectedKuis.value = null;
       relatedSoal.value = [];
       runMainContentAnimation();
       runSupplementaryAnimation({ attachments: true });
+      await scrollToLearningContent();
 
       // Fetch Feedback
       isLoadingFeedback.value = true;
@@ -238,8 +250,6 @@ export default {
         isLoadingFeedback.value = false;
         runSupplementaryAnimation({ feedback: true });
       }
-
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const viewKuis = async (kuis: LmsKuis) => {
@@ -247,6 +257,7 @@ export default {
       selectedMateri.value = null;
       loadingSoal.value = true;
       runMainContentAnimation();
+      await scrollToLearningContent();
       try {
         // Uses soal cache if available (instant on re-select)
         await lmsStore.fetchSoal(kuis.id);
@@ -257,15 +268,14 @@ export default {
         loadingSoal.value = false;
         runSupplementaryAnimation({ quiz: true });
       }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const closePreview = () => {
+    const closePreview = async () => {
       selectedMateri.value = null;
       selectedKuis.value = null;
       relatedSoal.value = [];
       runMainContentAnimation();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      await scrollToLearningContent();
     };
 
     const getYoutubeId = (url?: string) => {
@@ -326,6 +336,7 @@ export default {
     return {
       loading,
       detailRoot,
+      learningContentRef,
       isDarkMode,
       currentKelas,
       relatedMateri,
@@ -448,7 +459,7 @@ export default {
 
         <div class="row g-3">
           <!-- MAIN CONTENT AREA (Player & Details) - LEFT SIDE (col-xl-8) -->
-          <div class="col-xl-8 order-2 order-xl-1">
+          <div ref="learningContentRef" class="col-xl-8 order-2 order-xl-1 lms-learning-content">
             
             <!-- Video / Text Player -->
             <div v-if="selectedMateri" class="card border-0 shadow-sm rounded-4 overflow-hidden lms-player-card">
@@ -865,6 +876,64 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+}
+
+.lms-kelas-detail-page,
+.lms-kelas-detail-page * {
+  min-width: 0;
+}
+
+.lms-kelas-detail-page {
+  scroll-behavior: smooth;
+}
+
+.lms-learning-content {
+  scroll-margin-top: 96px;
+}
+
+.lms-preview-hero {
+  overflow: hidden;
+}
+
+.lms-preview-hero-content,
+.hero-main-info {
+  min-width: 0;
+}
+
+.hero-title,
+.hero-subtitle,
+.hero-stat-item,
+.materi-html-content,
+.course-description-content,
+.soal-text,
+.quiz-opsi-item span {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.materi-html-content :deep(img),
+.course-description-content :deep(img),
+.materi-html-content :deep(video),
+.course-description-content :deep(video),
+.materi-html-content :deep(iframe),
+.course-description-content :deep(iframe) {
+  max-width: 100%;
+  height: auto;
+}
+
+.materi-html-content :deep(table),
+.course-description-content :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.materi-html-content :deep(pre),
+.course-description-content :deep(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
 }
 
 .lms-syllabus-card {
@@ -1349,6 +1418,172 @@ export default {
   border-radius: 50%;
   width: 24px;
   height: 24px;
+}
+
+@media (max-width: 1199.98px) {
+  .lms-learning-content {
+    scroll-margin-top: 84px;
+  }
+
+  .lms-syllabus-card.sticky-top {
+    position: static !important;
+    top: auto !important;
+  }
+
+  .lms-syllabus-card > .card-body {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .lms-syllabus-card {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .lms-preview-hero {
+    border-radius: 18px !important;
+  }
+
+  .lms-preview-hero-content {
+    align-items: stretch !important;
+    gap: 1rem !important;
+  }
+
+  .hero-thumbnail-wrap,
+  .hero-icon-placeholder {
+    width: 100% !important;
+    max-width: none;
+  }
+
+  .hero-thumbnail-wrap {
+    height: auto !important;
+    aspect-ratio: 16 / 9;
+  }
+
+  .hero-icon-placeholder {
+    height: 96px !important;
+  }
+
+  .hero-title {
+    font-size: 1.35rem !important;
+    line-height: 1.25;
+  }
+
+  .hero-subtitle {
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+  }
+
+  .hero-stats-stack {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0.75rem !important;
+  }
+
+  .hero-stat-item {
+    align-items: flex-start !important;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    padding: 0.75rem;
+    width: 100%;
+  }
+
+  .hero-actions,
+  .hero-back-btn {
+    width: 100%;
+  }
+
+  .hero-back-btn {
+    justify-content: center;
+    min-height: 42px;
+  }
+
+  .syllabus-card-header .d-flex,
+  .syllabus-overview-btn,
+  .syllabus-item-enhanced {
+    align-items: flex-start !important;
+  }
+
+  .syllabus-item-enhanced {
+    gap: 0.75rem !important;
+    min-height: 0;
+  }
+
+  .syllabus-action-dot {
+    display: none;
+  }
+
+  .player-text-header .d-flex {
+    align-items: flex-start !important;
+    gap: 0.85rem !important;
+  }
+
+  .player-text-header h3,
+  .quiz-header h2,
+  .lms-overview-card h2 {
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+
+  .quiz-header {
+    padding: 1.25rem !important;
+  }
+
+  .quiz-header .badge {
+    width: 100%;
+    justify-content: center;
+    padding-inline: 0.85rem !important;
+    white-space: normal;
+  }
+
+  .quiz-soal-card .card-header .d-flex {
+    align-items: flex-start !important;
+  }
+
+  .quiz-opsi-item {
+    align-items: flex-start !important;
+  }
+
+  .attachment-card .card-body {
+    align-items: flex-start !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .lms-kelas-detail-page {
+    margin-inline: -0.25rem;
+  }
+
+  .lms-syllabus-card,
+  .lms-player-card,
+  .lms-overview-card {
+    border-radius: 14px !important;
+  }
+
+  .syllabus-summary-chip {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .syllabus-overview-btn,
+  .syllabus-item-enhanced {
+    padding: 0.85rem !important;
+  }
+
+  .player-text-header .avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .materi-html-content,
+  .course-description-content,
+  .soal-text,
+  .quiz-opsi-item span {
+    font-size: 0.9rem !important;
+  }
 }
 </style>
 

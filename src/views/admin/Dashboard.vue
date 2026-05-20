@@ -9813,15 +9813,39 @@ code {
 }
 
 :global(html[data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
-:global(html.dark) .dashboard-page-heading > .page-title {
-  color: #eef4ff;
+:global(html.dark) .dashboard-page-heading > .page-title,
+:global(body[data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
+:global(body.dark) .dashboard-page-heading > .page-title,
+:global([data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
+:global(html[data-theme-mode="dark"] .dashboard-page-heading > .page-title),
+:global(html.dark .dashboard-page-heading > .page-title),
+:global(body[data-theme-mode="dark"] .dashboard-page-heading > .page-title),
+:global(body.dark .dashboard-page-heading > .page-title),
+:global([data-theme-mode="dark"] .dashboard-page-heading > .page-title) {
+  color: #ffffff !important;
 }
 
 :global(html[data-theme-mode="dark"]) .dashboard-header-meta span,
-:global(html.dark) .dashboard-header-meta span {
+:global(html.dark) .dashboard-header-meta span,
+:global(body[data-theme-mode="dark"]) .dashboard-header-meta span,
+:global(body.dark) .dashboard-header-meta span,
+:global([data-theme-mode="dark"]) .dashboard-header-meta span,
+:global(html[data-theme-mode="dark"] .dashboard-header-meta span),
+:global(html.dark .dashboard-header-meta span),
+:global(body[data-theme-mode="dark"] .dashboard-header-meta span),
+:global(body.dark .dashboard-header-meta span),
+:global([data-theme-mode="dark"] .dashboard-header-meta span) {
   background: transparent;
   border-color: transparent;
-  color: #94a3b8;
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"] .dashboard-header-meta span i),
+:global(html.dark .dashboard-header-meta span i),
+:global(body[data-theme-mode="dark"] .dashboard-header-meta span i),
+:global(body.dark .dashboard-header-meta span i),
+:global([data-theme-mode="dark"] .dashboard-header-meta span i) {
+  color: #60a5fa !important;
 }
 
 :global(html[data-theme-mode="dark"])
@@ -11319,30 +11343,70 @@ code {
     font-size: 0.64rem;
   }
   .dashboard-header-actions {
+    align-items: stretch !important;
     width: 100%;
-    display: flex !important;
-    flex-direction: column;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 42px 42px;
     gap: 0.5rem;
     padding-top: 0.1rem;
+    min-width: 0;
+    overflow: hidden;
   }
   .dashboard-header-actions > .dashboard-datepicker-wrapper {
-    width: 100%;
-    flex: unset;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
+  .dashboard-header-actions
+    > .dashboard-datepicker-wrapper
+    :deep(.dp__main),
   .dashboard-header-actions
     > .dashboard-datepicker-wrapper
     :deep(.dp__input_wrap),
   .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
+    box-sizing: border-box;
+    max-width: 100%;
     width: 100%;
     min-width: 0;
   }
+  .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
+    font-size: 0.72rem;
+    min-height: 36px;
+    padding-inline: 2rem 2.2rem;
+    text-overflow: ellipsis;
+  }
+  .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__clear_icon) {
+    right: 0.75rem;
+  }
+  .dashboard-header-actions :deep(.dw-quick-actions) {
+    display: flex;
+    gap: 0;
+    width: 42px;
+    min-width: 0;
+  }
+  .dashboard-header-actions :deep(.dw-quick-btn),
+  .dashboard-alt-btn {
+    justify-content: center;
+    min-height: 38px;
+    width: 42px;
+    flex: 0 0 42px;
+    min-width: 0;
+    padding-inline: 0;
+  }
+  .dashboard-header-actions :deep(.dw-quick-btn .d-none.d-md-inline),
+  .dashboard-alt-btn .d-none.d-md-inline {
+    display: none !important;
+  }
   .dashboard-header-actions > div:last-child {
     display: flex;
-    gap: 0.5rem;
+    width: 42px;
+    min-width: 0;
+    justify-content: flex-end;
   }
   .dashboard-header-actions > div:last-child .btn {
-    min-width: 56px;
-    flex: 1;
+    min-width: 0;
+    flex: 0 0 42px;
   }
 
   .monitoring-panel-header {

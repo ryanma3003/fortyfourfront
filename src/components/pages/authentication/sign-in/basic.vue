@@ -23,6 +23,10 @@ const handleLogin = async () => {
     
     if (result.authenticated) {
         try {
+            if (!authStore.isAdmin) {
+                await router.push('/pages/error/role-akses');
+                return;
+            }
             // Redirect based on user role
             const userRole = authStore.userRole;
             const redirectPath = userRole === 'admin' ? '/dashboard' : '/dashboard';

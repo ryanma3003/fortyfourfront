@@ -777,7 +777,7 @@ watch(
 const { fotoProfileUrl } = storeToRefs(profileStore);
 const displayName = computed(() => profileStore.displayName);
 const displayEmail = computed(() => profileStore.displayEmail);
-const dashboardPath = computed(() => authStore.isAdmin ? '/dashboard' : '/dashboards');
+const dashboardPath = computed(() => authStore.isAdmin ? '/dashboard' : '/pages/error/role-akses');
 
 // Refs
 const isFullScreen = ref(false);

@@ -1332,6 +1332,10 @@ const routes: RouteRecordRaw[] = [
         component: () => import("../components/pages/error/401-error.vue"),
       },
       {
+        path: "role-akses",
+        component: () => import("../components/pages/error/role-akses.vue"),
+      },
+      {
         path: "404-error",
         component: () => import("../components/pages/error/404-error.vue"),
       },
@@ -1340,6 +1344,20 @@ const routes: RouteRecordRaw[] = [
         component: () => import("../components/pages/error/500-error.vue"),
       },
     ]
+  },
+
+  // 502 Bad Gateway
+  {
+    path: '/502',
+    name: 'BadGateway',
+    component: () => import("../views/BadGateway.vue"),
+  },
+
+  // Catch-all: any unmatched route → 404
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import("../views/NotFound.vue"),
   }
 ];
 
@@ -1358,6 +1376,8 @@ router.beforeEach(async (to, _from, next) => {
   // Public routes that don't require authentication
   const isPublicRoute =
     to.path === '/' ||
+    to.name === 'NotFound' ||
+    to.name === 'BadGateway' ||
     to.path.startsWith('/pages/authentication') ||
     to.path.startsWith('/pages/error');
 
@@ -1382,14 +1402,17 @@ router.beforeEach(async (to, _from, next) => {
     // Redirect to login if not authenticated
     next('/');
   } else if (isAuthenticated && to.path === '/') {
-    // Redirect to admin dashboard if already authenticated
-    next('/dashboard');
+    // Redirect to admin dashboard or role-akses if already authenticated
+    if (authStore.isAdmin) {
+      next('/dashboard');
+    } else {
+      next('/pages/error/role-akses');
+    }
   } else if (to.meta?.requiresAdmin) {
     // Check admin/staff role for admin routes
     if (!authStore.isAdmin) {
-      // Non-admin/staff users cannot access admin routes — log out
-      await authStore.logUserOut();
-      next('/');
+      // Non-admin/staff users cannot access admin routes — redirect to role-akses
+      next('/pages/error/role-akses');
     } else if (authStore.isStaff && (to.path === '/users' || to.path === '/roles' || to.path.startsWith('/users-profile'))) {
       // Staff cannot access user management or role management
       next('/dashboard');
@@ -1409,7 +1432,7 @@ router.beforeEach(async (to, _from, next) => {
       }
     } else {
       // Non-admin users should not have access
-      next('/dashboard');
+      next('/pages/error/role-akses');
     }
   } else {
     next();
