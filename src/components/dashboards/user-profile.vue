@@ -76,15 +76,36 @@ const fotoContainer = ref<HTMLElement | null>(null);
 
 const formatJoinedDate = (dateString: string | undefined): string => {
   if (!dateString) return "Tidak diketahui";
-  try {
-    return new Date(dateString).toLocaleDateString("id-ID", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return dateString;
-  }
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return dateString;
+
+  const datePart = new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Jakarta",
+  }).format(date);
+  const timePart = new Intl.DateTimeFormat("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Jakarta",
+  }).format(date).replace(":", ".");
+
+  return `${datePart}, ${timePart} WIB`;
+};
+
+const toTitleCase = (value: string) =>
+  value
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatRoleLabel = (role: string | undefined): string => {
+  const normalized = String(role || "").trim();
+  if (!normalized) return "Belum diatur";
+  if (normalized.toLowerCase() === "user_pic") return "User PIC";
+  return toTitleCase(normalized);
 };
 
 const getUserStatusText = (status?: any) => {
@@ -334,6 +355,7 @@ const displayUsername = computed(() =>
 const displayRole = computed(() =>
   isCurrentUser.value ? profileStore.displayRole : user.value?.role || ""
 );
+const displayRoleLabel = computed(() => formatRoleLabel(displayRole.value));
 const displayJabatan = computed(() =>
   isCurrentUser.value ? profileStore.displayJabatan : user.value?.jabatan || ""
 );
@@ -344,7 +366,7 @@ const displayLocation = computed(() =>
   isCurrentUser.value ? profileStore.displayLocation : user.value?.location || ""
 );
 const displayJoined = computed(() =>
-  isCurrentUser.value ? profileStore.displayJoined : formatJoinedDate(user.value?.joined)
+  formatJoinedDate(isCurrentUser.value ? (profileStore.joined || authStore.currentUser?.createdAt) : user.value?.joined)
 );
 const displayPerusahaan = computed(() =>
   isCurrentUser.value ? (profileStore.namaPerusahaan || 'Belum terkait') : (userCompanyName.value || 'Belum terkait')
@@ -359,15 +381,24 @@ const displayStatus = computed(() =>
 const accountDetails = computed(() => [
   { key: 'username', icon: "ri-at-line",           label: "Username",        value: displayUsername.value,     colorClass: "stat-icon-teal",   isEditable: false, type: 'text' },
   { key: 'email',    icon: "ri-mail-line",        label: "Email",           value: displayEmail.value,       colorClass: "stat-icon-indigo", isEditable: true, type: 'text' },
-  { key: 'phone',    icon: "ri-lock-line",        label: "Telepon",         value: displayPhone.value,       colorClass: "stat-icon-violet", isEditable: false, type: 'text', badge: 'dari stakeholder' },
+  { key: 'phone',    icon: "ri-phone-line",       label: "Telepon",         value: displayPhone.value,       colorClass: "stat-icon-violet", isEditable: false, type: 'text', badge: 'Sinkron stakeholder' },
   { key: 'jabatan',  icon: "ri-briefcase-line",   label: "Jabatan",         value: displayJabatan.value,     colorClass: "stat-icon-blue",   isEditable: true, type: 'select' },
-  { key: 'company',  icon: "ri-building-line",    label: "Perusahaan",      value: displayPerusahaan.value,  colorClass: "stat-icon-amber",  isEditable: false, wrap: true, badge: 'dari registrasi' },
-  { key: 'location', icon: "ri-map-pin-line",     label: "Lokasi",          value: displayLocation.value,    colorClass: "stat-icon-amber",  isEditable: false, type: 'text', wrap: true, badge: 'dari stakeholder' },
-  { key: 'sector',   icon: "ri-pie-chart-line",   label: "Sektor",          value: displaySubSektor.value,   colorClass: "stat-icon-blue",   isEditable: false, wrap: true, badge: 'dari stakeholder' },
-  { key: 'role',     icon: "ri-shield-user-line", label: "Role",            value: displayRole.value,        colorClass: "stat-icon-red",    isEditable: true, type: 'select' },
+  { key: 'company',  icon: "ri-building-line",    label: "Perusahaan",      value: displayPerusahaan.value,  colorClass: "stat-icon-amber",  isEditable: false, wrap: true, badge: 'Data registrasi' },
+  { key: 'location', icon: "ri-map-pin-line",     label: "Lokasi",          value: displayLocation.value,    colorClass: "stat-icon-amber",  isEditable: false, type: 'text', wrap: true, badge: 'Sinkron stakeholder' },
+  { key: 'sector',   icon: "ri-pie-chart-line",   label: "Sektor",          value: displaySubSektor.value,   colorClass: "stat-icon-blue",   isEditable: false, wrap: true, badge: 'Sinkron stakeholder' },
+  { key: 'role',     icon: "ri-shield-user-line", label: "Role",            value: displayRoleLabel.value,   colorClass: "stat-icon-red",    isEditable: true, type: 'select' },
   { key: 'status',   icon: "ri-toggle-line",      label: "Status Akun",     value: displayStatus.value,      colorClass: displayStatus.value === 'Aktif' ? 'stat-icon-teal' : 'stat-icon-red', isEditable: true, type: 'select' },
   { key: 'joined',   icon: "ri-calendar-line",    label: "Bergabung Sejak", value: displayJoined.value,      colorClass: "stat-icon-teal",   isEditable: false },
 ]);
+
+const getFieldActionTooltip = (item: { label: string; isEditable: boolean; badge?: string }) =>
+  item.isEditable
+    ? `Edit ${item.label.toLowerCase()}`
+    : item.badge?.toLowerCase().includes("stakeholder")
+      ? "Dikelola dari data stakeholder"
+      : item.badge?.toLowerCase().includes("registrasi")
+        ? "Dikelola dari data registrasi"
+        : "Tidak dapat diedit";
 
 const showToast = ref(false);
 const toastMessage = ref("");
@@ -610,7 +641,7 @@ const getRoleBadgeClass = (role: string) => {
                       <span class="breadcrumb-item active">PROFILE</span>
                     </div>
                     <h2 class="hero-main-title">
-                      {{ isEditMode ? 'Edit Profile' : 'User Profile' }}
+                      {{ isEditMode ? 'Edit Profil' : 'Profil Pengguna' }}
                     </h2>
                     <p class="hero-sub-title mb-0">
                       {{ isEditMode ? 'Sesuaikan detail data pengguna di bawah ini' : 'Informasi akun dan data pribadi pengguna' }}
@@ -621,7 +652,7 @@ const getRoleBadgeClass = (role: string) => {
                     <div class="d-flex gap-2 flex-wrap justify-content-end align-items-center">
                       <template v-if="!isEditMode">
                         <button v-if="isAdmin && !isCurrentUser" @click="toggleEditMode" class="btn-premium btn-premium--warning shadow-sm">
-                          <i class="ri-edit-2-fill me-1"></i>Edit Profile
+                          <i class="ri-edit-2-fill me-1"></i>Edit Profil
                         </button>
                         <button v-if="isCurrentUser" @click="toggleEditMode" class="btn-premium btn-premium--glass shadow-sm">
                           <i class="ri-pencil-fill me-1"></i>Sunting Profil
@@ -676,7 +707,7 @@ const getRoleBadgeClass = (role: string) => {
               <div class="profile-badges-row mb-3">
                 <span :class="['p-badge p-badge--role', getRoleBadgeClass(displayRole)]">
                   <i :class="(displayRole || '').toLowerCase() === 'admin' ? 'ri-shield-flash-line' : ((displayRole || '').toLowerCase() === 'staff' ? 'ri-shield-user-line' : 'ri-user-6-line')"></i>
-                  {{ displayRole }}
+                  {{ displayRoleLabel }}
                 </span>
                 <span class="p-badge p-badge--jabatan"><i class="ri-medal-line"></i>{{ displayJabatan }}</span>
                 <span class="p-badge p-badge--company"><i class="ri-community-line"></i>{{ displayPerusahaan }}</span>
@@ -684,31 +715,31 @@ const getRoleBadgeClass = (role: string) => {
               </div>
 
               <div class="profile-contact-grid">
-                <div class="contact-item">
+                <div class="contact-item contact-item--email">
                   <div class="contact-icon contact-icon--email"><i class="ri-mail-send-line"></i></div>
                   <div class="contact-content">
-                    <span class="contact-label">Email Address</span>
-                    <span class="contact-value">{{ displayEmail }}</span>
+                    <span class="contact-label">Email</span>
+                    <span class="contact-value contact-value--email" :title="displayEmail">{{ displayEmail }}</span>
                   </div>
                 </div>
                 <div class="contact-item">
                   <div class="contact-icon contact-icon--phone"><i class="ri-phone-camera-line"></i></div>
                   <div class="contact-content">
-                    <span class="contact-label">Phone Number</span>
+                    <span class="contact-label">Nomor Telepon</span>
                     <span class="contact-value">{{ displayPhone }}</span>
                   </div>
                 </div>
                 <div class="contact-item">
                   <div class="contact-icon contact-icon--location"><i class="ri-map-pin-user-line"></i></div>
                   <div class="contact-content">
-                    <span class="contact-label">Location</span>
+                    <span class="contact-label">Lokasi</span>
                     <span class="contact-value">{{ displayLocation }}</span>
                   </div>
                 </div>
                 <div class="contact-item">
                   <div class="contact-icon contact-icon--joined"><i class="ri-calendar-check-line"></i></div>
                   <div class="contact-content">
-                    <span class="contact-label">Joined Since</span>
+                    <span class="contact-label">Bergabung Sejak</span>
                     <span class="contact-value">{{ displayJoined }}</span>
                   </div>
                 </div>
@@ -721,9 +752,9 @@ const getRoleBadgeClass = (role: string) => {
           <div class="card-header border-bottom py-3 px-4 bg-transparent d-flex align-items-center justify-content-between">
             <div class="d-flex align-items-center gap-2">
               <div class="header-icon-wrap text-primary fs-18"><i class="ri-user-settings-line"></i></div>
-              <h5 class="card-title mb-0 fw-bold fs-15">Informasi Akun <span class="text-muted fs-12 fw-normal ms-2">- Detail profil pengguna</span></h5>
+              <h5 class="card-title mb-0 fw-bold fs-15">Informasi Akun</h5>
             </div>
-            <div class="badge bg-light text-muted rounded-pill px-3 py-2 fs-11 fw-semibold border">{{ accountDetails.length }} Attributes</div>
+            <div class="badge bg-light text-muted rounded-pill px-3 py-2 fs-11 fw-semibold border">{{ accountDetails.length }} Atribut</div>
           </div>
           <div class="card-body p-4 pt-3">
             <div class="row g-3">
@@ -733,14 +764,19 @@ const getRoleBadgeClass = (role: string) => {
                     <div class="form-item-icon" :class="item.colorClass" style="width:28px;height:28px"><i :class="item.icon" style="font-size:0.85rem"></i></div>
                     <div class="d-flex align-items-center gap-2"><label class="form-item-label mb-0 text-uppercase fs-10 fw-bold text-muted">{{ item.label }}</label><span v-if="item.badge" class="badge-source-info">{{ item.badge }}</span></div>
                   </div>
-                  <div class="form-group-split-input-card transition-all" :class="{ 'bg-light': !item.isEditable || !isEditMode, 'form-item-card--readonly': !item.isEditable && isEditMode, 'form-item-card--clickable': !isEditMode && item.isEditable }" @click="!isEditMode && item.isEditable && (isEditMode = true)">
+                  <div
+                    class="form-group-split-input-card transition-all"
+                    :class="{ 'bg-light': !item.isEditable || !isEditMode, 'form-item-card--readonly': !item.isEditable && isEditMode, 'form-item-card--clickable': !isEditMode && item.isEditable }"
+                    :data-tooltip="getFieldActionTooltip(item)"
+                    @click="!isEditMode && item.isEditable && (isEditMode = true)"
+                  >
                     <template v-if="isEditMode && item.isEditable">
-                       <select v-if="item.key === 'role'" v-model="formData.role" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option v-for="r in rolesData" :key="r.id" :value="r.name">{{ r.name }}</option></select>
+                       <select v-if="item.key === 'role'" v-model="formData.role" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option v-for="r in rolesData" :key="r.id" :value="r.name">{{ formatRoleLabel(r.name) }}</option></select>
                        <select v-else-if="item.key === 'status'" v-model="formData.status" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option value="Aktif">Aktif</option><option value="Nonaktif">Nonaktif</option></select>
                        <select v-else-if="item.key === 'jabatan'" v-model="formData.id_jabatan" class="form-item-input border-0 bg-transparent p-0 outline-none w-100"><option value="">Pilih Jabatan</option><option v-for="j in jabatanList" :key="j.id" :value="j.id">{{ j.nama_jabatan }}</option></select>
                        <input v-else v-model="formData[item.key]" type="text" class="form-item-input border-0 bg-transparent p-0 outline-none w-100" :placeholder="'Masukkan ' + item.label" />
                     </template>
-                    <template v-else><div class="form-item-value" :class="{ 'wrap-text': item.wrap, 'text-muted': !item.isEditable }">{{ item.value }}</div><i :class="item.isEditable ? 'ri-pencil-line form-item-edit-action text-primary' : 'ri-lock-line form-item-edit-action text-light-muted'" class="form-item-edit-action"></i></template>
+                    <template v-else><div class="form-item-value" :class="{ 'wrap-text': item.wrap, 'text-muted': !item.isEditable }">{{ item.value }}</div><i :class="item.isEditable ? 'ri-pencil-line form-item-edit-action text-primary' : 'ri-lock-line form-item-edit-action text-light-muted'" class="form-item-edit-action" :aria-label="getFieldActionTooltip(item)"></i></template>
                   </div>
                 </div>
               </div>
@@ -772,18 +808,18 @@ const getRoleBadgeClass = (role: string) => {
 }
 
 .stakeholders-shell-card, .stakeholder-profile-shell {
-  box-shadow: 0 15px 40px rgba(15, 23, 42, 0.08) !important;
-  border: 1px solid rgba(212, 224, 255, 0.6) !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+  border: 0 !important;
 }
 
-.premium-breadcrumb { display: flex; align-items: center; gap: 0.5rem; margin-top: -0.5rem; }
+.premium-breadcrumb { display: flex; align-items: center; gap: 0.5rem; margin-top: -0.25rem; }
 .breadcrumb-item { font-size: 11px; font-weight: 800; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 0.12em; }
 .breadcrumb-item.active { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
 .breadcrumb-sep { color: rgba(255, 255, 255, 0.4); font-size: 14px; }
 
 .profile-banner {
   position: relative;
-  min-height: 220px;
+  min-height: 185px;
   overflow: hidden;
   background-size: cover;
   background-position: center;
@@ -800,13 +836,13 @@ const getRoleBadgeClass = (role: string) => {
 .profile-banner-overlay-premium {
   position: relative;
   z-index: 2;
-  padding: 1.75rem 2.25rem;
+  padding: 1.35rem 2rem;
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.hero-main-title { font-size: 2.25rem; font-weight: 900; letter-spacing: -0.04em; margin-bottom: 0.25rem; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); color: #fff; }
+.hero-main-title { font-size: 2rem; font-weight: 900; letter-spacing: -0.04em; margin-bottom: 0.2rem; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); color: #fff; }
 .hero-sub-title { font-size: 0.95rem; font-weight: 500; max-width: 500px; color: rgba(255, 255, 255, 0.8); }
 
 .btn-premium { display: inline-flex; align-items: center; justify-content: center; padding: 0.6rem 1.25rem; border-radius: 999px; font-size: 12px; font-weight: 800; transition: all 0.3s ease; border: 1px solid transparent; gap: 0.5rem; }
@@ -818,20 +854,20 @@ const getRoleBadgeClass = (role: string) => {
 
 .profile-banner-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; width: 100%; }
 
-.profile-content-body--premium { position: relative; background: #fff; padding: 0 2rem 2rem; }
+.profile-content-body--premium { position: relative; background: #fff; padding: 0 2rem 1.5rem; }
 
-.profile-foto-profile-container { position: relative; z-index: 5; flex: 0 0 160px; margin-top: -80px; display: flex; justify-content: center; }
-.profile-foto-profile-wrap { width: 160px; height: 160px; border-radius: 50%; overflow: hidden; box-shadow: 0 15px 40px rgba(15, 23, 42, 0.15), 0 0 0 8px #fff; background: #fff; }
+.profile-foto-profile-container { position: relative; z-index: 5; flex: 0 0 136px; margin-top: -68px; display: flex; justify-content: center; }
+.profile-foto-profile-wrap { width: 136px; height: 136px; border-radius: 50%; overflow: hidden; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.13), 0 0 0 7px #fff; background: #fff; }
 .profile-foto-profile-img { width: 100%; height: 100%; object-fit: cover; }
 
-.profile-info-block { flex: 1 1 auto; min-width: 0; padding-top: 1.75rem; padding-left: 1rem; }
-.profile-content-body { display: flex; align-items: flex-start; gap: 2rem; }
+.profile-info-block { flex: 1 1 auto; min-width: 0; padding-top: 1.35rem; padding-left: 0.75rem; }
+.profile-content-body { display: flex; align-items: flex-start; gap: 1.5rem; }
 
 .profile-identity-topline { display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.4rem 1rem; border-radius: 999px; background: #eff6ff; color: #3b82f6; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #dbeafe; }
-.profile-user-name { font-size: 2.5rem; font-weight: 900; color: #0f172a; letter-spacing: -0.04em; }
+.profile-user-name { font-size: 2.1rem; font-weight: 900; color: #0f172a; letter-spacing: -0.04em; }
 
-.profile-badges-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
-.p-badge { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 12px; font-size: 12px; font-weight: 700; transition: all 0.2s ease; border: 1px solid transparent; }
+.profile-badges-row { display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center; }
+.p-badge { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.42rem 0.8rem; border-radius: 10px; font-size: 12px; font-weight: 700; transition: all 0.2s ease; border: 1px solid transparent; }
 .p-badge i { font-size: 14px; opacity: 0.8; }
 
 .p-badge--role-red { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
@@ -849,11 +885,12 @@ const getRoleBadgeClass = (role: string) => {
 
 .p-badge:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
 
-.profile-contact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; }
-.contact-item { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 16px; background: #f8fafc; border: 1px solid #f1f5f9; transition: all 0.3s ease; }
-.contact-item:hover { background: #fff; border-color: #e2e8f0; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.04); transform: translateY(-2px); }
+.profile-contact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.9rem; margin-top: 1.15rem; }
+.contact-item { display: flex; align-items: center; gap: 0.85rem; padding: 0.8rem 0.9rem; border-radius: 14px; background: #f8fafc; border: 1px solid #eef2f7; transition: all 0.22s ease; }
+.contact-item:hover { background: #fff; border-color: #dbe7ff; box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04); transform: translateY(-1px); }
+.contact-item--email { min-width: 270px; }
 
-.contact-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.contact-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
 .contact-icon--email { background: #e0e7ff; color: #4338ca; }
 .contact-icon--phone { background: #ede9fe; color: #6d28d9; }
 .contact-icon--location { background: #ffedd5; color: #c2410c; }
@@ -861,9 +898,109 @@ const getRoleBadgeClass = (role: string) => {
 
 .contact-content { display: flex; flex-direction: column; min-width: 0; }
 .contact-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
-.contact-value { font-size: 14px; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.contact-value { font-size: 14px; font-weight: 700; color: #1e293b; overflow-wrap: anywhere; word-break: normal; }
+.contact-value--email { display: block; max-width: 100%; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .form-item-edit-action { font-size: 16px; opacity: 0.4; }
+
+.profile-user-page .form-group-split,
+.profile-user-page .form-group-split-label-card,
+.profile-user-page .form-group-split-input-card {
+  overflow: visible;
+}
+
+.profile-user-page .form-group-split-label-card {
+  padding: 8px 14px;
+}
+
+.profile-user-page .form-group-split-input-card {
+  min-height: 44px;
+  padding: 9px 42px 9px 16px;
+}
+
+.profile-user-page .form-item-icon {
+  box-shadow: none !important;
+}
+
+.profile-user-page .stat-icon-blue,
+.profile-user-page .stat-icon-indigo,
+.profile-user-page .stat-icon-violet,
+.profile-user-page .stat-icon-amber,
+.profile-user-page .stat-icon-red,
+.profile-user-page .stat-icon-teal {
+  box-shadow: none !important;
+}
+
+.profile-user-page .stat-icon-blue { background: #eaf2ff !important; color: #2563eb !important; }
+.profile-user-page .stat-icon-indigo { background: #eef2ff !important; color: #4f46e5 !important; }
+.profile-user-page .stat-icon-violet { background: #f3edff !important; color: #7c3aed !important; }
+.profile-user-page .stat-icon-amber { background: #fff4e5 !important; color: #d97706 !important; }
+.profile-user-page .stat-icon-red { background: #feecec !important; color: #dc2626 !important; }
+.profile-user-page .stat-icon-teal { background: #e7f8f5 !important; color: #0f766e !important; }
+
+.profile-user-page .stat-icon-blue i,
+.profile-user-page .stat-icon-indigo i,
+.profile-user-page .stat-icon-violet i,
+.profile-user-page .stat-icon-amber i,
+.profile-user-page .stat-icon-red i,
+.profile-user-page .stat-icon-teal i {
+  color: currentColor !important;
+}
+
+.badge-source-info {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 0.22rem 0.5rem;
+  text-transform: none;
+}
+
+.form-group-split-input-card[data-tooltip]::after {
+  background: #0f172a;
+  border-radius: 8px;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  right: 8px;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+  z-index: 25;
+}
+
+.form-group-split-input-card[data-tooltip]::before {
+  border: 5px solid transparent;
+  border-top-color: #0f172a;
+  bottom: calc(100% + 3px);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 18px;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 26;
+}
+
+.form-group-split-input-card[data-tooltip]:hover::after,
+.form-group-split-input-card[data-tooltip]:focus-within::after,
+.form-group-split-input-card[data-tooltip]:hover::before,
+.form-group-split-input-card[data-tooltip]:focus-within::before {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 .foto-upload-float { position: absolute; bottom: 8px; right: 8px; width: 36px; height: 36px; }
 
@@ -1017,7 +1154,7 @@ const getRoleBadgeClass = (role: string) => {
 .profile-user-page.is-dark .stakeholder-profile-shell,
 .profile-user-page.is-dark .skel-card {
   background: #111827 !important;
-  border-color: rgba(148, 163, 184, 0.22) !important;
+  border: 0 !important;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
   color: #dbeafe !important;
 }
@@ -1277,14 +1414,548 @@ const getRoleBadgeClass = (role: string) => {
   border-color: rgba(148, 163, 184, 0.16) !important;
 }
 
+/* Dark mode polish for the profile surface. */
+:global(html[data-theme-mode="dark"]) .profile-user-page,
+:global(html.dark) .profile-user-page,
+.profile-user-page.is-dark {
+  --profile-dark-page: #060b24;
+  --profile-dark-shell: #0b1224;
+  --profile-dark-panel: #101a2d;
+  --profile-dark-panel-soft: #142033;
+  --profile-dark-field: #0d1526;
+  --profile-dark-line: rgba(148, 163, 184, 0.18);
+  --profile-dark-line-strong: rgba(125, 211, 252, 0.18);
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholder-profile-shell,
+:global(html.dark) .profile-user-page .stakeholder-profile-shell,
+.profile-user-page.is-dark .stakeholder-profile-shell {
+  background: linear-gradient(180deg, rgba(16, 26, 45, 0.98) 0%, rgba(11, 18, 36, 0.98) 100%) !important;
+  border: 0 !important;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.34) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholders-shell-card,
+:global(html.dark) .profile-user-page .stakeholders-shell-card,
+.profile-user-page.is-dark .stakeholders-shell-card {
+  background: linear-gradient(180deg, #101a2d 0%, #0c1425 100%) !important;
+  border-color: rgba(125, 211, 252, 0.14) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-content-body--premium,
+:global(html.dark) .profile-user-page .profile-content-body--premium,
+.profile-user-page.is-dark .profile-content-body--premium {
+  background: linear-gradient(180deg, #111b2e 0%, #0d1526 100%) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholders-shell-card .card-header,
+:global(html.dark) .profile-user-page .stakeholders-shell-card .card-header,
+.profile-user-page.is-dark .stakeholders-shell-card .card-header {
+  background: rgba(15, 23, 42, 0.52) !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stakeholders-shell-card .card-body,
+:global(html.dark) .profile-user-page .stakeholders-shell-card .card-body,
+.profile-user-page.is-dark .stakeholders-shell-card .card-body {
+  background: rgba(8, 13, 31, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-banner::after,
+:global(html.dark) .profile-user-page .profile-banner::after,
+.profile-user-page.is-dark .profile-banner::after {
+  background:
+    linear-gradient(180deg, rgba(8, 13, 31, 0.16) 0%, rgba(8, 13, 31, 0.82) 100%),
+    linear-gradient(90deg, rgba(14, 165, 233, 0.12) 0%, rgba(15, 23, 42, 0) 42%, rgba(15, 23, 42, 0.36) 100%) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .profile-foto-profile-wrap,
+:global(html.dark) .profile-user-page .profile-foto-profile-wrap,
+.profile-user-page.is-dark .profile-foto-profile-wrap {
+  background: #050816 !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38), 0 0 0 7px #111b2e, 0 0 0 8px rgba(125, 211, 252, 0.14) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-item,
+:global(html.dark) .profile-user-page .contact-item,
+.profile-user-page.is-dark .contact-item {
+  background: rgba(30, 41, 59, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-item:hover,
+:global(html.dark) .profile-user-page .contact-item:hover,
+.profile-user-page.is-dark .contact-item:hover {
+  background: rgba(36, 52, 77, 0.72) !important;
+  border-color: rgba(125, 211, 252, 0.26) !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-icon,
+:global(html.dark) .profile-user-page .contact-icon,
+.profile-user-page.is-dark .contact-icon {
+  box-shadow: none !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-icon--email,
+:global(html.dark) .profile-user-page .contact-icon--email,
+.profile-user-page.is-dark .contact-icon--email {
+  background: rgba(129, 140, 248, 0.16) !important;
+  color: #a5b4fc !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-icon--phone,
+:global(html.dark) .profile-user-page .contact-icon--phone,
+.profile-user-page.is-dark .contact-icon--phone {
+  background: rgba(167, 139, 250, 0.16) !important;
+  color: #c4b5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-icon--location,
+:global(html.dark) .profile-user-page .contact-icon--location,
+.profile-user-page.is-dark .contact-icon--location {
+  background: rgba(251, 146, 60, 0.16) !important;
+  color: #fdba74 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .contact-icon--joined,
+:global(html.dark) .profile-user-page .contact-icon--joined,
+.profile-user-page.is-dark .contact-icon--joined {
+  background: rgba(45, 212, 191, 0.16) !important;
+  color: #5eead4 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split,
+:global(html.dark) .profile-user-page .form-group-split,
+.profile-user-page.is-dark .form-group-split {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split-label-card,
+:global(html.dark) .profile-user-page .form-group-split-label-card,
+.profile-user-page.is-dark .form-group-split-label-card {
+  background: rgba(30, 41, 59, 0.62) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split-input-card,
+:global(html.dark) .profile-user-page .form-group-split-input-card,
+:global(html[data-theme-mode="dark"]) .profile-user-page .bg-light,
+:global(html.dark) .profile-user-page .bg-light,
+.profile-user-page.is-dark .form-group-split-input-card,
+.profile-user-page.is-dark .bg-light {
+  background: rgba(13, 21, 38, 0.92) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-group-split-input-card:hover,
+:global(html.dark) .profile-user-page .form-group-split-input-card:hover,
+.profile-user-page.is-dark .form-group-split-input-card:hover {
+  background: rgba(17, 28, 49, 0.96) !important;
+  border-color: rgba(96, 165, 250, 0.32) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-value,
+:global(html.dark) .profile-user-page .form-item-value,
+.profile-user-page.is-dark .form-item-value {
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-value.text-muted,
+:global(html.dark) .profile-user-page .form-item-value.text-muted,
+.profile-user-page.is-dark .form-item-value.text-muted {
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-card--clickable .form-item-edit-action,
+:global(html.dark) .profile-user-page .form-item-card--clickable .form-item-edit-action,
+.profile-user-page.is-dark .form-item-card--clickable .form-item-edit-action {
+  color: #60a5fa !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .badge.bg-light,
+:global(html.dark) .profile-user-page .badge.bg-light,
+.profile-user-page.is-dark .badge.bg-light {
+  background: rgba(37, 99, 235, 0.18) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+  color: #dbeafe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .badge-source-info,
+:global(html.dark) .profile-user-page .badge-source-info,
+.profile-user-page.is-dark .badge-source-info {
+  background: rgba(37, 99, 235, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.26) !important;
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge,
+:global(html.dark) .profile-user-page .p-badge,
+.profile-user-page.is-dark .p-badge {
+  box-shadow: none !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .p-badge:hover,
+:global(html.dark) .profile-user-page .p-badge:hover,
+.profile-user-page.is-dark .p-badge:hover {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .form-item-icon,
+:global(html.dark) .profile-user-page .form-item-icon,
+.profile-user-page.is-dark .form-item-icon {
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-blue,
+:global(html.dark) .profile-user-page .stat-icon-blue,
+.profile-user-page.is-dark .stat-icon-blue {
+  background: rgba(96, 165, 250, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.24) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-indigo,
+:global(html.dark) .profile-user-page .stat-icon-indigo,
+.profile-user-page.is-dark .stat-icon-indigo {
+  background: rgba(129, 140, 248, 0.15) !important;
+  border-color: rgba(165, 180, 252, 0.24) !important;
+  color: #a5b4fc !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-violet,
+:global(html.dark) .profile-user-page .stat-icon-violet,
+.profile-user-page.is-dark .stat-icon-violet {
+  background: rgba(167, 139, 250, 0.15) !important;
+  border-color: rgba(196, 181, 253, 0.24) !important;
+  color: #c4b5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-amber,
+:global(html.dark) .profile-user-page .stat-icon-amber,
+.profile-user-page.is-dark .stat-icon-amber {
+  background: rgba(251, 146, 60, 0.15) !important;
+  border-color: rgba(253, 186, 116, 0.24) !important;
+  color: #fdba74 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-red,
+:global(html.dark) .profile-user-page .stat-icon-red,
+.profile-user-page.is-dark .stat-icon-red {
+  background: rgba(248, 113, 113, 0.14) !important;
+  border-color: rgba(252, 165, 165, 0.24) !important;
+  color: #fca5a5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-teal,
+:global(html.dark) .profile-user-page .stat-icon-teal,
+.profile-user-page.is-dark .stat-icon-teal {
+  background: rgba(45, 212, 191, 0.14) !important;
+  border-color: rgba(94, 234, 212, 0.24) !important;
+  color: #5eead4 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-blue i,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-indigo i,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-violet i,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-amber i,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-red i,
+:global(html[data-theme-mode="dark"]) .profile-user-page .stat-icon-teal i,
+:global(html.dark) .profile-user-page .stat-icon-blue i,
+:global(html.dark) .profile-user-page .stat-icon-indigo i,
+:global(html.dark) .profile-user-page .stat-icon-violet i,
+:global(html.dark) .profile-user-page .stat-icon-amber i,
+:global(html.dark) .profile-user-page .stat-icon-red i,
+:global(html.dark) .profile-user-page .stat-icon-teal i,
+.profile-user-page.is-dark .stat-icon-blue i,
+.profile-user-page.is-dark .stat-icon-indigo i,
+.profile-user-page.is-dark .stat-icon-violet i,
+.profile-user-page.is-dark .stat-icon-amber i,
+.profile-user-page.is-dark .stat-icon-red i,
+.profile-user-page.is-dark .stat-icon-teal i {
+  color: currentColor !important;
+}
+
 @media (max-width: 768px) {
-  .profile-banner { min-height: 200px; }
-  .profile-banner-overlay-premium { padding: 1.5rem 1.5rem; }
-  .profile-content-body--premium { padding: 0 1.5rem 2rem; }
-  .profile-foto-profile-container { margin-top: -60px; flex: 0 0 140px; }
-  .profile-foto-profile-wrap { width: 140px; height: 140px; }
-  .profile-content-body { flex-direction: column; gap: 1rem; }
-  .profile-info-block { padding-top: 0.5rem; padding-left: 0; }
-  .profile-user-name { font-size: 1.75rem; }
+  .profile-user-page {
+    margin-inline: 0;
+  }
+
+  .profile-user-page > .col-12 {
+    padding-inline: 0.75rem;
+  }
+
+  .stakeholder-profile-shell,
+  .stakeholders-shell-card {
+    border-radius: 18px !important;
+  }
+
+  .profile-banner {
+    min-height: 285px;
+  }
+
+  .profile-banner-overlay-premium {
+    padding: 1.15rem 1.25rem;
+  }
+
+  .profile-banner-top {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .premium-breadcrumb {
+    flex-wrap: wrap;
+  }
+
+  .hero-main-title {
+    font-size: 1.45rem;
+    line-height: 1.18;
+    letter-spacing: 0;
+  }
+
+  .hero-sub-title {
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .profile-banner-top .d-flex.flex-wrap {
+    display: grid !important;
+    gap: 0.55rem !important;
+    width: 100%;
+  }
+
+  .hero-action-tools {
+    position: relative;
+    z-index: 6;
+    width: 100%;
+  }
+
+  .hero-action-tools > .d-flex {
+    display: grid !important;
+    gap: 0.55rem !important;
+    width: 100%;
+  }
+
+  .btn-premium {
+    min-height: 38px;
+    width: 100%;
+  }
+
+  .profile-content-body--premium {
+    padding: 1rem 1.05rem 1.2rem;
+  }
+
+  .profile-content-body {
+    align-items: center;
+    flex-direction: column;
+    gap: 0.8rem;
+    text-align: center;
+  }
+
+  .profile-foto-profile-container {
+    flex: 0 0 auto;
+    margin-top: -54px !important;
+    position: relative !important;
+    transform: none !important;
+    z-index: 1 !important;
+    width: 100%;
+  }
+
+  .profile-foto-profile-wrap {
+    height: 108px;
+    width: 108px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2), 0 0 0 5px #fff;
+  }
+
+  .btn-upload-camera {
+    bottom: 2px;
+    height: 32px;
+    right: calc(50% - 54px);
+    transform: translateX(42px);
+    width: 32px;
+  }
+
+  .profile-user-page .hero-action-tools,
+  .profile-user-page .hero-action-tools .btn-premium {
+    position: relative !important;
+    z-index: 20 !important;
+  }
+
+  .profile-user-page .profile-content-body,
+  .profile-user-page .profile-content-body--premium {
+    padding-top: 1rem !important;
+  }
+
+  .profile-user-page .profile-foto-profile-container {
+    margin-top: -54px !important;
+    transform: none !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  .profile-info-block {
+    padding-left: 0;
+    padding-top: 0;
+    width: 100%;
+  }
+
+  .profile-user-name {
+    font-size: clamp(1.45rem, 7vw, 1.85rem);
+    letter-spacing: 0;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-user-name-input {
+    font-size: clamp(1.35rem, 7vw, 1.75rem);
+    text-align: center;
+  }
+
+  .profile-badges-row {
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .p-badge {
+    max-width: 100%;
+    min-height: 34px;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .p-badge--company,
+  .p-badge--sector {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .profile-contact-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    text-align: left;
+  }
+
+  .contact-item,
+  .contact-item--email {
+    min-width: 0;
+    padding: 0.78rem;
+    width: 100%;
+  }
+
+  .contact-icon {
+    height: 38px;
+    width: 38px;
+  }
+
+  .contact-value,
+  .contact-value--email {
+    font-size: 0.86rem;
+    white-space: normal;
+  }
+
+  .stakeholders-shell-card .card-header {
+    align-items: flex-start !important;
+    gap: 0.75rem;
+    padding-inline: 1rem !important;
+  }
+
+  .stakeholders-shell-card .card-body {
+    padding: 1rem !important;
+  }
+
+  .profile-user-page .form-group-split {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .profile-user-page .form-group-split-label-card,
+  .profile-user-page .form-group-split-input-card {
+    border-radius: 14px;
+    width: 100%;
+  }
+
+  .profile-user-page .form-group-split-label-card {
+    padding: 8px 10px;
+  }
+
+  .profile-user-page .form-group-split-label-card > .d-flex {
+    min-width: 0;
+  }
+
+  .profile-user-page .form-group-split-input-card {
+    min-height: 42px;
+    padding: 9px 38px 9px 12px;
+  }
+
+  .form-item-value {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .form-group-split-input-card[data-tooltip]::before,
+  .form-group-split-input-card[data-tooltip]::after {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .profile-user-page > .col-12 {
+    padding-inline: 0.35rem;
+  }
+
+  .profile-banner {
+    min-height: 275px;
+  }
+
+  .profile-banner-overlay-premium {
+    padding: 1rem;
+  }
+
+  .profile-content-body--premium {
+    padding-inline: 0.85rem;
+    padding-top: 1rem;
+  }
+
+  .profile-user-page .profile-banner {
+    min-height: 285px;
+  }
+
+  .profile-foto-profile-wrap {
+    height: 100px;
+    width: 100px;
+  }
+
+  .btn-upload-camera {
+    right: calc(50% - 50px);
+  }
+
+  .profile-user-page .profile-foto-profile-container {
+    margin-top: -50px !important;
+  }
+
+  .profile-badges-row {
+    align-items: stretch;
+  }
+
+  .p-badge {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .contact-item {
+    align-items: flex-start;
+  }
+
+  .stakeholders-shell-card .card-header {
+    flex-direction: column;
+  }
 }
 </style>

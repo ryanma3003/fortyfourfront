@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
+import gsap from 'gsap';
 import { useRoute, useRouter } from 'vue-router';
 import { useStakeholdersStore } from '../stores/stakeholders';
-import { ikasDataStatic } from '../data/ikas-data';
 import { useIkasStore } from '../stores/ikas';
 import { useDynamicAssessmentStore } from '../stores/dynamic-assessment';
 import { useAuthStore } from '../stores/auth';
@@ -23,6 +23,7 @@ const currentYear = new Date().getFullYear();
 const currentMeasurementYear = String(currentYear);
 const activeMeasurementYear = ref(String(route.query.year || currentMeasurementYear));
 const tableMeasurementYear = computed(() => activeMeasurementYear.value || currentMeasurementYear);
+let hydrateCurrentStakeholderPromise = null;
 
 const getRecordMeasurementYear = (record) => {
     const explicitYear = String(
@@ -41,44 +42,57 @@ const getRecordMeasurementYear = (record) => {
 };
 
 const hydrateCurrentStakeholderIkas = async () => {
+    if (hydrateCurrentStakeholderPromise) {
+        return hydrateCurrentStakeholderPromise;
+    }
+
     // Start store initializations in parallel
-    const initPromises = [
-        ikasStore.initialize(),
-        assessmentStore.initialize()
-    ];
-    
-    if (!stakeholdersStore.initialized) {
-        initPromises.push(stakeholdersStore.initialize());
-    }
-    await Promise.all(initPromises);
+    hydrateCurrentStakeholderPromise = (async () => {
+      const initPromises = [
+            assessmentStore.fetchAssessmentStructure({ includeMasterStructure: false }),
+        ];
 
-    const slug = String(route.query.slug || '');
-    if (!slug) return;
-
-    const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
-    assessmentStore.setCurrentStakeholder(slug);
-
-    if (stakeholder?.id) {
-        const requestedYear = String(route.query.year || '');
-        // Fetch IKAS record and answers in parallel
-        const [ikasResult] = await Promise.all([
-            ikasStore.fetchFromBackend(slug, stakeholder.id, requestedYear),
-            assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id)
-        ]);
-        
-        activeMeasurementYear.value =
-            ikasResult.respondentData?.tahun_pengukuran ||
-            getRecordMeasurementYear(ikasResult.ikasRecord) ||
-            requestedYear ||
-            currentMeasurementYear;
-
-        if (!ikasResult.exists) {
-            assessmentStore.resetStakeholderData(slug);
+        if (!stakeholdersStore.initialized) {
+            initPromises.push(stakeholdersStore.initialize());
         }
-    }
+        await Promise.all(initPromises);
 
-    assessmentStore.syncToIkas(slug);
-    ikasStore.recalculate(slug);
+        const slug = String(route.query.slug || '');
+        if (!slug) return;
+
+        const stakeholder = stakeholdersStore.getStakeholderBySlug(slug);
+        assessmentStore.setCurrentStakeholder(slug);
+        assessmentStore.resetStakeholderData(slug);
+
+        if (stakeholder?.id) {
+            const requestedYear = String(route.query.year || activeMeasurementYear.value || currentMeasurementYear);
+            const ikasResult = await ikasStore.fetchFromBackend(
+                slug,
+                String(route.query.perusahaan_id || stakeholder.id || ''),
+                requestedYear,
+                String(route.query.ikas_id || '')
+            );
+
+            activeMeasurementYear.value = ikasResult.exists
+                ? (
+                    ikasResult.respondentData?.tahun_pengukuran ||
+                    getRecordMeasurementYear(ikasResult.ikasRecord) ||
+                    requestedYear ||
+                    currentMeasurementYear
+                )
+                : (requestedYear || currentMeasurementYear);
+
+            if (ikasResult.exists) {
+                await assessmentStore.hydrateAnswersFromBackend(slug, stakeholder.id);
+            }
+        }
+    })();
+
+    try {
+        await hydrateCurrentStakeholderPromise;
+    } finally {
+        hydrateCurrentStakeholderPromise = null;
+    }
 };
 
 // Theme mode synchronization
@@ -129,7 +143,17 @@ watch(
 // Get current stakeholder slug and source
 const currentSlug = computed(() => String(route.query.slug || ''));
 const currentSource = computed(() => String(route.query.source || ''));
-const currentIkasId = computed(() => ikasStore.getBackendIkasId(currentSlug.value));
+const currentIkasSummary = computed(() => (
+    currentSlug.value ? ikasStore.getIkasSummary(currentSlug.value) : null
+));
+const currentIkasId = computed(() => {
+    const summaryId = String(currentIkasSummary.value?.id || '');
+    const backendId = String(ikasStore.getBackendIkasId(currentSlug.value) || '');
+    const resolvedId = summaryId || backendId;
+    return resolvedId && !ikasStore.isHiddenIkasId(resolvedId) ? resolvedId : '';
+});
+const hasActiveIkasRecord = computed(() => !!currentIkasId.value);
+const currentPerusahaanId = computed(() => String(route.query.perusahaan_id || currentStakeholder.value?.id || ''));
 const canRequestEdit = computed(() => authStore.isFullAdmin);
 
 const handleComparisonYearSelected = (year) => {
@@ -165,14 +189,29 @@ const ikasDataDynamic = computed(() => {
     };
 });
 
-const ikasAnsweredQuestions = computed(() => assessmentStore.answeredQuestions || 0);
-const ikasTotalQuestions = computed(() => assessmentStore.totalQuestions || 0);
+const ikasQuestionAnsweredCount = computed(() => assessmentStore.answeredQuestions || 0);
+const ikasQuestionTotalCount = computed(() => assessmentStore.totalQuestions || 0);
+const ikasSubdomainProgress = computed(() => {
+    if (!currentSlug.value) {
+        return { answered: 0, total: 0, percent: 0 };
+    }
+    return ikasStore.getOverallProgress(currentSlug.value);
+});
+const ikasAnsweredQuestions = computed(() => (
+    ikasQuestionAnsweredCount.value
+));
+const ikasTotalQuestions = computed(() => (
+    ikasQuestionTotalCount.value
+));
 const ikasCompletionPercentage = computed(() => {
     const total = ikasTotalQuestions.value;
     if (!total) return 0;
     return Math.min(100, Math.round((ikasAnsweredQuestions.value / total) * 100));
 });
 const ikasPendingQuestions = computed(() => Math.max(ikasTotalQuestions.value - ikasAnsweredQuestions.value, 0));
+const ikasProgressUnitLabel = computed(() => (
+    'jawaban terisi'
+));
 
 const currentTargetScore = computed(() => {
     const slug = currentSlug.value;
@@ -181,11 +220,303 @@ const currentTargetScore = computed(() => {
     return Number(raw?.target_nilai || 0);
 });
 
+const currentTargetScoreDisplay = computed(() => (
+    currentTargetScore.value > 0 ? currentTargetScore.value.toFixed(2) : '-'
+));
+
+const getNumericScore = (value) => {
+    if (value === null || value === undefined || value === '' || value === 'NA') return null;
+    const parsed = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const calculateAverageScore = (values) => {
+    const numericValues = values.filter((value) => typeof value === 'number' && Number.isFinite(value));
+    const hasNa = values.some((value) => value === 'NA');
+
+    if (hasNa && !numericValues.length) return 'NA';
+    if (!numericValues.length) return 0;
+
+    return Number((numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length).toFixed(2));
+};
+
+const ikasDisplayTotalScore = computed(() => {
+    const data = ikasDataDynamic.value;
+    const domainValues = [
+        data?.identifikasi?.nilai_identifikasi,
+        data?.proteksi?.nilai_proteksi,
+        data?.deteksi?.nilai_deteksi,
+        data?.tanggulih?.nilai_tanggulih,
+    ];
+
+    return calculateAverageScore(domainValues);
+});
+
+const ikasPrimaryTotalScore = computed(() => {
+    const slug = currentSlug.value;
+    const summary = ikasStore.ikasSummaryMap[slug];
+    const raw = summary?.raw;
+    const explicitScore = getNumericScore(
+        raw?.nilai_kematangan ??
+        raw?.total_rata_rata ??
+        ikasDataDynamic.value?.total_rata_rata
+    );
+
+    if (explicitScore !== null) {
+        return explicitScore;
+    }
+
+    return ikasDisplayTotalScore.value;
+});
+
+const ikasDisplayTotalCategory = computed(() => {
+    const score = ikasPrimaryTotalScore.value;
+    if (score === 'NA') return 'Not Applicable';
+    if (score <= 0) return 'INPUT BELUM LENGKAP';
+    if (score < 1.5) return 'Level 1 - Awal';
+    if (score < 2.5) return 'Level 2 - Berulang';
+    if (score < 3.5) return 'Level 3 - Terdefinisi';
+    if (score < 4.5) return 'Level 4 - Terkelola';
+    return 'Level 5 - Optimal';
+});
+
 const isBelowTarget = computed(() => {
     if (!currentTargetScore.value || currentTargetScore.value <= 0) return false;
-    const score = Number(ikasDataDynamic.value.total_rata_rata || 0);
+    const score = Number(ikasPrimaryTotalScore.value || 0);
     return score < currentTargetScore.value;
 });
+
+const shouldShowBelowTargetWarning = computed(() => {
+    const isEmptyCurrentYear = (
+        String(tableMeasurementYear.value) === String(currentMeasurementYear) &&
+        !currentIkasId.value
+    );
+
+    return isBelowTarget.value && !isEmptyCurrentYear;
+});
+
+const popupCardRef = ref(null);
+const popupToastRef = ref(null);
+const popupState = reactive({
+    open: false,
+    mode: 'alert',
+    variant: 'info',
+    title: '',
+    message: '',
+    confirmText: 'OK',
+    cancelText: 'Batal',
+    inputValue: '',
+    inputPlaceholder: '',
+    resolve: null,
+});
+
+const toastState = reactive({
+    visible: false,
+    variant: 'success',
+    title: '',
+    message: '',
+});
+
+const importModalCardRef = ref(null);
+const importModalState = reactive({
+    open: false,
+    stage: 'idle',
+    title: 'Import Excel IKAS',
+    message: '',
+    fileName: '',
+    saveLoading: false,
+    finishLoading: false,
+});
+
+const importIsComplete = computed(() => {
+    const total = Number(assessmentStore.totalQuestions || 0);
+    return total > 0 && Number(assessmentStore.answeredQuestions || 0) >= total;
+});
+
+const openPopup = async ({
+    mode = 'alert',
+    variant = 'info',
+    title = '',
+    message = '',
+    confirmText = 'OK',
+    cancelText = 'Batal',
+    inputValue = '',
+    inputPlaceholder = '',
+} = {}) => {
+    popupState.open = true;
+    popupState.mode = mode;
+    popupState.variant = variant;
+    popupState.title = title;
+    popupState.message = message;
+    popupState.confirmText = confirmText;
+    popupState.cancelText = cancelText;
+    popupState.inputValue = inputValue;
+    popupState.inputPlaceholder = inputPlaceholder;
+
+    await nextTick();
+    if (popupCardRef.value) {
+        gsap.fromTo(
+            popupCardRef.value,
+            { y: 20, opacity: 0, scale: 0.96 },
+            { y: 0, opacity: 1, scale: 1, duration: 0.28, ease: 'power2.out' }
+        );
+    }
+
+    return new Promise((resolve) => {
+        popupState.resolve = resolve;
+    });
+};
+
+const closePopup = async (confirmed = false) => {
+    const resolver = popupState.resolve;
+    if (popupCardRef.value) {
+        await gsap.to(popupCardRef.value, {
+            y: 12,
+            opacity: 0,
+            scale: 0.98,
+            duration: 0.18,
+            ease: 'power2.in',
+        });
+    }
+
+    popupState.open = false;
+    popupState.resolve = null;
+
+    if (resolver) {
+        resolver({
+            confirmed,
+            value: popupState.inputValue,
+        });
+    }
+};
+
+const showToastPopup = async ({
+    variant = 'success',
+    title = '',
+    message = '',
+} = {}) => {
+    toastState.visible = true;
+    toastState.variant = variant;
+    toastState.title = title;
+    toastState.message = message;
+
+    await nextTick();
+    if (popupToastRef.value) {
+        gsap.killTweensOf(popupToastRef.value);
+        gsap.fromTo(
+            popupToastRef.value,
+            { x: 30, opacity: 0, scale: 0.96 },
+            { x: 0, opacity: 1, scale: 1, duration: 0.25, ease: 'power2.out' }
+        );
+        gsap.to(popupToastRef.value, {
+            opacity: 0,
+            x: 18,
+            duration: 0.24,
+            ease: 'power2.in',
+            delay: 2.2,
+            onComplete: () => {
+                toastState.visible = false;
+            },
+        });
+    }
+};
+
+const openImportModal = async ({
+    stage = 'uploading',
+    title = 'Import Excel IKAS',
+    message = '',
+    fileName = '',
+} = {}) => {
+    importModalState.open = true;
+    importModalState.stage = stage;
+    importModalState.title = title;
+    importModalState.message = message;
+    importModalState.fileName = fileName;
+    importModalState.saveLoading = false;
+    importModalState.finishLoading = false;
+
+    await nextTick();
+    if (importModalCardRef.value) {
+        gsap.fromTo(
+            importModalCardRef.value,
+            { y: 18, opacity: 0, scale: 0.97 },
+            { y: 0, opacity: 1, scale: 1, duration: 0.24, ease: 'power2.out' }
+        );
+    }
+};
+
+const closeImportModal = async (force = false) => {
+    if (!force && (importModalState.saveLoading || importModalState.finishLoading)) return;
+
+    if (importModalCardRef.value) {
+        await gsap.to(importModalCardRef.value, {
+            y: 10,
+            opacity: 0,
+            scale: 0.98,
+            duration: 0.18,
+            ease: 'power2.in',
+        });
+    }
+
+    importModalState.open = false;
+};
+
+const finalizeImportedIkas = async (mode = 'save') => {
+    const slug = currentSlug.value;
+    const stakeholder = currentStakeholder.value;
+
+    if (!slug || !stakeholder?.id) {
+        showCornerToast('error', 'Data stakeholder tidak ditemukan.', 'Gagal');
+        return;
+    }
+
+    const isFinish = mode === 'finish';
+    const loadingKey = isFinish ? 'finishLoading' : 'saveLoading';
+    if (importModalState.saveLoading || importModalState.finishLoading) return;
+
+    importModalState[loadingKey] = true;
+
+    try {
+        const importPayload = getImportMetadata();
+        const result = await ikasStore.submitToBackend(slug, {
+            id_perusahaan: stakeholder.id,
+            responden: importPayload.responden,
+            jabatan: importPayload.jabatan,
+            telepon: importPayload.telepon,
+            tanggal: importPayload.tanggal,
+            tahun_pengukuran: activeMeasurementYear.value || currentMeasurementYear,
+            target_nilai: importPayload.target_nilai,
+        });
+
+        if (!result.success) {
+            throw new Error(result.error || 'Gagal menyimpan data IKAS ke server');
+        }
+
+        if (isFinish) {
+            await hydrateBackendAnswersUntilSettled(slug, stakeholder.id, 5, 1500);
+        }
+
+        if (isFinish) {
+            importModalState.finishLoading = false;
+            await closeImportModal(true);
+        }
+
+        showCornerToast(
+            'success',
+            isFinish
+                ? 'Data IKAS berhasil disimpan.'
+                : 'Data IKAS berhasil disimpan.',
+            'Berhasil'
+        );
+        window.dispatchEvent(new Event('ikas-requests-updated'));
+    } catch (error) {
+        console.error('[IKAS] Finalize import failed:', error);
+        showCornerToast('error', error?.message || 'Terjadi kesalahan saat menyimpan hasil import.', 'Gagal');
+    } finally {
+        importModalState.saveLoading = false;
+        importModalState.finishLoading = false;
+    }
+};
 
 const editRequestReasonLabel = computed(() => {
     if (ikasDataDynamic.value.edit_request_status === 'rejected') {
@@ -256,7 +587,9 @@ const goToIkasCrud = () => {
     if (currentSource.value) {
         query.source = currentSource.value;
     }
-    router.push({ path: '/ikas-crud', query });
+    assessmentStore.initialize().finally(() => {
+        router.push({ path: '/ikas-crud', query });
+    });
 };
 
 const ensureEditableIkas = () => {
@@ -271,25 +604,54 @@ const ensureEditableIkas = () => {
 
 const isDeleting = ref(false);
 const deleteAssessment = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) {
-        alert('Tidak ada data penilaian untuk dihapus.');
+        await showToastPopup({
+            variant: 'warning',
+            title: 'Tidak ada data',
+            message: 'Tidak ada data penilaian untuk dihapus.',
+        });
         return;
     }
 
-    if (!confirm('Apakah Anda yakin ingin menghapus data penilaian IKAS ini? Tindakan ini tidak dapat dibatalkan.')) {
+    const confirmation = await openPopup({
+        mode: 'confirm',
+        variant: 'danger',
+        title: 'Hapus Data IKAS',
+        message: 'Data penilaian IKAS akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+    });
+
+    if (!confirmation.confirmed) {
         return;
     }
 
     isDeleting.value = true;
     try {
         await ikasStore.deleteFromBackend(ikasId);
-        alert('Data penilaian berhasil dihapus.');
-        // Refresh page or redirect
-        router.push({ path: '/stakeholders' });
+        ikasStore.resetStakeholderData(currentSlug.value);
+        assessmentStore.resetStakeholderData(currentSlug.value);
+        await router.replace({
+            path: route.path,
+            query: {
+                ...route.query,
+                ikas_id: undefined,
+            },
+        });
+        await hydrateCurrentStakeholderIkas();
+        await showToastPopup({
+            variant: 'success',
+            title: 'Berhasil dihapus',
+            message: 'Data penilaian IKAS berhasil dihapus.',
+        });
     } catch (error) {
         console.error('Delete error:', error);
-        alert('Gagal menghapus data penilaian: ' + (error.message || 'Unknown error'));
+        await showToastPopup({
+            variant: 'danger',
+            title: 'Gagal menghapus',
+            message: error?.message || 'Terjadi kesalahan saat menghapus data.',
+        });
     } finally {
         isDeleting.value = false;
     }
@@ -349,13 +711,26 @@ const syncIkasRecordState = ({ editRequestStatus, editRequestReason, isValidated
 };
 
 const validateAssessment = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) {
-        alert('Tidak ada data penilaian untuk divalidasi.');
+        await showToastPopup({
+            variant: 'warning',
+            title: 'Tidak ada data',
+            message: 'Tidak ada data penilaian untuk divalidasi.',
+        });
         return;
     }
 
-    if (!confirm('Apakah Anda yakin ingin memvalidasi data penilaian IKAS ini?')) {
+    const confirmation = await openPopup({
+        mode: 'confirm',
+        variant: 'primary',
+        title: 'Validasi Data IKAS',
+        message: 'Pastikan data sudah benar. Setelah divalidasi, data akan dikunci sampai ada request edit.',
+        confirmText: 'Validasi',
+        cancelText: 'Batal',
+    });
+
+    if (!confirmation.confirmed) {
         return;
     }
 
@@ -364,22 +739,34 @@ const validateAssessment = async () => {
         console.warn('[IKAS] Triggering validation for ID:', ikasId);
         const result = await ikasStore.validateIkas(currentSlug.value);
         if (result.success) {
-            alert('Data penilaian berhasil divalidasi.');
             syncIkasRecordState({ editRequestStatus: 'none', isValidated: true });
+            await showToastPopup({
+                variant: 'success',
+                title: 'Validasi berhasil',
+                message: 'Data penilaian IKAS berhasil divalidasi.',
+            });
         } else {
             console.error('[IKAS] Validation failed:', result.error);
-            alert('Gagal memvalidasi data: ' + result.error);
+            await showToastPopup({
+                variant: 'danger',
+                title: 'Validasi gagal',
+                message: result.error || 'Gagal memvalidasi data.',
+            });
         }
     } catch (err) {
         console.error('[IKAS] Error during validation process:', err);
-        alert('Terjadi kesalahan saat memvalidasi data.');
+        await showToastPopup({
+            variant: 'danger',
+            title: 'Validasi gagal',
+            message: 'Terjadi kesalahan saat memvalidasi data.',
+        });
     } finally {
         isValidating.value = false;
     }
 };
 
 const requestEdit = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) {
         alert('Tidak ada data penilaian untuk diajukan request edit.');
         return;
@@ -418,51 +805,97 @@ const isApproving = ref(false);
 const isRejecting = ref(false);
 
 const approveEdit = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) return;
 
-    if (!confirm('Apakah Anda yakin ingin menyetujui permintaan edit IKAS ini?')) return;
+    const confirmation = await openPopup({
+        mode: 'confirm',
+        variant: 'success',
+        title: 'Setujui Request Edit',
+        message: 'Permintaan edit akan disetujui dan data IKAS bisa diedit kembali.',
+        confirmText: 'Setujui',
+        cancelText: 'Batal',
+    });
+
+    if (!confirmation.confirmed) return;
 
     isApproving.value = true;
     try {
         const result = await ikasStore.approveEditIkas(currentSlug.value);
         if (result.success) {
-            alert('Permintaan edit berhasil disetujui.');
             syncIkasRecordState({ editRequestStatus: 'approved', isValidated: false });
+            await showToastPopup({
+                variant: 'success',
+                title: 'Request disetujui',
+                message: 'Permintaan edit IKAS berhasil disetujui.',
+            });
         } else {
-            alert('Gagal menyetujui edit: ' + result.error);
+            await showToastPopup({
+                variant: 'danger',
+                title: 'Gagal menyetujui',
+                message: result.error || 'Gagal menyetujui request edit.',
+            });
         }
     } catch (err) {
         console.error('[IKAS] Approve edit error:', err);
-        alert('Terjadi kesalahan saat menyetujui edit.');
+        await showToastPopup({
+            variant: 'danger',
+            title: 'Gagal menyetujui',
+            message: 'Terjadi kesalahan saat menyetujui edit.',
+        });
     } finally {
         isApproving.value = false;
     }
 };
 
 const rejectEdit = async () => {
-    const ikasId = ikasStore.getBackendIkasId(currentSlug.value);
+    const ikasId = currentIkasId.value;
     if (!ikasId) return;
 
-    const reason = prompt('Masukkan alasan penolakan:');
-    if (reason === null) return; // User cancelled
-    if (!reason.trim()) {
-        alert('Alasan penolakan wajib diisi agar user tahu apa yang perlu diperbaiki.');
+    const promptResult = await openPopup({
+        mode: 'prompt',
+        variant: 'warning',
+        title: 'Tolak Request Edit',
+        message: 'Masukkan alasan penolakan agar user tahu apa yang perlu diperbaiki.',
+        confirmText: 'Tolak Request',
+        cancelText: 'Batal',
+        inputPlaceholder: 'Tulis alasan penolakan...',
+    });
+
+    if (!promptResult.confirmed) return;
+    if (!promptResult.value.trim()) {
+        await showToastPopup({
+            variant: 'warning',
+            title: 'Alasan wajib diisi',
+            message: 'Alasan penolakan wajib diisi agar user tahu apa yang perlu diperbaiki.',
+        });
         return;
     }
 
     isRejecting.value = true;
     try {
-        const result = await ikasStore.rejectEditIkas(currentSlug.value, reason.trim());
+        const result = await ikasStore.rejectEditIkas(currentSlug.value, promptResult.value.trim());
         if (result.success) {
-            alert('Permintaan edit berhasil ditolak.');
-            syncIkasRecordState({ editRequestStatus: 'rejected', editRequestReason: reason.trim(), isValidated: true });
+            syncIkasRecordState({ editRequestStatus: 'rejected', editRequestReason: promptResult.value.trim(), isValidated: true });
+            await showToastPopup({
+                variant: 'success',
+                title: 'Request ditolak',
+                message: 'Permintaan edit IKAS berhasil ditolak.',
+            });
         } else {
-            alert('Gagal menolak edit: ' + result.error);
+            await showToastPopup({
+                variant: 'danger',
+                title: 'Gagal menolak',
+                message: result.error || 'Gagal menolak request edit.',
+            });
         }
     } catch (err) {
         console.error('[IKAS] Reject edit error:', err);
-        alert('Terjadi kesalahan saat menolak edit.');
+        await showToastPopup({
+            variant: 'danger',
+            title: 'Gagal menolak',
+            message: 'Terjadi kesalahan saat menolak edit.',
+        });
     } finally {
         isRejecting.value = false;
     }
@@ -471,9 +904,66 @@ const rejectEdit = async () => {
 // --- STATE: Upload Excel Feature ---
 const fileInput = ref(null);
 const selectedFile = ref(null);
+const lastImportResult = ref(null);
 const tableData = ref([]);
 const loading = ref(false);
 const errorMessage = ref('');
+
+const getImportMetadata = () => {
+    const slug = currentSlug.value;
+    const stakeholder = currentStakeholder.value;
+    const summary = slug ? ikasStore.ikasSummaryMap[slug]?.raw || {} : {};
+    const profile = slug ? assessmentStore.respondentProfile : null;
+    const targetNilai = Number(
+        profile?.targetNilai ||
+        summary?.target_nilai ||
+        0
+    ) || 0;
+
+    const fallbackRespondent = String(
+        profile?.namaResponden ||
+        summary?.responden ||
+        stakeholder?.nama_perusahaan ||
+        'Import Excel IKAS'
+    ).trim();
+
+    return {
+        id_perusahaan: currentPerusahaanId.value || stakeholder?.id || summary?.perusahaan?.id || '',
+        tanggal: String(
+            profile?.tanggalPengisian ||
+            summary?.tanggal ||
+            summary?.tanggal_pengisian ||
+            summary?.tanggal_pengukuran ||
+            new Date().toISOString().split('T')[0]
+        ).split('T')[0],
+        responden: fallbackRespondent || 'Import Excel IKAS',
+        telepon: String(profile?.nomorTelepon || summary?.telepon || '-').trim() || '-',
+        jabatan: String(profile?.jabatanResponden || summary?.jabatan || '-').trim() || '-',
+        target_nilai: targetNilai,
+    };
+};
+
+const buildRespondentProfileFromImport = () => {
+    const stakeholder = currentStakeholder.value;
+    const metadata = getImportMetadata();
+
+    return {
+        instansi: stakeholder?.nama_perusahaan || '',
+        sektor: stakeholder?.sub_sektor?.nama_sub_sektor || stakeholder?.sektor || '',
+        alamat: stakeholder?.alamat || '',
+        email: stakeholder?.email || '',
+        namaResponden: metadata.responden,
+        jabatanResponden: metadata.jabatan,
+        nomorTelepon: metadata.telepon,
+        tahunPengukuran: activeMeasurementYear.value || currentMeasurementYear,
+        targetLevel: metadata.target_nilai,
+        targetNilai: String(metadata.target_nilai || ''),
+        acuan: '',
+        tanggalPengisian: metadata.tanggal,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+    };
+};
 
 // --- FUNCTION: Trigger Input File ---
 const triggerFileInput = () => {
@@ -496,7 +986,7 @@ const handleFile = (event) => {
 
     if (!isValidExt) {
         errorMessage.value = 'Format file harus .xlsx atau .xls';
-        alert(errorMessage.value); // Simple alert for now as requested by "logic only" scope
+        showCornerToast('error', errorMessage.value, 'Gagal upload');
         event.target.value = ''; // Reset input
         return;
     }
@@ -510,14 +1000,27 @@ const handleFile = (event) => {
 const uploadExcel = async () => {
     if (!selectedFile.value) {
         errorMessage.value = 'Pilih file terlebih dahulu!';
+        showCornerToast('error', errorMessage.value, 'Gagal upload');
         return;
     }
 
     loading.value = true;
     errorMessage.value = '';
+    await openImportModal({
+        stage: 'uploading',
+        title: 'Memproses Import Excel',
+        message: 'File sedang diunggah dan data IKAS sedang disiapkan.',
+        fileName: selectedFile.value?.name || '',
+    });
 
     const formData = new FormData();
+    const importMetadata = getImportMetadata();
     formData.append('file', selectedFile.value);
+    formData.append('id_perusahaan', String(importMetadata.id_perusahaan || ''));
+    formData.append('tanggal', String(importMetadata.tanggal || ''));
+    formData.append('responden', String(importMetadata.responden || ''));
+    formData.append('telepon', String(importMetadata.telepon || ''));
+    formData.append('jabatan', String(importMetadata.jabatan || ''));
 
     try {
         // Mengirim file ke endpoint backend
@@ -529,24 +1032,67 @@ const uploadExcel = async () => {
         });
 
         const result = await response.json();
+        lastImportResult.value = result;
+        const isSuccess = resolveUploadSuccess(response, result);
+        const resolvedMessage = resolveUploadErrorMessage(result, response.ok ? '' : 'Gagal mengupload file');
 
-        if (!response.ok) {
-            throw new Error(result.message || 'Gagal mengupload file');
+        if (!isSuccess) {
+            throw new Error(resolvedMessage);
         }
 
-        if (result.success) {
-            // Mengisi data hasil response ke state tableData
-            tableData.value = result.data;
-            alert('Upload berhasil!');
-        } else {
-            throw new Error(result.message || 'Terjadi kesalahan pada server');
+        tableData.value = Array.isArray(result?.data) ? result.data : [];
+        const stakeholder = currentStakeholder.value;
+        const slug = currentSlug.value;
+        const importPayload = getImportMetadata();
+
+        await ikasStore.refresh();
+        await hydrateCurrentStakeholderIkas();
+
+        if (slug && stakeholder?.id) {
+            assessmentStore.saveRespondentProfile(buildRespondentProfileFromImport());
+
+            let finalIkasId = ikasStore.getBackendIkasId(slug);
+            if (!finalIkasId) {
+                const ensureResult = await ikasStore.ensureBackendIkasRecord(slug, {
+                    id_perusahaan: stakeholder.id,
+                    responden: importPayload.responden,
+                    jabatan: importPayload.jabatan,
+                    telepon: importPayload.telepon,
+                    tanggal: importPayload.tanggal,
+                    tahun_pengukuran: activeMeasurementYear.value || currentMeasurementYear,
+                    target_nilai: importPayload.target_nilai,
+                });
+
+                if (!ensureResult.success) {
+                    throw new Error(ensureResult.error || 'Gagal menyiapkan data IKAS setelah import');
+                }
+
+                await ikasStore.refresh();
+                await hydrateCurrentStakeholderIkas();
+                finalIkasId = ikasStore.getBackendIkasId(slug);
+            }
+
+            if (!finalIkasId) {
+                throw new Error('IKAS ID tidak ditemukan setelah import');
+            }
+
+            await hydrateBackendAnswersUntilSettled(slug, stakeholder.id, 5, 1500);
         }
+
+        importModalState.stage = 'ready';
+        importModalState.title = 'Import Excel Selesai';
+        importModalState.message = 'Data berhasil diperbarui dari file Excel. Pilih Simpan atau Selesai untuk melanjutkan.';
+        importModalState.fileName = selectedFile.value?.name || importModalState.fileName;
+        window.dispatchEvent(new Event('ikas-requests-updated'));
 
     } catch (error) {
         // Handle error response
         console.error('Upload error:', error);
-        errorMessage.value = error.message;
-        alert(`Error: ${errorMessage.value}`);
+        errorMessage.value = error?.message || 'Terjadi kesalahan saat upload file IKAS.';
+        showCornerToast('error', errorMessage.value, 'Gagal upload');
+        importModalState.stage = 'error';
+        importModalState.title = 'Import Gagal';
+        importModalState.message = errorMessage.value;
     } finally {
         // Handle loading state
         loading.value = false;
@@ -559,6 +1105,74 @@ const uploadExcel = async () => {
 const formatValue = (value) => {
     if (value === null || value === 0) return '-';
     return value;
+};
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const hydrateBackendAnswersUntilSettled = async (slug, perusahaanId, attempts = 5, waitMs = 1200) => {
+    let previousCount = -1;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        await assessmentStore.hydrateAnswersFromBackend(slug, perusahaanId, { syncIkas: false });
+        const currentCount = assessmentStore.answeredQuestions || 0;
+        if (currentCount === previousCount) {
+            break;
+        }
+        previousCount = currentCount;
+
+        if (attempt < attempts - 1) {
+            await delay(waitMs);
+        }
+    }
+};
+
+const showCornerToast = (type, message, title = '') => {
+    const variantMap = {
+        success: 'success',
+        error: 'danger',
+        warning: 'warning',
+        info: 'info',
+    };
+
+    return showToastPopup({
+        variant: variantMap[type] || 'info',
+        title: title || (type === 'success' ? 'Berhasil' : type === 'error' ? 'Gagal' : type === 'warning' ? 'Peringatan' : 'Informasi'),
+        message,
+    });
+};
+
+const resolveUploadSuccess = (response, result) => {
+    const message = String(result?.message || result?.msg || '');
+    const hasSuccessFlag = result?.success === true || result?.status === true || result?.ok === true;
+    const messageLooksSuccessful = /berhasil|sukses|success/i.test(message) && !/gagal|error|gagal menyimpan/i.test(message);
+
+    return response.ok && (hasSuccessFlag || messageLooksSuccessful || Array.isArray(result?.data));
+};
+
+const resolveUploadErrorMessage = (result, fallbackMessage = '') => {
+    const rawMessage = String(
+        result?.message ||
+        result?.msg ||
+        result?.error ||
+        result?.errors?.file?.[0] ||
+        result?.errors?.nama_perusahaan?.[0] ||
+        result?.errors?.namaPerusahaan?.[0] ||
+        fallbackMessage ||
+        'Terjadi kesalahan saat upload file IKAS.'
+    ).trim();
+
+    if (/nama.*perusahaan|perusahaan.*tidak.*sesuai|stakeholder.*tidak.*ditemukan/i.test(rawMessage)) {
+        const expectedName = currentStakeholder.value?.nama_perusahaan;
+        return expectedName
+            ? `Nama perusahaan pada file Excel tidak sesuai. Pastikan nama di file sama dengan "${expectedName}".`
+            : 'Nama perusahaan pada file Excel tidak sesuai dengan data stakeholder yang dipilih.';
+    }
+
+    if (/berhasil menyimpan data ikas/i.test(rawMessage)) {
+        return 'Data IKAS berhasil diperbarui dari file Excel.';
+    }
+
+    return rawMessage;
 };
 
 // --- STATE: Export PDF ---
@@ -610,9 +1224,11 @@ const exportToPdf = async () => {
 /* ── IKAS Table ─────────────────────────────────────────── */
 .table-wrapper { 
   overflow-x: auto; 
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
   border-radius: 16px;
   border: 1px solid #d9e3ef;
-  overflow: hidden;
   background: #fff;
 }
 
@@ -637,6 +1253,8 @@ const exportToPdf = async () => {
   padding: 7px 10px;
   vertical-align: middle;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 .maturity-table thead th {
   background: #f6f7fa;
@@ -650,7 +1268,7 @@ const exportToPdf = async () => {
 .left-title   { width: 424px; }
 .year-title   { font-size: 15px; }
 .total        { background: #203a63 !important; color: #fff !important; font-weight: 800; text-align: center; }
-.item         { font-size: 11.5px; color: #334155; min-width: 320px; }
+.item         { font-size: 11.5px; color: #334155; min-width: 0; }
 .center       { text-align: center; }
 .bold         { font-weight: bold; }
 .status-big   { font-size: 19px; font-weight: 800; text-align: center; color: #1e3a5f; letter-spacing: 0.02em; }
@@ -675,8 +1293,9 @@ const exportToPdf = async () => {
 
 /* ── Unified card header ────────────────────────────────── */
 .ikas-unified-header {
-  background: linear-gradient(135deg, #0c1e6b 0%, #1130a0 25%, #1a3fc8 50%, #2563eb 75%, #3b82f6 100%) !important;
-  border-bottom: none !important;
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16) !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -978,6 +1597,16 @@ const exportToPdf = async () => {
   border-radius: 18px;
   padding: 1.2rem 1.35rem;
   min-height: 102px;
+}
+
+:global(html[data-theme-mode="dark"]) .ikas-unified-header,
+:global(html.dark) .ikas-unified-header,
+:global(.dark-mode) .ikas-unified-header {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 .ikas-header-left,
@@ -1363,6 +1992,25 @@ const exportToPdf = async () => {
   border-radius: 16px;
   box-shadow: none;
   border: 1px solid #d9e3ef;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: #94a3b8 #e2e8f0;
+  scrollbar-width: thin;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
 }
 
 .maturity-table thead th {
@@ -1412,6 +2060,24 @@ const exportToPdf = async () => {
 @media (max-width: 1199.98px) {
   .domain-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .maturity-table {
+    min-width: 1040px;
+    font-size: 11.5px;
+  }
+
+  .maturity-table .col-domain-label { width: 32px; }
+  .maturity-table .col-question { width: 330px; }
+  .maturity-table .col-target { width: 120px; }
+  .maturity-table .col-score { width: 105px; }
+  .maturity-table .col-domain-score { width: 140px; }
+  .maturity-table .col-domain-category { width: 205px; }
+  .maturity-table .col-total-category { width: 108px; }
+
+  .maturity-table th,
+  .maturity-table td {
+    padding: 7px 8px;
   }
 }
 
@@ -1466,6 +2132,70 @@ const exportToPdf = async () => {
 
   .ikas-action-buttons button {
     justify-content: center;
+  }
+
+  .table-wrapper {
+    border-radius: 12px;
+    margin-inline: -0.25rem;
+  }
+
+  .maturity-table {
+    min-width: 760px;
+    font-size: 10.5px;
+  }
+
+  .maturity-table .col-domain-label { width: 24px; }
+  .maturity-table .col-question { width: 250px; }
+  .maturity-table .col-target { width: 74px; }
+  .maturity-table .col-score { width: 74px; }
+  .maturity-table .col-domain-score { width: 92px; }
+  .maturity-table .col-domain-category { width: 130px; }
+  .maturity-table .col-total-category { width: 116px; }
+
+  .maturity-table th,
+  .maturity-table td {
+    padding: 6px 7px;
+    line-height: 1.22;
+  }
+
+  .maturity-table thead th {
+    font-size: 0.56rem;
+    letter-spacing: 0.02em;
+  }
+
+  .maturity-table .item {
+    font-size: 10.5px;
+  }
+
+  .maturity-table .domain {
+    font-size: 8.5px;
+    letter-spacing: 0.04em;
+    min-width: 22px;
+    width: 22px;
+  }
+
+  .maturity-table .status-big {
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .maturity-table {
+    min-width: 700px;
+  }
+
+  .maturity-table .col-domain-label { width: 22px; }
+  .maturity-table .col-question { width: 220px; }
+  .maturity-table .col-target { width: 68px; }
+  .maturity-table .col-score { width: 68px; }
+  .maturity-table .col-domain-score { width: 86px; }
+  .maturity-table .col-domain-category { width: 122px; }
+  .maturity-table .col-total-category { width: 114px; }
+
+  .maturity-table th,
+  .maturity-table td {
+    padding: 6px;
   }
 }
 
@@ -1598,6 +2328,277 @@ const exportToPdf = async () => {
 .ikas-shell.is-dark .status-big {
   color: rgba(255, 255, 255, 0.9) !important;
 }
+
+.ikas-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ikas-popup-card {
+  width: min(480px, 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 24px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+  padding: 26px;
+  text-align: center;
+}
+
+.ikas-popup-card.is-danger { border-color: rgba(248, 113, 113, 0.4); }
+.ikas-popup-card.is-success { border-color: rgba(74, 222, 128, 0.42); }
+.ikas-popup-card.is-warning { border-color: rgba(251, 191, 36, 0.46); }
+.ikas-popup-card.is-primary { border-color: rgba(96, 165, 250, 0.42); }
+
+.ikas-popup-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+.ikas-popup-card.is-danger .ikas-popup-icon { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.ikas-popup-card.is-success .ikas-popup-icon { background: linear-gradient(135deg, #10b981, #059669); }
+.ikas-popup-card.is-warning .ikas-popup-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
+
+.ikas-popup-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.ikas-popup-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #475569;
+  margin-bottom: 18px;
+}
+
+.ikas-popup-textarea {
+  width: 100%;
+  border-radius: 18px;
+  border: 1px solid #d9e3ef;
+  background: #fff;
+  padding: 14px 16px;
+  resize: vertical;
+  min-height: 108px;
+  font-size: 14px;
+  color: #0f172a;
+  outline: none;
+}
+
+.ikas-popup-textarea:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.14);
+}
+
+.ikas-popup-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.ikas-popup-btn {
+  border: 0;
+  border-radius: 999px;
+  min-width: 130px;
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+}
+
+.ikas-popup-btn.is-danger { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 12px 24px rgba(220, 38, 38, 0.22); }
+.ikas-popup-btn.is-success { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 12px 24px rgba(5, 150, 105, 0.22); }
+.ikas-popup-btn.is-warning { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 12px 24px rgba(217, 119, 6, 0.22); }
+
+.ikas-popup-btn.is-ghost {
+  background: #eef2f7;
+  color: #334155;
+  box-shadow: none;
+}
+
+.ikas-import-modal-card {
+  text-align: left;
+}
+
+.ikas-import-modal-icon {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
+.ikas-import-modal-card.is-ready .ikas-import-modal-icon {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.ikas-import-modal-card.is-error .ikas-import-modal-icon {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.ikas-import-file {
+  align-items: center;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 16px;
+  color: #1e3a8a;
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 12px 14px;
+}
+
+.ikas-import-file i {
+  font-size: 1.1rem;
+}
+
+.ikas-import-file span {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ikas-import-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.ikas-import-summary > div {
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.ikas-import-summary span {
+  color: #64748b;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.ikas-import-summary strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ikas-import-actions {
+  justify-content: flex-end;
+}
+
+.ikas-import-actions .ikas-popup-btn {
+  min-width: 118px;
+}
+
+.ikas-import-modal-card.is-dark {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(17, 24, 39, 0.96) 100%);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.ikas-import-modal-card.is-dark .ikas-popup-title,
+.ikas-import-modal-card.is-dark .ikas-popup-message,
+.ikas-import-modal-card.is-dark .ikas-import-summary strong {
+  color: #f8fafc;
+}
+
+.ikas-import-modal-card.is-dark .ikas-popup-message,
+.ikas-import-modal-card.is-dark .ikas-import-summary span,
+.ikas-import-modal-card.is-dark .ikas-import-file {
+  color: #cbd5e1;
+}
+
+.ikas-import-modal-card.is-dark .ikas-import-file {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.22);
+}
+
+.ikas-import-modal-card.is-dark .ikas-import-summary > div {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+.ikas-toast-wrap {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1210;
+  pointer-events: none;
+}
+
+.ikas-toast-card {
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 18px;
+  padding: 16px 18px;
+  color: #f8fafc;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  background: linear-gradient(135deg, #18b27d, #0f9f6e);
+}
+
+.ikas-toast-card.is-warning { background: linear-gradient(135deg, #f4a524, #d97706); }
+.ikas-toast-card.is-danger { background: linear-gradient(135deg, #ef5350, #dc2626); }
+.ikas-toast-card.is-info { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+
+.ikas-toast-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.ikas-toast-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ikas-toast-copy strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ikas-toast-copy span {
+  font-size: 12.5px;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+
+.ikas-popup-fade-enter-active,
+.ikas-popup-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.ikas-popup-fade-enter-from,
+.ikas-popup-fade-leave-to {
+  opacity: 0;
+}
 </style>
 
 <template>
@@ -1624,7 +2625,7 @@ const exportToPdf = async () => {
             </div>
           </div>
           <div class="ikas-header-right">
-            <span class="ikas-header-kat-badge">{{ ikasDataDynamic.total_kategori }}</span>
+            <span class="ikas-header-kat-badge">{{ ikasDisplayTotalCategory }}</span>
           </div>
         </div>
       </div>
@@ -1632,13 +2633,13 @@ const exportToPdf = async () => {
   </div>
 
   <!-- Below Target Warning -->
-  <div v-if="isBelowTarget" class="row mb-3">
+  <div v-if="shouldShowBelowTargetWarning" class="row mb-3">
     <div class="col-12">
       <div class="ikas-target-warning">
         <i class="ri-alarm-warning-line"></i>
         <div>
           <strong>Skor IKAS di Bawah Target</strong>
-          <span>Skor saat ini <b>{{ Number(ikasDataDynamic.total_rata_rata || 0).toFixed(2) }}</b> lebih rendah dari target <b>{{ currentTargetScore.toFixed(2) }}</b> — selisih <b>{{ (currentTargetScore - Number(ikasDataDynamic.total_rata_rata || 0)).toFixed(2) }}</b> poin.</span>
+          <span>Skor saat ini <b>{{ Number(ikasPrimaryTotalScore || 0).toFixed(2) }}</b> lebih rendah dari target <b>{{ currentTargetScore.toFixed(2) }}</b> — selisih <b>{{ (currentTargetScore - Number(ikasPrimaryTotalScore || 0)).toFixed(2) }}</b> poin.</span>
         </div>
       </div>
     </div>
@@ -1744,7 +2745,7 @@ const exportToPdf = async () => {
                 <div>
                   <div class="ikas-progress-title">Progress IKAS</div>
                   <div class="ikas-progress-subtitle">
-                    {{ ikasAnsweredQuestions }} dari {{ ikasTotalQuestions }} jawaban terisi
+                    {{ ikasAnsweredQuestions }} dari {{ ikasTotalQuestions }} {{ ikasProgressUnitLabel }}
                   </div>
                 </div>
               </div>
@@ -1771,7 +2772,7 @@ const exportToPdf = async () => {
               </div>
             </div>
             <div class="ikas-progress-foot">
-              <span>Jawaban terbaru langsung tercermin di ringkasan IKAS.</span>
+              <span>Data terbaru langsung tercermin di ringkasan IKAS.</span>
               <span>Target: 100%</span>
             </div>
           </div>
@@ -1787,7 +2788,7 @@ const exportToPdf = async () => {
               <div class="ikas-action-meta">
                 <span class="ikas-action-meta-chip">
                   <i class="ri-file-list-3-line"></i>
-                  {{ ikasAnsweredQuestions }}/{{ ikasTotalQuestions }} terjawab
+                  {{ ikasAnsweredQuestions }}/{{ ikasTotalQuestions }} terisi
                 </span>
                 <span class="ikas-action-meta-chip">
                   <i class="ri-check-double-line"></i>
@@ -1812,7 +2813,7 @@ const exportToPdf = async () => {
                     <i v-else class="ri-file-excel-2-line"></i>
                     {{ loading ? 'Mengupload...' : 'Upload Excel' }}
                   </button>
-                  <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !currentIkasId">
+                  <button @click="exportToPdf" class="btn-ikas-pdf" :disabled="exporting || !hasActiveIkasRecord">
                     <span v-if="exporting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-file-pdf-line"></i>
                     {{ exporting ? 'Mengekspor...' : 'Export PDF' }}
@@ -1822,31 +2823,27 @@ const exportToPdf = async () => {
               <div class="ikas-action-cluster ikas-action-cluster-admin">
                 <span class="ikas-action-label">Kontrol status</span>
                 <div class="ikas-action-buttons">
-                  <button v-if="canRequestEdit && currentIkasId && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
+                  <button v-if="canRequestEdit && hasActiveIkasRecord && ikasDataDynamic.is_validated" @click="requestEdit" class="btn-ikas-unlock" :disabled="isRequestingEdit">
                     <span v-if="isRequestingEdit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-edit-2-line"></i>
                     {{ isRequestingEdit ? 'Mengajukan...' : 'Request Edit' }}
                   </button>
-                  <button v-if="currentIkasId && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
+                  <button v-if="hasActiveIkasRecord && !ikasDataDynamic.is_validated" @click="validateAssessment" class="btn-ikas-validate" :disabled="isValidating">
                     <span v-if="isValidating" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-checkbox-circle-line"></i>
                     {{ isValidating ? 'Memvalidasi...' : 'Validasi Data' }}
                   </button>
-                  <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
+                  <button v-if="hasActiveIkasRecord && ikasDataDynamic.edit_request_status === 'pending'" @click="approveEdit" class="btn-ikas-approve" :disabled="isApproving">
                     <span v-if="isApproving" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-check-line"></i>
                     {{ isApproving ? 'Menyetujui...' : 'Request Acc' }}
                   </button>
-                  <button v-if="ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
+                  <button v-if="hasActiveIkasRecord && ikasDataDynamic.edit_request_status === 'pending'" @click="rejectEdit" class="btn-ikas-reject" :disabled="isRejecting">
                     <span v-if="isRejecting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     <i v-else class="ri-close-line"></i>
                     {{ isRejecting ? 'Menolak...' : 'Tolak' }}
                   </button>
-                  <button v-if="currentIkasId" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
-                    <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                    <i v-else class="ri-delete-bin-line"></i>
-                    {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
-                  </button>
+                  <!-- Delete button removed -->
                 </div>
               </div>
             </div>
@@ -1894,8 +2891,8 @@ const exportToPdf = async () => {
                 </tr>
                 <tr>
                   <th colspan="2" class="total">Total</th>
-                  <th class="center bold">2.51</th>
-                  <th class="center bold">{{ formatValue(ikasDataDynamic.total_rata_rata) }}</th>
+                  <th class="center bold">{{ currentTargetScoreDisplay }}</th>
+                  <th class="center bold">{{ formatValue(ikasPrimaryTotalScore) }}</th>
                 </tr>
               </thead>
 
@@ -1904,30 +2901,30 @@ const exportToPdf = async () => {
                 <tr>
                   <td rowspan="5" class="domain blue">IDENTIFIKASI</td>
                   <td class="item">Mengidentifikasi Peran dan tanggung jawab organisasi</td>
-                  <td class="center">{{ ikasDataStatic.identifikasi.peran_tanggung_jawab }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_subdomain1) }}</td>
                   <td rowspan="5" class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_identifikasi) }}</td>
                   <td rowspan="5" class="center">{{ ikasDataDynamic.identifikasi.kategori_identifikasi }}</td>
-                  <td rowspan="18" class="status-big">{{ ikasDataDynamic.total_kategori }}</td>
+                  <td rowspan="18" class="status-big">{{ ikasDisplayTotalCategory }}</td>
                 </tr>
                 <tr>
                   <td class="item">Menyusun strategi, kebijakan, dan prosedur Keamanan Siber</td>
-                  <td class="center">{{ ikasDataStatic.identifikasi.strategi_kebijakan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_subdomain2) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Mengelola aset informasi</td>
-                  <td class="center">{{ ikasDataStatic.identifikasi.aset_informasi }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_subdomain3) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Menilai dan mengelola risiko Keamanan Siber</td>
-                  <td class="center">{{ ikasDataStatic.identifikasi.risiko_keamanan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_subdomain4) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Mengelola risiko rantai pasok</td>
-                  <td class="center">{{ ikasDataStatic.identifikasi.rantai_pasok }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.identifikasi.nilai_subdomain5) }}</td>
                 </tr>
 
@@ -1935,34 +2932,34 @@ const exportToPdf = async () => {
                 <tr>
                   <td rowspan="6" class="domain purple">PROTEKSI</td>
                   <td class="item">Mengelola identitas, autentikasi, dan kendali akses</td>
-                  <td class="center">{{ ikasDataStatic.proteksi.identitas_autentikasi }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain1) }}</td>
                   <td rowspan="6" class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_proteksi) }}</td>
                   <td rowspan="6" class="center">{{ ikasDataDynamic.proteksi.kategori_proteksi }}</td>
                 </tr>
                 <tr>
                   <td class="item">Melindungi aset fisik</td>
-                  <td class="center">{{ ikasDataStatic.proteksi.aset_fisik }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain2) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Melindungi data</td>
-                  <td class="center">{{ ikasDataStatic.proteksi.data }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain3) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Melindungi aplikasi</td>
-                  <td class="center">{{ ikasDataStatic.proteksi.aplikasi }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain4) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Melindungi jaringan</td>
-                  <td class="center">{{ ikasDataStatic.proteksi.jaringan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain5) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Melindungi sumber daya manusia</td>
-                  <td class="center">{{ ikasDataStatic.proteksi.sdm }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.proteksi.nilai_subdomain6) }}</td>
                 </tr>
 
@@ -1970,19 +2967,19 @@ const exportToPdf = async () => {
                 <tr>
                   <td rowspan="3" class="domain orange">DETEKSI</td>
                   <td class="item">Mengelola deteksi Peristiwa Siber</td>
-                  <td class="center">{{ ikasDataStatic.deteksi.deteksi_peristiwa }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.deteksi.nilai_subdomain1) }}</td>
                   <td rowspan="3" class="center">{{ formatValue(ikasDataDynamic.deteksi.nilai_deteksi) }}</td>
                   <td rowspan="3" class="center">{{ ikasDataDynamic.deteksi.kategori_deteksi }}</td>
                 </tr>
                 <tr>
                   <td class="item">Menganalisis anomali dan Peristiwa Siber</td>
-                  <td class="center">{{ ikasDataStatic.deteksi.anomali_peristiwa }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.deteksi.nilai_subdomain2) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Memantau Peristiwa Siber berkelanjutan</td>
-                  <td class="center">{{ ikasDataStatic.deteksi.pemantauan_berkelanjutan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.deteksi.nilai_subdomain3) }}</td>
                 </tr>
 
@@ -1990,24 +2987,24 @@ const exportToPdf = async () => {
                 <tr>
                   <td rowspan="4" class="domain green">PENANGGULANGAN &amp; PEMULIHAN</td>
                   <td class="item">Menyusun perencanaan penanggulangan dan pemulihan Insiden Siber</td>
-                  <td class="center">{{ ikasDataStatic.tanggulih.perencanaan_pemulihan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain1) }}</td>
                   <td rowspan="4" class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_tanggulih) }}</td>
                   <td rowspan="4" class="center">{{ ikasDataDynamic.tanggulih.kategori_tanggulih }}</td>
                 </tr>
                 <tr>
                   <td class="item">Menganalisis dan melaporkan Insiden Siber</td>
-                  <td class="center">{{ ikasDataStatic.tanggulih.analisis_pelaporan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain2) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Melaksanakan penanggulangan dan pemulihan Insiden Siber</td>
-                  <td class="center">{{ ikasDataStatic.tanggulih.pelaksanaan_pemulihan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain3) }}</td>
                 </tr>
                 <tr>
                   <td class="item">Meningkatkan keamanan setelah terjadinya Insiden Siber</td>
-                  <td class="center">{{ ikasDataStatic.tanggulih.peningkatan_keamanan }}</td>
+                  <td class="center">{{ currentTargetScoreDisplay }}</td>
                   <td class="center">{{ formatValue(ikasDataDynamic.tanggulih.nilai_subdomain4) }}</td>
                 </tr>
               </tbody>
@@ -2025,6 +3022,155 @@ const exportToPdf = async () => {
     </div>
   </div>
   </div>
+
+  <transition name="ikas-popup-fade">
+    <div v-if="importModalState.open" class="ikas-popup-overlay">
+      <div
+        ref="importModalCardRef"
+        class="ikas-popup-card ikas-import-modal-card"
+        :class="[`is-${importModalState.stage}`, { 'is-dark': isDarkMode }]"
+      >
+        <div class="ikas-popup-icon ikas-import-modal-icon">
+          <span
+            v-if="importModalState.stage === 'uploading'"
+            class="spinner-border spinner-border-sm"
+            role="status"
+            aria-hidden="true"
+          ></span>
+          <i v-else-if="importModalState.stage === 'ready'" class="ri-checkbox-circle-line"></i>
+          <i v-else class="ri-error-warning-line"></i>
+        </div>
+
+        <div class="ikas-popup-title">{{ importModalState.title }}</div>
+        <div class="ikas-popup-message">{{ importModalState.message }}</div>
+
+        <div v-if="importModalState.fileName" class="ikas-import-file">
+          <i class="ri-file-excel-2-line"></i>
+          <span>{{ importModalState.fileName }}</span>
+        </div>
+
+        <div v-if="importModalState.stage === 'ready'" class="ikas-import-summary">
+          <div>
+            <span>Jawaban terisi</span>
+            <strong>{{ ikasAnsweredQuestions }}/{{ ikasTotalQuestions }}</strong>
+          </div>
+          <div>
+            <span>Progress</span>
+            <strong>{{ ikasCompletionPercentage }}%</strong>
+          </div>
+          <div>
+            <span>Status</span>
+            <strong>{{ importIsComplete ? 'Siap selesai' : 'Draft' }}</strong>
+          </div>
+        </div>
+
+        <div v-if="importModalState.stage === 'ready'" class="ikas-popup-actions ikas-import-actions">
+          <button
+            type="button"
+            class="ikas-popup-btn is-warning"
+            :disabled="importModalState.saveLoading || importModalState.finishLoading"
+            @click="finalizeImportedIkas('save')"
+          >
+            <span
+              v-if="importModalState.saveLoading"
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            Simpan
+          </button>
+          <button
+            type="button"
+            class="ikas-popup-btn is-success"
+            :disabled="importModalState.saveLoading || importModalState.finishLoading"
+            :title="importIsComplete ? 'Simpan dan selesaikan import' : 'Coba baca ulang jawaban lalu selesaikan'"
+            @click="finalizeImportedIkas('finish')"
+          >
+            <span
+              v-if="importModalState.finishLoading"
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            Selesai
+          </button>
+        </div>
+
+        <div v-else-if="importModalState.stage === 'error'" class="ikas-popup-actions ikas-import-actions">
+          <button type="button" class="ikas-popup-btn is-ghost" @click="closeImportModal">
+            Tutup
+          </button>
+          <button type="button" class="ikas-popup-btn" @click="triggerFileInput">
+            Upload Ulang
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <transition name="ikas-popup-fade">
+    <div v-if="popupState.open" class="ikas-popup-overlay" @click.self="closePopup(false)">
+      <div ref="popupCardRef" class="ikas-popup-card" :class="`is-${popupState.variant}`">
+        <div class="ikas-popup-icon">
+          <i :class="{
+            'ri-delete-bin-6-line': popupState.variant === 'danger',
+            'ri-checkbox-circle-line': popupState.variant === 'success',
+            'ri-error-warning-line': popupState.variant === 'warning',
+            'ri-shield-check-line': popupState.variant === 'primary',
+            'ri-information-line': !['danger', 'success', 'warning', 'primary'].includes(popupState.variant)
+          }"></i>
+        </div>
+        <div class="ikas-popup-title">{{ popupState.title }}</div>
+        <div class="ikas-popup-message">{{ popupState.message }}</div>
+
+        <textarea
+          v-if="popupState.mode === 'prompt'"
+          v-model="popupState.inputValue"
+          class="ikas-popup-textarea"
+          rows="4"
+          :placeholder="popupState.inputPlaceholder"
+        ></textarea>
+
+        <div class="ikas-popup-actions">
+          <button
+            v-if="popupState.mode !== 'alert'"
+            type="button"
+            class="ikas-popup-btn is-ghost"
+            @click="closePopup(false)"
+          >
+            {{ popupState.cancelText }}
+          </button>
+          <button
+            type="button"
+            class="ikas-popup-btn"
+            :class="`is-${popupState.variant}`"
+            @click="closePopup(true)"
+          >
+            {{ popupState.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <transition name="ikas-popup-fade">
+    <div v-if="toastState.visible" class="ikas-toast-wrap">
+      <div ref="popupToastRef" class="ikas-toast-card" :class="`is-${toastState.variant}`">
+        <div class="ikas-toast-icon">
+          <i :class="{
+            'ri-checkbox-circle-line': toastState.variant === 'success',
+            'ri-error-warning-line': toastState.variant === 'warning',
+            'ri-close-circle-line': toastState.variant === 'danger',
+            'ri-information-line': !['success', 'warning', 'danger'].includes(toastState.variant)
+          }"></i>
+        </div>
+        <div class="ikas-toast-copy">
+          <strong>{{ toastState.title }}</strong>
+          <span>{{ toastState.message }}</span>
+        </div>
+      </div>
+    </div>
+  </transition>
 
 </template>
 

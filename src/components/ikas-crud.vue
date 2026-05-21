@@ -387,4 +387,59 @@ const backToIkas = () => {
   background: #198754;
   width: 50px;
 }
+
+/* Dark Mode Overrides for Step Indicator */
+:global(html[data-theme-mode="dark"]) .step-card,
+:global(html.dark) .step-card,
+:global(.dark-mode) .step-card {
+  background-color: transparent !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-indicator,
+:global(html.dark) .step-indicator,
+:global(.dark-mode) .step-indicator {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  border-color: #334155 !important;
+  color: #94a3b8 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-item.active .step-indicator,
+:global(html.dark) .step-item.active .step-indicator,
+:global(.dark-mode) .step-item.active .step-indicator {
+  border-color: #3b82f6 !important;
+  color: #60a5fa !important;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-item.active .step-label,
+:global(html.dark) .step-item.active .step-label,
+:global(.dark-mode) .step-item.active .step-label {
+  color: #60a5fa !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-item.completed .step-indicator,
+:global(html.dark) .step-item.completed .step-indicator,
+:global(.dark-mode) .step-item.completed .step-indicator {
+  border-color: #10b981 !important;
+  color: #34d399 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-item.completed .step-label,
+:global(html.dark) .step-item.completed .step-label,
+:global(.dark-mode) .step-item.completed .step-label {
+  color: #34d399 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-divider,
+:global(html.dark) .step-divider,
+:global(.dark-mode) .step-divider {
+  background: #334155 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .step-divider.active,
+:global(html.dark) .step-divider.active,
+:global(.dark-mode) .step-divider.active {
+  background: #10b981 !important;
+}
 </style>

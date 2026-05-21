@@ -29,13 +29,253 @@ import type {
     JawabanGulihResponse,
 } from '@/types/ikas.types';
 
+let ikasListCache: any = null;
+let ikasListPromise: Promise<any> | null = null;
+const ikasPerusahaanCache = new Map<string, any>();
+const ikasPerusahaanPromise = new Map<string, Promise<any>>();
+const ikasByIdCache = new Map<string, any>();
+const ikasByIdPromise = new Map<string, Promise<any>>();
+
+const clearIkasCache = () => {
+    ikasListCache = null;
+    ikasListPromise = null;
+    ikasPerusahaanCache.clear();
+    ikasPerusahaanPromise.clear();
+    ikasByIdCache.clear();
+    ikasByIdPromise.clear();
+};
+
+const unwrapIkasCollection = (response: any, seen = new Set<any>()): any[] => {
+    if (Array.isArray(response)) return response;
+    if (!response || typeof response !== 'object') return [];
+    if (seen.has(response)) return [];
+    seen.add(response);
+
+    const candidates = [
+        response.data,
+        response.items,
+        response.records,
+        response.result,
+        response.results,
+        response.ikas,
+        response.assessments,
+    ];
+
+    for (const candidate of candidates) {
+        if (Array.isArray(candidate)) return candidate;
+        if (candidate && typeof candidate === 'object') {
+            const nested = unwrapIkasCollection(candidate, seen);
+            if (nested.length) return nested;
+        }
+    }
+
+    return [];
+};
+
+const getRecordPerusahaanId = (record: any): string => String(
+    record?.id_perusahaan ||
+    record?.perusahaan_id ||
+    record?.perusahaanId ||
+    record?.company_id ||
+    record?.perusahaan?.id ||
+    record?.company?.id ||
+    record?.data?.id_perusahaan ||
+    record?.data?.perusahaan_id ||
+    record?.data?.perusahaan?.id ||
+    record?.record?.id_perusahaan ||
+    ''
+);
+
+const unwrapIkasRecord = (response: any): any => (
+    response?.data?.data ||
+    response?.data ||
+    response?.record ||
+    response?.ikas ||
+    response ||
+    null
+);
+
+const getRecordId = (record: any): string => String(
+    record?.id ||
+    record?.ID ||
+    record?.ikas_id ||
+    record?.id_ikas ||
+    record?.data?.id ||
+    record?.data?.ID ||
+    ''
+);
+
+const getRecordMeasurementYear = (record: any): string => {
+    const explicitYear = String(
+        record?.tahun_pengukuran ||
+        record?.tahunPengukuran ||
+        record?.tahun ||
+        record?.year ||
+        '',
+    ).match(/\d{4}/)?.[0];
+
+    if (explicitYear) return explicitYear;
+
+    const rawDate =
+        record?.tanggal ||
+        record?.tanggal_pengisian ||
+        record?.tanggal_pengukuran ||
+        record?.created_at ||
+        record?.updated_at ||
+        '';
+    const date = rawDate ? new Date(rawDate) : null;
+    return date && !Number.isNaN(date.getTime()) ? String(date.getFullYear()) : '';
+};
+
+const hasIkasRecordPayload = (record: any): boolean => {
+    if (!record || typeof record !== 'object') return false;
+    return !!(
+        getRecordId(record) ||
+        getRecordPerusahaanId(record) ||
+        record.tanggal ||
+        record.tanggal_pengisian ||
+        record.tahun_pengukuran ||
+        record.nilai_kematangan ||
+        record.total_rata_rata
+    );
+};
+
+const isDeletedIkasRecord = (record: any): boolean => {
+    if (!record || typeof record !== 'object') return false;
+
+    const deletedFlag =
+        record.deleted_at ||
+        record.deletedAt ||
+        record.deleted_by ||
+        record.deletedBy ||
+        record.is_deleted ||
+        record.isDeleted ||
+        record.trashed ||
+        record.data?.deleted_at ||
+        record.data?.is_deleted;
+
+    if (typeof deletedFlag === 'boolean') return deletedFlag;
+    if (deletedFlag !== undefined && deletedFlag !== null && deletedFlag !== '') return true;
+
+    return ['deleted', 'terhapus', 'dihapus'].includes(String(record.status || '').trim().toLowerCase());
+};
+
+const deleteIkasWithFallback = async <T>(path: string, body?: any): Promise<T> => {
+    return api.delete<T>(path, body, undefined, { skipNotificationSync: true });
+};
+
 /**
  * IKAS Maturity Service
  * Handles all API calls for IKAS assessment endpoints.
  */
 export const ikasService = {
-    async deleteIkas(id: string): Promise<any> {
-        return api.delete<any>(`/api/maturity/ikas/${id}`);
+    async deleteIkasScoped(payload: { id?: string; ID?: string; ikas_id?: string; id_ikas?: string; ids?: string[]; id_perusahaan: string; tahun_pengukuran?: string | number }): Promise<any> {
+        const deleteId = String(payload.id || payload.ID || payload.ikas_id || payload.id_ikas || '');
+        const params = new URLSearchParams();
+        
+        if (payload.ids && payload.ids.length > 0) {
+            // Only add individual IDs if specifically requested
+            params.set('id', payload.ids.join(','));
+        } else if (deleteId) {
+            params.set('id', deleteId);
+        }
+        
+        params.set('id_perusahaan', String(payload.id_perusahaan || ''));
+        if (payload.tahun_pengukuran) {
+            params.set('tahun_pengukuran', String(payload.tahun_pengukuran));
+        }
+
+        // Add additional variations only if we have a specific ID
+        if (deleteId && !payload.ids) {
+            params.set('ikas_id', deleteId);
+            params.set('id_ikas', deleteId);
+            params.set('ID', deleteId);
+        }
+
+        const response = await deleteIkasWithFallback<any>(`/api/maturity/ikas?${params.toString()}`, {
+            ...payload,
+            force: true,
+            hard_delete: true,
+        });
+        clearIkasCache();
+        return response;
+    },
+
+    async deleteIkas(id: string, options: { perusahaanId?: string; year?: string | number } = {}): Promise<any> {
+        const response = await deleteIkasWithFallback<any>(`/api/maturity/ikas/${id}`, {
+            force: true,
+            hard_delete: true,
+        });
+        clearIkasCache();
+        await this.verifyIkasDeleted(id, options);
+        return response;
+    },
+    async verifyIkasDeleted(id: string, options: { perusahaanId?: string; year?: string | number } = {}): Promise<void> {
+        try {
+            clearIkasCache();
+            const checkResponse = await api.get<any>(
+                `/api/maturity/ikas/${id}`,
+                { 'Cache-Control': 'no-cache' },
+                { skipQueue: true, suppressErrorStatuses: [404], skipNotificationSync: true }
+            );
+            const record = unwrapIkasRecord(checkResponse);
+
+            if (!hasIkasRecordPayload(record) || isDeletedIkasRecord(record)) {
+                clearIkasCache();
+                return;
+            }
+
+            throw new Error(`DELETE /api/maturity/ikas/${id} belum menghapus data di backend.`);
+        } catch (error: any) {
+            if (error instanceof ApiRequestError && error.status === 404) {
+                if (options.perusahaanId) {
+                    await new Promise((resolve) => setTimeout(resolve, 250));
+                    await this.verifyIkasMissingFromScope(id, String(options.perusahaanId), options.year);
+                }
+                clearIkasCache();
+                return;
+            }
+
+            throw error;
+        }
+    },
+    async verifyIkasMissingFromScope(id: string, perusahaanId: string, year?: string | number): Promise<void> {
+        if (!perusahaanId) return;
+
+        const targetYear = String(year || '').match(/\d{4}/)?.[0] || '';
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            clearIkasCache();
+            const response = await api.get<any>(
+                `/api/maturity/ikas?id_perusahaan=${encodeURIComponent(perusahaanId)}`,
+                { 'Cache-Control': 'no-cache' },
+                { skipQueue: true, skipNotificationSync: true }
+            );
+
+            const remaining = unwrapIkasCollection(response).filter((record: any) => {
+                if (isDeletedIkasRecord(record)) return false;
+
+                const sameId = getRecordId(record) === String(id);
+                const sameCompany = getRecordPerusahaanId(record) === String(perusahaanId);
+                const sameYear = !targetYear || getRecordMeasurementYear(record) === targetYear;
+                return sameId && sameCompany && sameYear;
+            });
+
+            if (!remaining.length) {
+                return;
+            }
+
+            if (attempt === 0) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                continue;
+            }
+
+            const remainingIds = remaining.map((record: any) => getRecordId(record)).filter(Boolean).join(', ');
+            throw new Error(
+                remainingIds
+                    ? `DELETE /api/maturity/ikas/${id} masih muncul di list backend: ${remainingIds}.`
+                    : `DELETE /api/maturity/ikas/${id} belum benar-benar hilang dari database.`
+            );
+        }
     },
     async exportIkasPdf(id: string): Promise<Response> {
         const cleanBaseUrl = config.api.baseUrl.replace(/\/$/, '');
@@ -75,51 +315,131 @@ export const ikasService = {
 
     /** Create a new IKAS assessment record */
     async createIkas(payload: IkasPayload): Promise<IkasResponse> {
-        return api.post<IkasResponse>('/api/maturity/ikas', payload);
+        const response = await api.post<IkasResponse>('/api/maturity/ikas', payload);
+        clearIkasCache();
+        return response;
     },
 
     /** Get an existing IKAS record by ID */
     async getIkasById(id: string): Promise<IkasResponse> {
-        return api.get<IkasResponse>(`/api/maturity/ikas/${id}`);
+        const key = String(id || '');
+        if (!key) {
+            return api.get<IkasResponse>(`/api/maturity/ikas/${id}`);
+        }
+
+        if (ikasByIdCache.has(key)) {
+            return ikasByIdCache.get(key);
+        }
+
+        const pending = ikasByIdPromise.get(key);
+        if (pending) {
+            return pending;
+        }
+
+        const request = api.get<IkasResponse>(
+            `/api/maturity/ikas/${id}`,
+            { 'Cache-Control': 'no-cache' },
+            { skipQueue: true, suppressErrorStatuses: [404], skipNotificationSync: true }
+        )
+            .then((response) => {
+                ikasByIdCache.set(key, response);
+                return response;
+            })
+            .finally(() => {
+                ikasByIdPromise.delete(key);
+            });
+
+        ikasByIdPromise.set(key, request);
+        return request;
     },
 
     /** Validate an IKAS assessment record */
     async validateIkas(id: string): Promise<any> {
-        return api.put<any>(`/api/maturity/ikas/${id}/validate`, {
+        const response = await api.put<any>(`/api/maturity/ikas/${id}/validate`, {
             is_validated: true,
             status: true
         });
+        clearIkasCache();
+        return response;
     },
 
     /** Approve an edit request for an IKAS record */
     async approveEditIkas(id: string): Promise<any> {
-        return api.put<any>(`/api/maturity/ikas/${id}/approve-edit`, {
+        const response = await api.put<any>(`/api/maturity/ikas/${id}/approve-edit`, {
             edit_request_status: 'approved',
             is_validated: false,
             status: false
         });
+        clearIkasCache();
+        return response;
     },
 
     /** Request edit for a validated IKAS record */
     async requestEditIkas(id: string, reason?: string): Promise<any> {
-        return api.post<any>(`/api/maturity/ikas/${id}/request-edit`, {
+        const response = await api.post<any>(`/api/maturity/ikas/${id}/request-edit`, {
             reason: reason || ''
         });
+        clearIkasCache();
+        return response;
     },
 
     /** Reject an edit request for an IKAS record */
     async rejectEditIkas(id: string, reason?: string): Promise<any> {
-        return api.put<any>(`/api/maturity/ikas/${id}/reject-edit`, {
+        const response = await api.put<any>(`/api/maturity/ikas/${id}/reject-edit`, {
             edit_request_status: 'rejected',
             reason: reason || ''
         });
+        clearIkasCache();
+        return response;
     },
 
 
 
     /** Get all IKAS records */
     async getIkasList(): Promise<any> {
-        return api.get<any>('/api/maturity/ikas');
+        if (ikasListCache !== null) {
+            return ikasListCache;
+        }
+
+        if (ikasListPromise) {
+            return ikasListPromise;
+        }
+
+        ikasListPromise = api.get<any>('/api/maturity/ikas')
+            .then((response) => {
+                ikasListCache = response;
+                return response;
+            })
+            .finally(() => {
+                ikasListPromise = null;
+            });
+
+        return ikasListPromise;
+    },
+
+    async refreshIkasList(): Promise<any> {
+        clearIkasCache();
+        return this.getIkasList();
+    },
+
+    async refreshIkasByPerusahaan(perusahaanId: string): Promise<any | null> {
+        try {
+            clearIkasCache();
+            if (!perusahaanId) return await this.refreshIkasList();
+
+            const response = await api.get<any>(
+                `/api/maturity/ikas?id_perusahaan=${encodeURIComponent(perusahaanId)}`,
+                { 'Cache-Control': 'no-cache' },
+                { skipQueue: true, skipNotificationSync: true }
+            );
+            ikasPerusahaanCache.set(String(perusahaanId), response);
+            return response;
+        } catch (error) {
+            if (error instanceof ApiRequestError) {
+                console.warn(`[IKAS Service] refreshIkasByPerusahaan: ${error.status} - ${error.message}`);
+            }
+            return null;
+        }
     },
 
     /** Get IKAS list by perusahaan ID. Returns null if not found or auth fails. */
@@ -128,7 +448,28 @@ export const ikasService = {
             if (!perusahaanId) {
                 return await this.getIkasList();
             }
-            return await api.get<any>(`/api/maturity/ikas?id_perusahaan=${perusahaanId}`);
+
+            const key = String(perusahaanId);
+            if (ikasPerusahaanCache.has(key)) {
+                return ikasPerusahaanCache.get(key);
+            }
+
+            const pending = ikasPerusahaanPromise.get(key);
+            if (pending) {
+                return pending;
+            }
+
+            const request = api.get<any>(`/api/maturity/ikas?id_perusahaan=${perusahaanId}`)
+                .then((response) => {
+                    ikasPerusahaanCache.set(key, response);
+                    return response;
+                })
+                .finally(() => {
+                    ikasPerusahaanPromise.delete(key);
+                });
+
+            ikasPerusahaanPromise.set(key, request);
+            return request;
         } catch (error) {
             // 401/403 = auth issue, 404 = not found — all mean "no data available"
             if (error instanceof ApiRequestError) {
@@ -154,7 +495,9 @@ export const ikasService = {
 
     /** Update an existing IKAS record */
     async updateIkas(id: string, payload: Partial<IkasPayload>): Promise<IkasResponse> {
-        return api.put<IkasResponse>(`/api/maturity/ikas/${id}`, payload);
+        const response = await api.put<IkasResponse>(`/api/maturity/ikas/${id}`, payload);
+        clearIkasCache();
+        return response;
     },
 
     // ─── Domain ────────────────────────────────────────────────────
@@ -547,12 +890,22 @@ export const ikasService = {
         return api.delete<any>(`/api/maturity/jawaban-gulih/${id}`);
     },
 
-    async getJawabanByKategori(kategori: string, ikasId: string): Promise<any> {
+    async getJawabanByKategori(
+        kategori: string,
+        ikasId: string,
+        options: { page?: number; limit?: number } = {},
+    ): Promise<any> {
         const resolved = this.resolveKategoriKey(kategori);
         if (!ikasId) {
             throw new Error('ikas_id wajib ada untuk mengambil jawaban maturity');
         }
-        return api.get<any>(`/api/maturity/jawaban-${resolved}?ikas_id=${ikasId}`);
+
+        const params = new URLSearchParams();
+        params.set('ikas_id', ikasId);
+        if (options.page) params.set('page', String(options.page));
+        if (options.limit) params.set('limit', String(options.limit));
+
+        return api.get<any>(`/api/maturity/jawaban-${resolved}?${params.toString()}`);
     },
 
     async createJawabanByKategori(kategori: string, payload: JawabanPayload): Promise<any> {

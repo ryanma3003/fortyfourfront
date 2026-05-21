@@ -219,15 +219,47 @@ const unwrapIkasResponse = (response: any): any => response?.data || response?.r
 
 const firstValue = (...values: any[]): any => values.find((value) => value !== undefined && value !== null && value !== '');
 
+const findNestedObjectByKeys = (
+  source: any,
+  keys: string[],
+  depth = 0,
+  seen = new Set<any>(),
+): any => {
+  if (!source || typeof source !== 'object' || depth > 5 || seen.has(source)) return null;
+  seen.add(source);
+
+  for (const key of keys) {
+    const candidate = source?.[key];
+    if (candidate && typeof candidate === 'object') {
+      return candidate;
+    }
+  }
+
+  const values = Array.isArray(source) ? source : Object.values(source);
+  for (const value of values) {
+    const nested = findNestedObjectByKeys(value, keys, depth + 1, seen);
+    if (nested) return nested;
+  }
+
+  return null;
+};
+
 const getNestedDomain = (record: any, apiKey: string, localKey = apiKey): any => (
   record?.[apiKey] ||
   record?.[localKey] ||
   record?.data?.[apiKey] ||
   record?.data?.[localKey] ||
+  record?.data?.data?.[apiKey] ||
+  record?.data?.data?.[localKey] ||
   record?.record?.[apiKey] ||
   record?.record?.[localKey] ||
+  record?.record?.data?.[apiKey] ||
+  record?.record?.data?.[localKey] ||
   record?.ikas?.[apiKey] ||
   record?.ikas?.[localKey] ||
+  record?.ikas?.data?.[apiKey] ||
+  record?.ikas?.data?.[localKey] ||
+  findNestedObjectByKeys(record, [apiKey, localKey]) ||
   {}
 );
 
@@ -289,6 +321,43 @@ const unwrapCollection = (response: any): any[] => {
   }
 
   return getIkasRecordId(response) ? [response] : [];
+};
+
+const isSoftDeletedIkasRecord = (record: any): boolean => {
+  if (!record || typeof record !== 'object') return false;
+
+  const deletedFlag =
+    record?.deleted_at ||
+    record?.deletedAt ||
+    record?.deleted_by ||
+    record?.deletedBy ||
+    record?.is_deleted ||
+    record?.isDeleted ||
+    record?.trashed ||
+    record?.data?.deleted_at ||
+    record?.data?.is_deleted;
+
+  if (typeof deletedFlag === 'boolean') return deletedFlag;
+  if (deletedFlag !== undefined && deletedFlag !== null && deletedFlag !== '') return true;
+
+  return ['deleted', 'terhapus', 'dihapus'].includes(String(record?.status || '').trim().toLowerCase());
+};
+
+const recordHasMeaningfulIkasSummary = (record: any): boolean => {
+  const score = firstValue(record?.nilai_kematangan, record?.total_rata_rata, record?.score);
+  const numericScore = typeof score === 'number' ? score : Number(String(score ?? '').replace(',', '.'));
+  if (Number.isFinite(numericScore) && numericScore > 0) return true;
+
+  const identifikasi = getNestedDomain(record, 'identifikasi');
+  const proteksi = getNestedDomain(record, 'proteksi');
+  const deteksi = getNestedDomain(record, 'deteksi');
+  const gulih = getNestedDomain(record, 'gulih', 'tanggulih');
+
+  return [identifikasi, proteksi, deteksi, gulih].some((domain) => (
+    domain &&
+    typeof domain === 'object' &&
+    Object.keys(domain).some((key) => key.startsWith('nilai_'))
+  ));
 };
 
 // Helper function untuk label maturity
@@ -360,6 +429,7 @@ export const useIkasStore = defineStore('ikas', {
     // Backend API state
     backendIkasIds: {} as Record<string, string | null>, // Map stakeholder slug -> backend IKAS ID
     backendSyncedMap: {} as Record<string, boolean>, // Map stakeholder slug -> backend sync state
+    hiddenIkasIds: {} as Record<string, boolean>, // IDs hidden locally after delete / stale 404
     domainIds: {} as Record<string, string>, // Maps domain name -> backend ID
     apiLoading: false,
     apiError: null as string | null,
@@ -497,7 +567,24 @@ export const useIkasStore = defineStore('ikas', {
     },
 
     normalizeIkasRecords(response: any): any[] {
-      return unwrapCollection(response);
+      return unwrapCollection(response).filter((record: any) => {
+        const recordId = getIkasRecordId(record);
+        return (!recordId || !this.hiddenIkasIds[String(recordId)]) && !isSoftDeletedIkasRecord(record);
+      });
+    },
+
+    isHiddenIkasId(id: string | null | undefined): boolean {
+      return !!(id && this.hiddenIkasIds[String(id)]);
+    },
+
+    hideIkasId(id: string | null | undefined) {
+      if (!id) return;
+      this.hiddenIkasIds[String(id)] = true;
+    },
+
+    unhideIkasId(id: string | null | undefined) {
+      if (!id) return;
+      delete this.hiddenIkasIds[String(id)];
     },
 
     recordMatchesIkasIdentity(record: any, slug: string, ikasId: string | null, perusahaanId = ''): boolean {
@@ -511,6 +598,15 @@ export const useIkasStore = defineStore('ikas', {
         (!!slug && String(company?.slug || '') === String(slug)) ||
         (!!perusahaanId && getIkasRecordPerusahaanId(record) === String(perusahaanId))
       );
+    },
+
+    clearIkasStateForSlug(slug: string) {
+      if (!slug) return;
+
+      delete this.backendIkasIds[slug];
+      delete this.backendSyncedMap[slug];
+      delete this.ikasSummaryMap[slug];
+      this.ikasDataMap[slug] = createDefaultIkasData();
     },
 
     patchIkasStatus(slug: string, patch: { is_validated?: boolean; edit_request_status?: string; edit_request_reason?: string }) {
@@ -614,6 +710,33 @@ export const useIkasStore = defineStore('ikas', {
       applyDomain('gulih', 'tanggulih', 'nilai_gulih', 'kategori_tanggulih', 4);
     },
 
+    applySubdomainValues(
+      slug: string,
+      record: any,
+      apiKey: string,
+      localKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'tanggulih',
+      subdomainCount: number,
+    ) {
+      const data = this.ikasDataMap[slug];
+      const target = data?.[localKey] as any;
+      const domain = getNestedDomain(record, apiKey, localKey);
+      if (!target || !domain) return;
+
+      for (let index = 1; index <= subdomainCount; index += 1) {
+        const key = `nilai_subdomain${index}`;
+        const rawValue = firstValue(
+          domain?.[key],
+          domain?.data?.[key],
+          record?.[`${apiKey}_${key}`],
+          record?.[`${localKey}_${key}`],
+        );
+
+        if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+          target[key] = this.numberValue(rawValue);
+        }
+      }
+    },
+
     resolveIkasSlug(record: any): string {
       const stakeholdersStore = useStakeholdersStore();
       const companyId = getIkasRecordPerusahaanId(record);
@@ -707,7 +830,11 @@ export const useIkasStore = defineStore('ikas', {
       this.apiLoading = true;
       try {
         const deletedRecord = this.ikasRawRecords.find((record: any) => getIkasRecordId(record) === String(id));
-        await ikasService.deleteIkas(id);
+        await ikasService.deleteIkas(id, {
+          perusahaanId: deletedRecord ? getIkasRecordPerusahaanId(deletedRecord) : undefined,
+          year: deletedRecord ? getIkasRecordMeasurementYear(deletedRecord) : undefined,
+        });
+        this.hideIkasId(id);
         
         // Find slug associated with this ID to clear local state
         let slugToClear = deletedRecord ? this.resolveIkasSlug(deletedRecord) : '';
@@ -717,45 +844,46 @@ export const useIkasStore = defineStore('ikas', {
             break;
           }
         }
-
-        const deletedCompanyId = String(
-          getIkasRecordPerusahaanId(deletedRecord) ||
-          this.ikasSummaryMap[slugToClear]?.id_perusahaan ||
-          '',
-        );
+        const shouldClearActiveState = !!slugToClear && String(this.backendIkasIds[slugToClear] || '') === String(id);
 
         this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== String(id));
         
-        if (slugToClear) {
-          delete this.backendIkasIds[slugToClear];
-          delete this.backendSyncedMap[slugToClear];
-          delete this.ikasSummaryMap[slugToClear];
-
-          const remainingForStakeholder = this.ikasRawRecords.filter((record: any) => {
-            const company = record?.perusahaan || {};
-            return (
-              (!!deletedCompanyId && getIkasRecordPerusahaanId(record) === deletedCompanyId) ||
-              (!!slugToClear && (String(record?.slug || '') === slugToClear || String(company?.slug || '') === slugToClear))
-            );
-          });
-
-          const nextRecord = this.findLatestIkasRecord(remainingForStakeholder, deletedCompanyId) ||
-            [...remainingForStakeholder].sort((a, b) => getIkasRecordSortTime(b) - getIkasRecordSortTime(a))[0];
-
-          if (nextRecord) {
-            this.ikasDataMap[slugToClear] = createDefaultIkasData();
-            this.upsertSummaryRecord(nextRecord);
-          } else {
-            this.ikasDataMap[slugToClear] = createDefaultIkasData();
-            this.backendIkasIds[slugToClear] = null;
-            this.backendSyncedMap[slugToClear] = false;
-          }
+        if (shouldClearActiveState) {
+          this.clearIkasStateForSlug(slugToClear);
+          this.backendIkasIds[slugToClear] = null;
+          this.backendSyncedMap[slugToClear] = false;
         }
         
         this.ikasVersion++;
         window.dispatchEvent(new Event('ikas-requests-updated'));
         return true;
       } catch (error) {
+        const deletedRecord = this.ikasRawRecords.find((record: any) => getIkasRecordId(record) === String(id));
+        let slugToClear = deletedRecord ? this.resolveIkasSlug(deletedRecord) : '';
+        for (const [slug, ikasId] of Object.entries(this.backendIkasIds)) {
+          if (String(ikasId) === String(id)) {
+            slugToClear = slug;
+            break;
+          }
+        }
+        const isNotFound = Number((error as any)?.status) === 404;
+
+        if (isNotFound && slugToClear) {
+          this.hideIkasId(id);
+          const shouldClearActiveState = String(this.backendIkasIds[slugToClear] || '') === String(id);
+
+          this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== String(id));
+          if (shouldClearActiveState) {
+            this.clearIkasStateForSlug(slugToClear);
+            this.backendIkasIds[slugToClear] = null;
+            this.backendSyncedMap[slugToClear] = false;
+          }
+
+          this.ikasVersion++;
+          window.dispatchEvent(new Event('ikas-requests-updated'));
+          return true;
+        }
+
         console.error('[IKAS Store] deleteFromBackend failed:', error);
         throw error;
       } finally {
@@ -775,12 +903,38 @@ export const useIkasStore = defineStore('ikas', {
 
           const response = await ikasService.getIkasList();
           const records = this.normalizeIkasRecords(response);
-          this.ikasRawRecords = records;
+          const hydratedRecords = await Promise.all(records.map(async (record: any) => {
+            const recordId = getIkasRecordId(record);
+            if (!recordId || recordHasMeaningfulIkasSummary(record)) {
+              return record;
+            }
+
+            try {
+              const detailed = await ikasService.getIkasById(recordId);
+              const unwrapped = unwrapIkasResponse(detailed);
+              return {
+                ...record,
+                ...unwrapped,
+                perusahaan: unwrapped?.perusahaan || record?.perusahaan,
+              };
+            } catch (error: any) {
+              if (Number(error?.status) === 404) {
+                this.hideIkasId(recordId);
+                return null;
+              }
+
+              console.warn('[IKAS Store] Could not hydrate IKAS list record, using list payload:', error);
+              return record;
+            }
+          }));
+
+          const finalRecords = hydratedRecords.filter((record: any) => !!record);
+          this.ikasRawRecords = finalRecords;
           this.ikasSummaryMap = {};
           this.backendIkasIds = {};
           this.backendSyncedMap = {};
           
-          records.forEach((rec: any) => {
+          finalRecords.forEach((rec: any) => {
             this.upsertSummaryRecord(rec);
           });
           
@@ -870,7 +1024,35 @@ export const useIkasStore = defineStore('ikas', {
         return { success: false, error: 'ID perusahaan tidak ditemukan' };
       }
 
+      const findExistingBackendRecord = async (): Promise<string> => {
+        const listResponse = await ikasService.refreshIkasByPerusahaan(String(payload.id_perusahaan));
+        const records = unwrapCollection(listResponse).filter((record: any) => !isSoftDeletedIkasRecord(record));
+        const existingRecord = this.findLatestIkasRecord(
+          records,
+          String(payload.id_perusahaan),
+          String(payload.tahun_pengukuran || '')
+        );
+        const existingRecordId = getIkasRecordId(existingRecord);
+
+        if (existingRecordId) {
+          this.unhideIkasId(existingRecordId);
+          this.setBackendIkasId(slug, existingRecordId);
+          this.upsertSummaryRecord(existingRecord);
+          this.ikasRawRecords = [
+            ...this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== existingRecordId),
+            existingRecord,
+          ];
+        }
+
+        return existingRecordId;
+      };
+
       try {
+        const existingRecordId = await findExistingBackendRecord();
+        if (existingRecordId) {
+          return { success: true, id: existingRecordId };
+        }
+
         const created = await ikasService.createIkas(payload);
         const createdId = getIkasRecordId(created);
         if (!createdId) {
@@ -880,6 +1062,14 @@ export const useIkasStore = defineStore('ikas', {
         this.setBackendIkasId(slug, createdId);
         return { success: true, id: createdId };
       } catch (error: any) {
+        const message = String(error?.message || '');
+        if (Number(error?.status) === 400 && /sudah ada/i.test(message)) {
+          const existingRecordId = await findExistingBackendRecord();
+          if (existingRecordId) {
+            return { success: true, id: existingRecordId };
+          }
+        }
+
         return { success: false, error: error?.message || 'Gagal membuat data IKAS' };
       }
     },
@@ -1142,7 +1332,8 @@ export const useIkasStore = defineStore('ikas', {
     async fetchFromBackend(
       slug: string,
       perusahaanId: string,
-      targetYear = ''
+      targetYear = '',
+      preferredIkasId = ''
     ): Promise<{ success: boolean; exists: boolean; error?: string; respondentData?: any; ikasRecord?: any }> {
       this.apiLoading = true;
       this.apiError = null;
@@ -1150,12 +1341,109 @@ export const useIkasStore = defineStore('ikas', {
       this.setBackendIkasId(slug, null);
 
       try {
-        const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
-        const matchedRecord = this.findLatestIkasRecord(
-          this.normalizeIkasRecords(listResponse),
-          perusahaanId,
-          targetYear
-        );
+        let records: any[] = [];
+
+        if (preferredIkasId) {
+          try {
+            const preferredDetailed = await ikasService.getIkasById(preferredIkasId);
+            const preferredRecord = unwrapIkasResponse(preferredDetailed);
+            const preferredCompanyId = getIkasRecordPerusahaanId(preferredRecord);
+            const preferredYear = getIkasRecordMeasurementYear(preferredRecord);
+            const matchesCompany = !preferredCompanyId || preferredCompanyId === String(perusahaanId);
+            const matchesYear = !targetYear || !preferredYear || preferredYear === String(targetYear);
+
+            if (matchesCompany && matchesYear) {
+              records = [preferredRecord];
+            }
+          } catch (error: any) {
+            if (Number(error?.status) === 404) {
+              this.hideIkasId(preferredIkasId);
+            } else {
+              console.warn('[IKAS Store] Could not fetch preferred IKAS detail, falling back to perusahaan scope');
+            }
+          }
+        }
+
+        if (!records.length) {
+          const listResponse = await ikasService.getIkasByPerusahaan(perusahaanId);
+          records = this.normalizeIkasRecords(listResponse);
+        }
+
+        const buildCandidateRecords = (year = '') => records
+          .filter((record: any) => (
+            getIkasRecordPerusahaanId(record) === String(perusahaanId) &&
+            (!year || getIkasRecordMeasurementYear(record) === String(year))
+          ))
+          .sort((a: any, b: any) => getIkasRecordSortTime(b) - getIkasRecordSortTime(a));
+
+        const scopedCandidates = targetYear ? buildCandidateRecords(targetYear) : [];
+        const matchedCandidates = scopedCandidates.length ? scopedCandidates : buildCandidateRecords();
+
+        let matchedRecord: any | null = null;
+        let detailedResponse: any = null;
+
+        const preferredCandidate = preferredIkasId
+          ? matchedCandidates.find((candidate: any) => getIkasRecordId(candidate) === String(preferredIkasId))
+          : null;
+
+        if (preferredCandidate) {
+          const preferredCandidateId = getIkasRecordId(preferredCandidate);
+
+          if (recordHasMeaningfulIkasSummary(preferredCandidate)) {
+            matchedRecord = preferredCandidate;
+            detailedResponse = preferredCandidate;
+          } else if (preferredCandidateId) {
+            try {
+              const preferredDetailed = await ikasService.getIkasById(preferredCandidateId);
+              matchedRecord = preferredCandidate;
+              detailedResponse = unwrapIkasResponse(preferredDetailed);
+            } catch (e: any) {
+              if (Number(e?.status) !== 404) {
+                console.warn('[IKAS Store] Could not fetch preferred detailed record, continuing with perusahaan list');
+              }
+            }
+          }
+        }
+
+        for (const candidate of matchedCandidates) {
+          if (matchedRecord) break;
+          const candidateId = getIkasRecordId(candidate);
+          if (!candidateId) {
+            matchedRecord = candidate;
+            detailedResponse = candidate;
+            break;
+          }
+
+          if (recordHasMeaningfulIkasSummary(candidate)) {
+            matchedRecord = candidate;
+            detailedResponse = candidate;
+            break;
+          }
+
+          try {
+            const detailed = await ikasService.getIkasById(candidateId);
+            matchedRecord = candidate;
+            detailedResponse = unwrapIkasResponse(detailed);
+            break;
+          } catch (e: any) {
+            if (Number(e?.status) === 404) {
+              this.hideIkasId(candidateId);
+              const staleSlug = this.resolveIkasSlug(candidate);
+              this.ikasRawRecords = this.ikasRawRecords.filter((record: any) => getIkasRecordId(record) !== String(candidateId));
+              if (staleSlug) {
+                this.clearIkasStateForSlug(staleSlug);
+                this.backendIkasIds[staleSlug] = null;
+                this.backendSyncedMap[staleSlug] = false;
+              }
+              continue;
+            }
+
+            console.warn('[IKAS Store] Could not fetch detailed record, using list data');
+            matchedRecord = candidate;
+            detailedResponse = candidate;
+            break;
+          }
+        }
 
         if (!matchedRecord) {
           this.backendSyncedMap[slug] = false;
@@ -1167,26 +1455,17 @@ export const useIkasStore = defineStore('ikas', {
         const matchedRecordId = getIkasRecordId(matchedRecord);
         this.setBackendIkasId(slug, matchedRecordId || null);
         this.backendSyncedMap[slug] = true;
-        this.upsertSummaryRecord(matchedRecord);
-
-        // Fetch full detailed record by ID (includes nested domain scores)
-        let detailedResponse: any = matchedRecord;
-        if (matchedRecordId) {
-          try {
-            const detailed = await ikasService.getIkasById(matchedRecordId);
-            if (detailed) {
-              // Handle { data: {...} } wrapper
-              detailedResponse = unwrapIkasResponse(detailed);
-            }
-          } catch (e) {
-            console.warn('[IKAS Store] Could not fetch detailed record, using list data');
-          }
-        }
+        const summaryRecord = detailedResponse || matchedRecord;
+        this.upsertSummaryRecord(summaryRecord);
 
         // Populate local store from backend data
         const data = this.ikasDataMap[slug];
-        const response = detailedResponse;
+        const response = detailedResponse || matchedRecord;
         this.applyDomainScoresFromRecord(slug, response);
+        this.applySubdomainValues(slug, response, 'identifikasi', 'identifikasi', 5);
+        this.applySubdomainValues(slug, response, 'proteksi', 'proteksi', 6);
+        this.applySubdomainValues(slug, response, 'deteksi', 'deteksi', 3);
+        this.applySubdomainValues(slug, response, 'gulih', 'tanggulih', 4);
 
         const hasSubdomainScores = (domain: any, count: number): boolean => {
           if (!domain) return false;
@@ -1197,41 +1476,45 @@ export const useIkasStore = defineStore('ikas', {
           return false;
         };
 
-        if (response.identifikasi) {
-          data.identifikasi.nilai_subdomain1 = response.identifikasi.nilai_subdomain1 || 0;
-          data.identifikasi.nilai_subdomain2 = response.identifikasi.nilai_subdomain2 || 0;
-          data.identifikasi.nilai_subdomain3 = response.identifikasi.nilai_subdomain3 || 0;
-          data.identifikasi.nilai_subdomain4 = response.identifikasi.nilai_subdomain4 || 0;
-          data.identifikasi.nilai_subdomain5 = response.identifikasi.nilai_subdomain5 || 0;
+        const identifikasiResponse = getNestedDomain(response, 'identifikasi');
+        const proteksiResponse = getNestedDomain(response, 'proteksi');
+        const deteksiResponse = getNestedDomain(response, 'deteksi');
+        const gulihResponse = getNestedDomain(response, 'gulih', 'tanggulih');
+
+        if (identifikasiResponse) {
+          data.identifikasi.nilai_subdomain1 = this.numberValue(identifikasiResponse.nilai_subdomain1 ?? data.identifikasi.nilai_subdomain1);
+          data.identifikasi.nilai_subdomain2 = this.numberValue(identifikasiResponse.nilai_subdomain2 ?? data.identifikasi.nilai_subdomain2);
+          data.identifikasi.nilai_subdomain3 = this.numberValue(identifikasiResponse.nilai_subdomain3 ?? data.identifikasi.nilai_subdomain3);
+          data.identifikasi.nilai_subdomain4 = this.numberValue(identifikasiResponse.nilai_subdomain4 ?? data.identifikasi.nilai_subdomain4);
+          data.identifikasi.nilai_subdomain5 = this.numberValue(identifikasiResponse.nilai_subdomain5 ?? data.identifikasi.nilai_subdomain5);
         }
-        if (response.proteksi) {
-          data.proteksi.nilai_subdomain1 = response.proteksi.nilai_subdomain1 || 0;
-          data.proteksi.nilai_subdomain2 = response.proteksi.nilai_subdomain2 || 0;
-          data.proteksi.nilai_subdomain3 = response.proteksi.nilai_subdomain3 || 0;
-          data.proteksi.nilai_subdomain4 = response.proteksi.nilai_subdomain4 || 0;
-          data.proteksi.nilai_subdomain5 = response.proteksi.nilai_subdomain5 || 0;
-          data.proteksi.nilai_subdomain6 = response.proteksi.nilai_subdomain6 || 0;
+        if (proteksiResponse) {
+          data.proteksi.nilai_subdomain1 = this.numberValue(proteksiResponse.nilai_subdomain1 ?? data.proteksi.nilai_subdomain1);
+          data.proteksi.nilai_subdomain2 = this.numberValue(proteksiResponse.nilai_subdomain2 ?? data.proteksi.nilai_subdomain2);
+          data.proteksi.nilai_subdomain3 = this.numberValue(proteksiResponse.nilai_subdomain3 ?? data.proteksi.nilai_subdomain3);
+          data.proteksi.nilai_subdomain4 = this.numberValue(proteksiResponse.nilai_subdomain4 ?? data.proteksi.nilai_subdomain4);
+          data.proteksi.nilai_subdomain5 = this.numberValue(proteksiResponse.nilai_subdomain5 ?? data.proteksi.nilai_subdomain5);
+          data.proteksi.nilai_subdomain6 = this.numberValue(proteksiResponse.nilai_subdomain6 ?? data.proteksi.nilai_subdomain6);
         }
-        if (response.deteksi) {
-          data.deteksi.nilai_subdomain1 = response.deteksi.nilai_subdomain1 || 0;
-          data.deteksi.nilai_subdomain2 = response.deteksi.nilai_subdomain2 || 0;
-          data.deteksi.nilai_subdomain3 = response.deteksi.nilai_subdomain3 || 0;
+        if (deteksiResponse) {
+          data.deteksi.nilai_subdomain1 = this.numberValue(deteksiResponse.nilai_subdomain1 ?? data.deteksi.nilai_subdomain1);
+          data.deteksi.nilai_subdomain2 = this.numberValue(deteksiResponse.nilai_subdomain2 ?? data.deteksi.nilai_subdomain2);
+          data.deteksi.nilai_subdomain3 = this.numberValue(deteksiResponse.nilai_subdomain3 ?? data.deteksi.nilai_subdomain3);
         }
-        const gulihResponse = response.gulih || response.tanggulih;
         if (gulihResponse) {
-          data.tanggulih.nilai_subdomain1 = gulihResponse.nilai_subdomain1 || 0;
-          data.tanggulih.nilai_subdomain2 = gulihResponse.nilai_subdomain2 || 0;
-          data.tanggulih.nilai_subdomain3 = gulihResponse.nilai_subdomain3 || 0;
-          data.tanggulih.nilai_subdomain4 = gulihResponse.nilai_subdomain4 || 0;
+          data.tanggulih.nilai_subdomain1 = this.numberValue(gulihResponse.nilai_subdomain1 ?? data.tanggulih.nilai_subdomain1);
+          data.tanggulih.nilai_subdomain2 = this.numberValue(gulihResponse.nilai_subdomain2 ?? data.tanggulih.nilai_subdomain2);
+          data.tanggulih.nilai_subdomain3 = this.numberValue(gulihResponse.nilai_subdomain3 ?? data.tanggulih.nilai_subdomain3);
+          data.tanggulih.nilai_subdomain4 = this.numberValue(gulihResponse.nilai_subdomain4 ?? data.tanggulih.nilai_subdomain4);
         }
         data.is_validated = normalizeValidatedStatus(response, false);
         data.edit_request_status = normalizeEditRequestStatus(response, data.edit_request_status || 'none');
         data.edit_request_reason = normalizeEditRequestReason(response);
 
         if (
-          hasSubdomainScores(response.identifikasi, 5) &&
-          hasSubdomainScores(response.proteksi, 6) &&
-          hasSubdomainScores(response.deteksi, 3) &&
+          hasSubdomainScores(identifikasiResponse, 5) &&
+          hasSubdomainScores(proteksiResponse, 6) &&
+          hasSubdomainScores(deteksiResponse, 3) &&
           hasSubdomainScores(gulihResponse, 4)
         ) {
           this.recalculate(slug);
@@ -1250,10 +1533,10 @@ export const useIkasStore = defineStore('ikas', {
             telepon: matchedRecord.telepon || '',
             tanggal: getIkasRecordDateValue(matchedRecord) || '',
             tahun_pengukuran: getIkasRecordMeasurementYear(matchedRecord),
-            target_nilai: matchedRecord.target_nilai || 3,
-            nilai_kematangan: matchedRecord.nilai_kematangan || 0,
+            target_nilai: summaryRecord.target_nilai || 3,
+            nilai_kematangan: summaryRecord.nilai_kematangan || 0,
           },
-          ikasRecord: matchedRecord
+          ikasRecord: summaryRecord
         };
       } catch (error: any) {
         console.error('[IKAS Store] Fetch from backend failed:', error);

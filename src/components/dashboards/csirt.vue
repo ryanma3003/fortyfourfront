@@ -165,17 +165,43 @@ export default {
             );
         });
 
+        const getSeUniqueKey = (item: any): string => {
+            const id = item?.id ?? item?.id_se ?? item?.uuid;
+            if (id !== undefined && id !== null && String(id) !== "") {
+                return `id:${String(id)}`;
+            }
+
+            return [
+                item?.nama_se,
+                item?.ip_se,
+                item?.as_number_se,
+                item?.id_perusahaan || item?.perusahaan_id || item?.perusahaan?.id,
+                item?.id_csirt || item?.csirt_id || item?.csirt?.id,
+            ].map(value => String(value ?? "").trim().toLowerCase()).join("|");
+        };
+
         const seItems = computed(() => {
             const id = csirtId.value;
             if (!id) return [];
             const sid = String(id);
+            const currentPerusahaanId = String(currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id || "");
+            const seen = new Set<string>();
+
             return csirtStore.seList.filter((item: any) => {
-                const currentPerusahaanId = String(currentCsirt.value?.id_perusahaan || (currentCsirt.value as any)?.perusahaan?.id);
                 const match = String(item.id_csirt) === sid || 
                               String(item.csirt_id) === sid || 
                               String(item.csirt?.id) === sid || 
-                              (item.id_perusahaan && String(item.id_perusahaan) === currentPerusahaanId);
-                return match;
+                              (!!currentPerusahaanId && (
+                                  String(item.id_perusahaan || "") === currentPerusahaanId ||
+                                  String(item.perusahaan_id || "") === currentPerusahaanId ||
+                                  String(item.perusahaan?.id || "") === currentPerusahaanId
+                              ));
+                if (!match) return false;
+
+                const key = getSeUniqueKey(item);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
             });
         });
 
@@ -1239,10 +1265,10 @@ export default {
 
 .csirt-hero-header {
   min-height: 82px;
-  border: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
   border-radius: 20px 20px 0 0 !important;
-  background:
-    linear-gradient(135deg, #102a7a 0%, #2563eb 58%, #06b6d4 100%) !important;
+  background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%) !important;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16) !important;
   position: relative;
   overflow: hidden;
 }
@@ -1287,7 +1313,36 @@ export default {
   padding-inline: 0.85rem;
   font-size: 12px;
   font-weight: 850;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.16);
+  box-shadow: none;
+}
+
+.csirt-header-btn {
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+.csirt-header-btn--create {
+  background: rgba(219, 234, 254, 0.92) !important;
+  border-color: rgba(191, 219, 254, 0.92) !important;
+  color: #1d4ed8 !important;
+}
+
+.csirt-header-btn--edit {
+  background: rgba(255, 244, 221, 0.94) !important;
+  border-color: rgba(253, 230, 138, 0.9) !important;
+  color: #b45309 !important;
+}
+
+.csirt-header-btn--pdf {
+  background: rgba(253, 234, 234, 0.94) !important;
+  border-color: rgba(254, 202, 202, 0.9) !important;
+  color: #dc2626 !important;
+}
+
+.csirt-header-btn:hover,
+.csirt-header-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(2, 6, 23, 0.14) !important;
 }
 
 .csirt-hero-body {
@@ -1296,8 +1351,8 @@ export default {
 
 .csirt-profile-grid {
   display: grid !important;
-  grid-template-columns: 140px minmax(280px, 1fr) minmax(360px, 0.95fr);
-  gap: 1.35rem;
+  grid-template-columns: 128px minmax(300px, 1fr) minmax(360px, 0.95fr);
+  gap: 1rem;
   align-items: stretch;
   min-height: 0;
   margin: 0 !important;
@@ -1347,8 +1402,8 @@ export default {
 
 .csirt-page-shell .profile-photo-wrapper {
   align-self: center;
-  width: 140px !important;
-  height: 140px !important;
+  width: 128px !important;
+  height: 128px !important;
   margin: 0 !important;
   border-radius: 22px;
   background:
@@ -1368,7 +1423,7 @@ export default {
 
 .csirt-identity-column {
   min-width: 0;
-  padding: 0.35rem 0.35rem;
+  padding: 0.25rem 0 0.25rem 0.15rem;
   text-align: left !important;
 }
 
@@ -1612,7 +1667,7 @@ export default {
   border-bottom: 1px solid rgba(148, 163, 184, 0.22);
   background: #f1f5f9;
   color: #64748b;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -1620,7 +1675,15 @@ export default {
 .stakeholder-table tbody td {
   padding: 0.9rem 1rem;
   border-color: rgba(226, 232, 240, 0.72);
+  font-size: 13.5px;
+  font-weight: 600;
   vertical-align: middle;
+}
+
+.stakeholder-table tbody td.small,
+.stakeholder-table tbody td .small {
+  font-size: 13px !important;
+  font-weight: 600;
 }
 
 .stakeholder-table tbody tr:last-child td {
@@ -1665,6 +1728,97 @@ export default {
 
 .empty-icon-inner i {
   font-size: 1.55rem;
+}
+
+.csirt-row-actions {
+  align-items: center;
+  gap: 0.35rem !important;
+}
+
+.csirt-action-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+  position: relative;
+  overflow: visible !important;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.csirt-action-btn i {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.csirt-action-btn.btn-info-light {
+  background: #e9eef8 !important;
+  color: #2563eb !important;
+}
+
+.csirt-action-btn.btn-success-light {
+  background: #def8eb !important;
+  color: #10b981 !important;
+}
+
+.csirt-action-btn.btn-danger-light {
+  background: #fdeaea !important;
+  color: #ef4444 !important;
+}
+
+.csirt-action-btn.btn-secondary-light {
+  background: #fff4dd !important;
+  color: #d97706 !important;
+}
+
+.csirt-action-btn:hover,
+.csirt-action-btn:focus-visible {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.csirt-action-btn[data-tooltip]::after {
+  background: #0f172a;
+  border-radius: 8px;
+  bottom: calc(100% + 9px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 800;
+  left: 50%;
+  line-height: 1;
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+  z-index: 50;
+}
+
+.csirt-action-btn[data-tooltip]::before {
+  border: 5px solid transparent;
+  border-top-color: #0f172a;
+  bottom: calc(100% + 4px);
+  content: "";
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 51;
+}
+
+.csirt-action-btn[data-tooltip]:hover::after,
+.csirt-action-btn[data-tooltip]:focus-visible::after,
+.csirt-action-btn[data-tooltip]:hover::before,
+.csirt-action-btn[data-tooltip]:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .skeleton-row {
@@ -1828,7 +1982,81 @@ export default {
 :global(html.dark) .csirt-hero-header,
 .csirt-page-shell.is-dark .csirt-hero-header {
   background:
-    linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 48%, #0f766e 100%) !important;
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header::after,
+:global(html.dark) .csirt-hero-header::after,
+.csirt-page-shell.is-dark .csirt-hero-header::after {
+  opacity: 0.28;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header .header-icon-box,
+:global(html.dark) .csirt-hero-header .header-icon-box,
+.csirt-page-shell.is-dark .csirt-hero-header .header-icon-box {
+  background: rgba(15, 23, 42, 0.28);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #e0f2fe;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header .card-title,
+:global(html.dark) .csirt-hero-header .card-title,
+:global(html[data-theme-mode="dark"]) .csirt-hero-header .header-subtitle,
+:global(html.dark) .csirt-hero-header .header-subtitle,
+.csirt-page-shell.is-dark .csirt-hero-header .card-title,
+.csirt-page-shell.is-dark .csirt-hero-header .header-subtitle {
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header .header-subtitle,
+:global(html.dark) .csirt-hero-header .header-subtitle,
+.csirt-page-shell.is-dark .csirt-hero-header .header-subtitle {
+  opacity: 0.9;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header .btn-warning,
+:global(html.dark) .csirt-hero-header .btn-warning,
+.csirt-page-shell.is-dark .csirt-hero-header .btn-warning {
+  background: #f59e0b !important;
+  border: 1px solid rgba(253, 230, 138, 0.42) !important;
+  color: #111827 !important;
+  box-shadow: 0 10px 22px rgba(245, 158, 11, 0.22) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-hero-header .btn-danger,
+:global(html.dark) .csirt-hero-header .btn-danger,
+.csirt-page-shell.is-dark .csirt-hero-header .btn-danger {
+  background: #ef4444 !important;
+  border: 1px solid rgba(252, 165, 165, 0.42) !important;
+  color: #fff7f7 !important;
+  box-shadow: 0 10px 22px rgba(239, 68, 68, 0.22) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-header-btn--create,
+:global(html.dark) .csirt-header-btn--create,
+.csirt-page-shell.is-dark .csirt-header-btn--create {
+  background: rgba(37, 99, 235, 0.28) !important;
+  border-color: rgba(147, 197, 253, 0.3) !important;
+  color: #bfdbfe !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-header-btn--edit,
+:global(html.dark) .csirt-header-btn--edit,
+.csirt-page-shell.is-dark .csirt-header-btn--edit {
+  background: rgba(217, 119, 6, 0.24) !important;
+  border-color: rgba(253, 230, 138, 0.28) !important;
+  color: #fde68a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-header-btn--pdf,
+:global(html.dark) .csirt-header-btn--pdf,
+.csirt-page-shell.is-dark .csirt-header-btn--pdf {
+  background: rgba(220, 38, 38, 0.24) !important;
+  border-color: rgba(252, 165, 165, 0.28) !important;
+  color: #fecaca !important;
 }
 
 :global(html[data-theme-mode="dark"]) .csirt-page-shell .profile-photo-wrapper,
@@ -1882,9 +2110,90 @@ export default {
 :global(html.dark) .csirt-doc-card,
 .csirt-page-shell.is-dark .csirt-doc-card {
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(11, 18, 32, 0.86)),
-    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.1), transparent 35%);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(11, 18, 32, 0.95)),
+    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.14), transparent 35%);
   border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-card h6,
+:global(html.dark) .csirt-doc-card h6,
+.csirt-page-shell.is-dark .csirt-doc-card h6 {
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-card h6 .text-primary,
+:global(html.dark) .csirt-doc-card h6 .text-primary,
+.csirt-page-shell.is-dark .csirt-doc-card h6 .text-primary {
+  color: #60a5fa !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-stat-card,
+:global(html.dark) .csirt-stat-card,
+.csirt-page-shell.is-dark .csirt-stat-card {
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-stat-card.stat-blue,
+:global(html.dark) .csirt-stat-card.stat-blue,
+.csirt-page-shell.is-dark .csirt-stat-card.stat-blue {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 56%, #0369a1 100%);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-stat-card.stat-green,
+:global(html.dark) .csirt-stat-card.stat-green,
+.csirt-page-shell.is-dark .csirt-stat-card.stat-green {
+  background: linear-gradient(135deg, #115e59 0%, #047857 58%, #0f766e 100%);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-stat-card::after,
+:global(html.dark) .csirt-stat-card::after,
+.csirt-page-shell.is-dark .csirt-stat-card::after {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-stat-card .csirt-meter-fill,
+:global(html.dark) .csirt-stat-card .csirt-meter-fill,
+.csirt-page-shell.is-dark .csirt-stat-card .csirt-meter-fill {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-btn.btn-primary,
+:global(html.dark) .csirt-doc-btn.btn-primary,
+.csirt-page-shell.is-dark .csirt-doc-btn.btn-primary {
+  background: #2563eb !important;
+  border: 1px solid rgba(147, 197, 253, 0.26) !important;
+  color: #eff6ff !important;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-btn.btn-secondary,
+:global(html.dark) .csirt-doc-btn.btn-secondary,
+.csirt-page-shell.is-dark .csirt-doc-btn.btn-secondary {
+  background: #f59e0b !important;
+  border: 1px solid rgba(253, 230, 138, 0.28) !important;
+  color: #111827 !important;
+  box-shadow: 0 8px 18px rgba(245, 158, 11, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-btn.btn-info,
+:global(html.dark) .csirt-doc-btn.btn-info,
+.csirt-page-shell.is-dark .csirt-doc-btn.btn-info {
+  background: #0891b2 !important;
+  border: 1px solid rgba(103, 232, 249, 0.24) !important;
+  color: #ecfeff !important;
+  box-shadow: 0 8px 18px rgba(8, 145, 178, 0.18) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-doc-btn:hover,
+:global(html[data-theme-mode="dark"]) .csirt-doc-btn:focus-visible,
+:global(html.dark) .csirt-doc-btn:hover,
+:global(html.dark) .csirt-doc-btn:focus-visible,
+.csirt-page-shell.is-dark .csirt-doc-btn:hover,
+.csirt-page-shell.is-dark .csirt-doc-btn:focus-visible {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
 }
 
 :global(html[data-theme-mode="dark"]) .csirt-doc-empty,
@@ -1956,6 +2265,49 @@ export default {
   color: #bfdbfe;
 }
 
+:global(html[data-theme-mode="dark"]) .csirt-action-btn,
+:global(html.dark) .csirt-action-btn,
+.csirt-page-shell.is-dark .csirt-action-btn {
+  box-shadow: none !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-action-btn.btn-info-light,
+:global(html.dark) .csirt-action-btn.btn-info-light,
+.csirt-page-shell.is-dark .csirt-action-btn.btn-info-light {
+  background: rgba(37, 99, 235, 0.18) !important;
+  color: #93c5fd !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-action-btn.btn-success-light,
+:global(html.dark) .csirt-action-btn.btn-success-light,
+.csirt-page-shell.is-dark .csirt-action-btn.btn-success-light {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #6ee7b7 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-action-btn.btn-danger-light,
+:global(html.dark) .csirt-action-btn.btn-danger-light,
+.csirt-page-shell.is-dark .csirt-action-btn.btn-danger-light {
+  background: rgba(239, 68, 68, 0.18) !important;
+  color: #fca5a5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-action-btn.btn-secondary-light,
+:global(html.dark) .csirt-action-btn.btn-secondary-light,
+.csirt-page-shell.is-dark .csirt-action-btn.btn-secondary-light {
+  background: rgba(217, 119, 6, 0.18) !important;
+  color: #fde68a !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-action-btn:hover,
+:global(html[data-theme-mode="dark"]) .csirt-action-btn:focus-visible,
+:global(html.dark) .csirt-action-btn:hover,
+:global(html.dark) .csirt-action-btn:focus-visible,
+.csirt-page-shell.is-dark .csirt-action-btn:hover,
+.csirt-page-shell.is-dark .csirt-action-btn:focus-visible {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24) !important;
+}
+
 :global(html[data-theme-mode="dark"]) .csirt-page-shell .text-muted,
 :global(html.dark) .csirt-page-shell .text-muted,
 .csirt-page-shell.is-dark .text-muted {
@@ -1973,6 +2325,71 @@ export default {
 :global(html.dark) .csirt-page-shell .bg-light,
 .csirt-page-shell.is-dark .bg-light {
   background: #1e293b !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .btn,
+:global(html.dark) .csirt-page-shell .btn,
+.csirt-page-shell.is-dark .btn,
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn,
+:global(html.dark) .modal-overlay .btn {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .btn-warning,
+:global(html.dark) .csirt-page-shell .btn-warning,
+.csirt-page-shell.is-dark .btn-warning,
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-warning,
+:global(html.dark) .modal-overlay .btn-warning {
+  background: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: #111827 !important;
+  box-shadow: 0 8px 18px rgba(245, 158, 11, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .btn-danger,
+:global(html.dark) .csirt-page-shell .btn-danger,
+.csirt-page-shell.is-dark .btn-danger,
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-danger,
+:global(html.dark) .modal-overlay .btn-danger {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #fff7f7 !important;
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.2) !important;
+}
+
+:global(html[data-theme-mode="dark"]) .csirt-page-shell .btn-primary,
+:global(html.dark) .csirt-page-shell .btn-primary,
+.csirt-page-shell.is-dark .btn-primary,
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-primary,
+:global(html.dark) .modal-overlay .btn-primary {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #eff6ff !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-secondary,
+:global(html.dark) .modal-overlay .btn-secondary {
+  background: #334155 !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-outline-danger,
+:global(html.dark) .modal-overlay .btn-outline-danger {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: rgba(248, 113, 113, 0.34) !important;
+  color: #fca5a5 !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-primary-light,
+:global(html.dark) .modal-overlay .btn-primary-light,
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-secondary-light,
+:global(html.dark) .modal-overlay .btn-secondary-light,
+:global(html[data-theme-mode="dark"]) .modal-overlay .btn-info-light,
+:global(html.dark) .modal-overlay .btn-info-light {
+  background: rgba(59, 130, 246, 0.14) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  color: #bfdbfe !important;
 }
 
 :global(html[data-theme-mode="dark"]) .csirt-page-shell .badge.bg-light,
@@ -2047,6 +2464,8 @@ export default {
 :global(html.dark) .modal-overlay .card-body,
 :global(html[data-theme-mode="dark"]) .modal-overlay .card-footer,
 :global(html.dark) .modal-overlay .card-footer,
+:global(html[data-theme-mode="dark"]) .modal-overlay .modal-footer,
+:global(html.dark) .modal-overlay .modal-footer,
 :global(html[data-theme-mode="dark"]) .modal-overlay .bg-white,
 :global(html.dark) .modal-overlay .bg-white,
 :global(html[data-theme-mode="dark"]) .modal-overlay .bg-light,
@@ -2059,7 +2478,11 @@ export default {
 :global(html[data-theme-mode="dark"]) .modal-overlay .text-dark,
 :global(html.dark) .modal-overlay .text-dark,
 :global(html[data-theme-mode="dark"]) .modal-overlay .form-label,
-:global(html.dark) .modal-overlay .form-label {
+:global(html.dark) .modal-overlay .form-label,
+:global(html[data-theme-mode="dark"]) .modal-overlay h5,
+:global(html.dark) .modal-overlay h5,
+:global(html[data-theme-mode="dark"]) .modal-overlay h6,
+:global(html.dark) .modal-overlay h6 {
   color: #e5eefb !important;
 }
 
@@ -2071,6 +2494,8 @@ export default {
 :global(html.dark) .modal-overlay .form-item-input,
 :global(html[data-theme-mode="dark"]) .modal-overlay .form-group-split-input-card,
 :global(html.dark) .modal-overlay .form-group-split-input-card,
+:global(html[data-theme-mode="dark"]) .modal-overlay .photo-preview-modal,
+:global(html.dark) .modal-overlay .photo-preview-modal,
 :global(html[data-theme-mode="dark"]) .edit-logo-panel,
 :global(html.dark) .edit-logo-panel,
 :global(html[data-theme-mode="dark"]) .document-upload-box,
@@ -2078,6 +2503,13 @@ export default {
   background: #172235 !important;
   border-color: rgba(148, 163, 184, 0.22) !important;
   color: #e5eefb !important;
+}
+
+:global(html[data-theme-mode="dark"]) .modal-overlay .photo-empty-state,
+:global(html.dark) .modal-overlay .photo-empty-state,
+:global(html[data-theme-mode="dark"]) .modal-overlay .text-muted,
+:global(html.dark) .modal-overlay .text-muted {
+  color: #94a3b8 !important;
 }
 
 :global(html[data-theme-mode="dark"]) .modal-overlay .form-control::placeholder,
@@ -2138,9 +2570,14 @@ export default {
   }
 
   .csirt-hero-header .header-actions {
+    order: 2;
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .csirt-hero-header .header-inner {
+    order: 1;
   }
 
   .profile-photo-wrapper {
@@ -2189,15 +2626,15 @@ export default {
                     </div>
                 </div>
                 <div class="header-actions d-flex gap-2">
-                    <button v-if="canCreateCsirt" @click="openAddCsirtModal" class="btn btn-primary btn-sm d-flex align-items-center gap-2">
+                    <button v-if="canCreateCsirt" @click="openAddCsirtModal" class="btn btn-sm d-flex align-items-center gap-2 csirt-header-btn csirt-header-btn--create">
                         <i class="ri-add-circle-line fs-14"></i>
                         <span>Tambah CSIRT</span>
                     </button>
-                    <button v-if="canEdit && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2">
+                    <button v-if="canEdit && currentCsirt" @click="openEditProfileModal" class="btn btn-warning btn-sm d-flex align-items-center gap-2 btn-wave">
                         <i class="ri-edit-2-line fs-14"></i>
                         <span>Edit CSIRT</span>
                     </button>
-                    <button @click="exportPdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2">
+                    <button @click="exportPdf" class="btn btn-danger btn-sm d-flex align-items-center gap-2 btn-wave">
                         <i class="ri-file-pdf-line fs-14"></i>
                         <span>Export PDF</span>
                     </button>
@@ -2431,11 +2868,11 @@ export default {
                                 <td class="align-middle small text-muted">{{ row.skill }}</td>
                                 <td class="align-middle"><span class="badge bg-primary-transparent rounded-pill px-3">{{ row.sertifikasi }}</span></td>
                                 <td class="text-center align-middle">
-                                    <div v-if="canEdit" class="d-flex gap-1 justify-content-center">
-                                        <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit">
+                                    <div v-if="canEdit" class="d-flex gap-1 justify-content-center csirt-row-actions">
+                                        <button @click="openEditSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-success-light csirt-action-btn" title="Edit SDM" data-tooltip="Edit SDM" aria-label="Edit SDM">
                                             <i class="ri-edit-2-line"></i>
                                         </button>
-                                        <button v-if="canDelete" @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <button v-if="canDelete" @click="openDeleteSdmModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light csirt-action-btn" title="Hapus SDM" data-tooltip="Hapus SDM" aria-label="Hapus SDM">
                                             <i class="ri-delete-bin-3-line"></i>
                                         </button>
                                     </div>
@@ -2572,17 +3009,17 @@ export default {
                                     </span>
                                 </td>
                                 <td class="text-center align-middle">
-                                    <div class="d-flex gap-1 justify-content-center">
-                                        <button @click="viewSeDetail(row)" class="btn btn-sm btn-icon btn-wave btn-info-light" title="Lihat Detail Penilaian">
+                                    <div class="d-flex gap-1 justify-content-center csirt-row-actions">
+                                        <button @click="viewSeDetail(row)" class="btn btn-sm btn-icon btn-wave btn-info-light csirt-action-btn" title="Lihat Detail Penilaian" data-tooltip="Lihat" aria-label="Lihat detail penilaian SE">
                                             <i class="ri-eye-line"></i>
                                         </button>
-                                        <button v-if="canEdit" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light" title="Edit SE">
+                                        <button v-if="canEdit" @click="editSePenilaian(row)" class="btn btn-sm btn-icon btn-wave btn-success-light csirt-action-btn" title="Edit SE" data-tooltip="Edit SE" aria-label="Edit SE">
                                             <i class="ri-edit-2-line"></i>
                                         </button>
-                                        <button v-if="canDelete" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light" title="Hapus">
+                                        <button v-if="canDelete" @click="openDeleteSeModal(row)" class="btn btn-sm btn-icon btn-wave btn-danger-light csirt-action-btn" title="Hapus SE" data-tooltip="Hapus SE" aria-label="Hapus SE">
                                             <i class="ri-delete-bin-3-line"></i>
                                         </button>
-                                        <button @click="exportPdfSe(row)" class="btn btn-sm btn-icon btn-wave btn-secondary-light" title="Export PDF SE">
+                                        <button @click="exportPdfSe(row)" class="btn btn-sm btn-icon btn-wave btn-secondary-light csirt-action-btn" title="Export PDF SE" data-tooltip="PDF SE" aria-label="Export PDF SE">
                                             <i class="ri-file-pdf-line"></i>
                                         </button>
                                     </div>

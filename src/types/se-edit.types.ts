@@ -13,6 +13,13 @@ export interface SeEditRequest {
     created_at: string;
     updated_at: string;
     
+    // Flat fields from API response
+    nama_user?: string;
+    nama_se?: string;
+    data_perubahan?: Record<string, any>;
+    catatan?: string;
+    catatan_user?: string;
+
     // Relations (if provided by backend)
     user?: User;
     se?: SeCsirt;

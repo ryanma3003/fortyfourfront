@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import gsap from 'gsap';
 import { ikasService } from '../../services/ikas.service';
+import { useIkasStore } from '../../stores/ikas';
 
 const props = defineProps({
   stakeholderSlug: {
@@ -19,6 +20,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['year-selected']);
+const ikasStore = useIkasStore();
 
 // --- STATE ---
 const currentYear = new Date().getFullYear();
@@ -31,6 +33,21 @@ const error = ref('');
 const comparisonRoot = ref(null);
 let comparisonAnimationCtx = null;
 
+// --- DARK MODE DETECTION ---
+const isDarkMode = ref(false);
+let themeObserver = null;
+
+function syncThemeMode() {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const body = document.body;
+  isDarkMode.value =
+    root.getAttribute('data-theme-mode') === 'dark' ||
+    body?.getAttribute('data-theme-mode') === 'dark' ||
+    root.classList.contains('dark') ||
+    body?.classList.contains('dark');
+}
+
 const animateComparison = async (quick = false) => {
   await nextTick();
   const root = comparisonRoot.value;
@@ -41,32 +58,36 @@ const animateComparison = async (quick = false) => {
     const elements = gsap.utils.toArray('.comparison-animate, .total-bar-row, .domain-comparison-card');
     const fills = gsap.utils.toArray('.total-bar-fill, .domain-bar-fill');
 
-    gsap.fromTo(
-      elements,
-      { y: quick ? 8 : 14, opacity: 0, scale: 0.99 },
-      {
-        y: 0,
-        opacity: 1,
-        scale: 1,
-        duration: quick ? 0.34 : 0.52,
-        stagger: quick ? 0.025 : 0.045,
-        ease: 'power3.out',
-        overwrite: 'auto',
-      },
-    );
+    if (elements.length) {
+      gsap.fromTo(
+        elements,
+        { y: quick ? 8 : 14, opacity: 0, scale: 0.99 },
+        {
+          y: 0,
+          opacity: 1,
+          scale: 1,
+          duration: quick ? 0.34 : 0.52,
+          stagger: quick ? 0.025 : 0.045,
+          ease: 'power3.out',
+          overwrite: 'auto',
+        },
+      );
+    }
 
-    gsap.fromTo(
-      fills,
-      { scaleX: 0, transformOrigin: 'left center' },
-      {
-        scaleX: 1,
-        duration: quick ? 0.45 : 0.68,
-        stagger: 0.018,
-        ease: 'power3.out',
-        overwrite: 'auto',
-        delay: quick ? 0.06 : 0.12,
-      },
-    );
+    if (fills.length) {
+      gsap.fromTo(
+        fills,
+        { scaleX: 0, transformOrigin: 'left center' },
+        {
+          scaleX: 1,
+          duration: quick ? 0.45 : 0.68,
+          stagger: 0.018,
+          ease: 'power3.out',
+          overwrite: 'auto',
+          delay: quick ? 0.06 : 0.12,
+        },
+      );
+    }
   }, root);
 };
 
@@ -87,22 +108,101 @@ const domainDefs = [
   { key: 'tanggulih', label: 'Penanggulangan & Pemulihan', shortLabel: 'Gulih', icon: 'ri-first-aid-kit-line', color: '#059669', gradient: 'linear-gradient(135deg, #064e3b, #059669)' },
 ];
 
-// Extract domain score from a record
-const getDomainScore = (record, domainKey) => {
-  if (!record) return 0;
-  switch (domainKey) {
-    case 'identifikasi': return record.identifikasi?.nilai_identifikasi || record.identifikasi?.nilai_subdomain_avg || 0;
-    case 'proteksi': return record.proteksi?.nilai_proteksi || record.proteksi?.nilai_subdomain_avg || 0;
-    case 'deteksi': return record.deteksi?.nilai_deteksi || record.deteksi?.nilai_subdomain_avg || 0;
-    case 'tanggulih': return record.gulih?.nilai_gulih || record.gulih?.nilai_subdomain_avg || 0;
-    default: return 0;
+const hasScoreValue = (value) => value !== undefined && value !== null && value !== '' && value !== 'NA';
+
+const toScoreNumber = (value) => {
+  if (!hasScoreValue(value)) return null;
+  const parsed = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const averageScores = (values) => {
+  const validValues = values.filter((value) => typeof value === 'number' && Number.isFinite(value));
+  if (!validValues.length) return null;
+  return Number((validValues.reduce((total, value) => total + value, 0) / validValues.length).toFixed(2));
+};
+
+const getRecordId = (record) => String(
+  record?.id ||
+  record?.ID ||
+  record?.ikas_id ||
+  record?.id_ikas ||
+  record?.data?.id ||
+  record?.data?.ID ||
+  ''
+);
+
+const isSoftDeletedRecord = (record) => {
+  const deletedFlag =
+    record?.deleted_at ||
+    record?.deletedAt ||
+    record?.deleted_by ||
+    record?.deletedBy ||
+    record?.is_deleted ||
+    record?.isDeleted ||
+    record?.trashed ||
+    record?.data?.deleted_at ||
+    record?.data?.is_deleted;
+
+  if (typeof deletedFlag === 'boolean') return deletedFlag;
+  if (deletedFlag !== undefined && deletedFlag !== null && deletedFlag !== '') return true;
+
+  return ['deleted', 'terhapus', 'dihapus'].includes(String(record?.status || '').trim().toLowerCase());
+};
+
+const unwrapDetailedRecord = (response) => response?.data || response?.record || response?.ikas || response || null;
+
+const hasDetailedIkasPayload = (record) => {
+  const domains = [
+    record?.identifikasi,
+    record?.proteksi,
+    record?.deteksi,
+    record?.gulih || record?.tanggulih,
+  ];
+
+  return domains.every((domain) => domain && typeof domain === 'object' && Object.keys(domain).length > 0);
+};
+
+const getRecordDomain = (record, domainKey) => {
+  if (!record) return null;
+  if (domainKey === 'tanggulih') {
+    return record.tanggulih || record.gulih || null;
   }
+  return record[domainKey] || null;
+};
+
+// Extract domain score from a record using the same fallback order as the main IKAS page.
+const getDomainScore = (record, domainKey) => {
+  const domain = getRecordDomain(record, domainKey);
+  const scoreByDomain = {
+    identifikasi: ['nilai_identifikasi', 'nilai_subdomain_avg', 'nilai', 'score'],
+    proteksi: ['nilai_proteksi', 'nilai_subdomain_avg', 'nilai', 'score'],
+    deteksi: ['nilai_deteksi', 'nilai_subdomain_avg', 'nilai', 'score'],
+    tanggulih: ['nilai_tanggulih', 'nilai_gulih', 'nilai_subdomain_avg', 'nilai', 'score'],
+  };
+
+  for (const key of scoreByDomain[domainKey] || []) {
+    const nestedScore = toScoreNumber(domain?.[key]);
+    if (nestedScore !== null) return nestedScore;
+
+    const flatScore = toScoreNumber(record?.[key]);
+    if (flatScore !== null) return flatScore;
+  }
+
+  const nestedSubdomainValues = domain
+    ? Object.keys(domain)
+        .filter((key) => key.startsWith('nilai_subdomain'))
+        .map((key) => toScoreNumber(domain[key]))
+    : [];
+
+  return averageScores(nestedSubdomainValues);
 };
 
 // Extract total score
-const getTotalScore = (record) => {
-  if (!record) return 0;
-  return record.nilai_kematangan || record.total_rata_rata || 0;
+const getTotalScore = (record, domains = []) => {
+  const explicitTotal = toScoreNumber(record?.nilai_kematangan ?? record?.total_rata_rata ?? record?.score);
+  if (explicitTotal !== null) return explicitTotal;
+  return averageScores(domains);
 };
 
 // Group records by year
@@ -165,26 +265,10 @@ const comparisonData = computed(() => {
     
     const domains = {};
     domainDefs.forEach(d => {
-      // Calculate from subdomains if domain-level score isn't available
-      let score = getDomainScore(record, d.key);
-      if (!score && record) {
-        const domData = record[d.key === 'tanggulih' ? 'gulih' : d.key];
-        if (domData) {
-          const subKeys = Object.keys(domData).filter(k => k.startsWith('nilai_subdomain'));
-          const vals = subKeys.map(k => Number(domData[k]) || 0).filter(v => v > 0);
-          if (vals.length > 0) {
-            score = Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2));
-          }
-        }
-      }
-      domains[d.key] = score;
+      domains[d.key] = getDomainScore(record, d.key);
     });
 
-    // Calculate total from domains
-    const domainValues = Object.values(domains).filter(v => v > 0);
-    const total = domainValues.length > 0 
-      ? Number((domainValues.reduce((a, b) => a + b, 0) / domainValues.length).toFixed(2)) 
-      : getTotalScore(record);
+    const total = getTotalScore(record, Object.values(domains));
 
     return {
       year,
@@ -197,7 +281,9 @@ const comparisonData = computed(() => {
 });
 
 // Has comparison data
-const hasData = computed(() => comparisonData.value.some(d => d.total > 0 || Object.values(d.domains).some(v => v > 0)));
+const hasData = computed(() => comparisonData.value.some((item) => (
+  item.total !== null || Object.values(item.domains).some((value) => value !== null)
+)));
 
 // Max score for bar widths
 const maxScore = 5;
@@ -254,7 +340,8 @@ const getTrend = (domainKey) => {
   const sorted = [...comparisonData.value].sort((a, b) => a.year - b.year);
   const first = sorted[0].domains[domainKey];
   const last = sorted[sorted.length - 1].domains[domainKey];
-  if (first === 0 && last === 0) return null;
+  if (first === null && last === null) return null;
+  if (Number(first ?? 0) === 0 && Number(last ?? 0) === 0) return null;
   if (last > first) return 'up';
   if (last < first) return 'down';
   return 'stable';
@@ -265,7 +352,8 @@ const getTotalTrend = () => {
   const sorted = [...comparisonData.value].sort((a, b) => a.year - b.year);
   const first = sorted[0].total;
   const last = sorted[sorted.length - 1].total;
-  if (first === 0 && last === 0) return null;
+  if (first === null && last === null) return null;
+  if (Number(first ?? 0) === 0 && Number(last ?? 0) === 0) return null;
   if (last > first) return 'up';
   if (last < first) return 'down';
   return 'stable';
@@ -281,86 +369,105 @@ const getMaturityLabel = (score) => {
   return 'Level 5';
 };
 
-// ApexCharts options for the trend line chart
-const trendChartOptions = computed(() => ({
-  chart: {
-    type: 'line',
-    height: 300,
-    toolbar: { show: false },
-    fontFamily: 'Inter, system-ui, sans-serif',
-    animations: {
+// ApexCharts options for the trend bar chart
+const trendChartOptions = computed(() => {
+  const dark = isDarkMode.value;
+  return {
+    chart: {
+      type: 'bar',
+      height: 320,
+      toolbar: { show: false },
+      fontFamily: 'Inter, system-ui, sans-serif',
+      animations: {
+        enabled: true,
+        easing: 'easeinout',
+        speed: 800,
+      },
+      background: 'transparent',
+    },
+    plotOptions: {
+      bar: {
+        horizontal: false,
+        columnWidth: '60%',
+        borderRadius: 5,
+        borderRadiusApplication: 'end',
+        dataLabels: {
+          position: 'top',
+        },
+      },
+    },
+    dataLabels: {
       enabled: true,
-      easing: 'easeinout',
-      speed: 800,
+      formatter: (val) => val > 0 ? val.toFixed(1) : '',
+      offsetY: -20,
+      style: {
+        fontSize: '10px',
+        fontWeight: 700,
+        colors: [dark ? '#94a3b8' : '#475569'],
+      },
     },
-    dropShadow: {
-      enabled: true,
-      top: 3,
-      left: 0,
-      blur: 6,
-      opacity: 0.15,
+    stroke: {
+      show: true,
+      width: 2,
+      colors: ['transparent'],
     },
-  },
-  stroke: {
-    curve: 'smooth',
-    width: 3,
-  },
-  markers: {
-    size: 6,
-    strokeWidth: 2,
-    strokeColors: '#fff',
-    hover: { sizeOffset: 3 },
-  },
-  colors: ['#2563eb', '#7c3aed', '#d97706', '#059669', '#1e3a5f'],
-  xaxis: {
-    categories: comparisonData.value.map(d => d.year.toString()),
-    labels: {
-      style: { fontSize: '12px', fontWeight: 600, colors: '#64748b' },
+    colors: ['#2563eb', '#7c3aed', '#d97706', '#059669', '#1e3a5f'],
+    fill: {
+      opacity: dark ? 0.85 : 1,
     },
-    axisBorder: { show: false },
-    axisTicks: { show: false },
-  },
-  yaxis: {
-    min: 0,
-    max: 5,
-    tickAmount: 5,
-    labels: {
-      style: { fontSize: '11px', colors: '#94a3b8' },
-      formatter: (val) => val.toFixed(1),
+    xaxis: {
+      categories: comparisonData.value.map(d => d.year.toString()),
+      labels: {
+        style: { fontSize: '12px', fontWeight: 600, colors: dark ? '#94a3b8' : '#64748b' },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
     },
-  },
-  grid: {
-    borderColor: '#e2e8f0',
-    strokeDashArray: 4,
-    xaxis: { lines: { show: false } },
-  },
-  legend: {
-    position: 'top',
-    horizontalAlign: 'center',
-    fontSize: '12px',
-    fontWeight: 600,
-    markers: { width: 10, height: 10, radius: 50 },
-    itemMargin: { horizontal: 12, vertical: 4 },
-  },
-  tooltip: {
-    theme: 'light',
-    y: {
-      formatter: (val) => `${val.toFixed(2)} / 5.00`,
+    yaxis: {
+      min: 0,
+      max: 5,
+      tickAmount: 5,
+      labels: {
+        style: { fontSize: '11px', colors: dark ? '#64748b' : '#94a3b8' },
+        formatter: (val) => val.toFixed(1),
+      },
     },
-  },
-}));
+    grid: {
+      borderColor: dark ? 'rgba(148, 163, 184, 0.15)' : '#e2e8f0',
+      strokeDashArray: 4,
+      xaxis: { lines: { show: false } },
+    },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'center',
+      fontSize: '12px',
+      fontWeight: 600,
+      labels: {
+        colors: dark ? '#cbd5e1' : '#475569',
+      },
+      markers: { width: 10, height: 10, radius: 4 },
+      itemMargin: { horizontal: 12, vertical: 4 },
+    },
+    tooltip: {
+      theme: dark ? 'dark' : 'light',
+      y: {
+        formatter: (val) => `${val.toFixed(2)} / 5.00`,
+      },
+    },
+  };
+});
 
 const trendChartSeries = computed(() => {
   const sorted = [...comparisonData.value].sort((a, b) => a.year - b.year);
   
   const series = domainDefs.map(d => ({
     name: d.shortLabel || d.label,
-    data: sorted.map(item => item.domains[d.key] || 0),
+    data: sorted.map(item => Number(item.domains[d.key] ?? 0)),
   }));
 
   series.push({
     name: 'Total Rata-rata',
-    data: sorted.map(item => item.total || 0),
+    data: sorted.map(item => Number(item.total ?? 0)),
   });
 
   return series;
@@ -382,26 +489,26 @@ const fetchAllRecords = async () => {
   
   try {
     const response = await ikasService.getIkasByPerusahaan(props.perusahaanId);
-    const records = normalizeIkasRecords(response);
+    const records = normalizeIkasRecords(response).filter((record) => (
+      !ikasStore.isHiddenIkasId(getRecordId(record)) && !isSoftDeletedRecord(record)
+    ));
     
     if (records.length) {
       // Filter records for this perusahaan
-      allIkasRecords.value = records.filter(r => 
+      const filteredRecords = records.filter(r => 
         String(r.perusahaan?.id || '') === String(props.perusahaanId) ||
         String(r.id_perusahaan || '') === String(props.perusahaanId)
       );
+      allIkasRecords.value = filteredRecords.filter((record) => !isSoftDeletedRecord(record));
       
-      // Build available years from the data. Keep current/active year visible
-      // so a missing year can be selected and created from the main table.
-      const years = new Set([currentYear]);
+      // Only show years that really have IKAS data.
+      const years = new Set();
       const activeYear = toYearNumber(props.activeYear);
-      if (activeYear !== null) years.add(activeYear);
       allIkasRecords.value.forEach(record => {
         const year = getRecordMeasurementYear(record);
         if (year) years.add(year);
       });
       
-      // Show the timeline from older years on the left to newer years on the right.
       availableYears.value = Array.from(years).sort((a, b) => a - b);
       
       const dataYears = allIkasRecords.value
@@ -409,13 +516,19 @@ const fetchAllRecords = async () => {
         .filter(Boolean)
         .sort((a, b) => a - b);
       const latestDataYear = dataYears[dataYears.length - 1];
+
+      if (activeYear !== null && !availableYears.value.includes(activeYear) && latestDataYear) {
+        emit('year-selected', latestDataYear);
+      }
+
       selectedYears.value = normalizeSelectedYears([
-        activeYear ?? latestDataYear ?? availableYears.value[availableYears.value.length - 1],
+        availableYears.value.includes(activeYear)
+          ? activeYear
+          : (latestDataYear ?? availableYears.value[availableYears.value.length - 1]),
       ]);
     } else {
-      const activeYear = toYearNumber(props.activeYear);
-      availableYears.value = Array.from(new Set([currentYear, activeYear].filter((year) => year !== null))).sort((a, b) => a - b);
-      selectedYears.value = activeYear !== null ? [activeYear] : [currentYear];
+      availableYears.value = [];
+      selectedYears.value = [];
     }
   } catch (err) {
     console.error('[IkasComparison] Failed to fetch records:', err);
@@ -429,6 +542,18 @@ const fetchAllRecords = async () => {
 };
 
 onMounted(async () => {
+  syncThemeMode();
+  themeObserver = new MutationObserver(syncThemeMode);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme-mode', 'class'],
+  });
+  if (document.body) {
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-theme-mode', 'class'],
+    });
+  }
   await fetchAllRecords();
   window.addEventListener('ikas-requests-updated', fetchAllRecords);
 });
@@ -436,6 +561,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('ikas-requests-updated', fetchAllRecords);
   comparisonAnimationCtx?.revert();
+  themeObserver?.disconnect();
 });
 
 watch(() => props.perusahaanId, () => {
@@ -445,8 +571,11 @@ watch(() => props.perusahaanId, () => {
 watch(() => props.activeYear, (year) => {
   const normalizedYear = toYearNumber(year);
   if (normalizedYear === null) return;
-  if (!availableYears.value.map(toYearNumber).includes(normalizedYear)) {
-    availableYears.value = Array.from(new Set([...availableYears.value, normalizedYear])).sort((a, b) => a - b);
+  if (!availableYears.value.includes(normalizedYear)) {
+    if (availableYears.value.length) {
+      selectedYears.value = normalizeSelectedYears([availableYears.value[availableYears.value.length - 1]]);
+    }
+    return;
   }
   selectedYears.value = normalizeSelectedYears([normalizedYear]);
 });
@@ -583,19 +712,19 @@ watch(availableYears, (years) => {
               </span>
             </div>
             <div class="total-bars">
-              <div v-for="item in comparisonData" :key="item.year" class="total-bar-row">
+                <div v-for="item in comparisonData" :key="item.year" class="total-bar-row">
                 <span class="total-bar-year" :style="{ color: item.color.solid }">{{ item.year }}</span>
                 <div class="total-bar-track">
                   <div class="total-bar-fill"
                     :style="{
-                      width: `${(item.total / maxScore) * 100}%`,
+                      width: `${((Number(item.total ?? 0)) / maxScore) * 100}%`,
                       background: item.color.bg,
                     }"
                   >
-                    <span class="total-bar-value" v-if="item.total > 0">{{ item.total.toFixed(2) }}</span>
+                    <span class="total-bar-value" v-if="item.total !== null">{{ Number(item.total).toFixed(2) }}</span>
                   </div>
                 </div>
-                <span class="total-bar-label">{{ getMaturityLabel(item.total) }}</span>
+                <span class="total-bar-label">{{ getMaturityLabel(Number(item.total ?? 0)) }}</span>
               </div>
             </div>
           </div>
@@ -624,28 +753,28 @@ watch(availableYears, (years) => {
                   <div class="domain-bar-track">
                     <div class="domain-bar-fill"
                       :style="{
-                        width: item.domains[domain.key] > 0 ? `${(item.domains[domain.key] / maxScore) * 100}%` : '0%',
+                        width: item.domains[domain.key] !== null ? `${(Number(item.domains[domain.key]) / maxScore) * 100}%` : '0%',
                         background: item.color.bg,
                       }"
                     ></div>
                   </div>
-                  <span class="domain-bar-score" :style="{ color: item.domains[domain.key] > 0 ? item.color.solid : '#94a3b8' }">
-                    {{ item.domains[domain.key] > 0 ? item.domains[domain.key].toFixed(2) : '-' }}
+                  <span class="domain-bar-score" :style="{ color: item.domains[domain.key] !== null ? item.color.solid : '#94a3b8' }">
+                    {{ item.domains[domain.key] !== null ? Number(item.domains[domain.key]).toFixed(2) : '-' }}
                   </span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Trend Line Chart -->
+          <!-- Trend Bar Chart -->
           <div class="trend-chart-wrapper" v-if="comparisonData.length >= 2">
             <div class="trend-chart-title">
-              <i class="ri-line-chart-line"></i>
-              <span>Tren Nilai Kematangan</span>
+              <i class="ri-bar-chart-grouped-line"></i>
+              <span>Perbandingan Nilai Kematangan</span>
             </div>
             <apexchart
-              type="line"
-              :height="300"
+              type="bar"
+              :height="320"
               :options="trendChartOptions"
               :series="trendChartSeries"
             />
@@ -674,8 +803,8 @@ watch(availableYears, (years) => {
                     </div>
                   </td>
                   <td v-for="item in comparisonData" :key="item.year" class="year-col">
-                    <span :class="{ 'score-zero': item.domains[domain.key] <= 0 }">
-                      {{ item.domains[domain.key] > 0 ? item.domains[domain.key].toFixed(2) : '-' }}
+                    <span :class="{ 'score-zero': item.domains[domain.key] !== null && Number(item.domains[domain.key]) <= 0 }">
+                      {{ item.domains[domain.key] !== null ? Number(item.domains[domain.key]).toFixed(2) : '-' }}
                     </span>
                   </td>
                   <td class="trend-col" v-if="comparisonData.length >= 2">
@@ -693,8 +822,8 @@ watch(availableYears, (years) => {
                 <tr class="total-row">
                   <td class="domain-col"><strong>Total</strong></td>
                   <td v-for="item in comparisonData" :key="item.year" class="year-col">
-                    <strong :class="{ 'score-zero': item.total <= 0 }">
-                      {{ item.total > 0 ? item.total.toFixed(2) : '-' }}
+                    <strong :class="{ 'score-zero': item.total !== null && Number(item.total) <= 0 }">
+                      {{ item.total !== null ? Number(item.total).toFixed(2) : '-' }}
                     </strong>
                   </td>
                   <td class="trend-col" v-if="comparisonData.length >= 2">
@@ -947,27 +1076,98 @@ html.dark .domain-bar-year {
   color: #9fb0c5;
 }
 
-[data-theme-mode="dark"] .year-pill,
-[data-theme-mode="dark"] .comparison-year-btn,
+[data-theme-mode="dark"] .year-pill:not(.active),
+[data-theme-mode="dark"] .comparison-year-btn:not(.active),
 [data-theme-mode="dark"] .domain-comparison-card,
 [data-theme-mode="dark"] .total-comparison-strip,
 [data-theme-mode="dark"] .trend-chart-wrapper,
 [data-theme-mode="dark"] .comparison-table-wrapper,
-.dark-mode .year-pill,
-.dark-mode .comparison-year-btn,
+.dark-mode .year-pill:not(.active),
+.dark-mode .comparison-year-btn:not(.active),
 .dark-mode .domain-comparison-card,
 .dark-mode .total-comparison-strip,
 .dark-mode .trend-chart-wrapper,
 .dark-mode .comparison-table-wrapper,
-html.dark .year-pill,
-html.dark .comparison-year-btn,
-html.dark .domain-comparison-card,
-html.dark .total-comparison-strip,
-html.dark .trend-chart-wrapper,
+html.dark .year-pill:not(.active),
 html.dark .comparison-table-wrapper {
   background: rgba(17, 24, 39, 0.82);
   border-color: rgba(148, 163, 184, 0.2);
   color: #dbe7f3;
+}
+
+[data-theme-mode="dark"] .comparison-table th,
+.dark-mode .comparison-table th,
+html.dark .comparison-table th {
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom-color: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+[data-theme-mode="dark"] .comparison-table td,
+.dark-mode .comparison-table td,
+html.dark .comparison-table td {
+  border-bottom-color: rgba(148, 163, 184, 0.1);
+  color: #e2e8f0;
+}
+
+[data-theme-mode="dark"] .total-row td,
+.dark-mode .total-row td,
+html.dark .total-row td {
+  background: rgba(15, 23, 42, 0.6);
+  border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+[data-theme-mode="dark"] .comparison-empty-text,
+.dark-mode .comparison-empty-text,
+html.dark .comparison-empty-text {
+  color: #e2e8f0;
+}
+
+[data-theme-mode="dark"] .empty-icon-wrapper,
+.dark-mode .empty-icon-wrapper,
+html.dark .empty-icon-wrapper {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(37, 99, 235, 0.08));
+}
+
+
+[data-theme-mode="dark"] .year-pill.active,
+.dark-mode .year-pill.active,
+html.dark .year-pill.active {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
+}
+
+[data-theme-mode="dark"] .year-pill:not(.active):hover,
+.dark-mode .year-pill:not(.active):hover,
+html.dark .year-pill:not(.active):hover {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+
+[data-theme-mode="dark"] .year-pill.active:hover,
+.dark-mode .year-pill.active:hover,
+html.dark .year-pill.active:hover {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55);
+}
+
+[data-theme-mode="dark"] .comparison-year-btn.active,
+.dark-mode .comparison-year-btn.active,
+html.dark .comparison-year-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+[data-theme-mode="dark"] .comparison-year-btn.disabled,
+.dark-mode .comparison-year-btn.disabled,
+html.dark .comparison-year-btn.disabled {
+  background: rgba(17, 24, 39, 0.5);
+  color: #4b5563;
+  border-color: rgba(148, 163, 184, 0.12);
 }
 
 [data-theme-mode="dark"] .total-bar-track,
@@ -1487,6 +1687,41 @@ html.dark .domain-bar-track {
   color: #94a3b8;
 }
 
+/* ── Dark Mode: Table ─────────────────────────────────── */
+:global(html[data-theme-mode="dark"]) .comparison-table th,
+:global(html.dark) .comparison-table th,
+:global(.dark-mode) .comparison-table th {
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom-color: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-table td,
+:global(html.dark) .comparison-table td,
+:global(.dark-mode) .comparison-table td {
+  border-bottom-color: rgba(148, 163, 184, 0.1);
+  color: #e2e8f0;
+}
+
+:global(html[data-theme-mode="dark"]) .total-row td,
+:global(html.dark) .total-row td,
+:global(.dark-mode) .total-row td {
+  background: rgba(15, 23, 42, 0.6);
+  border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-empty-text,
+:global(html.dark) .comparison-empty-text,
+:global(.dark-mode) .comparison-empty-text {
+  color: #e2e8f0;
+}
+
+:global(html[data-theme-mode="dark"]) .empty-icon-wrapper,
+:global(html.dark) .empty-icon-wrapper,
+:global(.dark-mode) .empty-icon-wrapper {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(37, 99, 235, 0.08));
+}
+
 /* ── Responsive ────────────────────────────────────────── */
 :global(html[data-theme-mode="dark"]) .year-selector-bar,
 :global(html.dark) .year-selector-bar,
@@ -1551,12 +1786,12 @@ html.dark .domain-bar-track {
   color: #9fb0c5;
 }
 
-:global(html[data-theme-mode="dark"]) .year-pill,
-:global(html.dark) .year-pill,
-:global(.dark-mode) .year-pill,
-:global(html[data-theme-mode="dark"]) .comparison-year-btn,
-:global(html.dark) .comparison-year-btn,
-:global(.dark-mode) .comparison-year-btn,
+:global(html[data-theme-mode="dark"]) .year-pill:not(.active),
+:global(html.dark) .year-pill:not(.active),
+:global(.dark-mode) .year-pill:not(.active),
+:global(html[data-theme-mode="dark"]) .comparison-year-btn:not(.active),
+:global(html.dark) .comparison-year-btn:not(.active),
+:global(.dark-mode) .comparison-year-btn:not(.active),
 :global(html[data-theme-mode="dark"]) .domain-comparison-card,
 :global(html.dark) .domain-comparison-card,
 :global(.dark-mode) .domain-comparison-card,
@@ -1575,6 +1810,46 @@ html.dark .domain-bar-track {
   background: rgba(17, 24, 39, 0.82);
   border-color: rgba(148, 163, 184, 0.2);
   color: #dbe7f3;
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill.active,
+:global(html.dark) .year-pill.active,
+:global(.dark-mode) .year-pill.active {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill:not(.active):hover,
+:global(html.dark) .year-pill:not(.active):hover,
+:global(.dark-mode) .year-pill:not(.active):hover {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #93c5fd;
+}
+
+:global(html[data-theme-mode="dark"]) .year-pill.active:hover,
+:global(html.dark) .year-pill.active:hover,
+:global(.dark-mode) .year-pill.active:hover {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55);
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-year-btn.active,
+:global(html.dark) .comparison-year-btn.active,
+:global(.dark-mode) .comparison-year-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+:global(html[data-theme-mode="dark"]) .comparison-year-btn.disabled,
+:global(html.dark) .comparison-year-btn.disabled,
+:global(.dark-mode) .comparison-year-btn.disabled {
+  background: rgba(17, 24, 39, 0.5);
+  color: #4b5563;
+  border-color: rgba(148, 163, 184, 0.12);
 }
 
 :global(html[data-theme-mode="dark"]) .total-bar-track,

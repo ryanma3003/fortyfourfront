@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useLmsStore } from "../../stores/lms";
+import { useAuthStore } from "../../stores/auth";
 import { useRouter, useRoute } from "vue-router";
 import { lmsService } from "../../services/lms.service";
 
@@ -18,8 +19,10 @@ export default {
   },
   setup() {
     const lmsStore = useLmsStore();
+    const authStore = useAuthStore();
     const router = useRouter();
     const route = useRoute();
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
 
     const searchQuery = ref("");
     const currentPage = ref(1);
@@ -204,6 +207,7 @@ export default {
       getSoalCount,
       getAvatarClass,
       computedTotalSoal,
+      isFullAdmin,
     };
   },
 };
@@ -369,7 +373,7 @@ export default {
                         <button @click="goEdit(item.id)" class="btn btn-sm btn-icon btn-outline-primary" title="Edit">
                           <i class="ri-edit-line fs-14"></i>
                         </button>
-                        <button @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-outline-danger" title="Hapus">
+                        <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-icon btn-outline-danger" title="Hapus">
                           <i class="ri-delete-bin-line fs-14"></i>
                         </button>
                       </div>

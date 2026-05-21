@@ -3,12 +3,11 @@ import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from "vue"
 import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useLmsStore } from "../../stores/lms";
-import { lmsService } from "../../services/lms.service";
-import LmsEditor from "./LmsEditor.vue";
+import { useAuthStore } from "../../stores/auth";
 import { useRouter } from "vue-router";
 
 export default {
-  components: { Pageheader, LmsEditor },
+  components: { Pageheader },
   data() {
     return {
       dataToPass: {
@@ -20,7 +19,9 @@ export default {
   },
   setup() {
     const lmsStore = useLmsStore();
+    const authStore = useAuthStore();
     const router = useRouter();
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
     
     const searchQuery = ref("");
     const currentPage = ref(1);
@@ -30,58 +31,63 @@ export default {
     const isDarkMode = ref(false);
     let gsapCtx: gsap.Context | null = null;
     let themeObserver: MutationObserver | undefined;
+    let toastTimeout: ReturnType<typeof setTimeout> | undefined;
+    const courseCardSelector = ".lms-course-card";
     
     // Toast
     const showToast = ref(false);
     const toastMessage = ref("");
     const toastType = ref<"success" | "error">("success");
     const showNotification = (msg: string, type: "success" | "error") => {
+      if (toastTimeout) clearTimeout(toastTimeout);
       toastMessage.value = msg;
       toastType.value = type;
       showToast.value = true;
-      setTimeout(() => (showToast.value = false), 3000);
+      toastTimeout = setTimeout(() => {
+        showToast.value = false;
+        toastTimeout = undefined;
+      }, 3000);
     };
 
     const syncThemeMode = () => {
       if (typeof document === "undefined") return;
       const root = document.documentElement;
-      isDarkMode.value = root.getAttribute("data-theme-mode") === "dark" || root.classList.contains("dark");
+      const nextMode = root.getAttribute("data-theme-mode") === "dark" || root.classList.contains("dark");
+      if (isDarkMode.value !== nextMode) isDarkMode.value = nextMode;
     };
 
     const runEntranceAnimations = () => {
       nextTick(() => {
         gsapCtx = gsap.context(() => {
           const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-          tl.from(".ev-breadcrumb", { y: -10, opacity: 0, duration: 0.45 })
+          tl.from(".ev-breadcrumb", { y: -10, opacity: 0, duration: 0.42 })
             .from(".ev-hero-title", { y: 22, opacity: 0, duration: 0.58 }, "-=0.2")
             .from(".ev-hero-desc", { y: 16, opacity: 0, duration: 0.5 }, "-=0.32")
             .from(".ev-hero-tile", { opacity: 0, duration: 0.62, stagger: 0.05, ease: "power3.out" }, "-=0.34")
-            .from(".ev-stat-card", { y: 18, opacity: 0, scale: 0.94, duration: 0.42, stagger: 0.08, ease: "back.out(1.4)" }, "-=0.2")
-            .from(".ev-content-card", { y: 26, opacity: 0, duration: 0.55 }, "-=0.18");
+            .from(".lms-course-metric", { y: 16, opacity: 0, scale: 0.96, duration: 0.38, stagger: 0.07, ease: "power2.out" }, "-=0.2")
+            .from(".lms-class-panel", { y: 22, opacity: 0, duration: 0.48 }, "-=0.18");
         });
       });
     };
 
-    const animateRows = (quick = false) => {
+    const animateRows = (quick = false, done?: () => void) => {
       nextTick(() => {
-        const rows = Array.from(document.querySelectorAll<HTMLElement>(".ev-table-row"));
-        if (!rows.length) return;
+        const rows = Array.from(document.querySelectorAll<HTMLElement>(courseCardSelector));
+        if (!rows.length) {
+          done?.();
+          return;
+        }
         gsap.killTweensOf(rows);
 
+        const tl = gsap.timeline({
+          defaults: { duration: quick ? 0.3 : 0.36, ease: "power2.out", overwrite: "auto" },
+          onComplete: done,
+        });
+        const gap = quick ? 0.055 : 0.07;
+
         rows.forEach((row, index) => {
-          gsap.fromTo(
-            row,
-            { y: quick ? 12 : 18, opacity: 0, scale: quick ? 0.992 : 0.985, force3D: true },
-            {
-              y: 0,
-              opacity: 1,
-              scale: 1,
-              duration: quick ? 0.32 : 0.38,
-              delay: index * (quick ? 0.05 : 0.055),
-              ease: "power2.out",
-              clearProps: "transform,opacity",
-            }
-          );
+          gsap.set(row, { y: quick ? 12 : 18, opacity: 0, scale: quick ? 0.995 : 0.99, force3D: true });
+          tl.to(row, { y: 0, opacity: 1, scale: 1, clearProps: "transform,opacity" }, index * gap);
         });
       });
     };
@@ -89,22 +95,25 @@ export default {
     // Stats — derived from cache instead of separate API calls
     const materiCounts = ref<Record<string, number>>({});
     const kuisCounts = ref<Record<string, number>>({});
-
-    const computedTotalMateri = computed(() => {
-      let sum = 0;
-      for (const k of lmsStore.kelasList) {
-        sum += (materiCounts.value[k.id] || 0);
-      }
-      return sum;
-    });
-
-    const computedTotalKuis = computed(() => {
-      let sum = 0;
-      for (const k of lmsStore.kelasList) {
-        sum += (kuisCounts.value[k.id] || 0);
-      }
-      return sum;
-    });
+    let visibleStatsRequestId = 0;
+    let visibleStatsIdleHandle: number | undefined;
+    let skipNextPageAnimation = false;
+    const materiCountKeys = ["materi_count", "count_materi", "jumlah_materi", "total_materi"];
+    const materiArrayKeys = ["materi", "materi_list", "materials"];
+    const kuisCountKeys = ["kuis_count", "quiz_count", "count_kuis", "count_quiz", "jumlah_kuis", "jumlah_quiz", "total_kuis", "total_quiz"];
+    const kuisArrayKeys = ["kuis_list", "quiz_list", "kuis", "quiz", "quizzes"];
+    const allowBackgroundDetailStats = true;
+    const setKelasCounts = (kelasId: string | number, materiTotal: number, kuisTotal: number) => {
+      const key = String(kelasId);
+      materiCounts.value[key] = materiTotal;
+      kuisCounts.value[key] = kuisTotal;
+    };
+    const adjustCount = (source: typeof materiCounts, kelasId: string | number | null, delta: number) => {
+      if (kelasId === null) return;
+      const key = String(kelasId);
+      source.value[key] = Math.max(0, (source.value[key] ?? 0) + delta);
+    };
+    const visibleStatsInFlight = new Set<string>();
 
     /**
      * Load stats in parallel batches — uses getKelasDetail which caches results.
@@ -112,12 +121,108 @@ export default {
      */
     const isInitialLoading = ref(lmsStore.kelasList.length === 0);
 
+    const readCount = (item: any, countKeys: string[], arrayKeys: string[]) => {
+      const sources = [item, item?.data, item?.kelas, item?.detail].filter(Boolean);
+
+      for (const key of arrayKeys) {
+        for (const source of sources) {
+          const value = source?.[key];
+          if (Array.isArray(value)) return value.length;
+        }
+      }
+
+      for (const key of countKeys) {
+        for (const source of sources) {
+          const value = source?.[key];
+          if (value !== undefined && value !== null && value !== "") return Number(value) || 0;
+        }
+      }
+
+      const countSources = sources.flatMap(source => [source?._count, source?.count, source?.counts, source?.progress]).filter(Boolean);
+      for (const meta of countSources) {
+        for (const key of countKeys) {
+          const value = meta?.[key];
+          if (value !== undefined && value !== null && value !== "") return Number(value) || 0;
+        }
+      }
+
+      return 0;
+    };
+
+    const hasCountSource = (item: any, countKeys: string[], arrayKeys: string[]) => {
+      const sources = [item, item?.data, item?.kelas, item?.detail].filter(Boolean);
+      const countSources = sources.flatMap(source => [source, source?._count, source?.count, source?.counts, source?.progress]).filter(Boolean);
+
+      return countSources.some(source =>
+        arrayKeys.some(key => Array.isArray(source?.[key])) ||
+        countKeys.some(key => source?.[key] !== undefined && source?.[key] !== null && source?.[key] !== "")
+      );
+    };
+
+    const hasKelasMateriSource = (kelas: any) =>
+      hasCountSource(kelas, materiCountKeys, materiArrayKeys);
+
+    const hasKelasKuisSource = (kelas: any) =>
+      hasCountSource(kelas, kuisCountKeys, kuisArrayKeys);
+
+    const hasStoredCount = (source: typeof materiCounts, kelasId: string | number | undefined | null) => {
+      if (kelasId === undefined || kelasId === null) return false;
+      return Object.prototype.hasOwnProperty.call(source.value, String(kelasId));
+    };
+
+    const readKelasMateriCount = (kelas: any) => {
+      const key = String(kelas?.id ?? "");
+      if (hasStoredCount(materiCounts, kelas?.id)) return materiCounts.value[key];
+
+      const cached = lmsStore.kelasCache[key];
+      if (cached) return cached.materi.length;
+
+      return readCount(kelas, materiCountKeys, materiArrayKeys);
+    };
+
+    const readKelasKuisCount = (kelas: any) => {
+      const key = String(kelas?.id ?? "");
+      if (hasStoredCount(kuisCounts, kelas?.id)) return kuisCounts.value[key];
+
+      const cached = lmsStore.kelasCache[key];
+      if (cached) return cached.kuis.length;
+
+      return readCount(kelas, kuisCountKeys, kuisArrayKeys);
+    };
+
+    const computedTotalMateri = computed(() => {
+      let sum = 0;
+      for (const k of lmsStore.kelasList) {
+        sum += readKelasMateriCount(k);
+      }
+      return sum;
+    });
+
+    const computedTotalKuis = computed(() => {
+      let sum = 0;
+      for (const k of lmsStore.kelasList) {
+        sum += readKelasKuisCount(k);
+      }
+      return sum;
+    });
+
+    const hydrateStatsFromKelasList = () => {
+      lmsStore.kelasList.forEach((kelas: any) => {
+        const key = String(kelas.id);
+        if (!hasStoredCount(materiCounts, key) && hasKelasMateriSource(kelas)) {
+          materiCounts.value[key] = readCount(kelas, materiCountKeys, materiArrayKeys);
+        }
+        if (!hasStoredCount(kuisCounts, key) && hasKelasKuisSource(kelas)) {
+          kuisCounts.value[key] = readCount(kelas, kuisCountKeys, kuisArrayKeys);
+        }
+      });
+    };
+
     const initStatsFromCache = () => {
       lmsStore.kelasList.forEach(k => {
         const cached = lmsStore.kelasCache[k.id];
         if (cached) {
-          materiCounts.value[k.id] = cached.materi.length;
-          kuisCounts.value[k.id] = cached.kuis.length;
+          setKelasCounts(k.id, cached.materi.length, cached.kuis.length);
         }
       });
     };
@@ -125,32 +230,6 @@ export default {
     /**
      * Load stats in parallel batches — uses store's cache-aware fetch.
      */
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    const isLoadingStats = ref(false);
-
-    const loadGlobalStats = async () => {
-      if (isLoadingStats.value) return;
-      isLoadingStats.value = true;
-
-      try {
-        const pending = lmsStore.kelasList.filter(k => !lmsStore.kelasCache[k.id]);
-
-        for (let i = 0; i < pending.length; i += 2) {
-          const batch = pending.slice(i, i + 2);
-          await Promise.all(batch.map(k =>
-            lmsStore.fetchKelasDetail(k.id).then(({ materi, kuis }) => {
-              materiCounts.value[k.id] = materi.length;
-              kuisCounts.value[k.id] = kuis.length;
-            }).catch(() => {})
-          ));
-
-          if (i + 2 < pending.length) await delay(300);
-        }
-      } finally {
-        isLoadingStats.value = false;
-      }
-    };
-
     onMounted(() => {
       syncThemeMode();
       if (typeof document !== "undefined") {
@@ -160,16 +239,17 @@ export default {
       runEntranceAnimations();
       // 1. If we have data in store, use it immediately (Instant UI)
       if (lmsStore.kelasList.length > 0) {
+        hydrateStatsFromKelasList();
         initStatsFromCache();
-        // Even if we have data, we still trigger loadGlobalStats to refresh counts from cache
-        loadGlobalStats(); 
+        scheduleVisibleStatsLoad();
       }
 
       // 2. Refresh data in background (SWR pattern)
       lmsStore.fetchKelas().then(() => {
         isInitialLoading.value = false;
+        hydrateStatsFromKelasList();
         initStatsFromCache();
-        loadGlobalStats(); 
+        scheduleVisibleStatsLoad();
         animateRows();
       }).catch((e: any) => {
         isInitialLoading.value = false;
@@ -179,7 +259,13 @@ export default {
       });
     });
 
-    watch(currentPage, () => animateRows(true));
+    watch(currentPage, () => {
+      if (skipNextPageAnimation) {
+        skipNextPageAnimation = false;
+        return;
+      }
+      animateRows(true);
+    });
     watch([searchQuery, itemsPerPage], () => {
       currentPage.value = 1;
       animateRows(true);
@@ -187,6 +273,9 @@ export default {
     onBeforeUnmount(() => {
       gsapCtx?.revert();
       themeObserver?.disconnect();
+      if (toastTimeout) clearTimeout(toastTimeout);
+      cancelVisibleStatsSchedule();
+      visibleStatsRequestId++;
     });
 
     const filteredData = computed(() => {
@@ -245,11 +334,142 @@ export default {
       return sortedData.value.slice(start, start + itemsPerPage.value);
     });
 
+    const displayDataWithCounts = computed(() =>
+      displayData.value.map((item: any) => ({
+        ...item,
+        materiTotal: readKelasMateriCount(item),
+        kuisTotal: readKelasKuisCount(item),
+      }))
+    );
+
+    const cancelVisibleStatsSchedule = () => {
+      if (visibleStatsIdleHandle === undefined || typeof window === "undefined") return;
+      if ("cancelIdleCallback" in window) {
+        window.cancelIdleCallback(visibleStatsIdleHandle);
+      } else {
+        clearTimeout(visibleStatsIdleHandle);
+      }
+      visibleStatsIdleHandle = undefined;
+    };
+
+    const scheduleVisibleStatsLoad = () => {
+      if (!allowBackgroundDetailStats) return;
+      if (typeof window === "undefined") return;
+      const needsStats = displayData.value.some((kelas: any) => {
+        const key = String(kelas?.id ?? "");
+        return (
+          key &&
+          !lmsStore.kelasCache[key] &&
+          (!hasStoredCount(materiCounts, key) || !hasStoredCount(kuisCounts, key)) &&
+          (!hasKelasMateriSource(kelas) || !hasKelasKuisSource(kelas))
+        );
+      });
+      if (!needsStats) return;
+
+      cancelVisibleStatsSchedule();
+      const requestId = ++visibleStatsRequestId;
+      const run = () => {
+        visibleStatsIdleHandle = undefined;
+        loadVisibleStats(requestId);
+      };
+
+      if ("requestIdleCallback" in window) {
+        visibleStatsIdleHandle = window.requestIdleCallback(run, { timeout: 1200 });
+      } else {
+        visibleStatsIdleHandle = window.setTimeout(run, 300);
+      }
+    };
+
+    const waitForBreath = () => new Promise(resolve => window.setTimeout(resolve, 120));
+
+    const loadVisibleStats = async (requestId = visibleStatsRequestId) => {
+      const pending = displayData.value.filter((kelas: any) => {
+        const key = String(kelas?.id);
+        return (
+          key &&
+          !lmsStore.kelasCache[key] &&
+          !visibleStatsInFlight.has(key) &&
+          (!hasStoredCount(materiCounts, key) || !hasStoredCount(kuisCounts, key)) &&
+          (!hasKelasMateriSource(kelas) || !hasKelasKuisSource(kelas))
+        );
+      });
+
+      for (const kelas of pending) {
+        if (requestId !== visibleStatsRequestId) return;
+
+        const key = String(kelas.id);
+        visibleStatsInFlight.add(key);
+        try {
+          const { materi, kuis } = await lmsStore.fetchKelasDetail(kelas.id);
+          if (requestId !== visibleStatsRequestId) return;
+          setKelasCounts(kelas.id, materi.length, kuis.length);
+        } catch {
+          // Keep the list usable even if one detail/count request fails.
+        } finally {
+          visibleStatsInFlight.delete(key);
+        }
+
+        if (requestId !== visibleStatsRequestId) return;
+        await waitForBreath();
+      }
+    };
+
+    watch(
+      () => displayData.value.map((kelas: any) => String(kelas.id)).join("|"),
+      () => scheduleVisibleStatsLoad(),
+      { flush: "post" }
+    );
+    watch(totalPages, (pages) => {
+      if (currentPage.value > pages) currentPage.value = pages;
+    });
+
+    const goToPage = (page: number) => {
+      const nextPage = Math.min(Math.max(page, 1), totalPages.value);
+      if (nextPage === currentPage.value) return;
+      const rows = Array.from(document.querySelectorAll<HTMLElement>(courseCardSelector));
+      const changePage = () => {
+        skipNextPageAnimation = true;
+        currentPage.value = nextPage;
+        animateRows(true);
+      };
+      if (!rows.length) {
+        changePage();
+        return;
+      }
+      gsap.killTweensOf(rows);
+      gsap.to(rows, {
+        y: -10,
+        opacity: 0,
+        scale: 0.995,
+        duration: 0.18,
+        stagger: 0.035,
+        ease: "power1.in",
+        overwrite: "auto",
+        onComplete: changePage,
+      });
+    };
+
     // Expand logic — uses cached data when available
     const expandedKelasId = ref<string | number | null>(null);
     const classMateriList = ref<any[]>([]);
     const classKuisList = ref<any[]>([]);
     const isLoadingDetail = ref(false);
+    const materiTitleById = computed(() => {
+      const titles: Record<string, string> = {};
+      for (const m of classMateriList.value) {
+        titles[String(m.id)] = m.judul || "Materi tidak ditemukan";
+      }
+      return titles;
+    });
+    const kuisCountByMateri = computed(() => {
+      const counts: Record<string, number> = {};
+      for (const k of classKuisList.value) {
+        if (k.id_materi === undefined || k.id_materi === null) continue;
+        const key = String(k.id_materi);
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      return counts;
+    });
 
     const toggleExpand = async (item: any) => {
       if (expandedKelasId.value === item.id) {
@@ -262,12 +482,17 @@ export default {
           const { materi, kuis } = await lmsStore.fetchKelasDetail(item.id);
           classMateriList.value = materi;
           classKuisList.value = kuis;
-          materiCounts.value[item.id] = materi.length;
-          kuisCounts.value[item.id] = kuis.length;
+          setKelasCounts(item.id, materi.length, kuis.length);
         } catch(e) {
           showNotification("Gagal memuat detail kelas", "error");
         } finally {
           isLoadingDetail.value = false;
+          nextTick(() => {
+            const panel = document.querySelector<HTMLElement>(".lms-expand-panel.is-open");
+            if (panel) {
+              gsap.fromTo(panel, { y: -8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.24, ease: "power2.out", clearProps: "transform,opacity" });
+            }
+          });
         }
       }
     };
@@ -293,10 +518,15 @@ export default {
       syarat_pendaftaran: '',
       target_peserta: '',
       thumbnail: '',
+      thumbnail_file: null as File | null,
       status: 'published'
     });
     const formKelas = ref(emptyKelasForm());
-    const thumbnailPreview = computed(() => formKelas.value.thumbnail || null);
+    const thumbnailInput = ref<HTMLInputElement | null>(null);
+    const thumbnailPreview = computed(() => {
+      if (formKelas.value.thumbnail_file) return URL.createObjectURL(formKelas.value.thumbnail_file);
+      return formKelas.value.thumbnail || null;
+    });
 
     const openKelasModal = (item?: any) => {
       formErrors.value = {};
@@ -314,6 +544,7 @@ export default {
           syarat_pendaftaran: item.syarat_pendaftaran || '',
           target_peserta: item.target_peserta || '',
           thumbnail: item.thumbnail || '',
+          thumbnail_file: null,
           status: item.status || 'published' 
         };
       } else {
@@ -329,6 +560,9 @@ export default {
       if (!formKelas.value.deskripsi) formErrors.value.deskripsi = "Wajib diisi";
       if (!formKelas.value.kategori) formErrors.value.kategori = "Wajib diisi";
       if (Number(formKelas.value.durasi_jp) < 0) formErrors.value.durasi_jp = "Durasi tidak boleh negatif";
+      if (formKelas.value.thumbnail_file && !formKelas.value.thumbnail_file.type.startsWith('image/')) {
+        formErrors.value.thumbnail = "File thumbnail harus berupa gambar";
+      }
       if (Object.keys(formErrors.value).length > 0) return;
       
       isSaving.value = true;
@@ -347,6 +581,28 @@ export default {
       finally { isSaving.value = false; }
     };
 
+    const handleThumbnailChange = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0] ?? null;
+      formKelas.value.thumbnail_file = file;
+      if (file) {
+        formKelas.value.thumbnail = '';
+        delete formErrors.value.thumbnail;
+      }
+    };
+
+    const triggerThumbnailPicker = () => {
+      thumbnailInput.value?.click();
+    };
+
+    const removeThumbnail = () => {
+      formKelas.value.thumbnail = '';
+      formKelas.value.thumbnail_file = null;
+      if (thumbnailInput.value) {
+        thumbnailInput.value.value = '';
+      }
+    };
+
     // MATERI ROUTING
     const openMateriModal = (kelasId: string, item?: any) => {
       if (item) {
@@ -357,7 +613,7 @@ export default {
     };
 
     // KUIS ROUTING
-    const openKuisModal = async (kelasId: string, item?: any) => {
+    const openKuisModal = (kelasId: string, item?: any) => {
       if (item) {
         router.push(`/lms/quiz/edit/${item.id}`);
       } else {
@@ -380,11 +636,11 @@ export default {
         } else if (deleteType.value === 'materi') {
           await lmsStore.deleteMateri(deleteTarget.value.id);
           classMateriList.value = classMateriList.value.filter(m => m.id !== deleteTarget.value.id);
-          if(expandedKelasId.value) materiCounts.value[expandedKelasId.value]--;
+          adjustCount(materiCounts, expandedKelasId.value, -1);
         } else if (deleteType.value === 'kuis') {
           await lmsStore.deleteKuis(deleteTarget.value.id);
           classKuisList.value = classKuisList.value.filter(k => k.id !== deleteTarget.value.id);
-          if(expandedKelasId.value) kuisCounts.value[expandedKelasId.value]--;
+          adjustCount(kuisCounts, expandedKelasId.value, -1);
         }
         showNotification("Berhasil dihapus", "success");
         activeModal.value = null;
@@ -398,14 +654,39 @@ export default {
       return variants[idx];
     };
 
-    const findMateriJudul = (idMateri?: string | number) => {
-      if (!idMateri) return "Unknown";
-      const m = classMateriList.value.find(m => String(m.id) === String(idMateri));
-      return m ? m.judul : "Materi tidak ditemukan";
+    const getDescriptionPreview = (value?: string) => {
+      return String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
     };
 
-    const countKuisForMateri = (materiId: string | number) => {
-      return classKuisList.value.filter(k => String(k.id_materi) === String(materiId)).length;
+    const getShortDescription = (value?: string, maxLength = 110) => {
+      const text = getDescriptionPreview(value);
+      if (!text) return "-";
+      return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+    };
+
+    const getClassTopic = (item: any) => {
+      return String(item?.kategori || item?.penyelenggara || "Kelas").trim() || "Kelas";
+    };
+
+    const getClassCode = (item: any) => {
+      const topic = getClassTopic(item).toLowerCase();
+      const knownCodes: Record<string, string> = {
+        cybersecurity: "CYB",
+        "cyber security": "CYB",
+        csirt: "CSIRT",
+        networking: "NET",
+        compliance: "COMP",
+        "risk management": "RISK",
+        "incident response": "IR",
+        ai: "AI",
+        "artificial intelligence": "AI",
+      };
+
+      if (knownCodes[topic]) return knownCodes[topic];
+
+      const words = topic.split(/\s+/).filter(Boolean);
+      if (words.length > 1) return words.map((word) => word.charAt(0)).join("").slice(0, 4).toUpperCase();
+      return topic.slice(0, 4).toUpperCase() || "KLS";
     };
     
     const kategoriOptions = ref(['Cybersecurity', 'CSIRT', 'Networking', 'Compliance', 'Risk Management', 'Incident Response', 'Lainnya']);
@@ -414,17 +695,24 @@ export default {
     return {
       isInitialLoading,
       isDarkMode,
-      router, lmsStore, searchQuery, currentPage, itemsPerPage, filteredData, sortedData, totalPages, displayData,
+      isFullAdmin,
+      router, lmsStore, searchQuery, currentPage, itemsPerPage, filteredData, sortedData, totalPages, displayData, displayDataWithCounts,
       sortKey, sortDirection, toggleSort, getSortIcon,
       showToast, toastMessage, toastType, 
       computedTotalMateri, computedTotalKuis, materiCounts, kuisCounts,
-      expandedKelasId, classMateriList, classKuisList, toggleExpand, isLoadingDetail,
+      expandedKelasId, classMateriList, classKuisList, materiTitleById, kuisCountByMateri, toggleExpand, isLoadingDetail,
+      goToPage,
       activeModal, isEdit, isSaving, formErrors,
       formKelas, openKelasModal, saveKelas,
       openMateriModal, openKuisModal,
       openDeleteModal, confirmDelete, deleteType, deleteTarget,
-      getAvatarClass, findMateriJudul, countKuisForMateri,
-      thumbnailPreview, kategoriOptions
+      getAvatarClass,
+      getDescriptionPreview,
+      getShortDescription,
+      getClassTopic,
+      getClassCode,
+      thumbnailPreview, kategoriOptions,
+      thumbnailInput, handleThumbnailChange, triggerThumbnailPicker, removeThumbnail
     };
   }
 };
@@ -468,21 +756,21 @@ export default {
           </div>
 
           <div class="ikas-hero-tools ikas-stakeholder-summary ev-hero-stats" aria-label="Ringkasan LMS kelas">
-            <div class="ikas-hero-stat-card ev-stat-card stat-total">
+            <div class="ikas-hero-stat-card ev-stat-card lms-course-metric stat-total">
               <div class="ikas-stat-top ev-stat-head">
                 <span>Total Kelas</span>
                 <i class="ri-graduation-cap-line"></i>
               </div>
               <strong>{{ lmsStore.totalKelas }}</strong>
             </div>
-            <div class="ikas-hero-stat-card ev-stat-card stat-materi">
+            <div class="ikas-hero-stat-card ev-stat-card lms-course-metric stat-materi">
               <div class="ikas-stat-top ev-stat-head">
                 <span>Materi</span>
                 <i class="ri-book-open-line"></i>
               </div>
               <strong>{{ computedTotalMateri }}</strong>
             </div>
-            <div class="ikas-hero-stat-card ev-stat-card stat-kuis">
+            <div class="ikas-hero-stat-card ev-stat-card lms-course-metric stat-kuis">
               <div class="ikas-stat-top ev-stat-head">
                 <span>Kuis</span>
                 <i class="ri-questionnaire-line"></i>
@@ -492,20 +780,20 @@ export default {
           </div>
         </header>
 
-        <div class="card custom-card lms-kelas-card ev-content-card" style="overflow: visible !important;">
+        <div class="card custom-card lms-kelas-card ev-content-card lms-class-panel lms-kelas-card-shell">
           <div class="card-body p-4 stakeholders-premium-body">
             <div class="controls-bar stakeholders-toolbar stakeholders-filter-bar lms-kelas-toolbar-wrap ev-toolbar mb-4">
               <div class="stakeholders-toolbar-right lms-kelas-toolbar">
                 <div class="stakeholders-per-page ev-per-page">
-                  <span>Rows</span>
-                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select ev-select" @change="currentPage = 1">
+                  <span>Baris</span>
+                  <select v-model="itemsPerPage" class="form-select form-select-sm entries-select ev-select">
                     <option v-for="n in [5, 10, 15, 20]" :key="n" :value="n">{{ n }}</option>
                   </select>
                 </div>
                 <div class="ikas-header-search kelas-toolbar-search ev-search">
                   <i class="ri-search-line"></i>
-                  <input v-model="searchQuery" type="text" placeholder="Cari nama, kategori, penyelenggara..." @input="currentPage = 1" />
-                  <button v-if="searchQuery" @click="searchQuery = ''; currentPage = 1" class="ikas-clear-btn ev-search-clear" title="Clear search">
+                  <input v-model="searchQuery" type="text" placeholder="Cari nama, kategori, penyelenggara..." />
+                  <button v-if="searchQuery" @click="searchQuery = ''" class="ikas-clear-btn ev-search-clear" title="Clear search">
                     <i class="ri-close-circle-fill"></i>
                   </button>
                 </div>
@@ -525,7 +813,7 @@ export default {
                   </th>
                   <th class="lms-th-sortable" :aria-sort="sortKey === 'nama_kelas' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'">
                     <button type="button" class="lms-sort-btn" :class="{ active: sortKey === 'nama_kelas' }" @click="toggleSort('nama_kelas')" title="Urutkan nama kelas">
-                      <span>Kelas</span>
+                      <span class="lms-sort-label">Kelas</span>
                       <i :class="getSortIcon('nama_kelas')"></i>
                     </button>
                   </th>
@@ -534,11 +822,11 @@ export default {
                   </th>
                   <th class="text-center lms-th-sortable" :aria-sort="sortKey === 'status' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'">
                     <button type="button" class="lms-sort-btn lms-sort-btn-center" :class="{ active: sortKey === 'status' }" @click="toggleSort('status')" title="Urutkan status">
-                      <span>Status</span>
+                      <span class="lms-sort-label">Status</span>
                       <i :class="getSortIcon('status')"></i>
                     </button>
                   </th>
-                  <th class="text-center lms-th-action">
+                  <th class="text-center lms-th-action" style="min-width: 130px;">
                     <span class="lms-th-label justify-content-center">Aksi</span>
                   </th>
                 </tr>
@@ -568,28 +856,45 @@ export default {
                     </div>
                   </td>
                 </tr>
-                <template v-for="(item, i) in displayData" :key="item.id">
-                  <tr class="stakeholder-row ev-table-row" :class="{ 'stakeholder-row-expanded': expandedKelasId === item.id }" @click="toggleExpand(item)" style="cursor: pointer;">
+                <template v-for="(item, i) in displayDataWithCounts" :key="item.id">
+                  <tr class="stakeholder-row ev-table-row lms-course-card" :class="{ 'stakeholder-row-expanded': expandedKelasId === item.id }" @click="toggleExpand(item)">
                     <td class="align-middle text-center">
                       <span class="row-number">{{ (currentPage - 1) * itemsPerPage + i + 1 }}</span>
                     </td>
                     <td class="align-middle">
                       <div class="stakeholder-company-cell">
-                        <button class="stakeholder-expand-btn" @click.stop="toggleExpand(item)" :title="expandedKelasId === item.id ? 'Collapse row' : 'Expand row'">
+                        <button class="stakeholder-expand-btn" @click.stop="toggleExpand(item)" :title="expandedKelasId === item.id ? 'Tutup detail kelas' : 'Buka detail kelas'">
                           <i :class="expandedKelasId === item.id ? 'ri-arrow-down-s-line' : 'ri-arrow-right-s-line'"></i>
                         </button>
-                        <div class="company-avatar overflow-hidden" :class="item.thumbnail ? '' : getAvatarClass((item.nama_kelas || 'K').charAt(0))">
+                        <div
+                          class="company-avatar overflow-hidden lms-class-avatar"
+                          :class="item.thumbnail ? '' : getAvatarClass(getClassTopic(item).charAt(0))"
+                          :title="item.thumbnail ? item.nama_kelas : `Kategori: ${getClassTopic(item)}`"
+                          :aria-label="item.thumbnail ? item.nama_kelas : `Kategori: ${getClassTopic(item)}`"
+                        >
                           <img v-if="item.thumbnail" :src="item.thumbnail" class="w-100 h-100 object-fit-cover" alt="" />
-                          <span v-else class="company-avatar-letter">{{ (item.nama_kelas || 'K').charAt(0).toUpperCase() }}</span>
+                          <span v-else class="company-avatar-letter">{{ getClassCode(item) }}</span>
                         </div>
                         <div class="company-name-wrap">
                           <span class="company-name d-block fw-bold">{{ item.nama_kelas }}</span>
-                          <span class="text-muted fs-12">{{ materiCounts[item.id] || 0 }} Materi · {{ kuisCounts[item.id] || 0 }} Kuis</span>
+                          <span class="text-muted fs-12">{{ item.materiTotal }} Materi · {{ item.kuisTotal }} Kuis</span>
                         </div>
                       </div>
                     </td>
-                    <td class="align-middle text-muted fs-13" style="max-width: 450px;">
-                      <div class="fw-semibold text-dark mb-1 lms-description-truncate" :title="item.deskripsi">{{ item.deskripsi || '-' }}</div>
+                    <td class="align-middle text-muted fs-13 lms-td-description">
+                      <div class="lms-description-line">
+                        <span class="fw-semibold text-dark lms-description-truncate" :title="getDescriptionPreview(item.deskripsi)">
+                          {{ getShortDescription(item.deskripsi) }}
+                        </span>
+                        <button
+                          type="button"
+                          class="lms-inline-detail"
+                          @click.stop="router.push('/lms/kelas/view/' + item.id)"
+                          :aria-label="`Lihat detail kelas ${item.nama_kelas}`"
+                        >
+                          Lihat detail
+                        </button>
+                      </div>
                       <div class="d-flex flex-wrap gap-2">
                         <span v-if="item.kategori" class="badge bg-primary-transparent text-primary fs-11">{{ item.kategori }}</span>
                         <span v-if="item.penyelenggara" class="badge bg-info-transparent text-info fs-11">{{ item.penyelenggara }}</span>
@@ -601,15 +906,15 @@ export default {
                         {{ item.status === 'published' ? 'Publish' : 'Draft' }}
                       </span>
                     </td>
-                    <td class="align-middle text-center">
+                    <td class="align-middle text-center lms-td-action">
                       <div class="d-flex gap-1 justify-content-center">
-                        <button @click.stop="router.push('/lms/kelas/view/' + item.id)" class="btn btn-sm btn-icon btn-wave btn-primary-light stakeholders-action-btn" title="Lihat Detail Kelas">
+                        <button @click.stop="router.push('/lms/kelas/view/' + item.id)" class="btn btn-sm btn-icon btn-wave btn-primary-light stakeholders-action-btn" data-tooltip="Lihat" aria-label="Lihat detail kelas">
                           <i class="ri-eye-line"></i>
                         </button>
-                        <button @click.stop="openKelasModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" title="Edit Kelas">
+                        <button @click.stop="openKelasModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" data-tooltip="Edit" aria-label="Edit kelas">
                           <i class="ri-edit-2-line"></i>
                         </button>
-                        <button @click.stop="openDeleteModal('kelas', item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus Kelas">
+                        <button v-if="isFullAdmin" @click.stop="openDeleteModal('kelas', item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" data-tooltip="Hapus" aria-label="Hapus kelas">
                           <i class="ri-delete-bin-3-line"></i>
                         </button>
                       </div>
@@ -643,15 +948,15 @@ export default {
                                         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
                                           <span class="badge bg-primary-transparent text-primary fs-11 px-2 py-1 fw-medium"><i class="ri-price-tag-3-line me-1"></i> {{ m.kategori || 'Umum' }}</span>
                                           <span class="text-muted fs-11 text-uppercase fw-bold">{{ m.tipe }}</span>
-                                          <span v-if="countKuisForMateri(m.id) > 0" class="badge bg-success-transparent text-success fs-10 fw-bold px-2 py-0-5 rounded-pill">
-                                            <i class="ri-checkbox-circle-line me-1"></i> {{ countKuisForMateri(m.id) }} Kuis
+                                          <span v-if="(kuisCountByMateri[m.id] || 0) > 0" class="badge bg-success-transparent text-success fs-10 fw-bold px-2 py-0-5 rounded-pill">
+                                            <i class="ri-checkbox-circle-line me-1"></i> {{ kuisCountByMateri[m.id] || 0 }} Kuis
                                           </span>
                                         </div>
                                       </div>
                                     </div>
                                     <div class="d-flex gap-1 flex-shrink-0">
-                                      <button @click="openMateriModal(item.id, m)" class="btn btn-sm btn-icon btn-outline-primary rounded-circle border-0 bg-primary-transparent" title="Edit"><i class="ri-edit-line"></i></button>
-                                      <button @click="openDeleteModal('materi', m)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent" title="Hapus"><i class="ri-delete-bin-line"></i></button>
+                                      <button @click="openMateriModal(item.id, m)" class="btn btn-sm btn-icon btn-outline-primary rounded-circle border-0 bg-primary-transparent lms-detail-action-btn" data-tooltip="Edit materi" aria-label="Edit materi"><i class="ri-edit-line"></i></button>
+                                      <button v-if="isFullAdmin" @click="openDeleteModal('materi', m)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent lms-detail-action-btn" data-tooltip="Hapus materi" aria-label="Hapus materi"><i class="ri-delete-bin-line"></i></button>
                                     </div>
                                   </div>
                                 </div>
@@ -678,7 +983,7 @@ export default {
                                         <div class="fw-bold fs-13 mb-0 text-truncate stakeholder-detail-card-title">{{ q.judul }}</div>
                                         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
                                           <span v-if="q.tipe_kuis === 'per_materi'" class="badge bg-primary-transparent text-primary fs-11 px-2 py-1 fw-semibold">
-                                            <i class="ri-book-open-line me-1"></i> Materi: <span class="text-truncate d-inline-block align-bottom" style="max-width: 80px;">{{ findMateriJudul(q.id_materi) }}</span>
+                                            <i class="ri-book-open-line me-1"></i> Materi: <span class="text-truncate d-inline-block align-bottom lms-materi-title-compact">{{ materiTitleById[q.id_materi] || 'Materi tidak ditemukan' }}</span>
                                           </span>
                                           <span v-else class="badge bg-success-transparent text-success fs-11 px-2 py-1 fw-bold">
                                             <i class="ri-medal-line me-1"></i> FINAL KELAS
@@ -688,8 +993,8 @@ export default {
                                       </div>
                                     </div>
                                     <div class="d-flex gap-1 flex-shrink-0">
-                                      <button @click="openKuisModal(item.id, q)" class="btn btn-sm btn-icon btn-outline-primary rounded-circle border-0 bg-primary-transparent" title="Edit"><i class="ri-edit-line"></i></button>
-                                      <button @click="openDeleteModal('kuis', q)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent" title="Hapus"><i class="ri-delete-bin-line"></i></button>
+                                      <button @click="openKuisModal(item.id, q)" class="btn btn-sm btn-icon btn-outline-primary rounded-circle border-0 bg-primary-transparent lms-detail-action-btn" data-tooltip="Edit kuis" aria-label="Edit kuis"><i class="ri-edit-line"></i></button>
+                                      <button v-if="isFullAdmin" @click="openDeleteModal('kuis', q)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent lms-detail-action-btn" data-tooltip="Hapus kuis" aria-label="Hapus kuis"><i class="ri-delete-bin-line"></i></button>
                                     </div>
                                   </div>
                                 </div>
@@ -708,20 +1013,20 @@ export default {
 
           <div class="pagination-container stakeholders-pagination mt-2 mb-0 pb-0">
             <div class="stakeholders-pagination-copy">
-              Showing {{ displayData.length ? (currentPage - 1) * itemsPerPage + 1 : 0 }}-{{ Math.min(currentPage * itemsPerPage, filteredData.length) }} of {{ filteredData.length }} kelas
+              Menampilkan {{ displayData.length ? (currentPage - 1) * itemsPerPage + 1 : 0 }}-{{ Math.min(currentPage * itemsPerPage, filteredData.length) }} dari {{ filteredData.length }} kelas
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-              <span class="stakeholders-page-pill">Page {{ currentPage }} of {{ totalPages || 1 }}</span>
+              <span class="stakeholders-page-pill">Halaman {{ currentPage }} dari {{ totalPages || 1 }}</span>
               <nav v-if="totalPages > 1">
                 <ul class="pagination pagination-sm mb-0 gap-1">
-                  <li class="page-item" :class="{ disabled: currentPage === 1 }"><a class="page-link rounded-circle" href="#" @click.prevent="currentPage--"><i class="ri-arrow-left-s-line"></i></a></li>
+                  <li class="page-item" :class="{ disabled: currentPage === 1 }"><a class="page-link rounded-circle" href="#" @click.prevent="goToPage(currentPage - 1)"><i class="ri-arrow-left-s-line"></i></a></li>
                   <template v-for="p in totalPages" :key="p">
                     <li v-if="p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)" class="page-item" :class="{ active: p === currentPage }">
-                      <a class="page-link rounded-circle" href="#" @click.prevent="currentPage = p">{{ p }}</a>
+                      <a class="page-link rounded-circle" href="#" @click.prevent="goToPage(p)">{{ p }}</a>
                     </li>
                     <li v-else-if="p === currentPage - 2 || p === currentPage + 2" class="page-item disabled"><span class="page-link border-0 bg-transparent">...</span></li>
                   </template>
-                  <li class="page-item" :class="{ disabled: currentPage === totalPages }"><a class="page-link rounded-circle" href="#" @click.prevent="currentPage++"><i class="ri-arrow-right-s-line"></i></a></li>
+                  <li class="page-item" :class="{ disabled: currentPage === totalPages }"><a class="page-link rounded-circle" href="#" @click.prevent="goToPage(currentPage + 1)"><i class="ri-arrow-right-s-line"></i></a></li>
                 </ul>
               </nav>
             </div>
@@ -737,10 +1042,9 @@ export default {
   <!-- KELAS MODAL -->
   <div v-if="activeModal === 'kelas'" :class="['modal-overlay', 'kelas-modal-overlay', { 'is-dark': isDarkMode }]" @click.self="activeModal = null">
     <div
-      class="modal-dialog modal-dialog-centered lms-kelas-modal-size kelas-modal-dialog"
-      style="width: min(90vw, 900px); max-width: 900px; margin: 1rem auto;"
+      class="modal-dialog modal-dialog-centered lms-kelas-modal-size kelas-modal-dialog lms-kelas-modal-shell"
     >
-      <div class="modal-content border-0 bg-transparent kelas-modal-content" style="width: 100%; max-width: none;">
+      <div class="modal-content border-0 bg-transparent kelas-modal-content lms-kelas-modal-content-shell">
         <div class="card custom-card gradient-header-card w-100 mb-0 custom-modal kelas-modal-card">
           <div class="card-header d-flex justify-content-between align-items-center gap-3 users-header kelas-modal-header">
             <div class="d-flex align-items-center gap-3"><div class="header-icon-box"><i class="ri-graduation-cap-line"></i></div><div><div class="card-title mb-0 text-white fw-bold header-card-title">{{ isEdit ? 'Edit Kelas' : 'Tambah Kelas Baru' }}</div></div></div>
@@ -801,26 +1105,41 @@ export default {
                 <textarea v-model="formKelas.syarat_pendaftaran" class="form-control kse-modal-input kelas-modal-textarea" rows="3" placeholder="Syarat pendaftaran peserta..."></textarea>
               </div>
               <div class="col-12 kelas-thumbnail-section">
-                <label class="form-label fw-semibold">Thumbnail URL</label>
-                
+                <label class="form-label fw-semibold">Thumbnail Kelas</label>
+
                 <div class="d-flex flex-column gap-3 kelas-thumbnail-field">
                   <input
-                    v-model="formKelas.thumbnail"
-                    type="text"
-                    class="form-control kse-modal-input"
-                    placeholder="Masukkan URL Gambar (Misal: https://example.com/foto.jpg)"
+                    ref="thumbnailInput"
+                    type="file"
+                    class="d-none"
+                    accept="image/*"
+                    @change="handleThumbnailChange"
                   />
 
                   <div v-if="thumbnailPreview" class="thumbnail-preview-box kelas-thumbnail-preview rounded-4 border p-2 bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative">
-                    <img :src="thumbnailPreview" class="w-100 h-100 object-fit-cover rounded-3" alt="Preview" @error="formKelas.thumbnail = ''" />
-                    <button @click="formKelas.thumbnail = ''" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width: 28px; height: 28px; padding: 0;">
+                    <img :src="thumbnailPreview" class="w-100 h-100 object-fit-cover rounded-3" alt="Preview" @error="removeThumbnail" />
+                    <button @click="removeThumbnail" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 rounded-circle" style="width: 28px; height: 28px; padding: 0;">
                       <i class="ri-close-line"></i>
                     </button>
                   </div>
                   <div v-else class="thumbnail-placeholder kelas-thumbnail-preview rounded-4 border-dashed p-4 text-center bg-light">
-                    <i class="ri-image-line fs-1 text-muted opacity-50"></i>
-                    <p class="text-muted fs-12 mb-0">Belum ada URL gambar</p>
+                    <i class="ri-image-add-line fs-1 text-muted opacity-50"></i>
+                    <p class="text-muted fs-12 mb-0">Pilih gambar dari device untuk thumbnail kelas</p>
                   </div>
+
+                  <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" @click="triggerThumbnailPicker">
+                      <i class="ri-upload-2-line me-1"></i>{{ thumbnailPreview ? 'Ganti Gambar' : 'Upload Gambar' }}
+                    </button>
+                    <button v-if="thumbnailPreview" type="button" class="btn btn-outline-danger btn-sm" @click="removeThumbnail">
+                      <i class="ri-delete-bin-line me-1"></i>Hapus
+                    </button>
+                  </div>
+
+                  <div v-if="formKelas.thumbnail_file" class="small text-success">
+                    <i class="ri-check-line"></i> {{ formKelas.thumbnail_file.name }} siap diupload
+                  </div>
+                  <div v-if="formErrors.thumbnail" class="text-danger small">{{ formErrors.thumbnail }}</div>
                 </div>
               </div>
             </div>
@@ -837,10 +1156,10 @@ export default {
   <!-- KELAS MODAL (Materi & Kuis Modals removed, replaced by routing) -->
 
   <!-- DELETE MODAL -->
-  <div v-if="activeModal === 'delete'" :class="['modal', 'fade', 'show', 'd-block', 'modal-overlay', { 'is-dark': isDarkMode }]" tabindex="-1" @click.self="activeModal = null">
-    <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="kse-modal-box kse-modal-sm w-100">
+  <Teleport to="body">
+    <transition name="kse-modal-fade">
+      <div v-if="activeModal === 'delete'" class="kse-modal-overlay" @click.self="activeModal = null">
+        <div class="kse-modal-box kse-modal-sm">
           <div class="kse-modal-header kse-modal-header-danger">
             <div class="d-flex align-items-center gap-3">
               <div class="kse-modal-icon-wrap"><i class="ri-delete-bin-line"></i></div>
@@ -848,6 +1167,7 @@ export default {
                 <div class="kse-modal-title">Hapus {{ deleteType === 'kelas' ? 'Kelas' : deleteType === 'materi' ? 'Materi' : 'Kuis' }}</div>
               </div>
             </div>
+            <button class="kse-modal-close" @click="activeModal = null"><i class="ri-close-line"></i></button>
           </div>
           <div class="kse-modal-body text-center">
             <p class="mb-0 fs-14">Yakin ingin menghapus <strong>{{ deleteTarget?.nama_kelas || deleteTarget?.judul }}</strong>?</p>
@@ -858,8 +1178,8 @@ export default {
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </transition>
+  </Teleport>
 </template>
 
 <style>
@@ -1243,6 +1563,17 @@ html.dark .kelas-thumbnail-preview {
   width: 100%;
 }
 
+.lms-kelas-modal-shell {
+  max-width: 900px !important;
+  margin: 1rem auto !important;
+  width: min(90vw, 900px) !important;
+}
+
+.lms-kelas-modal-content-shell {
+  max-width: none !important;
+  width: 100% !important;
+}
+
 .kelas-modal-card {
   display: flex;
   flex-direction: column;
@@ -1578,6 +1909,10 @@ html.dark .kelas-thumbnail-preview {
   box-shadow: 0 22px 54px rgba(30, 64, 175, 0.11);
 }
 
+.lms-kelas-card-shell {
+  overflow: visible !important;
+}
+
 .lms-kelas-card .stakeholders-premium-body {
   background: transparent;
 }
@@ -1773,8 +2108,22 @@ html.dark .kelas-thumbnail-preview {
 }
 
 .lms-th-description {
-  min-width: 240px;
-  max-width: 500px;
+  min-width: 200px;
+  max-width: 380px;
+}
+
+.lms-th-action {
+  min-width: 130px;
+  white-space: nowrap;
+}
+
+.lms-td-description {
+  max-width: 380px;
+}
+
+.lms-td-action {
+  white-space: nowrap;
+  min-width: 130px;
 }
 
 .lms-description-truncate {
@@ -1922,6 +2271,8 @@ html.dark .kelas-thumbnail-preview {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.24);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+  min-width: 116px;
+  padding: 10px 12px !important;
 }
 
 .lms-kelas-page .ev-stat-head span,
@@ -1931,6 +2282,36 @@ html.dark .kelas-thumbnail-preview {
 
 .lms-kelas-page .ev-stat-head i {
   color: #fde68a;
+}
+
+.lms-kelas-page .ev-hero-stats {
+  gap: 8px;
+}
+
+.lms-kelas-page .ev-stat-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  min-height: 18px;
+  width: 100%;
+}
+
+.lms-kelas-page .ev-stat-head span {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.lms-kelas-page .ev-stat-card strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.lms-kelas-page .ev-stat-head i {
+  font-size: 16px;
+  line-height: 1;
+  margin-left: 8px;
+  transform: translateY(-1px);
 }
 
 .lms-kelas-page .ev-content-card {
@@ -1967,10 +2348,34 @@ html.dark .kelas-thumbnail-preview {
 
   .ikas-hero-tools {
     max-width: none;
+    gap: 10px;
+    width: 100%;
   }
 
   .ikas-hero-stat-card {
-    min-height: 84px;
+    flex: 1 1 calc(33.333% - 7px);
+    width: auto;
+    min-width: 0;
+    min-height: 72px;
+    gap: 10px;
+    padding: 12px 10px;
+  }
+
+  .ikas-stat-top {
+    gap: 8px;
+  }
+
+  .ikas-stat-top span {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .ikas-stat-top i {
+    font-size: 18px;
+  }
+
+  .ikas-hero-stat-card strong {
+    font-size: 22px;
   }
 
   .lms-kelas-toolbar {
@@ -1987,6 +2392,34 @@ html.dark .kelas-thumbnail-preview {
     margin-left: 0 !important;
     justify-content: center;
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .ikas-hero-header {
+    padding: 16px;
+  }
+
+  .ikas-hero-tools {
+    gap: 8px;
+  }
+
+  .ikas-hero-stat-card {
+    min-height: 64px;
+    padding: 10px 8px;
+    border-radius: 6px;
+  }
+
+  .ikas-stat-top span {
+    font-size: 8px;
+  }
+
+  .ikas-stat-top i {
+    font-size: 16px;
+  }
+
+  .ikas-hero-stat-card strong {
+    font-size: 18px;
   }
 }
 
@@ -2033,6 +2466,16 @@ html.dark .kelas-thumbnail-preview {
   background: linear-gradient(180deg, #0b1220 0%, #0f1a2d 100%) !important;
   border-color: #22314a !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+  scrollbar-color: #3b82f6 transparent;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table-wrap::-webkit-scrollbar-thumb {
+  background: #1e3a8a;
+  border: 1px solid #0f172a;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
 }
 
 .lms-kelas-page.is-dark .stakeholder-table {
@@ -2067,6 +2510,7 @@ html.dark .kelas-thumbnail-preview {
   background-color: #13213a !important;
   border-color: rgba(96, 165, 250, 0.42) !important;
 }
+
 
 .lms-kelas-page.is-dark .company-name,
 .lms-kelas-page.is-dark .text-dark,
@@ -2106,5 +2550,985 @@ html.dark .kelas-thumbnail-preview {
 .lms-kelas-page.is-dark .lms-sort-btn.active i,
 .lms-kelas-page.is-dark .lms-sort-btn:hover i {
   color: #dbeafe !important;
+}
+
+/* Fresh LMS class list treatment */
+.lms-kelas-page .ev-hero {
+  background:
+    linear-gradient(135deg, rgba(14, 116, 144, 0.94) 0%, rgba(37, 99, 235, 0.96) 48%, rgba(124, 58, 237, 0.9) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+}
+
+.lms-kelas-page .lms-class-panel {
+  background: #f8fbff !important;
+  border: 1px solid #d7e3f5 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 22px 52px rgba(15, 23, 42, 0.08) !important;
+}
+
+.lms-kelas-page .lms-kelas-toolbar-wrap {
+  background: #ffffff !important;
+  border: 1px solid #e3eaf5 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06) !important;
+}
+
+.lms-kelas-page .kelas-toolbar-search {
+  background: #f6f9fd !important;
+  border: 1px solid #dce7f5 !important;
+  border-radius: 12px !important;
+  height: 42px;
+}
+
+.lms-kelas-page .entries-select {
+  background-color: #f6f9fd;
+  border-color: #dce7f5;
+  border-radius: 10px;
+  min-width: 72px;
+}
+
+.lms-kelas-page .stakeholders-add-btn {
+  background: linear-gradient(135deg, #0f766e, #2563eb) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 26px rgba(15, 118, 110, 0.18) !important;
+}
+
+.lms-kelas-page .stakeholder-table-wrap {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 0 10px 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #93c5fd transparent;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar {
+  height: 8px;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 8px;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar-thumb {
+  background: #93c5fd;
+  border-radius: 8px;
+}
+
+.lms-kelas-page .stakeholder-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+.lms-kelas-page .stakeholder-table {
+  border-collapse: separate;
+  border-spacing: 0 12px !important;
+  min-width: 760px;
+  width: 100%;
+}
+
+.lms-kelas-page .stakeholder-table thead th {
+  background: #10233f !important;
+  box-shadow: none !important;
+  padding-block: 8px !important;
+}
+
+.lms-kelas-page .stakeholder-table thead th:first-child {
+  border-radius: 14px 0 0 14px !important;
+}
+
+.lms-kelas-page .stakeholder-table thead th:last-child {
+  border-radius: 0 14px 14px 0 !important;
+}
+
+.lms-kelas-page .lms-course-card td {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e1eaf6 !important;
+  border-top: 1px solid #e1eaf6 !important;
+  padding-block: 18px !important;
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.lms-kelas-page .lms-course-card {
+  cursor: pointer;
+}
+
+.lms-kelas-page .lms-course-card td:first-child {
+  border-left: 4px solid #0f766e !important;
+  border-radius: 16px 0 0 16px !important;
+}
+
+.lms-kelas-page .lms-course-card td:last-child {
+  border-radius: 0 16px 16px 0 !important;
+  border-right: 1px solid #e1eaf6 !important;
+}
+
+.lms-kelas-page .lms-course-card:hover td,
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded td {
+  background: #f6fbff !important;
+  border-color: #bfdbfe !important;
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.1);
+}
+
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded td:first-child {
+  border-left-color: #f59e0b !important;
+}
+
+.lms-kelas-page .row-number {
+  color: #64748b;
+  font-weight: 900;
+}
+
+.lms-kelas-page .stakeholder-company-cell {
+  gap: 14px;
+}
+
+.lms-kelas-page .stakeholder-expand-btn {
+  background: #eef6ff !important;
+  border: 1px solid #d8e8fb !important;
+  color: #2563eb !important;
+  transition: transform 180ms ease, background 180ms ease;
+}
+
+.lms-kelas-page .stakeholder-row-expanded .stakeholder-expand-btn {
+  background: #fff7ed !important;
+  border-color: #fed7aa !important;
+  color: #f97316 !important;
+  transform: rotate(90deg);
+}
+
+.lms-kelas-page .company-avatar {
+  border-radius: 14px !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.11);
+}
+
+.lms-kelas-page .company-name {
+  color: #10233f;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.lms-kelas-page .lms-description-truncate {
+  color: #26364d !important;
+  font-weight: 700 !important;
+}
+
+.lms-kelas-page .lms-materi-title-compact {
+  max-width: 80px;
+}
+
+.lms-kelas-page .badge-sektor {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-weight: 800;
+  min-height: 30px;
+  padding: 7px 14px;
+}
+
+.lms-kelas-page .badge-sektor-teal {
+  background: #ccfbf1 !important;
+  border: 1px solid #5eead4;
+  color: #0f766e !important;
+}
+
+.lms-kelas-page .badge-sektor-amber {
+  background: #fffbeb !important;
+  border: 1px solid #fcd34d;
+  color: #b45309 !important;
+}
+
+.lms-kelas-page .stakeholders-action-btn {
+  border-radius: 10px !important;
+  height: 34px;
+  width: 34px;
+}
+
+
+
+.lms-kelas-page .stakeholder-expanded-wrapper {
+  background: linear-gradient(180deg, #f8fbff, #eef7ff) !important;
+  border: 1px solid #d7e7ff !important;
+  border-radius: 16px !important;
+  margin: -4px 0 10px;
+  padding: 16px !important;
+}
+
+.lms-kelas-page .stakeholder-inner-card {
+  background: #ffffff !important;
+  border: 1px solid #e0e9f6 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.lms-kelas-page .stakeholder-detail-list-item {
+  background: #f8fbff !important;
+  border: 1px solid #edf3fb !important;
+  margin-bottom: 8px !important;
+}
+
+.lms-kelas-page .pagination-container {
+  background: transparent;
+  border: 0;
+  padding-top: 2px;
+}
+
+.lms-kelas-page.is-dark .lms-class-panel,
+[data-theme-mode="dark"] .lms-kelas-page .lms-class-panel,
+html.dark .lms-kelas-page .lms-class-panel {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .lms-kelas-toolbar-wrap,
+[data-theme-mode="dark"] .lms-kelas-page .lms-kelas-toolbar-wrap,
+html.dark .lms-kelas-page .lms-kelas-toolbar-wrap {
+  background: #111c2e !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .lms-course-card td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card td,
+html.dark .lms-kelas-page .lms-course-card td {
+  background: #111c2e !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .lms-course-card:hover td,
+.lms-kelas-page.is-dark .lms-course-card.stakeholder-row-expanded td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card:hover td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card.stakeholder-row-expanded td,
+html.dark .lms-kelas-page .lms-course-card:hover td,
+html.dark .lms-kelas-page .lms-course-card.stakeholder-row-expanded td {
+  background: #14243a !important;
+  border-color: rgba(96, 165, 250, 0.38) !important;
+}
+
+@media (max-width: 768px) {
+  .lms-kelas-page .lms-kelas-card .stakeholders-premium-body {
+    padding: 14px !important;
+  }
+
+  .lms-kelas-page .stakeholder-table {
+    min-width: 760px;
+  }
+}
+
+/* Final LMS table spacing + color tuning */
+.lms-kelas-page .ev-hero {
+  background: linear-gradient(135deg, #0f1f57 0%, #2454d8 52%, #0ea5e9 100%) !important;
+  border: none !important;
+  box-shadow: 0 22px 58px rgba(37, 84, 216, 0.24) !important;
+}
+
+.lms-kelas-page .lms-kelas-card .stakeholders-premium-body {
+  padding: 14px 16px 12px !important;
+}
+
+.lms-kelas-page .lms-class-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%) !important;
+  border-color: #dde8f2 !important;
+  border-radius: 16px !important;
+}
+
+.lms-kelas-page .lms-kelas-toolbar-wrap {
+  margin-bottom: 12px !important;
+  padding: 10px !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+  border-color: #e1e9f2 !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05) !important;
+}
+
+.lms-kelas-page .lms-kelas-toolbar {
+  gap: 10px !important;
+}
+
+.lms-kelas-page .stakeholders-per-page {
+  min-height: 40px !important;
+}
+
+.lms-kelas-page .stakeholders-per-page span {
+  font-size: 11px !important;
+}
+
+.lms-kelas-page .entries-select {
+  height: 34px !important;
+  padding-block: 4px !important;
+}
+
+.lms-kelas-page .kelas-toolbar-search {
+  background: #f8fafc !important;
+  border-color: #d8e3ee !important;
+  flex-basis: 430px !important;
+  height: 40px !important;
+  max-width: 560px !important;
+}
+
+.lms-kelas-page .stakeholders-add-btn {
+  background: linear-gradient(135deg, #2563eb 0%, #0891b2 100%) !important;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18) !important;
+  min-height: 40px !important;
+  padding: 9px 15px !important;
+}
+
+.lms-kelas-page .stakeholder-table {
+  border-spacing: 0 8px !important;
+}
+
+.lms-kelas-page .stakeholder-table thead th {
+  background: linear-gradient(180deg, #f8fafc 0%, #edf4fb 100%) !important;
+  color: #23405c !important;
+  border-bottom: 1px solid #d5e2ef !important;
+  padding-block: 6px !important;
+}
+
+.lms-kelas-page .lms-th-label,
+.lms-kelas-page .lms-sort-btn {
+  min-height: 36px !important;
+  color: #23405c !important;
+}
+
+.lms-kelas-page .lms-sort-btn i {
+  color: #647f9a !important;
+}
+
+.lms-kelas-page .lms-sort-btn:hover,
+.lms-kelas-page .lms-sort-btn.active {
+  background: #ffffff !important;
+  color: #0f5f8d !important;
+  box-shadow: inset 0 0 0 1px #cbdff0 !important;
+}
+
+.lms-kelas-page .lms-course-card td {
+  background: #ffffff !important;
+  border-color: #e3ebf3 !important;
+  padding-bottom: 12px !important;
+  padding-top: 12px !important;
+}
+
+.lms-kelas-page .lms-course-card td:first-child {
+  border-left-color: #2563eb !important;
+}
+
+.lms-kelas-page .lms-course-card:hover td,
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded td {
+  background: #f7fbff !important;
+  border-color: #c9dff2 !important;
+  box-shadow: 0 12px 26px rgba(15, 71, 123, 0.08) !important;
+}
+
+.lms-kelas-page .company-name {
+  color: #172a41 !important;
+}
+
+.lms-kelas-page .lms-description-truncate {
+  color: #405168 !important;
+}
+
+.lms-kelas-page .stakeholder-expand-btn {
+  background: #eef6ff !important;
+  border-color: #d5e7f7 !important;
+  color: #2563eb !important;
+}
+
+.lms-kelas-page .stakeholder-row-expanded .stakeholder-expand-btn {
+  background: #ecfeff !important;
+  border-color: #a5f3fc !important;
+  color: #0891b2 !important;
+}
+
+.lms-kelas-page .badge-sektor-teal {
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+
+.lms-kelas-page .badge-sektor-amber {
+  background: #fff7ed !important;
+  border-color: #fed7aa !important;
+  color: #c2410c !important;
+}
+
+.lms-kelas-page .stakeholder-expanded-wrapper {
+  background: linear-gradient(180deg, #ffffff 0%, #f5fafc 100%) !important;
+  border-color: #dbe8f3 !important;
+}
+
+.lms-kelas-page .stakeholder-inner-card {
+  background: #ffffff !important;
+  border-color: #e2ebf4 !important;
+}
+
+.lms-kelas-page .stakeholder-detail-list-item {
+  background: #f8fbfe !important;
+  border-color: #edf3f8 !important;
+}
+
+.lms-kelas-page.is-dark .lms-class-panel,
+[data-theme-mode="dark"] .lms-kelas-page .lms-class-panel,
+html.dark .lms-kelas-page .lms-class-panel {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .lms-kelas-toolbar-wrap,
+[data-theme-mode="dark"] .lms-kelas-page .lms-kelas-toolbar-wrap,
+html.dark .lms-kelas-page .lms-kelas-toolbar-wrap {
+  background: #111c2e !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table thead th,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead th,
+html.dark .lms-kelas-page .stakeholder-table thead th {
+  background: linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+.lms-kelas-page.is-dark .lms-course-card td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card td,
+html.dark .lms-kelas-page .lms-course-card td {
+  background: #111c2e !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page .stakeholder-expanded-wrapper {
+  margin-top: -2px !important;
+}
+
+.lms-kelas-page .pagination-container {
+  margin-top: 2px !important;
+}
+
+/* UX clarity refinements */
+.lms-kelas-page .lms-sort-btn {
+  gap: 6px !important;
+  justify-content: flex-start !important;
+  padding-inline: 10px !important;
+  width: auto !important;
+}
+
+.lms-kelas-page .lms-sort-btn-center {
+  margin-inline: auto !important;
+}
+
+.lms-kelas-page .lms-sort-label {
+  line-height: 1;
+}
+
+.lms-kelas-page .lms-class-avatar .company-avatar-letter {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding-inline: 2px;
+  text-align: center;
+}
+
+.lms-kelas-page .lms-description-line {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.lms-kelas-page .lms-description-line .lms-description-truncate {
+  flex: 1 1 auto;
+  min-width: 90px;
+  width: auto;
+}
+
+.lms-kelas-page .lms-inline-detail {
+  background: transparent;
+  border: 0;
+  color: #1d4ed8;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  padding: 2px 0;
+}
+
+.lms-kelas-page .lms-inline-detail:hover,
+.lms-kelas-page .lms-inline-detail:focus-visible {
+  color: #0f766e;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.lms-kelas-page .stakeholders-action-btn,
+.lms-kelas-page .lms-detail-action-btn {
+  overflow: visible;
+  position: relative;
+}
+
+.lms-kelas-page .lms-detail-action-btn {
+  height: 32px;
+  width: 32px;
+}
+
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]::after,
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]::after {
+  background: #0f172a;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  color: #ffffff;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 800;
+  left: 50%;
+  line-height: 1;
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+  z-index: 30;
+}
+
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]::after {
+  bottom: auto;
+  left: auto;
+  right: calc(100% + 9px);
+  top: 50%;
+  transform: translate(4px, -50%);
+}
+
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]::after {
+  bottom: calc(100% + 9px);
+}
+
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]::before,
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]::before {
+  border: 5px solid transparent;
+  content: "";
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 31;
+}
+
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]::before {
+  border-left-color: #0f172a;
+  bottom: auto;
+  left: auto;
+  right: calc(100% - 1px);
+  top: 50%;
+  transform: translate(4px, -50%);
+}
+
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]::before {
+  border-top-color: #0f172a;
+  bottom: calc(100% + 4px);
+}
+
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:hover::after,
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:focus-visible::after,
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:hover::before,
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:focus-visible::before,
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]:hover::after,
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]:focus-visible::after,
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]:hover::before,
+.lms-kelas-page .lms-detail-action-btn[data-tooltip]:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:hover::after,
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:focus-visible::after,
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:hover::before,
+.lms-kelas-page .stakeholders-action-btn[data-tooltip]:focus-visible::before {
+  transform: translate(0, -50%);
+}
+
+@media (max-width: 640px) {
+  .lms-kelas-page .lms-description-line {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .lms-kelas-page .lms-description-line .lms-description-truncate {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .lms-kelas-page .lms-kelas-card .stakeholders-premium-body {
+    padding: 12px !important;
+  }
+
+  .lms-kelas-page .lms-kelas-toolbar-wrap {
+    margin-bottom: 10px !important;
+    padding: 10px !important;
+    width: 100% !important;
+  }
+
+  .lms-kelas-page .lms-kelas-toolbar {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .lms-kelas-page .kelas-toolbar-search.ev-search {
+    flex: 0 0 auto !important;
+    flex-basis: auto !important;
+    height: 40px !important;
+    max-height: 40px !important;
+    max-width: none !important;
+    min-height: 40px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .lms-kelas-page .kelas-toolbar-search.ev-search input {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .lms-kelas-page .ev-btn-add {
+    justify-content: center !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .lms-kelas-page .ev-stat-card {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+/* Dark mode overrides must live at the end so they win against the light defaults above */
+.lms-kelas-page.is-dark .ev-hero,
+[data-theme-mode="dark"] .lms-kelas-page .ev-hero,
+html.dark .lms-kelas-page .ev-hero {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(56, 189, 248, 0.16), transparent 30%),
+    radial-gradient(circle at 78% 12%, rgba(59, 130, 246, 0.14), transparent 26%),
+    linear-gradient(135deg, #07111f 0%, #0f1d34 48%, #12365c 100%) !important;
+  border: 1px solid rgba(96, 165, 250, 0.14) !important;
+  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.38) !important;
+}
+
+.lms-kelas-page.is-dark .ev-content-card,
+[data-theme-mode="dark"] .lms-kelas-page .ev-content-card,
+html.dark .lms-kelas-page .ev-content-card {
+  background: linear-gradient(180deg, #0b1220 0%, #111827 100%) !important;
+  border-color: #22314a !important;
+  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.34) !important;
+}
+
+.lms-kelas-page.is-dark .ev-toolbar,
+[data-theme-mode="dark"] .lms-kelas-page .ev-toolbar,
+html.dark .lms-kelas-page .ev-toolbar {
+  background: rgba(15, 23, 42, 0.78) !important;
+  border-color: rgba(51, 65, 85, 0.9) !important;
+  box-shadow: none !important;
+}
+
+.lms-kelas-page.is-dark .ev-search,
+[data-theme-mode="dark"] .lms-kelas-page .ev-search,
+html.dark .lms-kelas-page .ev-search {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .ev-search input,
+[data-theme-mode="dark"] .lms-kelas-page .ev-search input,
+html.dark .lms-kelas-page .ev-search input {
+  color: #e2e8f0 !important;
+}
+
+.lms-kelas-page.is-dark .ev-search input::placeholder,
+[data-theme-mode="dark"] .lms-kelas-page .ev-search input::placeholder,
+html.dark .lms-kelas-page .ev-search input::placeholder {
+  color: #64748b !important;
+}
+
+.lms-kelas-page.is-dark .ev-btn-add,
+[data-theme-mode="dark"] .lms-kelas-page .ev-btn-add,
+html.dark .lms-kelas-page .ev-btn-add {
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.24) !important;
+}
+
+.lms-kelas-page.is-dark .ev-stat-card,
+[data-theme-mode="dark"] .lms-kelas-page .ev-stat-card,
+html.dark .lms-kelas-page .ev-stat-card {
+  background: rgba(15, 23, 42, 0.58) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.24) !important;
+}
+
+.lms-kelas-page.is-dark .ev-stat-head span,
+.lms-kelas-page.is-dark .ev-stat-card strong,
+[data-theme-mode="dark"] .lms-kelas-page .ev-stat-head span,
+[data-theme-mode="dark"] .lms-kelas-page .ev-stat-card strong,
+html.dark .lms-kelas-page .ev-stat-head span,
+html.dark .lms-kelas-page .ev-stat-card strong {
+  color: #f8fafc !important;
+}
+
+.lms-kelas-page.is-dark .ev-stat-head i,
+[data-theme-mode="dark"] .lms-kelas-page .ev-stat-head i,
+html.dark .lms-kelas-page .ev-stat-head i {
+  color: #fde68a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table-wrap,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table-wrap,
+html.dark .lms-kelas-page .stakeholder-table-wrap {
+  background: linear-gradient(180deg, #0b1220 0%, #0f1a2d 100%) !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-table thead th,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-table thead th,
+html.dark .lms-kelas-page .stakeholder-table thead th {
+  background: linear-gradient(180deg, #142a4a 0%, #1d3b64 100%) !important;
+  border-color: #284664 !important;
+  color: #eaf2ff !important;
+}
+
+.lms-kelas-page.is-dark .lms-th-label,
+.lms-kelas-page.is-dark .lms-sort-btn,
+[data-theme-mode="dark"] .lms-kelas-page .lms-th-label,
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn,
+html.dark .lms-kelas-page .lms-th-label,
+html.dark .lms-kelas-page .lms-sort-btn {
+  color: #eaf2ff !important;
+}
+
+.lms-kelas-page.is-dark .lms-sort-btn i,
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn i,
+html.dark .lms-kelas-page .lms-sort-btn i {
+  color: #bfdbfe !important;
+}
+
+.lms-kelas-page.is-dark .lms-sort-btn:hover,
+.lms-kelas-page.is-dark .lms-sort-btn.active,
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn:hover,
+[data-theme-mode="dark"] .lms-kelas-page .lms-sort-btn.active,
+html.dark .lms-kelas-page .lms-sort-btn:hover,
+html.dark .lms-kelas-page .lms-sort-btn.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(191, 219, 254, 0.24) !important;
+}
+
+.lms-kelas-page.is-dark .lms-course-card td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card td,
+html.dark .lms-kelas-page .lms-course-card td {
+  background: #111c2e !important;
+  border-color: #22314a !important;
+  color: #e2e8f0 !important;
+}
+
+.lms-kelas-page.is-dark .lms-course-card:hover td,
+.lms-kelas-page.is-dark .lms-course-card.stakeholder-row-expanded td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card:hover td,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card.stakeholder-row-expanded td,
+html.dark .lms-kelas-page .lms-course-card:hover td,
+html.dark .lms-kelas-page .lms-course-card.stakeholder-row-expanded td {
+  background: #14243a !important;
+  border-color: rgba(96, 165, 250, 0.38) !important;
+}
+
+.lms-kelas-page.is-dark .company-name,
+.lms-kelas-page.is-dark .lms-description-truncate,
+[data-theme-mode="dark"] .lms-kelas-page .company-name,
+[data-theme-mode="dark"] .lms-kelas-page .lms-description-truncate,
+html.dark .lms-kelas-page .company-name,
+html.dark .lms-kelas-page .lms-description-truncate {
+  color: #f8fafc !important;
+}
+
+.lms-kelas-page.is-dark .row-number,
+[data-theme-mode="dark"] .lms-kelas-page .row-number,
+html.dark .lms-kelas-page .row-number {
+  color: #cbd5e1 !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-expand-btn,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-expand-btn,
+html.dark .lms-kelas-page .stakeholder-expand-btn {
+  background: #0f1a2d !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #93c5fd !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-row-expanded .stakeholder-expand-btn,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-row-expanded .stakeholder-expand-btn,
+html.dark .lms-kelas-page .stakeholder-row-expanded .stakeholder-expand-btn {
+  background: rgba(8, 145, 178, 0.16) !important;
+  border-color: rgba(103, 232, 249, 0.28) !important;
+  color: #67e8f9 !important;
+}
+
+.lms-kelas-page.is-dark .badge-sektor-teal,
+[data-theme-mode="dark"] .lms-kelas-page .badge-sektor-teal,
+html.dark .lms-kelas-page .badge-sektor-teal {
+  background: rgba(4, 120, 87, 0.18) !important;
+  border-color: rgba(110, 231, 183, 0.22) !important;
+  color: #6ee7b7 !important;
+}
+
+.lms-kelas-page.is-dark .badge-sektor-amber,
+[data-theme-mode="dark"] .lms-kelas-page .badge-sektor-amber,
+html.dark .lms-kelas-page .badge-sektor-amber {
+  background: rgba(180, 83, 9, 0.18) !important;
+  border-color: rgba(253, 186, 116, 0.24) !important;
+  color: #fdba74 !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-expanded-wrapper,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-expanded-wrapper,
+html.dark .lms-kelas-page .stakeholder-expanded-wrapper {
+  background: #0b1220 !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-inner-card,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-inner-card,
+html.dark .lms-kelas-page .stakeholder-inner-card {
+  background: #0f172a !important;
+  border-color: #22314a !important;
+}
+
+.lms-kelas-page.is-dark .stakeholder-detail-list-item,
+.lms-kelas-page.is-dark .list-group .bg-light,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholder-detail-list-item,
+[data-theme-mode="dark"] .lms-kelas-page .list-group .bg-light,
+html.dark .lms-kelas-page .stakeholder-detail-list-item,
+html.dark .lms-kelas-page .list-group .bg-light {
+  background: #111c2e !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  color: #dbeafe !important;
+}
+
+.lms-kelas-page.is-dark .lms-inline-detail,
+[data-theme-mode="dark"] .lms-kelas-page .lms-inline-detail,
+html.dark .lms-kelas-page .lms-inline-detail {
+  color: #93c5fd !important;
+}
+
+.lms-kelas-page.is-dark .lms-inline-detail:hover,
+.lms-kelas-page.is-dark .lms-inline-detail:focus-visible,
+[data-theme-mode="dark"] .lms-kelas-page .lms-inline-detail:hover,
+[data-theme-mode="dark"] .lms-kelas-page .lms-inline-detail:focus-visible,
+html.dark .lms-kelas-page .lms-inline-detail:hover,
+html.dark .lms-kelas-page .lms-inline-detail:focus-visible {
+  color: #67e8f9 !important;
+}
+
+.lms-kelas-page.is-dark .stakeholders-pagination-copy,
+.lms-kelas-page.is-dark .stakeholders-page-pill,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-pagination-copy,
+[data-theme-mode="dark"] .lms-kelas-page .stakeholders-page-pill,
+html.dark .lms-kelas-page .stakeholders-pagination-copy,
+html.dark .lms-kelas-page .stakeholders-page-pill {
+  color: #bfdbfe !important;
+}
+
+.lms-kelas-page.is-dark .pagination .page-link,
+[data-theme-mode="dark"] .lms-kelas-page .pagination .page-link,
+html.dark .lms-kelas-page .pagination .page-link {
+  background: #0b1628 !important;
+  border-color: rgba(96, 165, 250, 0.22) !important;
+  color: #bfdbfe !important;
+}
+
+.lms-kelas-page.is-dark .pagination .page-item.active .page-link,
+[data-theme-mode="dark"] .lms-kelas-page .pagination .page-item.active .page-link,
+html.dark .lms-kelas-page .pagination .page-item.active .page-link {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+/* Consistent LMS row surface */
+.lms-kelas-page .lms-course-card {
+  --lms-row-bg: #f8fbff;
+  --lms-row-hover-bg: #eff6ff;
+  --lms-row-border: #d7e7ff;
+  --lms-row-hover-border: #b9d7fb;
+  --lms-row-accent: #2563eb;
+  --bs-table-accent-bg: transparent !important;
+  --bs-table-bg: var(--lms-row-bg) !important;
+  --bs-table-bg-state: transparent !important;
+  --bs-table-bg-type: transparent !important;
+  --bs-table-hover-bg: var(--lms-row-hover-bg) !important;
+}
+
+.lms-kelas-page .lms-course-card > td {
+  background: var(--lms-row-bg) !important;
+  background-color: var(--lms-row-bg) !important;
+  background-image: none !important;
+  --bs-table-accent-bg: transparent !important;
+  --bs-table-bg: var(--lms-row-bg) !important;
+  --bs-table-bg-state: transparent !important;
+  --bs-table-bg-type: transparent !important;
+  border-bottom-color: var(--lms-row-border) !important;
+  border-top-color: var(--lms-row-border) !important;
+  box-shadow: none !important;
+}
+
+.lms-kelas-page .lms-course-card > td:first-child {
+  border-left-color: var(--lms-row-accent) !important;
+}
+
+.lms-kelas-page .lms-course-card > td:last-child {
+  border-right-color: var(--lms-row-border) !important;
+}
+
+.lms-kelas-page .lms-course-card:hover > td,
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded > td {
+  background: var(--lms-row-hover-bg) !important;
+  background-color: var(--lms-row-hover-bg) !important;
+  background-image: none !important;
+  --bs-table-accent-bg: transparent !important;
+  --bs-table-bg: var(--lms-row-hover-bg) !important;
+  --bs-table-bg-state: transparent !important;
+  --bs-table-bg-type: transparent !important;
+  border-bottom-color: var(--lms-row-hover-border) !important;
+  border-top-color: var(--lms-row-hover-border) !important;
+  box-shadow: none !important;
+}
+
+.lms-kelas-page .lms-course-card:hover > td:first-child,
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded > td:first-child {
+  box-shadow: none !important;
+}
+
+.lms-kelas-page .lms-course-card:hover > td:last-child,
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded > td:last-child {
+  border-right-color: var(--lms-row-hover-border) !important;
+}
+
+.lms-kelas-page .lms-course-card:hover .company-name,
+.lms-kelas-page .lms-course-card.stakeholder-row-expanded .company-name {
+  color: #1d4ed8 !important;
+}
+
+.lms-kelas-page.is-dark .lms-course-card,
+[data-theme-mode="dark"] .lms-kelas-page .lms-course-card,
+html.dark .lms-kelas-page .lms-course-card {
+  --lms-row-bg: #111c2e;
+  --lms-row-hover-bg: #14243a;
+  --lms-row-border: #22314a;
+  --lms-row-hover-border: rgba(96, 165, 250, 0.38);
+  --lms-row-accent: #60a5fa;
 }
 </style>

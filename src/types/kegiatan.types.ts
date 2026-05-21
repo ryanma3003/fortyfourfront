@@ -4,7 +4,12 @@
  */
 
 export interface Kegiatan {
-    id: number;
+    id: number | string;
+    slug?: string;
+    id_kegiatan?: number | string;
+    kegiatan_id?: number | string;
+    event_id?: number | string;
+    id_event?: number | string;
     judul: string;
     deskripsi: string;
     lokasi: string;

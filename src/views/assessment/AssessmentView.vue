@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useDynamicAssessmentStore } from '@/stores/dynamic-assessment';
 import { useIkasStore } from '@/stores/ikas';
@@ -30,6 +30,8 @@ const emit = defineEmits<{
 
 // Sidebar collapsed state
 const sidebarCollapsed = ref(false);
+const expandedDomains = ref<Record<string, boolean>>({});
+const expandedCategories = ref<Record<string, boolean>>({});
 
 // Handle answer change
 const parseTargetNilai = (value: string | number | null | undefined): number => {
@@ -54,13 +56,42 @@ const handleAnswer = async (questionId: string, index: number) => {
   await assessmentStore.saveAnswer(questionId, index);
 };
 
+// --- Theme Detection ---
+const isDarkMode = ref(false);
+let themeObserver: MutationObserver | null = null;
+
+function syncThemeMode() {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const body = document.body;
+  isDarkMode.value =
+    root.getAttribute('data-theme-mode') === 'dark' ||
+    body?.getAttribute('data-theme-mode') === 'dark' ||
+    root.classList.contains('dark') ||
+    body?.classList.contains('dark');
+}
+
 // Auto-sync & Notification control
 onMounted(() => {
+  syncThemeMode();
+  themeObserver = new MutationObserver(syncThemeMode);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme-mode', 'class'],
+  });
+  if (document.body) {
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-theme-mode', 'class'],
+    });
+  }
+
   assessmentStore.startAutoSync();
   notificationStore.stopPolling();
 });
 
 onUnmounted(() => {
+  themeObserver?.disconnect();
   assessmentStore.stopAutoSync();
   notificationStore.startPolling();
 });
@@ -68,6 +99,53 @@ onUnmounted(() => {
 // Check if domain is current
 const isCurrentDomain = (domainId: string) => {
   return assessmentStore.progress.currentDomainId === domainId;
+};
+
+const isDomainExpanded = (domainId: string) => {
+  return expandedDomains.value[domainId] ?? isCurrentDomain(domainId);
+};
+
+const toggleDomain = (domainId: string) => {
+  expandedDomains.value[domainId] = !isDomainExpanded(domainId);
+};
+
+const ensureCurrentDomainExpanded = () => {
+  const domainId = assessmentStore.progress.currentDomainId;
+  if (!domainId) return;
+  expandedDomains.value[domainId] = true;
+};
+
+const categoryAccentPalette = [
+  'rgb(var(--success-rgb))',
+  'rgb(var(--info-rgb))',
+  'var(--primary-color)',
+  '#f59e0b',
+  '#8b5cf6',
+];
+
+const getCategoryAccent = (index: number) => {
+  return categoryAccentPalette[index % categoryAccentPalette.length];
+};
+
+const getCategoryKey = (domainId: string, categoryId: string) => `${domainId}::${categoryId}`;
+
+const isCategoryExpanded = (domainId: string, categoryId: string) => {
+  const key = getCategoryKey(domainId, categoryId);
+  return expandedCategories.value[key] ?? assessmentStore.progress.currentCategoryId === categoryId;
+};
+
+const toggleCategory = (domainId: string, categoryId: string) => {
+  const key = getCategoryKey(domainId, categoryId);
+  expandedCategories.value[key] = !isCategoryExpanded(domainId, categoryId);
+};
+
+const ensureCurrentCategoryExpanded = () => {
+  const domainId = assessmentStore.progress.currentDomainId;
+  const categoryId = assessmentStore.progress.currentCategoryId;
+
+  if (!domainId || !categoryId) return;
+
+  expandedCategories.value[getCategoryKey(domainId, categoryId)] = true;
 };
 
 // Get answered count for a category
@@ -106,8 +184,26 @@ const getSubCategoryProgress = (domainId: string, categoryId: string, subCategor
 
 // Sidebar navigation - jump to specific sub-category (page 1)
 const jumpToSubCategory = (domainId: string, categoryId: string, subCategoryId: string) => {
+  expandedDomains.value[domainId] = true;
+  expandedCategories.value[getCategoryKey(domainId, categoryId)] = true;
   assessmentStore.updateProgress(domainId, categoryId, subCategoryId, 1);
 };
+
+watch(
+  () => assessmentStore.progress.currentDomainId,
+  () => {
+    ensureCurrentDomainExpanded();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => assessmentStore.progress.currentCategoryId,
+  () => {
+    ensureCurrentCategoryExpanded();
+  },
+  { immediate: true }
+);
 
 // --- Computed Properties for Navigation & State ---
 
@@ -288,7 +384,7 @@ const handleEditData = () => {
 </script>
 
 <template>
-  <div class="assessment-container" :class="{ 'assessment-container-embedded': embedded }">
+  <div class="assessment-container" :class="{ 'assessment-container-embedded': embedded, 'is-dark': isDarkMode }">
   <div class="row sticky-progress-row">
     <div class="col-12">
       <div class="progress-wrapper">
@@ -390,55 +486,60 @@ const handleEditData = () => {
               <h2 class="accordion-header">
                 <button 
                   class="accordion-button"
-                  :class="{ 'collapsed': !isCurrentDomain(domain.id) }"
-                  type="button" 
-                  data-bs-toggle="collapse" 
-                  :data-bs-target="'#domain-' + domain.id"
+                  :class="{ 'collapsed': !isDomainExpanded(domain.id) }"
+                  type="button"
+                  @click="toggleDomain(domain.id)"
                   :style="{ borderLeft: '4px solid ' + domain.color }"
                 >
                   <span class="me-2">{{ domain.name }}</span>
                   <span v-if="isCurrentDomain(domain.id)" class="badge bg-primary-transparent ms-auto me-2">Aktif</span>
                 </button>
               </h2>
-              <div 
-                :id="'domain-' + domain.id" 
-                class="accordion-collapse collapse"
-                :class="{ 'show': isCurrentDomain(domain.id) }"
-                data-bs-parent="#assessmentAccordion"
-              >
+              <div v-show="isDomainExpanded(domain.id)" class="accordion-collapse">
                 <div class="accordion-body p-0">
-                  <div v-for="category in domain.categories" :key="category.id" class="category-group border-bottom">
-                    <div class="bg-light px-3 py-2 fw-bold fs-11 text-muted text-uppercase tracking-wider d-flex justify-content-between align-items-center">
-                      <span>{{ category.name }}</span>
-                      <span class="badge bg-secondary-transparent">
-                        {{ getCategoryProgress(domain.id, category.id).answered }} / 
-                        {{ getCategoryProgress(domain.id, category.id).total }}
-                      </span>
-                    </div>
-                    <div
-                      v-for="subCategory in category.subCategories"
-                      :key="subCategory.id"
-                      class="subcategory-item px-3 py-2 d-flex justify-content-between align-items-center"
-                      :class="{ 'active': assessmentStore.progress.currentCategoryId === category.id && assessmentStore.progress.currentSubCategoryId === subCategory.id }"
-                      @click="jumpToSubCategory(domain.id, category.id, subCategory.id)"
+                  <div v-for="(category, categoryIndex) in domain.categories" :key="category.id" class="category-group border-bottom">
+                    <button
+                      type="button"
+                      class="category-toggle"
+                      :class="{ 'collapsed': !isCategoryExpanded(domain.id, category.id) }"
+                      :style="{ '--category-accent': getCategoryAccent(categoryIndex) }"
+                      @click="toggleCategory(domain.id, category.id)"
                     >
-                      <span class="subcategory-name">{{ subCategory.name }}</span>
-                      <span class="badge bg-primary-transparent">
-                        {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).answered }} /
-                        {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).total }}
+                      <span class="category-toggle__label">{{ category.name }}</span>
+                      <span class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary-transparent">
+                          {{ getCategoryProgress(domain.id, category.id).answered }} /
+                          {{ getCategoryProgress(domain.id, category.id).total }}
+                        </span>
+                        <i class="ri-arrow-down-s-line category-toggle__icon"></i>
                       </span>
-                    </div>
-                    <div
-                      v-if="category.subCategories.length === 0"
-                      class="subcategory-item px-3 py-2 d-flex justify-content-between align-items-center"
-                      :class="{ 'active': assessmentStore.progress.currentCategoryId === category.id }"
-                      @click="jumpToSubCategory(domain.id, category.id, '')"
-                    >
-                      <span class="subcategory-name">Pertanyaan</span>
-                      <span class="badge bg-primary-transparent">
-                        {{ getCategoryProgress(domain.id, category.id).answered }} /
-                        {{ getCategoryProgress(domain.id, category.id).total }}
-                      </span>
+                    </button>
+                    <div v-show="isCategoryExpanded(domain.id, category.id)" class="category-content">
+                      <div
+                        v-for="subCategory in category.subCategories"
+                        :key="subCategory.id"
+                        class="subcategory-item px-3 py-2 d-flex justify-content-between align-items-center"
+                        :class="{ 'active': assessmentStore.progress.currentCategoryId === category.id && assessmentStore.progress.currentSubCategoryId === subCategory.id }"
+                        @click="jumpToSubCategory(domain.id, category.id, subCategory.id)"
+                      >
+                        <span class="subcategory-name">{{ subCategory.name }}</span>
+                        <span class="badge bg-primary-transparent">
+                          {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).answered }} /
+                          {{ getSubCategoryProgress(domain.id, category.id, subCategory.id).total }}
+                        </span>
+                      </div>
+                      <div
+                        v-if="category.subCategories.length === 0"
+                        class="subcategory-item px-3 py-2 d-flex justify-content-between align-items-center"
+                        :class="{ 'active': assessmentStore.progress.currentCategoryId === category.id }"
+                        @click="jumpToSubCategory(domain.id, category.id, '')"
+                      >
+                        <span class="subcategory-name">Pertanyaan</span>
+                        <span class="badge bg-primary-transparent">
+                          {{ getCategoryProgress(domain.id, category.id).answered }} /
+                          {{ getCategoryProgress(domain.id, category.id).total }}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -562,16 +663,59 @@ const handleEditData = () => {
   background-color: var(--primary-01);
 }
 
-.category-section {
-  border-bottom: 1px solid var(--default-border);
+.category-toggle {
+  position: relative;
+  width: 100%;
+  border: 0;
+  background: var(--light);
+  padding: 0.75rem 1rem 0.75rem 1.5rem;
+  font-weight: 700;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 0.2s ease;
 }
 
-.category-title {
-  padding: 0.75rem 1rem;
-  font-weight: 600;
-  font-size: 0.85rem;
-  background: var(--light);
-  color: var(--default-text-color);
+.category-toggle::before {
+  content: "";
+  position: absolute;
+  left: 0.45rem;
+  top: 50%;
+  width: 0.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: var(--category-accent);
+  transform: translateY(-50%);
+  opacity: 0.85;
+}
+
+.category-toggle:hover {
+  background: var(--primary-01);
+}
+
+.category-toggle:not(.collapsed) {
+  box-shadow: inset 0.2rem 0 0 var(--category-accent);
+}
+
+.category-toggle__label {
+  text-align: left;
+}
+
+.category-toggle__icon {
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.category-toggle.collapsed .category-toggle__icon {
+  transform: rotate(-90deg);
+}
+
+.category-content {
+  background: var(--custom-white);
 }
 
 .subcategory-item {
@@ -654,5 +798,112 @@ const handleEditData = () => {
   min-height: 100vh;
   padding-bottom: 3rem;
   font-family: 'Inter', -apple-system, sans-serif;
+}
+
+/* ── Dark Mode ────────────────────────────────────────── */
+.assessment-container.is-dark .accordion-button {
+  color: #cbd5e1;
+}
+
+.assessment-container.is-dark .accordion-button:not(.collapsed) {
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+
+.assessment-container.is-dark .category-toggle {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.assessment-container.is-dark .category-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.assessment-container.is-dark .category-content {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.assessment-container.is-dark .subcategory-item {
+  color: #94a3b8;
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.assessment-container.is-dark .subcategory-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.assessment-container.is-dark .subcategory-item.active {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+  border-left-color: #60a5fa;
+}
+
+.assessment-container.is-dark .bg-primary-transparent {
+  background-color: rgba(96, 165, 250, 0.15) !important;
+  color: #93c5fd !important;
+}
+
+.assessment-container.is-dark .bg-secondary-transparent {
+  background-color: rgba(148, 163, 184, 0.15) !important;
+  color: #cbd5e1 !important;
+}
+
+/* QuestionCard overrides from parent */
+.assessment-container.is-dark :deep(.index-btn) {
+  border-color: rgba(96, 165, 250, 0.4) !important;
+  color: #93c5fd !important;
+  background-color: transparent !important;
+}
+
+.assessment-container.is-dark :deep(.index-btn:hover) {
+  background-color: rgba(96, 165, 250, 0.1) !important;
+  border-color: #60a5fa !important;
+  color: #bfdbfe !important;
+}
+
+.assessment-container.is-dark :deep(.index-btn.active) {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+/* Sidebar Save/Edit Action Block overrides */
+.assessment-container.is-dark .bg-light {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.assessment-container.is-dark .btn-success {
+  background-color: #10b981 !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+.assessment-container.is-dark .btn-success:hover {
+  background-color: #059669 !important;
+  border-color: #059669 !important;
+}
+
+.assessment-container.is-dark .btn-primary {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.assessment-container.is-dark .btn-primary:hover {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+}
+
+.assessment-container.is-dark .btn-warning {
+  background-color: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+
+.assessment-container.is-dark .btn-warning:hover {
+  background-color: #d97706 !important;
+  border-color: #d97706 !important;
 }
 </style>

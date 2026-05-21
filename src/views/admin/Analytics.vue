@@ -14,6 +14,7 @@
     import { useStakeholdersStore } from "@/stores/stakeholders";
     import { useIkasStore } from "@/stores/ikas";
     import { useCsirtStore } from "@/stores/csirt";
+    import { useUsersStore } from "@/stores/users";
     import { useKonversiStore } from "@/stores/konversi";
     import { useResikoStore } from "@/stores/resiko";
     import { useAnalyticsDashboardFilterStore } from "@/stores/dashboardFilter";
@@ -61,7 +62,27 @@
     const resikoStore = useResikoStore();
     const filterStore = useAnalyticsDashboardFilterStore();
     const notifStore = useNotificationStore();
+    const usersStore = useUsersStore();
     provide('dashboardFilterStore', filterStore);
+
+    const isExcludedCompanyRole = (user) => {
+      const role = String(user?.role || user?.role_name || '').trim().toLowerCase();
+      return role === 'admin' || role === 'staff';
+    };
+
+    // Helper: check if a stakeholder (company) has an associated user with role admin or staff
+    const isAdminOrStaffCompany = (stakeholderId) => {
+      return usersStore.allUsers.some(
+        (u) =>
+          String(u.id_perusahaan) === String(stakeholderId) &&
+          isExcludedCompanyRole(u),
+      );
+    };
+
+    // All stakeholders excluding companies that belong to admin/staff users
+    const filteredAllStakeholders = computed(() =>
+      stakeholdersStore.allStakeholders.filter((s) => !isAdminOrStaffCompany(s.id)),
+    );
     
     // Analytics Chart States
     const kseChartType = ref('donut'); // 'donut' or 'bar'
@@ -610,13 +631,9 @@
         };
     });
 
-    const ikasStatusTotal = computed(() => apiIkasStatus.value.total_perusahaan || totalStakeholders.value);
-    const ikasFilledCount = computed(() => apiIkasStatus.value.sudah_mengisi_ikas || stakeholdersWithIkas.value);
-    const ikasUnfilledCount = computed(() => (
-        apiIkasStatus.value.total_perusahaan
-            ? apiIkasStatus.value.belum_mengisi_ikas
-            : Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value)
-    ));
+    const ikasStatusTotal = computed(() => totalStakeholders.value);
+    const ikasFilledCount = computed(() => stakeholdersWithIkas.value);
+    const ikasUnfilledCount = computed(() => Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value));
 
     const apiCsirtData = computed(() => {
         const data = filterStore.summaryData?.csirt_summary || {};
@@ -804,8 +821,8 @@
         });
 
         return {
-            total: apiIkasData.value.total_ikas || filtered.length,
-            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan,
+            total: filtered.length,
+            avgNilaiKematangan: count > 0 ? Number((filtered.reduce((sum, s) => sum + Number(ikasStore.ikasDataMap[s.slug]?.total_rata_rata || 0), 0) / count).toFixed(2)) : 0,
             avgTargetNilai: apiIkasData.value.avg_target_nilai,
             levels: { 
                 level1: { count: level1, label: 'Level 1 - Awal', color: '#e6533c', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)' },
@@ -1351,7 +1368,7 @@
             const items = [
                 {
                     label: 'Total IKAS',
-                    value: apiIkasData.value.total_ikas,
+                    value: s.total,
                     icon: 'ri-bar-chart-box-line',
                     gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
                     color: '#23b7e5',
@@ -1359,7 +1376,7 @@
                 },
                 {
                     label: filterStore.quarter ? `IKAS Q${filterStore.quarter}` : (filterStore.year ? `IKAS ${filterStore.year}` : 'IKAS Periode Ini'),
-                    value: apiIkasStatus.value.sudah_mengisi_ikas,
+                    value: s.total,
                     icon: 'ri-calendar-check-line',
                     gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
                     color: '#3b82f6',
@@ -1734,6 +1751,7 @@
 
             await Promise.allSettled([
                 loadStore(stakeholdersStore),
+                loadStore(usersStore),
                 loadStore(resikoStore),
                 resikoStore.loadAdminRespondents(options.refresh),
                 loadDashboardOptions(),
@@ -1824,7 +1842,7 @@
             });
             // Count ALL stakeholders belonging to this sektor
             const childIds = new Set(children.map(c => String(c.id)));
-            const sektorStakeholders = stakeholdersStore.allStakeholders.filter(s => {
+            const sektorStakeholders = filteredAllStakeholders.value.filter(s => {
                 const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
                 return subSektorId && childIds.has(String(subSektorId));
             });
@@ -1849,7 +1867,7 @@
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
 
-        let filtered = stakeholdersStore.allStakeholders;
+        let filtered = filteredAllStakeholders.value;
 
         // Sector/Sub-sector Filter
         if (fId || subId) {
@@ -1892,13 +1910,26 @@
             });
         }
 
+        // Exclude CSIRT records belonging to admin/staff companies
+        filtered = filtered.filter((c) => {
+            const companyId = c.id_perusahaan || c.perusahaan?.id;
+            return !companyId || !isAdminOrStaffCompany(companyId);
+        });
+
         return filtered;
     });
 
     const baseSdm = computed(() => {
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
-        if (!fId && !subId) return csirtStore.sdmList;
+        if (!fId && !subId) {
+            return csirtStore.sdmList.filter((s) => {
+                const cId = String(s.id_csirt || s.csirt?.id);
+                const csirt = csirtStore.csirtByIdMap[cId];
+                const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id;
+                return !companyId || !isAdminOrStaffCompany(companyId);
+            });
+        }
         return csirtStore.sdmList.filter(s => {
             const cId = String(s.id_csirt || s.csirt?.id);
             const csirt = csirtStore.csirtByIdMap[cId];
@@ -1909,6 +1940,11 @@
             if (effectiveSubId) return String(p?.sub_sektor?.id || p?.id_sub_sektor) === String(effectiveSubId);
             if (fId) return String(p?.sub_sektor?.id_sektor || p?.id_sektor) === String(fId);
             return true;
+        }).filter((s) => {
+            const cId = String(s.id_csirt || s.csirt?.id);
+            const csirt = csirtStore.csirtByIdMap[cId];
+            const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id;
+            return !companyId || !isAdminOrStaffCompany(companyId);
         });
     });
 
@@ -1935,6 +1971,14 @@
                 return true;
             });
         }
+
+        // Exclude SE records belonging to admin/staff companies
+        filtered = filtered.filter((se) => {
+            const cId = String(se.id_csirt || se.csirt_id || se.csirt?.id);
+            const csirt = csirtStore.csirtByIdMap[cId];
+            const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id || se.id_perusahaan;
+            return !companyId || !isAdminOrStaffCompany(companyId);
+        });
 
         return filtered;
     });
@@ -2148,7 +2192,7 @@
                 const ssName = getSubSektorName(ss);
 
                 // Count stakeholders for this sub-sektor
-                const ssStakeholders = stakeholdersStore.allStakeholders.filter(s => {
+                const ssStakeholders = filteredAllStakeholders.value.filter(s => {
                     const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
                     return subSektorId && String(subSektorId) === String(ss.id);
                 });
@@ -2214,7 +2258,7 @@
             const color = sektorColors[idx % sektorColors.length];
 
             const trend = getTrendData(
-                stakeholdersStore.allStakeholders.filter(s => {
+                filteredAllStakeholders.value.filter(s => {
                     const sid = s.sub_sektor?.id || s.id_sub_sektor;
                     return sid && new Set(subSektorList.value.filter(ss => {
                         const pid = getSubSektorParentId(ss);
@@ -2276,7 +2320,7 @@
         const displayFilteredManris = manrisLocalReady ? manrisStatus.value.sudah_mengisi_manris : 0;
         
         // Stakeholder fixed count (Top number)
-        const fixedStakeholderCount = stakeholdersStore.allStakeholders.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
+        const fixedStakeholderCount = filteredAllStakeholders.value.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
         // Stakeholder filtered count (Bottom number)
         const displayFilteredStakeholder = filteredStakeholders.value;
 
@@ -2507,7 +2551,7 @@
             }
 
             drillDownItems.value = csirtList.map(c => {
-                const stakeholder = stakeholdersStore.allStakeholders.find(s =>
+                const stakeholder = filteredAllStakeholders.value.find(s =>
                     String(s.id) === String(getCsirtCompanyId(c))
                 );
                 const complete = hasCsirtSdm(c) && hasCsirtSe(c);
@@ -2831,7 +2875,7 @@
 
     function handleSektorCardClick(card) {
         if (!card.sektorId) return;
-        const all = stakeholdersStore.allStakeholders;
+        const all = filteredAllStakeholders.value;
         let sektorStakeholders;
 
         if (card.isSubSektor) {
@@ -2889,7 +2933,7 @@
             } else if (title.includes('csirt')) {
                 router.push(`/csirt/${item.slug}`);
             } else {
-                router.push(`/stakeholders/${item.slug}`);
+                router.push({ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } });
             }
         } else {
             router.push('/stakeholders');
@@ -3259,7 +3303,7 @@
                                                             <span v-else class="text-muted small">NA</span>
                                                         </td>
                                                         <td class="text-center">
-                                                            <button class="btn btn-sm btn-icon btn-primary-light" @click="router.push(`/stakeholders/${s.slug}`)" title="Lihat Detail">
+                                                            <button class="btn btn-sm btn-icon btn-primary-light" @click="router.push({ path: `/stakeholders/${s.slug}`, query: { id_perusahaan: s.id } })" title="Lihat Detail">
                                                                 <i class="ri-arrow-right-up-line"></i>
                                                             </button>
                                                         </td>
@@ -5666,36 +5710,434 @@
     }
 
     /*  Responsive  */
+
+    /* — Large Tablets / Small Desktops (≤1199px) — */
     @media (max-width: 1199px) {
-        .ki-chart-split-grid { grid-template-columns: 1fr; }
+        .ki-chart-split-grid { grid-template-columns: 1fr; min-height: 0; }
+        .ki-chart-pane + .ki-chart-pane {
+            border-left: 0;
+            border-top: 1px solid rgba(219,234,254,0.9);
+            padding-top: 0.85rem;
+            margin-top: 0.35rem;
+        }
         .ki-hero-inner { gap: 0.9rem; }
         .ki-ring-wrap { width: 76px; height: 76px; }
         .ki-ring-value { font-size: 1.15rem; }
         .ki-chart-body { min-height: 280px !important; }
-        .ki-chart-split-grid { min-height: 0; }
+        .ki-header-right { flex-wrap: wrap; }
+        .ki-inline-filters { flex-wrap: wrap; }
     }
+
+    /* — Tablets (≤991px) — */
+    @media (max-width: 991px) {
+        .ki-main-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+            padding: 12px 14px;
+        }
+        .ki-header-left {
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .ki-header-right {
+            width: 100%;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .ki-segmented-control {
+            flex-wrap: wrap;
+        }
+        .ki-seg-btn {
+            padding: 6px 14px;
+            font-size: 0.72rem;
+        }
+        .ki-hero-inner {
+            gap: 0.85rem;
+        }
+        .ki-hero-stats {
+            min-width: 160px;
+        }
+        .ki-hero-pills {
+            gap: 5px;
+        }
+        .ki-pill {
+            padding: 5px 9px;
+            font-size: 0.65rem;
+        }
+        .ki-pill span { font-size: 0.82rem; }
+        .ki-breakdown {
+            padding: 0.85rem;
+        }
+        .ki-insight-box {
+            padding: 0.85rem;
+        }
+        .ki-chart-header {
+            padding: 0.85rem 0.95rem;
+            gap: 8px;
+        }
+        .ki-chart-icon-wrap {
+            width: 38px;
+            height: 38px;
+        }
+        .ki-chart-title { font-size: 0.92rem; }
+    }
+
+    /* — Mobile Landscape / Small Tablets (≤767px) — */
     @media (max-width: 767px) {
-        .ki-main-header { align-items: stretch; padding: 10px; }
+        .ki-main-header {
+            align-items: stretch;
+            padding: 10px;
+            gap: 8px;
+        }
         .ki-header-left,
         .ki-header-right { width: 100%; }
-        .ki-header-right { justify-content: space-between; }
-        .ki-inline-filters { justify-content: flex-start; }
+        .ki-header-left {
+            flex-wrap: wrap;
+            row-gap: 8px;
+        }
+        .ki-header-right {
+            justify-content: space-between;
+            flex-wrap: wrap;
+            row-gap: 6px;
+        }
+        .ki-header-title { font-size: 0.92rem; }
+        .ki-header-icon { width: 34px; height: 34px; font-size: 1rem; border-radius: 9px; }
+        .ki-segmented-control {
+            width: 100%;
+            justify-content: center;
+            order: 1;
+        }
+        .ki-seg-btn {
+            flex: 1;
+            text-align: center;
+            padding: 7px 10px;
+            font-size: 0.7rem;
+        }
+        .ki-inline-filters {
+            justify-content: flex-start;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .ki-filter-pill {
+            padding: 5px 10px;
+            font-size: 0.64rem;
+        }
         .ki-divider { display: none; }
-        .ki-hero-banner { padding: 0.9rem; }
-        .ki-hero-inner { flex-direction: column; align-items: flex-start; }
+        .ki-view-toggles {
+            margin-left: auto;
+        }
+        .ki-view-btn { width: 32px; height: 32px; }
+
+        /* Hero Banner */
+        .ki-hero-banner { padding: 0.85rem; }
+        .ki-hero-glow { opacity: 0.6; }
+        .ki-hero-inner {
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 0.75rem;
+        }
         .ki-ring-wrap { width: 72px; height: 72px; }
-        .ki-hero-pills { width: 100%; }
-        .ki-pill { flex: 1 1 92px; justify-content: center; }
-        .ki-hero-cta { width: 100%; justify-content: center; }
-        .ki-chart-header { flex-direction: column; align-items: flex-start; }
-        .ki-chart-controls { width: 100%; justify-content: space-between; }
-        .ki-chart-type-toggle { width: 100%; justify-content: center; }
+        .ki-ring-value { font-size: 1.1rem; }
+        .ki-hero-stats {
+            min-width: 0;
+            width: 100%;
+            text-align: center;
+        }
+        .ki-hero-title { font-size: 0.9rem; }
+        .ki-hero-desc { font-size: 0.65rem; }
+        .ki-hero-pills {
+            width: 100%;
+            justify-content: center;
+        }
+        .ki-pill {
+            flex: 1 1 90px;
+            justify-content: center;
+            min-height: 32px;
+        }
+        .ki-hero-cta {
+            width: 100%;
+            justify-content: center;
+            padding: 9px 14px;
+        }
+
+        /* Charts */
+        .ki-chart-header {
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 0.75rem 0.85rem;
+        }
+        .ki-chart-controls {
+            width: 100%;
+            justify-content: space-between;
+        }
+        .ki-chart-type-toggle {
+            width: 100%;
+            justify-content: center;
+        }
         .ki-view-toggle { flex: 1; }
-        .ki-vt-btn { flex: 1; }
-        .ki-chart-pane + .ki-chart-pane { border-left: 0; border-top: 1px solid rgba(219,234,254,0.9); padding-top: 0.85rem; }
-        .ki-chart-pane-title { align-items: flex-start; flex-direction: column; gap: 2px; }
-        .ki-bp-row { align-items: flex-start; flex-direction: column; gap: 7px; }
+        .ki-vt-btn { flex: 1; text-align: center; }
+        .ki-chart-body {
+            padding: 0.75rem 0.65rem;
+        }
+        .ki-chart-pane {
+            padding: 0.25rem 0.35rem 0.2rem;
+        }
+        .ki-chart-pane-title {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .ki-chart-split-grid {
+            gap: 0.5rem;
+        }
+
+        /* Breakdown */
+        .ki-bp-row {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 7px;
+            padding: 8px 9px;
+        }
         .ki-bp-bar-wrap { width: 100%; }
+        .ki-bp-label { font-size: 0.72rem; }
+        .ki-bp-icon { width: 30px; height: 30px; font-size: 0.88rem; }
+
+        /* Visual Strip */
+        .ki-visual-strip {
+            gap: 6px;
+        }
+        .ki-visual-pill {
+            min-width: 78px;
+            padding: 7px 8px;
+        }
+        .ki-visual-value { font-size: 0.95rem; }
+        .ki-visual-label { font-size: 0.64rem; }
+
+        /* Insight */
+        .ki-insight-text { font-size: 0.68rem; }
+        .ki-export-btn {
+            padding: 9px 10px;
+            font-size: 0.72rem;
+        }
+
+        /* Metric Cards */
+        .ki-metric-card { border-radius: 10px; }
+        .ki-metric-body { padding: 0.75rem 0.85rem; }
+        .ki-metric-value { font-size: 1.3rem; }
+        .ki-metric-label { font-size: 0.64rem; }
+        .ki-metric-icon-wrap { width: 32px; height: 32px; border-radius: 8px; font-size: 0.95rem; }
+
+        /* Domain Items */
+        .ki-domain-item {
+            padding: 8px;
+            gap: 7px;
+        }
+        .ki-domain-icon { width: 26px; height: 26px; font-size: 0.78rem; }
+        .ki-domain-val { font-size: 0.88rem; }
+    }
+
+    /* — Small Mobile (≤575px) — */
+    @media (max-width: 575px) {
+        .kse-ikas-analytics { margin-left: -0.25rem; margin-right: -0.25rem; }
+        .ki-command-center { border-radius: 14px; }
+        .ki-main-header {
+            padding: 9px;
+            gap: 7px;
+            border-radius: 0;
+        }
+        .ki-header-left { gap: 7px; }
+        .ki-header-icon { width: 30px; height: 30px; font-size: 0.88rem; border-radius: 8px; }
+        .ki-header-title { font-size: 0.82rem; }
+        .ki-segmented-control {
+            padding: 3px;
+            border-radius: 9px;
+            gap: 1px;
+        }
+        .ki-seg-btn {
+            padding: 6px 8px;
+            font-size: 0.65rem;
+            border-radius: 7px;
+        }
+        .ki-inline-filters { gap: 3px; }
+        .ki-filter-pill {
+            padding: 4px 8px;
+            font-size: 0.6rem;
+        }
+        .ki-view-btn { width: 30px; height: 30px; font-size: 0.85rem; }
+
+        /* Hero Banner */
+        .ki-hero-banner { padding: 0.7rem; border-radius: 0; }
+        .ki-hero-inner { gap: 0.65rem; }
+        .ki-ring-wrap { width: 64px; height: 64px; }
+        .ki-ring-value { font-size: 0.95rem; }
+        .ki-ring-sub { font-size: 0.42rem; }
+        .ki-hero-title { font-size: 0.82rem; }
+        .ki-hero-desc { font-size: 0.6rem; margin-bottom: 5px; }
+        .ki-hero-pills { gap: 4px; }
+        .ki-pill {
+            flex: 1 1 80px;
+            padding: 5px 7px;
+            border-radius: 8px;
+            gap: 4px;
+            min-height: 30px;
+        }
+        .ki-pill i { font-size: 0.75rem; }
+        .ki-pill span { font-size: 0.78rem; }
+        .ki-pill small { font-size: 0.48rem; letter-spacing: 0.2px; }
+        .ki-hero-cta {
+            padding: 8px 12px;
+            font-size: 0.68rem;
+            border-radius: 9px;
+        }
+
+        /* Charts */
+        .ki-chart-card { border-radius: 14px; }
+        .ki-chart-header { padding: 0.65rem 0.75rem; }
+        .ki-chart-icon-wrap { width: 34px; height: 34px; border-radius: 9px; font-size: 0.95rem; }
+        .ki-chart-title { font-size: 0.85rem; }
+        .ki-chart-sub { font-size: 0.65rem; }
+        .ki-chart-body { padding: 0.6rem 0.5rem; }
+        .ki-ct-btn { width: 30px; height: 30px; font-size: 0.85rem; border-radius: 7px; }
+        .ki-chart-type-toggle { padding: 3px; border-radius: 9px; }
+        .ki-chart-pane { padding: 0.2rem 0.25rem 0.15rem; }
+        .ki-chart-pane-title span { font-size: 0.75rem; }
+        .ki-chart-pane-title small { font-size: 0.6rem; }
+
+        /* Visual Strip */
+        .ki-visual-strip { gap: 5px; margin-bottom: 8px; }
+        .ki-visual-pill {
+            min-width: 68px;
+            padding: 6px 7px;
+            border-radius: 8px;
+        }
+        .ki-visual-value { font-size: 0.88rem; }
+        .ki-visual-label { font-size: 0.6rem; }
+        .ki-visual-track { height: 3px; }
+        .ki-visual-pill small { font-size: 0.58rem; }
+
+        /* Breakdown */
+        .ki-breakdown { border-radius: 14px; padding: 0.75rem; }
+        .ki-bp-badge { font-size: 0.6rem; padding: 5px 8px; border-radius: 7px; }
+        .ki-bp-badge i { font-size: 0.75rem; }
+        .ki-bp-items { gap: 6px; }
+        .ki-bp-row { padding: 7px 8px; border-radius: 10px; gap: 6px; }
+        .ki-bp-icon { width: 28px; height: 28px; border-radius: 8px; font-size: 0.82rem; }
+        .ki-bp-label { font-size: 0.68rem; }
+        .ki-bp-count { font-size: 0.6rem; }
+        .ki-bp-bar { height: 6px; }
+        .ki-bp-pct { font-size: 0.64rem; min-width: 30px; }
+
+        /* Insight */
+        .ki-insight-box { border-radius: 14px; padding: 0.75rem; gap: 0.7rem; }
+        .ki-insight-icon-wrap { width: 36px; height: 36px; border-radius: 10px; }
+        .ki-insight-icon-wrap i { font-size: 1.05rem; }
+        .ki-insight-title { font-size: 0.74rem; }
+        .ki-insight-text { font-size: 0.64rem; line-height: 1.45; }
+        .ki-insight-tip { padding: 6px 8px; border-radius: 7px; gap: 5px; }
+        .ki-insight-tip i { font-size: 0.75rem; }
+        .ki-insight-tip span { font-size: 0.6rem; }
+        .ki-export-btn {
+            padding: 8px 10px;
+            font-size: 0.68rem;
+            border-radius: 10px;
+        }
+
+        /* Metric Cards */
+        .ki-metric-body { padding: 0.65rem 0.75rem; }
+        .ki-metric-value { font-size: 1.2rem; }
+        .ki-metric-label { font-size: 0.6rem; }
+        .ki-metric-icon-wrap { width: 30px; height: 30px; border-radius: 8px; font-size: 0.88rem; }
+        .ki-metric-active-badge { font-size: 0.58rem; padding: 2px 8px; }
+
+        /* Domain */
+        .ki-domain-header { font-size: 0.66rem; }
+        .ki-domain-header i { font-size: 0.88rem; }
+        .ki-domain-grid { gap: 7px; }
+        .ki-domain-item { padding: 7px; gap: 6px; border-radius: 10px; }
+        .ki-domain-icon { width: 24px; height: 24px; border-radius: 7px; font-size: 0.72rem; }
+        .ki-domain-label { font-size: 0.6rem; }
+        .ki-domain-score-bar { height: 6px; }
+        .ki-domain-val { font-size: 0.82rem; }
+
+        /* Side Panel */
+        .ki-side-panel { gap: 0.65rem; }
+    }
+
+    /* — Very Small Mobile (≤400px) — */
+    @media (max-width: 400px) {
+        .ki-main-header { padding: 8px; }
+        .ki-header-icon { width: 28px; height: 28px; font-size: 0.82rem; }
+        .ki-header-title { font-size: 0.76rem; }
+        .ki-seg-btn {
+            padding: 5px 6px;
+            font-size: 0.6rem;
+        }
+        .ki-filter-pill {
+            padding: 4px 6px;
+            font-size: 0.56rem;
+        }
+        .ki-view-btn { width: 28px; height: 28px; }
+
+        .ki-hero-banner { padding: 0.6rem; }
+        .ki-ring-wrap { width: 56px; height: 56px; }
+        .ki-ring-value { font-size: 0.85rem; }
+        .ki-ring-sub { font-size: 0.38rem; }
+        .ki-hero-title { font-size: 0.76rem; }
+        .ki-hero-desc { font-size: 0.56rem; }
+        .ki-pill {
+            flex: 1 1 70px;
+            padding: 4px 5px;
+            gap: 3px;
+            min-height: 28px;
+        }
+        .ki-pill i { font-size: 0.68rem; }
+        .ki-pill span { font-size: 0.72rem; }
+        .ki-pill small { font-size: 0.44rem; }
+        .ki-hero-cta { padding: 7px 10px; font-size: 0.64rem; }
+
+        .ki-chart-header { padding: 0.55rem 0.65rem; }
+        .ki-chart-icon-wrap { width: 30px; height: 30px; font-size: 0.85rem; border-radius: 8px; }
+        .ki-chart-title { font-size: 0.78rem; }
+        .ki-chart-sub { font-size: 0.6rem; }
+        .ki-ct-btn { width: 28px; height: 28px; font-size: 0.78rem; }
+        .ki-chart-body { padding: 0.5rem 0.4rem; }
+
+        .ki-visual-pill { min-width: 60px; padding: 5px 6px; }
+        .ki-visual-value { font-size: 0.82rem; }
+        .ki-visual-label { font-size: 0.56rem; }
+
+        .ki-breakdown { padding: 0.65rem; }
+        .ki-bp-badge { font-size: 0.56rem; padding: 4px 7px; }
+        .ki-bp-row { padding: 6px 7px; gap: 5px; }
+        .ki-bp-icon { width: 26px; height: 26px; font-size: 0.78rem; }
+        .ki-bp-label { font-size: 0.64rem; }
+        .ki-bp-count { font-size: 0.56rem; }
+        .ki-bp-pct { font-size: 0.58rem; }
+
+        .ki-insight-box { padding: 0.65rem; }
+        .ki-insight-icon-wrap { width: 32px; height: 32px; }
+        .ki-insight-icon-wrap i { font-size: 0.92rem; }
+        .ki-insight-title { font-size: 0.68rem; }
+        .ki-insight-text { font-size: 0.6rem; }
+        .ki-export-btn { padding: 7px 8px; font-size: 0.64rem; }
+
+        .ki-metric-body { padding: 0.55rem 0.65rem; }
+        .ki-metric-value { font-size: 1.1rem; }
+        .ki-metric-label { font-size: 0.56rem; }
+        .ki-metric-icon-wrap { width: 28px; height: 28px; font-size: 0.82rem; }
+    }
+
+    /* — Dark mode responsive overrides — */
+    @media (max-width: 767px) {
+        :global(html[data-theme-mode="dark"]) .ki-chart-pane + .ki-chart-pane,
+        :global(html.dark) .ki-chart-pane + .ki-chart-pane,
+        .dashboard-capture.is-dark .ki-chart-pane + .ki-chart-pane {
+            border-top-color: rgba(148, 163, 184, 0.18);
+        }
     }
 
     </style>

@@ -252,6 +252,10 @@ function isPlaceholderRole(role?: string): boolean {
 }
 
 function normalizeRoleKey(role?: string): string {
+    if (role && typeof role === 'object') {
+        return normalizeRoleKey((role as any).name || (role as any).role_name || (role as any).slug || (role as any).label || (role as any).id);
+    }
+
     const normalized = String(role || '')
         .trim()
         .toLowerCase()
@@ -266,7 +270,11 @@ function normalizeRoleKey(role?: string): string {
         'user_pic': 'user_pic',
         'user-pic': 'user_pic',
         staff: 'staff',
+        staf: 'staff',
+        operator: 'staff',
         administrator: 'admin',
+        super_admin: 'admin',
+        superadmin: 'admin',
         system: 'system',
         sistem: 'system',
     };
@@ -635,6 +643,22 @@ function extractAudienceHints(raw: any, parsedData: any): { userIds: Set<string>
     return { userIds, roles };
 }
 
+function isRoleAllowedByAudience(currentRole: string, audienceRoles: Set<string>): boolean {
+    if (!currentRole) return false;
+    const normalizedRole = normalizeRoleKey(currentRole);
+    if (audienceRoles.has(normalizedRole)) return true;
+
+    // Staff shares the admin notification/SSE audience, but keeps separate UI permissions elsewhere.
+    if (isAdminNotificationRole(normalizedRole) && (audienceRoles.has('admin') || audienceRoles.has('staff'))) return true;
+
+    return false;
+}
+
+function isAdminNotificationRole(role: string): boolean {
+    const normalized = normalizeRoleKey(role);
+    return normalized === 'admin' || normalized === 'staff';
+}
+
 function buildNotificationTarget(entity: string, entityName?: string): string {
     const label = getEntityDisplayLabel(entity);
     const name = String(entityName || '').trim();
@@ -853,21 +877,20 @@ function isNotificationVisibleForCurrentUser(event: ServerEvent, raw: any): bool
         const actorId = String(event.user?.id || '').trim();
         const actorName = normalizeIdentityToken(event.user?.name);
         const actorRole = normalizeRoleKey(event.user?.role);
-        const actorIsOtherAdmin = actorRole === 'admin';
+        const actorIsOtherAdmin = isAdminNotificationRole(actorRole);
+        const isAdminInboxUser = isAdminNotificationRole(currentUserRole);
 
-        if (currentUserId && actorId && actorId === currentUserId) return true;
-        if (currentUserName && actorName && (actorName === currentUserName || actorName === currentUsername)) return true;
+        if (isAdminInboxUser) return true;
 
         const audience = extractAudienceHints(raw, raw?.data && typeof raw.data === 'object' ? raw.data : raw);
         if (audience.userIds.size > 0 || audience.roles.size > 0) {
             if (currentUserId && audience.userIds.has(currentUserId)) return true;
-            if (currentUserRole && audience.roles.has(currentUserRole)) return true;
+            if (isRoleAllowedByAudience(currentUserRole, audience.roles)) return true;
             return false;
         }
 
-        if ((currentUserRole === 'admin' || currentUserRole === 'staff')) {
-            return !actorIsOtherAdmin;
-        }
+        if (currentUserId && actorId && actorId === currentUserId) return true;
+        if (currentUserName && actorName && (actorName === currentUserName || actorName === currentUsername)) return true;
 
         if (currentUserRole === 'user' || currentUserRole === 'user_pic' || currentUserRole === 'pic') {
             return !actorIsOtherAdmin;

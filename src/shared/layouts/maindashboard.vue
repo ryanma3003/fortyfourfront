@@ -31,6 +31,7 @@ const customClass = computed(() =>
 )
 
 const isFullWidthPage = computed(() => route.meta?.fullWidth === true)
+const isBorderlessPage = computed(() => isFullWidthPage.value || route.meta?.borderlessContainer === true)
 
 // Scroll progress logic
 const progressRef = ref(null)
@@ -87,7 +88,7 @@ onBeforeUnmount(() => {
 
     <!-- Start::app-content -->
     <div :class="['main-content', 'app-content', { 'dashboard-full-width-content': isFullWidthPage }]">
-      <div :class="['container-fluid', 'page-container', customClass, { 'dashboard-full-width-container': isFullWidthPage }]">
+      <div :class="['container-fluid', 'page-container', customClass, { 'dashboard-full-width-container': isFullWidthPage, 'dashboard-borderless-container': isBorderlessPage }]">
         <router-view />
       </div>
     </div>
@@ -122,13 +123,16 @@ onBeforeUnmount(() => {
 }
 
 :global(.main-content.app-content > .page-container.dashboard-full-width-container) {
+  max-width: none !important;
+  width: 100% !important;
+  margin-inline: 0 !important;
+}
+
+:global(.main-content.app-content > .page-container.dashboard-borderless-container) {
   background: transparent !important;
   border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  max-width: none !important;
-  width: 100% !important;
-  margin-inline: 0 !important;
 }
 
 :global(.main-content.app-content > .page-container.dashboard-full-width-container.main-body-container) {

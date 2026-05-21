@@ -5,6 +5,36 @@ import type { CsirtMember, CreateCsirtPayload, SdmCsirt, SeCsirt } from '@/types
 
 let globalInitializePromise: Promise<void> | null = null;
 
+const getSdmCsirtId = (item: any): string => String(item?.id_csirt || item?.csirt_id || item?.csirt?.id || '');
+const getSeCsirtId = (item: any): string => String(item?.id_csirt || item?.csirt_id || item?.csirt?.id || '');
+const getSeCompanyId = (item: any): string => String(item?.id_perusahaan || item?.perusahaan_id || item?.perusahaan?.id || '');
+
+const getUniqueRecordKey = (item: any, fallbackFields: string[]): string => {
+    const id = item?.id ?? item?.uuid;
+    if (id !== undefined && id !== null && String(id) !== '') return `id:${String(id)}`;
+    return fallbackFields.map(field => String(item?.[field] ?? '').trim().toLowerCase()).join('|');
+};
+
+const uniqueSdmRecords = (records: SdmCsirt[]): SdmCsirt[] => {
+    const seen = new Set<string>();
+    return records.filter((item: any) => {
+        const key = getUniqueRecordKey(item, ['nama_personel', 'jabatan_csirt', 'id_csirt']);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
+const uniqueSeRecords = (records: SeCsirt[]): SeCsirt[] => {
+    const seen = new Set<string>();
+    return records.filter((item: any) => {
+        const key = getUniqueRecordKey(item, ['nama_se', 'ip_se', 'as_number_se', 'id_perusahaan', 'id_csirt']);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
 export const useCsirtStore = defineStore('csirt', {
     state: () => ({
         csirts: [] as CsirtMember[],
@@ -150,8 +180,8 @@ export const useCsirtStore = defineStore('csirt', {
                         file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
                         file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
                     }));
-                    this.sdmList = Array.isArray(sdm) ? sdm : [];
-                    this.seList = Array.isArray(se) ? se : [];
+                    this.sdmList = uniqueSdmRecords(Array.isArray(sdm) ? sdm : []);
+                    this.seList = uniqueSeRecords(Array.isArray(se) ? se : []);
                     this.initialized = true;
                 })();
 
@@ -194,8 +224,8 @@ export const useCsirtStore = defineStore('csirt', {
                     file_public_key_pgp: this.formatImageUrl(c.file_public_key_pgp),
                     file_surat_tanda_registrasi: this.formatImageUrl(c.file_surat_tanda_registrasi || (c as any).file_str),
                 }));
-                this.sdmList = Array.isArray(sdm) ? sdm : [];
-                this.seList = Array.isArray(se) ? se : [];
+                this.sdmList = uniqueSdmRecords(Array.isArray(sdm) ? sdm : []);
+                this.seList = uniqueSeRecords(Array.isArray(se) ? se : []);
                 this.loading = false;
             } catch (error: any) {
                 console.error('Failed to refresh CSIRTs:', error);
@@ -286,20 +316,33 @@ export const useCsirtStore = defineStore('csirt', {
 
                 if (targetId) {
                     console.debug(`[csirtStore] Fetching child data (SDM/SE) for ID: ${targetId}`);
+                    const resolvedCsirt = this.csirts.find(c => String(c.id) === String(targetId));
+                    const targetCompanyId = String(
+                        options.targetCompanyId ||
+                        resolvedCsirt?.id_perusahaan ||
+                        (resolvedCsirt as any)?.perusahaan?.id ||
+                        ''
+                    );
                     const [sdm, se] = await Promise.all([
                         csirtService.getSdmByCsirtId(targetId).catch((err) => { console.error('getSdm err:', err); return []; }),
-                        csirtService.getSeByCsirtId(targetId).catch((err) => { console.error('getSe err:', err); return []; })
+                        targetCompanyId
+                            ? csirtService.getSeByPerusahaanId(targetCompanyId).catch((err) => { console.error('getSe err:', err); return []; })
+                            : csirtService.getSeByCsirtId(targetId).catch((err) => { console.error('getSe err:', err); return []; })
                     ]);
                     
                     console.debug(`[csirtStore] Received SDM: ${sdm.length}, SE: ${se.length}`);
                     
                     if (Array.isArray(sdm)) {
-                        this.sdmList = this.sdmList.filter(s => String(s.id_csirt) !== String(targetId) && String((s as any).csirt?.id) !== String(targetId));
-                        this.sdmList.push(...sdm);
+                        this.sdmList = this.sdmList.filter(s => getSdmCsirtId(s) !== String(targetId));
+                        this.sdmList = uniqueSdmRecords([...this.sdmList, ...sdm]);
                     }
                     if (Array.isArray(se)) {
-                        this.seList = this.seList.filter(s => String(s.id_csirt) !== String(targetId) && String((s as any).csirt?.id) !== String(targetId));
-                        this.seList.push(...se);
+                        this.seList = this.seList.filter(s => {
+                            const sameCsirt = getSeCsirtId(s) === String(targetId);
+                            const sameCompany = !!targetCompanyId && getSeCompanyId(s) === targetCompanyId;
+                            return !sameCsirt && !sameCompany;
+                        });
+                        this.seList = uniqueSeRecords([...this.seList, ...se]);
                     }
                 } else {
                     console.debug('[csirtStore] No targetId resolved. Child data will not be fetched.');
@@ -395,6 +438,7 @@ export const useCsirtStore = defineStore('csirt', {
                     ...response,
                     id_csirt: response.id_csirt || (response as any).csirt?.id || payload.id_csirt
                 });
+                this.sdmList = uniqueSdmRecords(this.sdmList);
                 return { success: true, data: response };
             } catch (err: any) {
                 return { success: false, error: err.message };
@@ -433,6 +477,7 @@ export const useCsirtStore = defineStore('csirt', {
                     ...response,
                     id_csirt: response.id_csirt || (response as any).csirt?.id || payload.id_csirt
                 });
+                this.seList = uniqueSeRecords(this.seList);
                 return { success: true, data: response };
             } catch (err: any) {
                 return { success: false, error: err.message };

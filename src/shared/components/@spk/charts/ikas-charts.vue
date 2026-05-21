@@ -11,7 +11,6 @@ const props = defineProps({
     }
 })
 const store = useIkasStore();
-store.initialize();
 const isDarkMode = ref(false);
 let themeObserver;
 

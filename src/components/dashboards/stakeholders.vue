@@ -392,7 +392,10 @@ export default {
     };
 
     const filteredData = computed(() => {
-      let data = stakeholdersStore.allStakeholders;
+      // Exclude stakeholders that have users with role admin or staff
+      let data = stakeholdersStore.allStakeholders.filter(
+        (s) => !hasAdminOrStaffUser(s.id),
+      );
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
         data = data.filter((i) => i.nama_perusahaan.toLowerCase().includes(q));
@@ -849,12 +852,21 @@ export default {
       );
     };
 
+    // Check if stakeholder has an associated user with role admin or staff
+    const hasAdminOrStaffUser = (stakeholderId: string | number): boolean => {
+      return usersData.value.some(
+        (u) =>
+          String(u.id_perusahaan) === String(stakeholderId) &&
+          (u.role === 'admin' || u.role === 'staff'),
+      );
+    };
+
     const countStakeholderWithUser = computed(
-      () => stakeholdersStore.stakeholders.filter((s) => hasUser(s.id)).length,
+      () => stakeholdersStore.stakeholders.filter((s) => !hasAdminOrStaffUser(s.id) && hasUser(s.id)).length,
     );
 
     const countStakeholderNoUser = computed(
-      () => stakeholdersStore.stakeholders.filter((s) => !hasUser(s.id)).length,
+      () => stakeholdersStore.stakeholders.filter((s) => !hasAdminOrStaffUser(s.id) && !hasUser(s.id)).length,
     );
 
     const getStakeholderPointValue = (
@@ -871,6 +883,7 @@ export default {
       () =>
         stakeholdersStore.stakeholders.filter(
           (s) =>
+            !hasAdminOrStaffUser(s.id) &&
             getStakeholderPointValue(s, "poin_ikas") > 0 &&
             getStakeholderPointValue(s, "poin_csirt") <= 0,
         ).length,
@@ -879,6 +892,7 @@ export default {
       () =>
         stakeholdersStore.stakeholders.filter(
           (s) =>
+            !hasAdminOrStaffUser(s.id) &&
             getStakeholderPointValue(s, "poin_ikas") <= 0 &&
             getStakeholderPointValue(s, "poin_csirt") > 0,
         ).length,
@@ -887,6 +901,7 @@ export default {
       () =>
         stakeholdersStore.stakeholders.filter(
           (s) =>
+            !hasAdminOrStaffUser(s.id) &&
             getStakeholderPointValue(s, "poin_ikas") > 0 &&
             getStakeholderPointValue(s, "poin_csirt") > 0,
         ).length,
@@ -894,13 +909,13 @@ export default {
     const countIkas = computed(
       () =>
         stakeholdersStore.stakeholders.filter(
-          (s) => getStakeholderPointValue(s, "poin_ikas") > 0,
+          (s) => !hasAdminOrStaffUser(s.id) && getStakeholderPointValue(s, "poin_ikas") > 0,
         ).length,
     );
     const countCsirt = computed(
       () =>
         stakeholdersStore.stakeholders.filter(
-          (s) => getStakeholderPointValue(s, "poin_csirt") > 0,
+          (s) => !hasAdminOrStaffUser(s.id) && getStakeholderPointValue(s, "poin_csirt") > 0,
         ).length,
     );
 
@@ -1844,6 +1859,8 @@ export default {
                       :class="{
                         'stakeholder-row-expanded': isExpanded(item.slug),
                       }"
+                      @click="toggleExpandedRow(item.slug)"
+                      style="cursor: pointer;"
                     >
                       <td class="align-middle text-center">
                         <span class="row-number">{{
@@ -1854,7 +1871,7 @@ export default {
                         <div class="stakeholder-company-cell">
                           <button
                             class="stakeholder-expand-btn"
-                            @click="toggleExpandedRow(item.slug)"
+                            @click.stop="toggleExpandedRow(item.slug)"
                             :title="
                               isExpanded(item.slug)
                                 ? 'Tutup detail'
@@ -1920,6 +1937,7 @@ export default {
                         <a
                           :href="`mailto:${item.email}`"
                           class="email-link stakeholders-email-link"
+                          @click.stop
                         >
                           <span class="email-text">{{ item.email }}</span>
                         </a>
@@ -2008,9 +2026,9 @@ export default {
                         </div>
                       </td>
                       <td class="text-center align-middle">
-                        <div class="d-flex gap-1 justify-content-center">
+                        <div class="d-flex gap-1 justify-content-center" @click.stop>
                           <router-link
-                            :to="`/stakeholders/${item.slug}`"
+                            :to="{ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } }"
                             class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
                             title="Lihat"
                           >
@@ -2167,11 +2185,11 @@ export default {
                     </div>
                   </div>
                   <div class="d-flex gap-1">
-                    <router-link
-                      :to="`/stakeholders/${item.slug}`"
-                      class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
-                      title="Lihat"
-                    >
+                          <router-link
+                            :to="{ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } }"
+                            class="btn btn-sm btn-icon btn-wave btn-info-light stakeholders-action-btn"
+                            title="Lihat"
+                          >
                       <i class="ri-eye-line"></i>
                     </router-link>
                     <router-link
@@ -4281,10 +4299,14 @@ export default {
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28) !important;
 }
 
-[data-theme-mode="dark"] .stakeholders-premium-header {
-  border-color: rgba(96, 165, 250, 0.26);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 46px rgba(2, 6, 23, 0.18);
+[data-theme-mode="dark"] .stakeholders-premium-header,
+html.dark .stakeholders-premium-header,
+.dark-mode .stakeholders-premium-header {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+    radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 [data-theme-mode="dark"] .stakeholders-hero-status-card {

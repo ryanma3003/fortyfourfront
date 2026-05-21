@@ -8,6 +8,7 @@ import { useUsersStore } from "../../stores/users";
 import { useRouter, useRoute } from "vue-router";
 import type { Berita } from "../../types/berita.types";
 import { sanitizeRichText } from "../../utils/richText";
+import { formatEventDate, formatEventDateShort } from "../../utils/eventDate";
 
 export default {
   components: { Pageheader },
@@ -32,6 +33,11 @@ export default {
     const isDarkMode = ref(false);
     let gsapCtx: gsap.Context | null = null;
     let themeObserver: MutationObserver | undefined;
+    const routeBeritaIdentifier = computed(() => {
+      const raw = Array.isArray(route.params.slug) ? route.params.slug[0] : (route.params.slug ?? route.params.id);
+      const identifier = String(raw || '').trim();
+      return identifier && identifier !== 'NaN' && identifier !== 'undefined' && identifier !== 'null' ? identifier : '';
+    });
 
     const showNotification = (msg: string, type: "success" | "error") => {
       toastMessage.value = msg;
@@ -49,13 +55,18 @@ export default {
     const runDetailAnimation = () => {
       nextTick(() => {
         gsapCtx?.revert();
+        const masthead = document.querySelector('.brd-masthead');
+        if (!masthead) return;
         gsapCtx = gsap.context(() => {
+          const metaPills = document.querySelectorAll('.brd-meta-pill');
+          const panels = document.querySelectorAll('.brd-panel');
+          const infoRows = document.querySelectorAll('.brd-info-row');
           const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-          tl.from(".brd-masthead", { y: 16, opacity: 0, duration: 0.44 })
-            .from(".brd-meta-pill", { y: 8, opacity: 0, duration: 0.24, stagger: 0.045 }, "-=0.18")
-            .from(".brd-panel", { y: 16, opacity: 0, duration: 0.34, stagger: 0.075 }, "-=0.12")
-            .from(".brd-info-row", { x: 12, opacity: 0, duration: 0.24, stagger: 0.045 }, "-=0.12");
-        });
+          tl.from(masthead, { y: 16, opacity: 0, duration: 0.44 });
+          if (metaPills.length) tl.from(metaPills, { y: 8, opacity: 0, duration: 0.24, stagger: 0.045 }, "-=0.18");
+          if (panels.length) tl.from(panels, { y: 16, opacity: 0, duration: 0.34, stagger: 0.075 }, "-=0.12");
+          if (infoRows.length) tl.from(infoRows, { x: 12, opacity: 0, duration: 0.24, stagger: 0.045 }, "-=0.12");
+        }, masthead);
       });
     };
 
@@ -66,8 +77,13 @@ export default {
         themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode", "class"] });
       }
       try {
+        if (!routeBeritaIdentifier.value) {
+          showNotification("Identifier berita tidak valid", "error");
+          router.push("/event/berita");
+          return;
+        }
         await usersStore.initialize().catch(() => undefined);
-        const data = await beritaStore.fetchBeritaById(Number(route.params.id));
+        const data = await beritaStore.fetchBeritaByIdentifier(routeBeritaIdentifier.value);
         if (data) {
           beritaData.value = data;
         } else {
@@ -79,7 +95,7 @@ export default {
         router.push("/event/berita");
       } finally {
         isLoading.value = false;
-        runDetailAnimation();
+        if (beritaData.value) runDetailAnimation();
       }
     });
 
@@ -90,7 +106,7 @@ export default {
 
     const goBack = () => router.push("/event/berita");
     const goEdit = () => {
-      if (beritaData.value) router.push(`/event/berita/edit/${beritaData.value.id}`);
+      if (beritaData.value) router.push(`/event/berita/edit/${encodeURIComponent(String(beritaData.value.id))}`);
     };
 
     const getAuthorName = (item: Berita) => {
@@ -122,57 +138,6 @@ export default {
       return "Admin";
     };
 
-    const parseDatePart = (dateStr: string) => {
-      if (!dateStr) return null;
-      const t = dateStr.replace('T', ' ');
-      const [datePart, timePart] = t.split(' ');
-      if (!datePart) return new Date(dateStr);
-      const [y, m, d] = datePart.split(/[-/]/).map(Number);
-      if (timePart) {
-        const [hh, mm, ss] = timePart.split(':').map(Number);
-        return new Date(y, m - 1, d, hh || 0, mm || 0, ss || 0);
-      }
-      return new Date(y, m - 1, d);
-    };
-
-    const formatDate = (dateStr: string) => {
-      if (!dateStr) return '-';
-      try {
-        const d = parseDatePart(dateStr);
-        if (!d || isNaN(d.getTime())) return dateStr;
-        
-        const day = d.getDate();
-        const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-        const month = months[d.getMonth()];
-        const year = d.getFullYear();
-        const hour = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        
-        return `${day} ${month} ${year}, ${hour}.${min}`;
-      } catch {
-        return dateStr;
-      }
-    };
-
-    const formatDateShort = (dateStr: string) => {
-      if (!dateStr) return '-';
-      try {
-        const d = parseDatePart(dateStr);
-        if (!d || isNaN(d.getTime())) return dateStr;
-
-        const day = d.getDate();
-        const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
-        const month = months[d.getMonth()];
-        const year = d.getFullYear();
-        const hour = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        
-        return `${day} ${month} ${year}, ${hour}.${min}`;
-      } catch {
-        return dateStr;
-      }
-    };
-
     const htmlOrFallback = (value: string) => {
       if (!value?.trim()) return 'Tidak ada deskripsi tersedia.';
       return sanitizeRichText(value);
@@ -191,7 +156,7 @@ export default {
 
     return {
       dataToPass, beritaData, isLoading, isDarkMode, goBack, goEdit, showToast, toastMessage, toastType,
-      getAuthorName, getTags, formatDate, formatDateShort, htmlOrFallback
+      getAuthorName, getTags, formatDate: formatEventDate, formatDateShort: formatEventDateShort, htmlOrFallback
     };
   },
 };
@@ -269,253 +234,4 @@ export default {
   </section>
 </template>
 
-<style scoped>
-.brd-shell{position:relative;padding:2px 2px 18px;color:#14213d}
-.brd-loading{min-height:260px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;border-radius:18px;background:#f8fbff;border:1px solid #dbeafe;box-shadow:0 18px 42px rgba(20,33,61,.07);color:#2563eb}
-.brd-loading p{margin:0;font-size:13px;font-weight:800;color:#52616b}
-.brd-masthead{position:relative;overflow:hidden;border-radius:18px;padding:34px 36px;background:linear-gradient(135deg,#f8fbff 0%,#eff6ff 58%,#eaf7ff 100%);border:1px solid #cfe0ff;box-shadow:0 22px 54px rgba(37,99,235,.1)}
-.brd-masthead::before{content:"";position:absolute;right:-120px;bottom:-150px;width:360px;height:360px;border-radius:999px;background:radial-gradient(circle,rgba(37,99,235,.13),transparent 66%)}
-.brd-topbar{position:relative;z-index:1;display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:18px}
-.brd-icon-btn{width:36px;height:36px;border-radius:11px;border:1px solid #cfe0ff;background:#fff;color:#2563eb;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
-.brd-icon-btn:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(37,99,235,.12)}
-.brd-meta-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid #cfe0ff;background:#ffffffb8;border-radius:999px;padding:7px 11px;font-size:11.5px;font-weight:900;color:#1d4ed8}
-.brd-masthead h1{position:relative;z-index:1;max-width:900px;margin:0;font-size:34px;line-height:1.16;font-weight:900;color:#14213d;letter-spacing:0}
-.brd-masthead p{position:relative;z-index:1;margin:12px 0 0;color:#64748b;font-size:14px;line-height:1.6}
-.brd-actions{position:relative;z-index:1;display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}
-.brd-btn{border:0;border-radius:11px;display:inline-flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;font-weight:900;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
-.brd-btn:hover{transform:translateY(-2px)}
-.brd-btn-soft{background:#fff;color:#1d4ed8;border:1px solid #cfe0ff}
-.brd-btn-dark{background:#1d4ed8;color:#fff;box-shadow:0 16px 28px rgba(37,99,235,.2)}
-.brd-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;margin-top:18px;align-items:start}
-.brd-panel{background:#fff;border:1px solid #dbeafe;border-radius:16px;box-shadow:0 18px 42px rgba(20,33,61,.07)}
-.brd-reader{padding:30px}
-.brd-sidebar{padding:18px;position:sticky;top:90px}
-.brd-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #edf4ff;font-size:13px;font-weight:900;color:#14213d}
-.brd-panel-head i{font-size:18px;color:#2563eb}
-.brd-info-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid #edf4ff}
-.brd-info-row:last-child{border-bottom:0}
-.brd-info-row span{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#64748b}
-.brd-info-row span i{color:#2563eb}
-.brd-info-row strong{font-size:12.5px;color:#14213d;text-align:right;line-height:1.35}
-.brd-tag-info{align-items:flex-start}
-.brd-tag-list{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
-.brd-tag-chip{display:inline-flex;align-items:center;border:1px solid #cfe0ff;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900}
-.event-html-content {
-  line-height: 1.75;
-  color:#253044;
-  font-size:14px;
-}
-
-.event-html-content :deep(p) {
-  margin-bottom: 0.85rem;
-}
-
-.event-html-content :deep(ul),
-.event-html-content :deep(ol) {
-  padding-left: 1.25rem;
-  margin-bottom: 0.85rem;
-}
-
-.event-html-content :deep(img) {
-  max-width: 100%;
-  height: auto;
-  border-radius:14px;
-  border:1px solid #e2e8f0;
-  box-shadow:0 16px 38px rgba(20,33,61,.08);
-}
-
-.brd-shell.is-dark,
-:global(html[data-theme-mode="dark"]) .brd-shell,
-:global(html.dark) .brd-shell {
-  color-scheme: dark;
-}
-
-.brd-shell.is-dark .brd-loading,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-loading,
-:global(html.dark) .brd-shell .brd-loading {
-  background: linear-gradient(180deg, #0b1220, #111827);
-  border-color: #22314a;
-  color: #38bdf8;
-  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.34);
-}
-
-.brd-shell.is-dark .brd-loading p,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-loading p,
-:global(html.dark) .brd-shell .brd-loading p {
-  color: #cbd5e1;
-}
-
-.brd-shell.is-dark .brd-masthead,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead,
-:global(html.dark) .brd-shell .brd-masthead {
-  background: linear-gradient(135deg, #081225 0%, #11294d 54%, #164e77 100%);
-  border-color: #22314a;
-  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.38);
-}
-
-.brd-shell.is-dark .brd-masthead::before,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead::before,
-:global(html.dark) .brd-shell .brd-masthead::before {
-  background: radial-gradient(circle, rgba(125, 211, 252, 0.16), transparent 66%);
-}
-
-.brd-shell.is-dark .brd-icon-btn,
-.brd-shell.is-dark .brd-meta-pill,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-icon-btn,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-meta-pill,
-:global(html.dark) .brd-shell .brd-icon-btn,
-:global(html.dark) .brd-shell .brd-meta-pill {
-  background: rgba(15, 23, 42, 0.42);
-  border-color: rgba(148, 163, 184, 0.24);
-  color: #e0f2fe;
-}
-
-.brd-shell.is-dark .brd-masthead h1,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead h1,
-:global(html.dark) .brd-shell .brd-masthead h1 {
-  color: #f8fafc;
-}
-
-.brd-shell.is-dark .brd-masthead p,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-masthead p,
-:global(html.dark) .brd-shell .brd-masthead p {
-  color: rgba(226, 232, 240, 0.82);
-}
-
-.brd-shell.is-dark .brd-btn-soft,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-btn-soft,
-:global(html.dark) .brd-shell .brd-btn-soft {
-  background: rgba(15, 23, 42, 0.46);
-  border-color: rgba(148, 163, 184, 0.28);
-  color: #f8fafc;
-}
-
-.brd-shell.is-dark .brd-btn-dark,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-btn-dark,
-:global(html.dark) .brd-shell .brd-btn-dark {
-  background: #17243a;
-  color: #93c5fd;
-  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.28);
-}
-
-.brd-shell.is-dark .brd-panel,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-panel,
-:global(html.dark) .brd-shell .brd-panel {
-  background: linear-gradient(180deg, #0f172a 0%, #111c2e 100%);
-  border-color: #22314a;
-  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.3);
-}
-
-.brd-shell.is-dark .brd-panel-head,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-panel-head,
-:global(html.dark) .brd-shell .brd-panel-head {
-  border-bottom-color: #24364f;
-  color: #f8fafc;
-}
-
-.brd-shell.is-dark .brd-panel-head i,
-.brd-shell.is-dark .brd-info-row span i,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-panel-head i,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row span i,
-:global(html.dark) .brd-shell .brd-panel-head i,
-:global(html.dark) .brd-shell .brd-info-row span i {
-  color: #38bdf8;
-}
-
-.brd-shell.is-dark .brd-info-row,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row,
-:global(html.dark) .brd-shell .brd-info-row {
-  border-bottom-color: #24364f;
-}
-
-.brd-shell.is-dark .brd-info-row span,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row span,
-:global(html.dark) .brd-shell .brd-info-row span {
-  color: #94a3b8;
-}
-
-.brd-shell.is-dark .brd-info-row strong,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-info-row strong,
-:global(html.dark) .brd-shell .brd-info-row strong {
-  color: #e2e8f0;
-}
-
-.brd-shell.is-dark .brd-tag-chip,
-:global(html[data-theme-mode="dark"]) .brd-shell .brd-tag-chip,
-:global(html.dark) .brd-shell .brd-tag-chip {
-  background: rgba(30, 41, 59, 0.72);
-  border-color: rgba(96, 165, 250, 0.25);
-  color: #93c5fd;
-}
-
-.brd-shell.is-dark .event-html-content,
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content,
-:global(html.dark) .brd-shell .event-html-content {
-  color: #cbd5e1;
-}
-
-.brd-shell.is-dark .event-html-content :deep(*),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(*),
-:global(html.dark) .brd-shell .event-html-content :deep(*) {
-  background-color: transparent !important;
-  color: white;
-}
-
-.brd-shell.is-dark .event-html-content :deep(div),
-.brd-shell.is-dark .event-html-content :deep(p),
-.brd-shell.is-dark .event-html-content :deep(li),
-.brd-shell.is-dark .event-html-content :deep(blockquote),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(div),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(p),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(li),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(blockquote),
-:global(html.dark) .brd-shell .event-html-content :deep(div),
-:global(html.dark) .brd-shell .event-html-content :deep(p),
-:global(html.dark) .brd-shell .event-html-content :deep(li),
-:global(html.dark) .brd-shell .event-html-content :deep(blockquote) {
-  border-color: rgba(148, 163, 184, 0.18) !important;
-}
-
-.brd-shell.is-dark .event-html-content :deep(h1),
-.brd-shell.is-dark .event-html-content :deep(h2),
-.brd-shell.is-dark .event-html-content :deep(h3),
-.brd-shell.is-dark .event-html-content :deep(h4),
-.brd-shell.is-dark .event-html-content :deep(strong),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h1),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h2),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h3),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(h4),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(strong),
-:global(html.dark) .brd-shell .event-html-content :deep(h1),
-:global(html.dark) .brd-shell .event-html-content :deep(h2),
-:global(html.dark) .brd-shell .event-html-content :deep(h3),
-:global(html.dark) .brd-shell .event-html-content :deep(h4),
-:global(html.dark) .brd-shell .event-html-content :deep(strong) {
-  color: #f8fafc;
-}
-
-.brd-shell.is-dark .event-html-content :deep(a),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(a),
-:global(html.dark) .brd-shell .event-html-content :deep(a) {
-  color: #7dd3fc;
-}
-
-.brd-shell.is-dark .event-html-content :deep(img),
-:global(html[data-theme-mode="dark"]) .brd-shell .event-html-content :deep(img),
-:global(html.dark) .brd-shell .event-html-content :deep(img) {
-  border-color: #24364f;
-  box-shadow: 0 16px 38px rgba(2, 6, 23, 0.32);
-}
-
-@media(max-width:1100px){
-  .brd-layout{grid-template-columns:1fr}
-  .brd-sidebar{position:static}
-}
-
-@media(max-width:640px){
-  .brd-masthead{padding:26px 24px}
-  .brd-masthead h1{font-size:26px}
-  .brd-reader{padding:22px}
-  .brd-btn{width:100%;justify-content:center}
-}
-</style>
+<style src="../../assets/css/event-berita.css"></style>

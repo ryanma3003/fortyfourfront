@@ -8,12 +8,18 @@ import { kseCategories } from '@/data/kse-data';
 import type { SeCsirt } from '@/types/csirt.types';
 import type { SeEditRequest } from '@/types/se-edit.types';
 import type { User } from '@/types/user.types';
+
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 import { useRouter } from 'vue-router';
 import { useStakeholdersStore } from '@/stores/stakeholders';
+import { useAuthStore } from '@/stores/auth';
+import { useUsersStore } from '@/stores/users';
 
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
+const authStore = useAuthStore();
+const usersStore = useUsersStore();
+const isFullAdmin = computed(() => authStore.isFullAdmin);
 
 // State
 const kseAdminPageRef = ref<HTMLElement | null>(null);
@@ -22,8 +28,12 @@ const userList = ref<User[]>([]);
 const editRequests = ref<SeEditRequest[]>([]);
 const loading = ref(true);
 const searchQuery = ref('');
+const debouncedSearchQuery = ref('');
+const quickFilter = ref<'all' | 'review' | 'strategis' | 'unfinished'>('all');
 const hasRunInitialEntrance = ref(false);
 let gsapCtx: gsap.Context | null = null;
+let tableAnimationFrame: number | null = null;
+let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Pagination State
 const currentPage = ref(1);
@@ -95,15 +105,43 @@ const calculateScore = (se: SeCsirt) => {
 const fetchData = async () => {
     loading.value = true;
     try {
-        const [ses, requests, users] = await Promise.all([
+        await usersStore.initialize();
+        userList.value = usersStore.allUsers;
+
+        const [ses, requests] = await Promise.all([
             csirtService.getAllSe(),
             seEditService.getRequests(),
-            usersService.getAll(),
             stakeholdersStore.initialize()
         ]);
-        seList.value = ses;
-        editRequests.value = requests;
-        userList.value = (users as any).data || users;
+
+        const hasAdminOrStaffUser = (companyId: string | number): boolean => {
+            if (!companyId) return false;
+            return usersStore.allUsers.some(
+                (u) => String(u.id_perusahaan) === String(companyId) && (u.role === 'admin' || u.role === 'staff')
+            );
+        };
+
+        const adminCompanyId = authStore.currentUser?.id_perusahaan;
+        let filteredSes = ses;
+        let filteredRequests = requests;
+
+        filteredSes = ses.filter((se: any) => {
+            const companyId = se.id_perusahaan || se.perusahaan?.id;
+            if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+            if (hasAdminOrStaffUser(companyId)) return false;
+            return true;
+        });
+
+        filteredRequests = requests.filter((req: any) => {
+            const se = ses.find((s: any) => String(s.id) === String(req.id_se));
+            const companyId = se?.id_perusahaan || se?.perusahaan?.id;
+            if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+            if (hasAdminOrStaffUser(companyId)) return false;
+            return true;
+        });
+
+        seList.value = filteredSes;
+        editRequests.value = filteredRequests;
     } catch (error) {
         console.error('Failed to fetch data:', error);
     } finally {
@@ -120,8 +158,9 @@ const enrichedRequests = computed(() => {
     return editRequests.value.map(req => {
         const se = seList.value.find(s => String(s.id) === String(req.id_se));
         const user = userList.value.find(u => String(u.id) === String(req.id_user));
+        const raw = req as any;
         
-        let changes = req.data_perubahan || (req as any).proposed_changes;
+        let changes = req.data_perubahan || raw.proposed_changes;
         if (typeof changes === 'string' && changes) {
             try { changes = JSON.parse(changes); } catch (e) {}
         }
@@ -129,14 +168,23 @@ const enrichedRequests = computed(() => {
         
         const finalSe = req.se || se;
         const finalUser = req.user || user;
+
+        // Extract user name: API field > embedded user > userList lookup
+        const userName = req.nama_user
+            || raw.nama_user
+            || finalUser?.name
+            || finalUser?.display_name
+            || raw.user_name
+            || raw.username
+            || '';
         
         return {
             ...req,
             data_perubahan: changes,
             se: finalSe,
             user: finalUser,
-            display_user_name: req.nama_user || finalUser?.name || finalUser?.display_name || 'Unknown User',
-            display_se_name: req.nama_se || finalSe?.nama_se || 'N/A',
+            display_user_name: userName || 'Unknown User',
+            display_se_name: req.nama_se || raw.nama_se || finalSe?.nama_se || 'N/A',
             display_perusahaan: (finalSe as any)?.perusahaan?.nama_perusahaan || 'N/A'
         };
     });
@@ -144,6 +192,13 @@ const enrichedRequests = computed(() => {
 
 const pendingRequests = computed(() => enrichedRequests.value.filter(r => r.status === 'pending'));
 const pendingEditIds = computed(() => new Set(pendingRequests.value.map(r => String(r.id_se))));
+const pendingRequestBySeId = computed(() => {
+    const map = new Map<string, (typeof pendingRequests.value)[number]>();
+    pendingRequests.value.forEach((req) => {
+        map.set(String(req.id_se), req);
+    });
+    return map;
+});
 
 const normalizeCategory = (value?: string | null) => String(value || '').trim().toLowerCase();
 
@@ -156,35 +211,147 @@ const categoryCoverage = computed(() => {
     return Math.round((categorizedCount.value / seList.value.length) * 100);
 });
 
-const groupedByCompany = computed(() => {
-    const q = searchQuery.value.toLowerCase();
-    const groups: Record<string, { id: string, stakeholder: any, ses: SeCsirt[] }> = {};
+const getSeLastChangeValue = (se?: SeCsirt | null) => {
+    if (!se) return 0;
+    const raw = se.updated_at || se.created_at;
+    if (!raw) return 0;
+    const normalizedDate = typeof raw === 'string' ? raw.replace('Z', '').split('+')[0] : raw;
+    const time = new Date(normalizedDate).getTime();
+    return Number.isNaN(time) ? 0 : time;
+};
+
+const seAssessmentById = computed(() => {
+    const map = new Map<string, ReturnType<typeof calculateScore>>();
+    seList.value.forEach((se) => {
+        map.set(String(se.id), calculateScore(se));
+    });
+    return map;
+});
+const getSeAssessment = (se: SeCsirt) => seAssessmentById.value.get(String(se.id)) || { score: 0, completion: 0 };
+const getSeCompletionPercent = (se: SeCsirt) => getSeAssessment(se).completion;
+const isSeFullyCompleted = (se: SeCsirt) => getSeCompletionPercent(se) === 100;
+const getSeStatusText = (se: SeCsirt) => isSeFullyCompleted(se) ? 'Final' : 'Belum Final';
+
+const isRecentTimestamp = (timestamp: number) => {
+    if (!timestamp) return false;
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    return Date.now() - timestamp <= threeDaysMs;
+};
+
+type GroupMetrics = {
+    latestTimestamp: number;
+    hasPendingReview: boolean;
+    hasStrategis: boolean;
+    hasTinggi: boolean;
+    hasRendah: boolean;
+    hasUnfinished: boolean;
+    isRecentlyUpdated: boolean;
+};
+
+type CompanyGroup = {
+    id: string;
+    stakeholder: any;
+    ses: SeCsirt[];
+    metrics: GroupMetrics;
+};
+
+const searchedGroups = computed(() => {
+    const q = debouncedSearchQuery.value.toLowerCase();
+    const groups: Record<string, CompanyGroup> = {};
     
     seList.value.forEach(se => {
         const stakeholder = getFullStakeholder(se);
         const companyId = String(stakeholder?.id || se.id_perusahaan || se.perusahaan?.id || 'unknown');
+        const pendingRequest = pendingRequestBySeId.value.get(String(se.id));
         
         // Search filter logic
         const matchesSearch = !q || 
                se.nama_se?.toLowerCase().includes(q) ||
                stakeholder?.nama_perusahaan?.toLowerCase().includes(q) ||
-               se.perusahaan?.nama_perusahaan?.toLowerCase().includes(q);
+               se.perusahaan?.nama_perusahaan?.toLowerCase().includes(q) ||
+               pendingRequest?.display_user_name?.toLowerCase().includes(q) ||
+               pendingRequest?.user?.email?.toLowerCase().includes(q);
         
         if (matchesSearch) {
             if (!groups[companyId]) {
                 groups[companyId] = {
                     id: companyId,
                     stakeholder: stakeholder || se.perusahaan || { nama_perusahaan: 'Unknown Stakeholder' },
-                    ses: []
+                    ses: [],
+                    metrics: {
+                        latestTimestamp: 0,
+                        hasPendingReview: false,
+                        hasStrategis: false,
+                        hasTinggi: false,
+                        hasRendah: false,
+                        hasUnfinished: false,
+                        isRecentlyUpdated: false,
+                    }
                 };
             }
-            groups[companyId].ses.push(se);
+            const group = groups[companyId];
+            const category = normalizeCategory(se.kategori_se);
+            const latestTimestamp = Math.max(group.metrics.latestTimestamp, getSeLastChangeValue(se));
+
+            group.ses.push(se);
+            group.metrics.latestTimestamp = latestTimestamp;
+            group.metrics.hasPendingReview = group.metrics.hasPendingReview || pendingEditIds.value.has(String(se.id));
+            group.metrics.hasStrategis = group.metrics.hasStrategis || category === 'strategis';
+            group.metrics.hasTinggi = group.metrics.hasTinggi || category === 'tinggi';
+            group.metrics.hasRendah = group.metrics.hasRendah || category === 'rendah';
+            group.metrics.hasUnfinished = group.metrics.hasUnfinished || !isSeFullyCompleted(se);
+            group.metrics.isRecentlyUpdated = isRecentTimestamp(latestTimestamp);
         }
     });
     
-    return Object.values(groups).sort((a, b) => 
-        (a.stakeholder.nama_perusahaan || '').localeCompare(b.stakeholder.nama_perusahaan || '')
-    );
+    return Object.values(groups);
+});
+
+const quickFilterCounts = computed(() => {
+    const counts = {
+        all: searchedGroups.value.length,
+        review: 0,
+        strategis: 0,
+        unfinished: 0,
+    };
+
+    searchedGroups.value.forEach((group) => {
+        const metrics = group.metrics;
+        if (metrics.hasPendingReview) counts.review += 1;
+        if (metrics.hasStrategis) counts.strategis += 1;
+        if (metrics.hasUnfinished) counts.unfinished += 1;
+    });
+
+    return counts;
+});
+
+const groupedByCompany = computed(() => {
+    return searchedGroups.value
+        .filter((group) => {
+            const metrics = group.metrics;
+            if (quickFilter.value === 'review') return metrics.hasPendingReview;
+            if (quickFilter.value === 'strategis') return metrics.hasStrategis;
+            if (quickFilter.value === 'unfinished') return metrics.hasUnfinished;
+            return true;
+        })
+        .sort((a, b) => {
+            const metricsA = a.metrics;
+            const metricsB = b.metrics;
+
+            if (metricsA.hasPendingReview !== metricsB.hasPendingReview) {
+                return metricsA.hasPendingReview ? -1 : 1;
+            }
+            if (metricsA.hasStrategis !== metricsB.hasStrategis) {
+                return metricsA.hasStrategis ? -1 : 1;
+            }
+            if (metricsA.isRecentlyUpdated !== metricsB.isRecentlyUpdated) {
+                return metricsA.isRecentlyUpdated ? -1 : 1;
+            }
+            if (metricsA.latestTimestamp !== metricsB.latestTimestamp) {
+                return metricsB.latestTimestamp - metricsA.latestTimestamp;
+            }
+            return (a.stakeholder.nama_perusahaan || '').localeCompare(b.stakeholder.nama_perusahaan || '');
+        });
 });
 
 const paginatedGroups = computed(() => {
@@ -197,13 +364,8 @@ const totalGroupPages = computed(() => Math.max(1, Math.ceil(groupedByCompany.va
 const visibleRangeStart = computed(() => groupedByCompany.value.length ? (currentPage.value - 1) * itemsPerPage.value + 1 : 0);
 const visibleRangeEnd = computed(() => Math.min(currentPage.value * itemsPerPage.value, groupedByCompany.value.length));
 
-const paginatedRequests = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage.value;
-    const end = start + itemsPerPage.value;
-    return enrichedRequests.value.slice(start, end);
-});
-
-const totalRequestPages = computed(() => Math.ceil(enrichedRequests.value.length / itemsPerPage.value));
+const selectedRequestChanges = computed(() => getFilteredChanges(selectedRequest.value));
+const selectedRequestChangesCount = computed(() => Object.keys(selectedRequestChanges.value).length);
 
 const refreshData = () => {
     fetchData();
@@ -377,8 +539,6 @@ const getFilteredChanges = (req: any) => {
     return changes;
 };
 
-const getFilteredChangesCount = (req: any) => Object.keys(getFilteredChanges(req)).length;
-
 const assessmentLabels: Record<string, string> = {
   nama_se: 'Nama Sistem Elektronik',
   id_perusahaan: 'Stakeholder',
@@ -421,27 +581,31 @@ const prefersReducedMotion = () => {
     return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 };
 
-const animateTableRows = async (quick = false) => {
-    await nextTick();
-    const root = kseAdminPageRef.value;
-    if (!root || prefersReducedMotion()) return;
+const cancelScheduledTableAnimation = () => {
+    if (tableAnimationFrame !== null && typeof window !== 'undefined') {
+        window.cancelAnimationFrame(tableAnimationFrame);
+        tableAnimationFrame = null;
+    }
+};
 
-    const rows = Array.from(root.querySelectorAll<HTMLElement>('.lms-table-row'));
-    if (!rows.length) return;
+const animateTableRows = (quick = false) => {
+    cancelScheduledTableAnimation();
 
-    gsap.killTweensOf(rows);
-    gsap.fromTo(rows,
-        { y: quick ? 10 : 16, opacity: 0, scale: 0.99 },
-        {
-            y: 0,
-            opacity: 1,
-            scale: 1,
-            duration: quick ? 0.22 : 0.34,
-            stagger: quick ? 0.018 : 0.035,
-            ease: 'power2.out',
-            clearProps: 'transform,opacity',
-        }
-    );
+    nextTick(() => {
+        if (typeof window === 'undefined') return;
+
+        tableAnimationFrame = window.requestAnimationFrame(() => {
+            tableAnimationFrame = null;
+            const root = kseAdminPageRef.value;
+            if (!root || prefersReducedMotion()) return;
+
+            const rows = Array.from(root.querySelectorAll<HTMLElement>('.lms-table-row'));
+            if (!rows.length) return;
+
+            gsap.killTweensOf(rows);
+            gsap.set(rows, { clearProps: 'transform,opacity' });
+        });
+    });
 };
 
 const runEntranceAnimations = async () => {
@@ -475,12 +639,23 @@ watch(loading, (isLoading) => {
     }
 });
 
-watch([paginatedGroups, currentPage, itemsPerPage, searchQuery], () => {
+watch(searchQuery, (value) => {
+    if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = setTimeout(() => {
+        debouncedSearchQuery.value = value;
+        currentPage.value = 1;
+        searchDebounceTimeout = null;
+    }, 140);
+}, { immediate: true });
+
+watch([paginatedGroups, currentPage, itemsPerPage], () => {
     if (currentPage.value > totalGroupPages.value) currentPage.value = totalGroupPages.value;
     if (!loading.value) animateTableRows(true);
 }, { flush: 'post' });
 
 onBeforeUnmount(() => {
+    if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
+    cancelScheduledTableAnimation();
     gsapCtx?.revert();
 });
 </script>
@@ -555,7 +730,7 @@ onBeforeUnmount(() => {
                                     v-model="searchQuery"
                                     type="text"
                                     class="form-control form-control-sm header-search-input"
-                                    placeholder="Cari sistem elektronik atau pengaju..."
+                                    placeholder="Cari stakeholder, sistem, atau pengaju..."
                                 />
                                 <button v-if="searchQuery" @click="searchQuery = ''" class="clear-btn">
                                     <i class="ri-close-circle-fill"></i>
@@ -574,7 +749,7 @@ onBeforeUnmount(() => {
                                 <span>Total Sistem</span>
                                 <strong v-if="!loading || seList.length">{{ seList.length }}</strong>
                                 <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
-                                <small>Seluruh sistem elektronik</small>
+                                <small>Data KSE terdaftar</small>
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-danger">
@@ -583,7 +758,7 @@ onBeforeUnmount(() => {
                                 <span>Strategis</span>
                                 <strong v-if="!loading || seList.length">{{ countStrategis }}</strong>
                                 <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
-                                <small>Dampak paling kritis</small>
+                                <small>Aset prioritas utama</small>
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-warning">
@@ -592,7 +767,7 @@ onBeforeUnmount(() => {
                                 <span>Tinggi</span>
                                 <strong v-if="!loading || seList.length">{{ countTinggi }}</strong>
                                 <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
-                                <small>Prioritas pengawasan</small>
+                                <small>Perlu pemantauan aktif</small>
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-success">
@@ -601,7 +776,7 @@ onBeforeUnmount(() => {
                                 <span>Rendah</span>
                                 <strong v-if="!loading || seList.length">{{ countRendah }}</strong>
                                 <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
-                                <small>Risiko terkendali</small>
+                                <small>Kritikalitas lebih rendah</small>
                             </div>
                         </article>
                         <article class="kse-kpi-card tone-review" :class="{ 'is-hot': pendingRequests.length > 0 }">
@@ -610,7 +785,7 @@ onBeforeUnmount(() => {
                                 <span>Antrian Review</span>
                                 <strong v-if="!loading || editRequests.length">{{ pendingRequests.length }}</strong>
                                 <strong v-else class="kse-skel-line kse-skel-kpi"></strong>
-                                <small>Perubahan menunggu admin</small>
+                                <small>Menunggu keputusan admin</small>
                             </div>
                         </article>
                     </section>
@@ -629,16 +804,22 @@ onBeforeUnmount(() => {
                                 <input
                                     v-model="searchQuery"
                                     type="text"
-                                    placeholder="Cari stakeholder atau sistem elektronik..."
+                                    placeholder="Cari stakeholder, sistem, atau pengaju..."
                                 />
                                 <button v-if="searchQuery" type="button" @click="searchQuery = ''" aria-label="Clear search">
                                     <i class="ri-close-circle-fill"></i>
                                 </button>
                             </label>
-                            <button class="btn stakeholders-add-btn d-flex align-items-center gap-2" @click="refreshData" :disabled="loading">
+                            <button class="btn kse-toolbar-btn d-flex align-items-center gap-2" @click="refreshData" :disabled="loading">
                                 <i class="ri-refresh-line" :class="{ 'ri-spin': loading }"></i>
                                 <span class="btn-text">Refresh Data</span>
                             </button>
+                        </div>
+                        <div class="kse-quick-filters mt-3">
+                            <button type="button" class="kse-filter-pill" :class="{ active: quickFilter === 'all' }" @click="quickFilter = 'all'; currentPage = 1">Semua ({{ quickFilterCounts.all }})</button>
+                            <button type="button" class="kse-filter-pill" :class="{ active: quickFilter === 'review' }" @click="quickFilter = 'review'; currentPage = 1">Perlu Review ({{ quickFilterCounts.review }})</button>
+                            <button type="button" class="kse-filter-pill" :class="{ active: quickFilter === 'strategis' }" @click="quickFilter = 'strategis'; currentPage = 1">Strategis ({{ quickFilterCounts.strategis }})</button>
+                            <button type="button" class="kse-filter-pill" :class="{ active: quickFilter === 'unfinished' }" @click="quickFilter = 'unfinished'; currentPage = 1">Belum Final ({{ quickFilterCounts.unfinished }})</button>
                         </div>
                     </div>
 
@@ -655,54 +836,47 @@ onBeforeUnmount(() => {
                                 <span class="badge bg-warning text-dark px-2 py-1 fs-10 fw-bold">ACTION REQUIRED</span>
                             </div>
                             
-                            <div class="table-responsive stakeholder-table-wrap border rounded-3 bg-white">
-                                <table class="table lms-style-table mb-0 align-middle">
-                                    <thead class="stakeholder-thead" style="background: #f8fafc;">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0 align-middle lms-style-table">
+                                    <thead class="stakeholder-thead">
                                         <tr>
                                             <th class="text-center" style="width: 50px;">NO</th>
-                                            <th>PENGAJU</th>
-                                            <th>SISTEM ELEKTRONIK</th>
-                                            <th>DIMINTA PADA</th>
-                                            <th class="text-center">STATUS</th>
-                                            <th class="text-center">AKSI</th>
+                                            <th>Pengaju</th>
+                                            <th>Sistem Elektronik</th>
+                                            <th class="text-center">Diminta Pada</th>
+                                            <th class="text-center">Status</th>
+                                            <th class="text-center" style="width: 150px;">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="(req, idx) in pendingRequests" :key="req.id">
-                                            <td class="text-center text-muted fw-bold">{{ idx + 1 }}</td>
+                                        <tr v-for="(req, idx) in pendingRequests" :key="req.id" class="lms-table-row">
+                                            <td class="text-center text-muted fw-bold fs-13">{{ idx + 1 }}</td>
                                             <td>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <div class="avatar avatar-xs rounded-circle bg-primary-transparent text-primary">
+                                                <div class="d-flex align-items-center gap-3 ms-1">
+                                                    <div class="avatar avatar-md rounded-circle bg-primary-transparent text-primary shadow-sm flex-shrink-0" style="width: 42px; height: 42px;">
                                                         {{ (req.user?.name || req.user?.display_name || 'U').charAt(0).toUpperCase() }}
                                                     </div>
-                                                    <div>
-                                                        <div class="text-dark fw-bold fs-12">{{ req.display_user_name }}</div>
-                                                        <div class="text-muted fs-10">{{ req.user?.email || '-' }}</div>
+                                                    <div class="overflow-hidden">
+                                                        <div class="fw-bold text-dark fs-14 text-truncate" style="max-width: 300px;">{{ req.display_user_name }}</div>
+                                                        <div class="text-muted fs-11 text-truncate">{{ req.display_perusahaan || 'Perusahaan tidak diketahui' }}</div>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td>
-                                                <div class="text-dark fw-bold fs-12 mb-0">{{ req.display_se_name }}</div>
-                                                <div class="text-muted fs-10">{{ req.display_perusahaan }}</div>
+                                                <div class="fw-bold text-dark fs-14">{{ req.display_se_name }}</div>
                                             </td>
-                                            <td>
-                                                <div class="text-dark fs-11 mb-0">{{ formatDate(req.created_at) }}</div>
+                                            <td class="text-center">
+                                                <div class="text-dark fs-11 fw-medium"><i class="ri-calendar-line text-muted"></i> {{ formatDate(req.created_at) }}</div>
                                                 <div class="text-muted fs-10">{{ formatTime(req.created_at) }} WIB</div>
                                             </td>
                                             <td class="text-center">
-                                                <span class="badge bg-warning-transparent text-warning px-2 py-1 rounded-pill fw-bold fs-10">Pending</span>
+                                                <span class="badge bg-warning-transparent text-warning px-3 py-2 rounded-pill fw-bold fs-12">Pending</span>
                                             </td>
                                             <td class="text-center">
-                                                <div class="d-flex justify-content-center gap-2">
-                                                    <button class="btn btn-sm btn-icon btn-primary-light" @click="openReview(req)" title="Tinjau">
-                                                        <i class="ri-eye-line"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-icon btn-success-light" @click="approveRequest(req)" title="Setujui">
-                                                        <i class="ri-check-line"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-icon btn-danger-light" @click="rejectRequest(req)" title="Tolak">
-                                                        <i class="ri-close-line"></i>
-                                                    </button>
+                                                <div class="d-flex justify-content-center gap-1">
+                                                    <button class="btn btn-icon btn-sm btn-primary-light stakeholders-action-btn" @click="openReview(req)" title="Buka detail review perubahan" aria-label="Buka detail review perubahan"><i class="ri-eye-line"></i></button>
+                                                    <button class="btn btn-icon btn-sm btn-success-light stakeholders-action-btn" @click="approveRequest(req)" title="Setujui pengajuan perubahan" aria-label="Setujui pengajuan perubahan"><i class="ri-check-line"></i></button>
+                                                    <button class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn" @click="rejectRequest(req)" title="Tolak pengajuan perubahan" aria-label="Tolak pengajuan perubahan"><i class="ri-close-line"></i></button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -744,7 +918,7 @@ onBeforeUnmount(() => {
                                     </tr>
                                     
                                     <template v-for="(group, idx) in paginatedGroups" :key="group.id">
-                                        <tr class="lms-table-row clickable-row" :class="{ 'expanded-parent': expandedRows.has(group.id) }" @click="toggleExpand(group.id)">
+                                        <tr class="lms-table-row clickable-row kse-parent-row" :class="{ 'expanded-parent': expandedRows.has(group.id), 'needs-review': group.metrics.hasPendingReview, 'is-priority': group.metrics.hasStrategis, 'is-recent': group.metrics.isRecentlyUpdated }" @click="toggleExpand(group.id)">
                                             <td class="text-center text-muted fw-bold fs-13">{{ (currentPage - 1) * itemsPerPage + idx + 1 }}</td>
                                             <td>
                                                 <div class="d-flex align-items-center gap-2">
@@ -756,7 +930,12 @@ onBeforeUnmount(() => {
                                                             <i class="ri-government-line fs-20"></i>
                                                         </div>
                                                         <div class="overflow-hidden">
-                                                            <div class="fw-bold text-dark fs-14 text-truncate" style="max-width: 300px;">{{ group.stakeholder.nama_perusahaan }}</div>
+                                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                                <div class="fw-bold text-dark fs-14 text-truncate" style="max-width: 300px;">{{ group.stakeholder.nama_perusahaan }}</div>
+                                                                <span v-if="group.metrics.hasPendingReview" class="badge bg-warning text-dark fs-10 fw-bold">Perlu Review</span>
+                                                                <span v-if="group.metrics.hasStrategis" class="badge bg-danger-transparent text-danger fs-10 fw-bold">Strategis</span>
+                                                                <span v-else-if="group.metrics.isRecentlyUpdated" class="badge bg-info-transparent text-info fs-10 fw-bold">Baru Diperbarui</span>
+                                                            </div>
                                                             <div class="text-muted fs-11 text-truncate">{{ group.stakeholder.sektor || 'Sektor belum ditentukan' }}</div>
                                                         </div>
                                                     </div>
@@ -767,24 +946,24 @@ onBeforeUnmount(() => {
                                             </td>
                                             <td class="text-center">
                                                 <div class="d-flex justify-content-center flex-wrap gap-1" style="max-width: 150px; margin: 0 auto;">
-                                                    <span v-if="group.ses.some(s => normalizeCategory(s.kategori_se) === 'strategis')" class="badge bg-danger-transparent text-danger fs-10">Strategis</span>
-                                                    <span v-if="group.ses.some(s => normalizeCategory(s.kategori_se) === 'tinggi')" class="badge bg-warning-transparent text-warning fs-10">Tinggi</span>
-                                                    <span v-if="group.ses.some(s => normalizeCategory(s.kategori_se) === 'rendah')" class="badge bg-info-transparent text-info fs-10">Rendah</span>
+                                                    <span v-if="group.metrics.hasStrategis" class="badge bg-danger-transparent text-danger fs-10">Strategis</span>
+                                                    <span v-if="group.metrics.hasTinggi" class="badge bg-warning-transparent text-warning fs-10">Tinggi</span>
+                                                    <span v-if="group.metrics.hasRendah" class="badge bg-info-transparent text-info fs-10">Rendah</span>
                                                 </div>
                                             </td>
                                             <td class="text-center">
-                                                <div class="text-dark fs-11 fw-medium"><i class="ri-calendar-line text-muted"></i> {{ formatDate(group.ses[0]?.updated_at || group.ses[0]?.created_at) }}</div>
+                                                <div class="text-dark fs-11 fw-medium"><i class="ri-calendar-line text-muted"></i> {{ group.metrics.latestTimestamp ? formatDate(new Date(group.metrics.latestTimestamp).toISOString()) : '-' }}</div>
                                             </td>
                                             <td class="text-center" @click.stop>
-                                                <button class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" @click="router.push(`/stakeholders/${group.stakeholder.slug || getStakeholderSlug(group.ses[0])}`)">
+                                                <button class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" title="Buka profil stakeholder" aria-label="Buka profil stakeholder" @click="router.push({ path: `/stakeholders/${group.stakeholder.slug || getStakeholderSlug(group.ses[0])}`, query: { id_perusahaan: group.stakeholder.id || group.ses[0]?.id_perusahaan } })">
                                                     <i class="ri-user-line me-1"></i> Profil
                                                 </button>
                                             </td>
                                         </tr>
 
                                         <tr v-if="expandedRows.has(group.id)" class="expansion-row animate__animated animate__fadeIn">
-                                            <td colspan="6" class="px-5 py-3 border-0 bg-light-subtle">
-                                                <div class="card custom-card mb-0 shadow-sm border-0 overflow-hidden" style="border-radius: 16px; border-left: 4px solid #3b82f6 !important;">
+                                            <td colspan="6" class="px-5 py-3 border-0 kse-child-cell">
+                                                <div class="card custom-card mb-0 shadow-sm border-0 overflow-hidden kse-child-card">
                                                     <div class="card-header bg-white border-bottom p-3 d-flex align-items-center justify-content-between">
                                                         <div class="d-flex align-items-center gap-2">
                                                             <i class="ri-list-check-3 text-primary fs-18"></i>
@@ -793,8 +972,8 @@ onBeforeUnmount(() => {
                                                     </div>
                                                     <div class="card-body p-0">
                                                         <div class="table-responsive">
-                                                            <table class="table table-sm table-nowrap mb-0 align-middle">
-                                                                <thead class="bg-light">
+                                                            <table class="table table-sm table-nowrap mb-0 align-middle kse-child-table">
+                                                                <thead>
                                                                     <tr>
                                                                         <th class="ps-4" style="width: 40px;">No</th>
                                                                         <th>Nama Sistem</th>
@@ -812,7 +991,6 @@ onBeforeUnmount(() => {
                                                                                 <div class="avatar avatar-sm rounded bg-danger-transparent text-danger"><i class="ri-macbook-line"></i></div>
                                                                                 <div>
                                                                                     <div class="fw-bold text-dark fs-12">{{ se.nama_se }}</div>
-                                                                                    <div class="text-muted fs-9">ID: {{ se.id }}</div>
                                                                                 </div>
                                                                             </div>
                                                                         </td>
@@ -820,19 +998,21 @@ onBeforeUnmount(() => {
                                                                             <span class="badge-sektor" :class="getCategoryBadge(se.kategori_se || '')">{{ se.kategori_se || 'Draft' }}</span>
                                                                         </td>
                                                                         <td class="text-center">
-                                                                            <span class="badge rounded-pill px-2 py-1 bg-success-transparent text-success fs-9 fw-bold"><i class="ri-lock-fill me-1"></i> FINAL</span>
+                                                                            <span class="badge rounded-pill px-2 py-1 fs-9 fw-bold" :class="isSeFullyCompleted(se) ? 'bg-success-transparent text-success' : 'bg-warning-transparent text-warning'">
+                                                                                <i :class="isSeFullyCompleted(se) ? 'ri-lock-fill me-1' : 'ri-time-line me-1'"></i> {{ getSeStatusText(se).toUpperCase() }}
+                                                                            </span>
                                                                         </td>
                                                                         <td>
                                                                             <div class="d-flex align-items-center gap-2" style="width: 100px;">
-                                                                                <div class="progress progress-xs flex-grow-1" style="height: 4px;"><div class="progress-bar bg-primary" :style="{ width: calculateScore(se).completion + '%' }"></div></div>
-                                                                                <span class="fs-10 fw-bold text-primary">{{ calculateScore(se).completion }}%</span>
+                                                                                <div class="progress progress-xs flex-grow-1" style="height: 4px;"><div class="progress-bar bg-primary" :style="{ width: getSeCompletionPercent(se) + '%' }"></div></div>
+                                                                                <span class="fs-10 fw-bold text-primary">{{ getSeCompletionPercent(se) }}%</span>
                                                                             </div>
                                                                         </td>
                                                                         <td class="text-center pe-3">
                                                                             <div class="d-flex justify-content-center gap-1">
-                                                                                <button class="btn btn-icon btn-sm btn-info-light stakeholders-action-btn" @click="viewDetail(se)" title="Lihat"><i class="ri-eye-line"></i></button>
-                                                                                <button class="btn btn-icon btn-sm btn-primary-light stakeholders-action-btn" @click="editSe(se)" title="Edit"><i class="ri-edit-line"></i></button>
-                                                                                <button class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn" @click="openDelete(se)" title="Hapus"><i class="ri-delete-bin-line"></i></button>
+                                                                                <button class="btn btn-icon btn-sm btn-info-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Lihat detail" @click="viewDetail(se)" title="Lihat detail sistem elektronik" aria-label="Lihat detail sistem elektronik"><i class="ri-eye-line"></i></button>
+                                                                                <button class="btn btn-icon btn-sm btn-primary-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Edit sistem" @click="editSe(se)" title="Edit sistem elektronik" aria-label="Edit sistem elektronik"><i class="ri-edit-line"></i></button>
+                                                                                <button v-if="isFullAdmin" class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Hapus sistem" @click="openDelete(se)" title="Hapus sistem elektronik" aria-label="Hapus sistem elektronik"><i class="ri-delete-bin-line"></i></button>
                                                                             </div>
                                                                         </td>
                                                                     </tr>
@@ -974,16 +1154,16 @@ onBeforeUnmount(() => {
                             <!-- Comparison Rows -->
                             <div
                                 class="comparison-container review-comparison-container rounded-4 overflow-hidden"
-                                :class="{ 'review-comparison-scrollable': getFilteredChangesCount(selectedRequest) > 1 }"
+                                :class="{ 'review-comparison-scrollable': selectedRequestChangesCount > 1 }"
                             >
-                                <div v-if="getFilteredChangesCount(selectedRequest) === 0" class="p-5 text-center">
+                                <div v-if="selectedRequestChangesCount === 0" class="p-5 text-center">
                                     <div class="text-muted fs-13 italic">
                                         <i class="ri-information-line fs-20 d-block mb-2"></i>
                                         Tidak ada perubahan data teknis yang perlu ditinjau.
                                     </div>
                                 </div>
                                 <template v-else>
-                                    <div v-for="(val, key) in getFilteredChanges(selectedRequest)" :key="key" 
+                                    <div v-for="(val, key) in selectedRequestChanges" :key="key" 
                                          class="comparison-row review-comparison-row d-flex align-items-center p-3 bg-white transition-base">
                                         <div class="col-md-4 review-comparison-cell review-comparison-label">
                                             <div class="review-mobile-label">Informasi / Parameter</div>
@@ -1075,13 +1255,15 @@ onBeforeUnmount(() => {
     align-items: center;
     background: linear-gradient(135deg, #06184f 0%, #183b91 52%, #2f76ea 100%);
     border: 1px solid rgba(255, 255, 255, 0.28);
-    border-radius: 20px;
-    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
+    border-radius: 22px;
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
     color: #ffffff;
     display: flex;
-    min-height: 112px;
+    gap: 28px;
+    justify-content: space-between;
+    min-height: 152px;
     overflow: hidden;
-    padding: 18px 26px;
+    padding: 24px 26px;
     position: relative;
 }
 
@@ -1099,8 +1281,15 @@ onBeforeUnmount(() => {
     z-index: 1;
 }
 
+.kse-hero-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
 .kse-hero-copy {
-    max-width: 920px;
+    max-width: 820px;
 }
 
 .kse-inline-breadcrumb {
@@ -1108,7 +1297,7 @@ onBeforeUnmount(() => {
     font-size: 12px;
     font-weight: 800;
     line-height: 1.2;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 
 .kse-inline-breadcrumb span {
@@ -1118,7 +1307,7 @@ onBeforeUnmount(() => {
 
 .kse-hero-copy h1 {
     color: #ffffff;
-    font-size: 30px;
+    font-size: 32px;
     font-weight: 850;
     line-height: 1.05;
     margin: 0;
@@ -1126,9 +1315,9 @@ onBeforeUnmount(() => {
 
 .kse-hero-copy p {
     color: rgba(255, 255, 255, 0.86);
-    font-size: 15px;
-    line-height: 1.4;
-    margin: 8px 0 0;
+    font-size: 16px;
+    line-height: 1.45;
+    margin: 10px 0 0;
 }
 
 .kse-hero-tools {
@@ -1317,6 +1506,216 @@ onBeforeUnmount(() => {
 
 .kse-list-shell {
     border-radius: 16px !important;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08) !important;
+    transform: none !important;
+    filter: none !important;
+}
+
+.kse-quick-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.kse-toolbar-btn,
+.kse-filter-pill {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 36px;
+}
+
+.kse-toolbar-btn {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 0 16px;
+    transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    white-space: nowrap;
+}
+
+.kse-toolbar-btn:hover:not(:disabled) {
+    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.kse-toolbar-btn i,
+.kse-filter-pill {
+    vertical-align: middle;
+}
+
+.kse-toolbar-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+
+.kse-filter-pill {
+    background: #f8fafc;
+    border: 1px solid #dbe5f2;
+    border-radius: 999px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 0 14px;
+    transition: all 180ms ease;
+    white-space: nowrap;
+}
+
+.kse-filter-pill:hover {
+    border-color: rgba(37, 99, 235, 0.35);
+    color: #1d4ed8;
+}
+
+.kse-filter-pill.active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: transparent;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+    color: #ffffff;
+}
+
+.kse-review-row {
+    background: linear-gradient(90deg, rgba(254, 243, 199, 0.26), rgba(255, 255, 255, 0));
+}
+
+.kse-parent-row {
+    background: #ffffff;
+    transition: background-color 180ms ease, box-shadow 180ms ease;
+    transform: none !important;
+    filter: none !important;
+}
+
+.kse-parent-row.needs-review {
+    background: linear-gradient(90deg, rgba(254, 243, 199, 0.35), rgba(255, 255, 255, 0));
+}
+
+.kse-parent-row.is-priority {
+    box-shadow: inset 3px 0 0 rgba(239, 68, 68, 0.7);
+}
+
+.kse-parent-row.is-recent td {
+    background-image: linear-gradient(90deg, rgba(224, 242, 254, 0.42), rgba(255, 255, 255, 0));
+    background-repeat: no-repeat;
+}
+
+.kse-child-cell {
+    background: #f7faff;
+}
+
+.kse-child-card {
+    background: #ffffff;
+    border: 1px solid #cfe0fb !important;
+    border-left: 4px solid #3b82f6 !important;
+    border-radius: 16px;
+    margin-left: 18px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    transform: none !important;
+    filter: none !important;
+}
+
+.kse-child-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+}
+
+.kse-child-table thead th {
+    background: #f4f8ff !important;
+    border-bottom: 1px solid #cfddf2 !important;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding-top: 0.9rem;
+    padding-bottom: 0.9rem;
+    text-transform: uppercase;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.kse-child-table tbody td {
+    border-bottom: 1px solid #e6eef8;
+    color: #1e293b;
+    font-weight: 500;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.kse-child-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.kse-child-table .progress {
+    background: #dbe7fb;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.kse-child-table .progress-bar {
+    background: #1d4ed8 !important;
+    border-radius: 999px;
+}
+
+.kse-child-table .badge-sektor {
+    border-width: 1.5px !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    padding: 0.36rem 0.78rem !important;
+}
+
+.kse-child-table .badge.rounded-pill {
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    padding: 0.34rem 0.78rem !important;
+}
+
+.kse-child-table .text-primary {
+    color: #1d4ed8 !important;
+}
+
+.kse-child-table thead th:first-child {
+    border-top-left-radius: 12px;
+}
+
+.kse-child-table thead th:last-child {
+    border-top-right-radius: 12px;
+}
+
+.kse-action-tooltip {
+    position: relative;
+}
+
+.kse-action-tooltip::after {
+    background: rgba(15, 23, 42, 0.92);
+    border-radius: 8px;
+    color: #ffffff;
+    content: attr(data-kse-tooltip);
+    font-size: 10px;
+    font-weight: 700;
+    left: 50%;
+    opacity: 0;
+    padding: 6px 8px;
+    pointer-events: none;
+    position: absolute;
+    top: calc(-100% - 8px);
+    transform: translateX(-50%) translateY(4px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    white-space: nowrap;
+    z-index: 5;
+}
+
+.kse-action-tooltip:hover::after,
+.kse-action-tooltip:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
 
 .kse-skel-line,
@@ -1505,6 +1904,7 @@ onBeforeUnmount(() => {
     }
 
     .kse-search {
+        flex: 0 0 auto;
         max-width: none;
         order: 3;
         width: 100%;
@@ -1528,6 +1928,38 @@ onBeforeUnmount(() => {
 
     .kse-kpi-grid {
         grid-template-columns: 1fr;
+    }
+
+    .stakeholders-toolbar-right {
+        align-items: stretch !important;
+        flex-direction: column;
+        gap: 12px;
+        justify-content: flex-start !important;
+    }
+
+    .stakeholders-per-page {
+        align-self: center;
+    }
+
+    .kse-toolbar-btn {
+        width: 100%;
+    }
+
+    .kse-search {
+        flex: 0 0 auto;
+        min-height: 48px;
+        order: unset;
+        padding: 0 14px;
+        width: 100%;
+    }
+
+    .kse-search input {
+        font-size: 14px;
+    }
+
+    .kse-quick-filters {
+        gap: 10px;
+        justify-content: flex-start;
     }
 
     .kse-confirm-actions {
@@ -2020,16 +2452,20 @@ onBeforeUnmount(() => {
 
 .stakeholders-action-btn {
   border-radius: 10px !important;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  box-shadow: none !important;
+  filter: none !important;
+  transform: none !important;
+  border-width: 1px !important;
 }
 
 .stakeholders-action-btn:hover {
-  transform: translateY(-2px);
+  transform: none !important;
 }
 
 .hover-opacity-100:hover {
@@ -2070,7 +2506,10 @@ onBeforeUnmount(() => {
 }
 
 .lms-table-row {
-    transition: all 0.2s ease;
+    transition: background-color 0.18s ease, color 0.18s ease;
+    will-change: auto;
+    backface-visibility: hidden;
+    transform: translateZ(0);
 }
 
 .clickable-row {
@@ -2087,19 +2526,42 @@ onBeforeUnmount(() => {
 
 .lms-style-table thead th {
     border-top: none;
-    background-color: #f9fbff !important;
-    color: #5a6a85 !important;
+    background-color: #f8fbff !important;
+    color: #475569 !important;
     font-weight: 800 !important;
-    font-size: 0.69rem !important;
+    font-size: 0.74rem !important;
     letter-spacing: 0.06em;
-    border-bottom: 1px solid #e2e8f0 !important;
+    border-bottom: 1px solid #dbe5f2 !important;
     padding: 0.95rem 1.1rem !important;
     text-transform: uppercase;
     white-space: nowrap;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .lms-style-table tbody tr {
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #e8eef7;
+}
+
+.lms-style-table tbody td {
+    color: #1e293b;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.kse-admin-page .text-muted {
+    color: #64748b !important;
+}
+
+.kse-admin-page .badge,
+.kse-admin-page .badge-sektor {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    box-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
 }
 
 .ri-spin {
@@ -2189,6 +2651,15 @@ html.dark .kse-confirm-modal {
     color: #e2e8f0 !important;
 }
 
+[data-theme-mode="dark"] .kse-admin-page .kse-hero-header,
+html.dark .kse-admin-page .kse-hero-header {
+    background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(15, 42, 83, 0.9) 48%, rgba(30, 64, 175, 0.82)),
+        radial-gradient(circle at 20% 16%, rgba(96, 165, 250, 0.26), transparent 32%) !important;
+    border-color: rgba(96, 165, 250, 0.24) !important;
+    box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
 [data-theme-mode="dark"] .kse-admin-page .kse-kpi-card strong,
 html.dark .kse-admin-page .kse-kpi-card strong,
 [data-theme-mode="dark"] .kse-confirm-copy h3,
@@ -2259,6 +2730,29 @@ html.dark .kse-admin-page .entries-select {
 html.dark .kse-admin-page .entries-select option {
     background: #0b1220 !important;
     color: #e2e8f0 !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-filter-pill,
+html.dark .kse-admin-page .kse-filter-pill {
+    background: #0b1220 !important;
+    border-color: rgba(148, 163, 184, 0.3) !important;
+    color: #cbd5e1 !important;
+    box-shadow: none !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-filter-pill:hover,
+html.dark .kse-admin-page .kse-filter-pill:hover {
+    background: rgba(37, 99, 235, 0.14) !important;
+    border-color: rgba(96, 165, 250, 0.5) !important;
+    color: #93c5fd !important;
+}
+
+[data-theme-mode="dark"] .kse-admin-page .kse-filter-pill.active,
+html.dark .kse-admin-page .kse-filter-pill.active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+    border-color: transparent !important;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24) !important;
+    color: #ffffff !important;
 }
 
 [data-theme-mode="dark"] .kse-admin-page .bg-warning-transparent.border-bottom,

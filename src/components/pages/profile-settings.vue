@@ -5,7 +5,6 @@ import { useProfileStore } from "../../stores/profile";
 import { useAuthStore } from "../../stores/auth";
 import type { Jabatan } from "@/types/jabatan.types";
 import { usersService } from "../../services/users.service";
-import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 // Constants
 const DEFAULT_FOTO_PROFILE = " ";
@@ -53,13 +52,6 @@ const errorMessage = ref("");
 
 // Self-edit mode only (no admin edit mode)
 const isAdminEditMode = false;
-
-// Computed for page header
-const dataToPass = computed(() => ({
-  title: { label: "Profile", path: "/profile" },
-  currentpage: "Profile Settings",
-  activepage: "Profile Settings"
-}));
 
 const formData = ref({
   name: "", display_name: "", role: "", jabatan: "", idJabatan: "", location: "", email: "", phone: "", website: "", bio: "", address: ""
@@ -359,6 +351,35 @@ const isDraggingBanner = computed(() => dragState.value.type === 'banner');
 const isDraggingFotoProfile = computed(() => dragState.value.type === 'foto_profile');
 const displayPerusahaan = computed(() => profileStore.namaPerusahaan || 'Belum terkait');
 const displaySektor = computed(() => profileStore.namaSubSektor || 'Belum terkait');
+const settingsDisplayJoined = computed(() => profileStore.displayJoined || 'Tidak diketahui');
+const settingsDisplayName = computed(() => formData.value.display_name || formData.value.name || 'User Name');
+const settingsDisplayRoleLabel = computed(() => formatRoleLabel(formData.value.role));
+const settingsDisplayJabatan = computed(() => {
+  if (selectedJabatan.value === 'NEW') return newJabatanName.value || 'Jabatan baru';
+  const found = jabatanList.value.find((j) => j.id === selectedJabatan.value);
+  return found?.nama_jabatan || formData.value.jabatan || 'Belum diatur';
+});
+
+const toTitleCase = (value: string) =>
+  String(value || "")
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatRoleLabel = (role: string | undefined): string => {
+  const normalized = String(role || "").trim();
+  if (!normalized) return "Belum diatur";
+  if (normalized.toLowerCase() === "user_pic") return "User PIC";
+  return toTitleCase(normalized);
+};
+
+const getRoleBadgeClass = (role: string) => {
+  const r = String(role || "").toLowerCase();
+  if (r.includes("admin")) return "p-badge--role-red";
+  if (r === "user") return "p-badge--role-green";
+  if (r === "user_pic" || r === "pic") return "p-badge--role-orange";
+  return "p-badge--role-sky";
+};
 
 // Role options for admin edit mode
 const roleOptions = ['admin', 'User'];
@@ -389,29 +410,12 @@ const roleOptions = ['admin', 'User'];
     </div>
   </transition>
 
-  <!-- Main container (style-2 layout) -->
-  <div class="row">
-    <div class="col-xxl-9 col-xl-10 col-lg-12 mx-auto">
-      
-      <Pageheader :propData="dataToPass" />
-
-      <!-- HEADER BAR -->
-      <div class="card custom-card gradient-header-card mb-4 shadow-sm border-0">
-        <div class="card-header d-flex align-items-center justify-content-between gap-3 users-header border-bottom-0 pb-3 pt-3">
-          <div class="d-flex align-items-center gap-3">
-            <div class="header-icon-box">
-              <i class="ri-user-settings-line"></i>
-            </div>
-            <div>
-              <div class="card-title mb-0 text-white fw-bold header-card-title">Profile Settings</div>
-              <div class="header-subtitle mt-1">Edit informasi akun &amp; data pribadi</div>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- Main container (user-profile layout) -->
+  <div class="row profile-user-page">
+    <div class="col-xl-12">
 
       <!--  HERO CARD (banner + foto_profile + info)  -->
-      <div class="card custom-card hero-card-shell mb-4 shadow-sm border-0 rounded-4 overflow-hidden">
+      <div class="card custom-card hero-card-shell mb-4 border-0 rounded-4 overflow-hidden stakeholder-profile-shell">
             <!-- Banner Image -->
             <div
               ref="bannerContainer"
@@ -421,14 +425,42 @@ const roleOptions = ['admin', 'User'];
               @mousedown="!isAdminEditMode && startDrag('banner', $event)"
               @touchstart="!isAdminEditMode && startDrag('banner', $event)"
             >
+              <div class="profile-banner-overlay-premium">
+                <div class="profile-banner-top">
+                  <div class="hero-text-block">
+                    <div class="premium-breadcrumb mb-1">
+                      <span class="breadcrumb-item">PROFILE</span>
+                      <span class="breadcrumb-sep"><i class="ri-arrow-right-s-line"></i></span>
+                      <span class="breadcrumb-item active">SETTINGS</span>
+                    </div>
+                    <h2 class="hero-main-title">Edit Profil</h2>
+                    <p class="hero-sub-title mb-0">Sesuaikan informasi akun dan data pribadi Anda</p>
+                  </div>
+
+                  <div class="hero-action-tools">
+                    <div class="d-flex gap-2 flex-wrap justify-content-end align-items-center">
+                      <button @click="handleCancel" :disabled="isSaving" class="btn-premium btn-premium--glass-danger shadow-sm">
+                        <i class="ri-close-circle-fill me-1"></i>
+                        <span>Batal</span>
+                      </button>
+                      <button @click="saveProfile" :disabled="isSaving" class="btn-premium btn-premium--warning shadow-sm">
+                        <span v-if="isSaving" class="spinner-border spinner-border-sm me-1"></span>
+                        <i v-else class="ri-save-3-fill me-1"></i>
+                        <span>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Banner Edit Buttons -->
-              <div v-if="!isAdminEditMode" class="position-absolute top-0 end-0 p-3 p-md-4" style="z-index:10">
+              <div v-if="!isAdminEditMode" class="position-absolute bottom-0 end-0 p-3" style="z-index:10">
                 <div class="d-flex gap-2">
-                  <button @click.stop="triggerBannerUpload" class="btn-edit-profile btn-primary" title="Maks 2MB">
-                    <i class="ri-image-edit-line"></i>
-                    <span class="d-none d-sm-inline">Ganti Banner (Maks 2MB)</span>
+                  <button @click.stop="triggerBannerUpload" class="btn btn-primary btn-sm rounded-pill shadow-sm" title="Maks 2MB">
+                    <i class="ri-image-edit-line me-1"></i>
+                    <span class="d-none d-sm-inline">Ganti Banner</span>
                   </button>
-                  <button v-if="bannerPreview !== DEFAULT_BANNER" @click.stop="removeBanner" class="btn-edit-profile btn-danger">
+                  <button v-if="bannerPreview !== DEFAULT_BANNER" @click.stop="removeBanner" class="btn btn-danger btn-sm rounded-pill shadow-sm" title="Hapus banner">
                     <i class="ri-delete-bin-line"></i>
                   </button>
                 </div>
@@ -443,7 +475,7 @@ const roleOptions = ['admin', 'User'];
             </div>
 
             <!-- Profile Content Body -->
-            <div class="profile-content-body">
+            <div class="profile-content-body profile-content-body--premium">
               <!-- Foto Profile Container -->
               <div class="profile-foto-profile-container">
                 <div
@@ -467,8 +499,8 @@ const roleOptions = ['admin', 'User'];
                 </div>
                 <!-- Foto Profile Upload Button -->
                 <div v-if="!isAdminEditMode" class="foto-profile-upload-btn">
-                  <button @click.stop="triggerFotoProfileUpload" class="btn btn-primary btn-icon btn-sm rounded-circle shadow" title="Ganti Foto (Maks 2MB)">
-                    <i class="ri-camera-line"></i>
+                  <button @click.stop="triggerFotoProfileUpload" class="btn-upload-camera shadow-lg" title="Ganti Foto (Maks 2MB)">
+                    <i class="ri-camera-fill"></i>
                   </button>
                 </div>
                 <input ref="fotoProfileInput" type="file" accept="image/*" class="d-none" @change="handleImageUpload('foto_profile', $event)" />
@@ -476,41 +508,51 @@ const roleOptions = ['admin', 'User'];
 
               <!-- Info Block -->
               <div class="profile-info-block">
-                <div class="d-flex align-items-end justify-content-between gap-2">
-                  <div>
-                    <h4 class="profile-user-name mb-1">{{ formData.display_name || formData.name || "User Name" }}</h4>
-                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                      <span :class="['profile-role-badge', `profile-role-badge--${(formData.role || '').toLowerCase()}`]">
-                        <i :class="formData.role?.toLowerCase() === 'admin' ? 'ri-shield-user-line' : 'ri-user-line'"></i>{{ formData.role }}
-                      </span>
-                      <span class="profile-jabatan-badge">
-                        <i class="ri-briefcase-line"></i>{{ formData.jabatan }}
-                      </span>
-                      <span class="profile-perusahaan-badge">
-                        <i class="ri-building-line"></i>{{ displayPerusahaan }}
-                      </span>
-                      <span class="profile-sektor-badge">
-                        <i class="ri-pie-chart-line"></i>{{ displaySektor }}
-                      </span>
-                    </div>
-                    <p class="profile-email-text mb-1">
-                      <i class="ri-mail-line me-1"></i>{{ formData.email }}
-                    </p>
-                    <div class="profile-meta-row">
-                      <span><i class="ri-phone-line me-1"></i>{{ formData.phone }}</span>
-                      <span class="contact-bar-sep-inline"></span>
-                      <span><i class="ri-map-pin-line me-1"></i>{{ formData.location }}</span>
+                <h4 class="profile-user-name mb-2">{{ settingsDisplayName }}</h4>
+                <div class="profile-badges-row mb-3">
+                  <span :class="['p-badge p-badge--role', getRoleBadgeClass(formData.role)]">
+                    <i :class="formData.role?.toLowerCase() === 'admin' ? 'ri-shield-flash-line' : 'ri-user-6-line'"></i>
+                    {{ settingsDisplayRoleLabel }}
+                  </span>
+                  <span class="p-badge p-badge--jabatan">
+                    <i class="ri-medal-line"></i>{{ settingsDisplayJabatan }}
+                  </span>
+                  <span class="p-badge p-badge--company">
+                    <i class="ri-community-line"></i>{{ displayPerusahaan }}
+                  </span>
+                  <span class="p-badge p-badge--sector">
+                    <i class="ri-microscope-line"></i>{{ displaySektor }}
+                  </span>
+                </div>
+
+                <div class="profile-contact-grid">
+                  <div class="contact-item contact-item--email">
+                    <div class="contact-icon contact-icon--email"><i class="ri-mail-send-line"></i></div>
+                    <div class="contact-content">
+                      <span class="contact-label">Email</span>
+                      <span class="contact-value contact-value--email" :title="formData.email">{{ formData.email }}</span>
                     </div>
                   </div>
-                  <!-- Action Buttons (Desktop) -->
-                  <div class="save-btn-desktop d-none d-md-flex gap-2 mb-1">
-                    <button @click="handleCancel" class="btn-cancel-glass rounded-pill px-4">
-                      <i class="ri-arrow-left-line me-1"></i>Batal
-                    </button>
-                    <button @click="saveProfile" :disabled="isSaving" class="btn-save-primary rounded-pill px-4">
-                      <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
-                      <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan Perubahan" }}
-                    </button>
+                  <div class="contact-item">
+                    <div class="contact-icon contact-icon--phone"><i class="ri-phone-camera-line"></i></div>
+                    <div class="contact-content">
+                      <span class="contact-label">Nomor Telepon</span>
+                      <span class="contact-value">{{ PHONE_PREFIX }}{{ formData.phone }}</span>
+                    </div>
+                  </div>
+                  <div class="contact-item">
+                    <div class="contact-icon contact-icon--location"><i class="ri-map-pin-user-line"></i></div>
+                    <div class="contact-content">
+                      <span class="contact-label">Lokasi</span>
+                      <span class="contact-value">{{ formData.location || 'Belum diatur' }}</span>
+                    </div>
+                  </div>
+                  <div class="contact-item">
+                    <div class="contact-icon contact-icon--joined"><i class="ri-calendar-check-line"></i></div>
+                    <div class="contact-content">
+                      <span class="contact-label">Bergabung Sejak</span>
+                      <span class="contact-value">{{ settingsDisplayJoined }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -518,18 +560,16 @@ const roleOptions = ['admin', 'User'];
           </div>
 
       <!-- INFORMASI AKUN -->
-      <div class="card custom-card mb-4 shadow-sm border-0 rounded-4">
-        <div class="card-header d-flex align-items-center gap-3 bg-white border-bottom py-3 px-4">
+      <div class="card custom-card mb-4 border-0 rounded-4 stakeholders-shell-card overflow-hidden">
+        <div class="card-header border-bottom py-3 px-4 bg-transparent d-flex align-items-center justify-content-between">
           <div class="d-flex align-items-center gap-2">
-            <div class="avatar avatar-sm bg-primary-transparent rounded-circle">
-              <i class="ri-user-settings-line text-primary fs-18"></i>
-            </div>
-            <div class="card-title mb-0 fw-bold text-dark fs-15">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</div>
-            <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Edit data detail profil pengguna</div>
+            <div class="header-icon-wrap text-primary fs-18"><i class="ri-user-settings-line"></i></div>
+            <h5 class="card-title mb-0 fw-bold fs-15">{{ isAdminEditMode ? 'Edit User' : 'Informasi Akun' }}</h5>
           </div>
+          <div class="badge bg-light text-muted rounded-pill px-3 py-2 fs-11 fw-semibold border">Edit Atribut</div>
         </div>
-        <div class="card-body p-4 p-md-5">
-          <div class="row g-4">
+        <div class="card-body p-4 pt-3">
+          <div class="row g-3">
               <!-- Username (read-only) -->
               <div class="col-xl-6 col-lg-6 col-md-6">
                 <div class="form-group-split">
@@ -674,31 +714,17 @@ const roleOptions = ['admin', 'User'];
                   </div>
                 </div>
               </div>
-              <!-- Mobile Action Buttons -->
-              <div class="col-12 d-md-none">
-                <div class="d-flex gap-2 mt-1">
-                  <button @click="handleCancel" class="btn-cancel-glass rounded-pill w-50">
-                    <i class="ri-arrow-left-line me-1"></i>Batal
-                  </button>
-                  <button @click="saveProfile" :disabled="isSaving" class="btn-save-primary rounded-pill w-50">
-                    <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
-                    <i v-else class="ri-save-line me-1"></i>{{ isSaving ? "Menyimpan..." : "Simpan" }}
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
 
       <!--  UBAH PASSWORD  -->
-      <div v-if="!isAdminEditMode" class="card custom-card mb-4 shadow-sm border-0 rounded-4">
-        <div class="card-header d-flex justify-content-between align-items-center gap-3 bg-white border-bottom py-3 px-4" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
+      <div v-if="!isAdminEditMode" class="card custom-card mb-4 border-0 rounded-4 stakeholders-shell-card overflow-hidden">
+        <div class="card-header d-flex justify-content-between align-items-center gap-3 bg-transparent border-bottom py-3 px-4" data-bs-toggle="collapse" data-bs-target="#changePassword" style="cursor: pointer;">
           <div class="d-flex align-items-center gap-2">
-            <div class="avatar avatar-sm bg-primary-transparent rounded-circle">
-              <i class="ri-lock-password-line text-primary fs-18"></i>
-            </div>
-            <div class="card-title mb-0 fw-bold text-dark fs-15">Ubah Password</div>
-            <div class="text-muted ms-2 fs-13 d-none d-sm-block">- Ganti kata sandi akun Anda</div>
+            <div class="header-icon-wrap text-primary fs-18"><i class="ri-lock-password-line"></i></div>
+            <h5 class="card-title mb-0 fw-bold fs-15">Ubah Password</h5>
+            <div class="text-muted ms-2 fs-13 d-none d-sm-block">Ganti kata sandi akun Anda</div>
           </div>
           <i class="ri-arrow-down-s-line text-muted fs-20 p-1 px-2 rounded hover-primary"></i>
         </div>

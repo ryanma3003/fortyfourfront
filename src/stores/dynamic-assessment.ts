@@ -109,6 +109,378 @@ const getLastPageForQuestions = (questions: DynamicQuestion[]): number => {
     return Math.ceil((questions || []).length / QUESTIONS_PER_PAGE) || 1;
 };
 
+type DomainKey = DynamicQuestion['domainKey'];
+
+const firstValue = (...values: any[]): any => values.find((value) => value !== undefined && value !== null && value !== '');
+
+const getDomainKeyFromText = (value: any, fallback?: DomainKey): DomainKey | undefined => {
+    const raw = String(value || '').toLowerCase();
+    if (raw.includes('identifikasi')) return 'identifikasi';
+    if (raw.includes('proteksi')) return 'proteksi';
+    if (raw.includes('deteksi')) return 'deteksi';
+    if (raw.includes('gulih') || raw.includes('pemulihan') || raw.includes('tanggulih')) return 'gulih';
+    return fallback;
+};
+
+const normalizeLookupText = (value: any): string => String(value || '')
+    .toLowerCase()
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const lookupStopWords = new Set([
+    'apakah',
+    'yang',
+    'dan',
+    'atau',
+    'untuk',
+    'dengan',
+    'secara',
+    'telah',
+    'sudah',
+    'ada',
+    'terdapat',
+    'organisasi',
+    'dalam',
+    'pada',
+    'setiap',
+    'dari',
+    'ke',
+    'di',
+    'ini',
+    'itu',
+    'sebagai',
+]);
+
+const getLookupTokens = (value: any): string[] => (
+    [...new Set(
+        normalizeLookupText(value)
+            .split(' ')
+            .filter((token) => token.length > 2 && !lookupStopWords.has(token))
+    )]
+);
+
+const normalizeQuestionIdValue = (value: any): string => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const composite = raw.match(/(identifikasi|proteksi|deteksi|gulih)[_\-\s]*(\d+)/i);
+    if (composite) return `${composite[1].toLowerCase()}_${String(Number(composite[2]))}`;
+
+    const numeric = raw.match(/^\d+$/)?.[0];
+    if (numeric) return String(Number(numeric));
+
+    return raw;
+};
+
+const parseAnswerIndexValue = (value: any): number | null => {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? Math.max(0, Math.min(5, Math.round(value))) : null;
+    }
+
+    const text = String(value).trim();
+    if (!text) return null;
+    const normalized = text.replace(',', '.');
+    const directNumber = Number(normalized);
+    if (Number.isFinite(directNumber)) {
+        return Math.max(0, Math.min(5, Math.round(directNumber)));
+    }
+
+    const levelMatch = normalized.match(/\b(?:level|nilai|skor|score|jawaban)?\s*([0-5])\b/i);
+    if (levelMatch) return Number(levelMatch[1]);
+
+    const lookupText = normalizeLookupText(text);
+    if (lookupText.includes('belum ada implementasi')) return 0;
+    if (lookupText.includes('ad hoc') || lookupText.includes('informal')) return 1;
+    if (lookupText.includes('terdokumentasi sebagian')) return 2;
+    if (lookupText.includes('terdefinisi') || lookupText.includes('terdokumentasi')) return 3;
+    if (lookupText.includes('terkelola') || lookupText.includes('terukur')) return 4;
+    if (lookupText.includes('optimalisasi') || lookupText.includes('berkelanjutan')) return 5;
+
+    if (/^(?:na|n\/a|not applicable|tidak berlaku)$/i.test(text)) return 0;
+    return null;
+};
+
+const getAnswerValueFromItem = (item: any): number | null => parseAnswerIndexValue(firstValue(
+    item?.jawaban,
+    item?.jawaban_identifikasi,
+    item?.jawaban_proteksi,
+    item?.jawaban_deteksi,
+    item?.jawaban_gulih,
+    item?.jawabanIdentifikasi,
+    item?.jawabanProteksi,
+    item?.jawabanDeteksi,
+    item?.jawabanGulih,
+    item?.Jawaban,
+    item?.JawabanIdentifikasi,
+    item?.JawabanProteksi,
+    item?.JawabanDeteksi,
+    item?.JawabanGulih,
+    item?.['Jawaban Identifikasi'],
+    item?.['Jawaban Proteksi'],
+    item?.['Jawaban Deteksi'],
+    item?.['Jawaban Gulih'],
+    item?.nilai,
+    item?.Nilai,
+    item?.skor,
+    item?.Skor,
+    item?.score,
+    item?.Score,
+    item?.value,
+    item?.Value,
+    item?.answer,
+    item?.Answer,
+    item?.index,
+    item?.Index,
+    item?.level,
+    item?.Level,
+));
+
+const getQuestionIdFromItem = (item: any): string => normalizeQuestionIdValue(firstValue(
+    item?.pertanyaan_identifikasi_id,
+    item?.PertanyaanIdentifikasiID,
+    item?.pertanyaan_proteksi_id,
+    item?.PertanyaanProteksiID,
+    item?.pertanyaan_deteksi_id,
+    item?.PertanyaanDeteksiID,
+    item?.pertanyaan_gulih_id,
+    item?.pertanyaanIdentifikasiId,
+    item?.pertanyaanProteksiId,
+    item?.pertanyaanDeteksiId,
+    item?.pertanyaanGulihId,
+    item?.id_pertanyaan_identifikasi,
+    item?.id_pertanyaan_proteksi,
+    item?.id_pertanyaan_deteksi,
+    item?.id_pertanyaan_gulih,
+    item?.PertanyaanGulihID,
+    item?.pertanyaan_ikas_id,
+    item?.PertanyaanIkasID,
+    item?.id_pertanyaan_ikas,
+    item?.id_pertanyaan,
+    item?.idPertanyaan,
+    item?.pertanyaan_id,
+    item?.PertanyaanID,
+    item?.question_id,
+    item?.QuestionID,
+    item?.questionId,
+    item?.id_question,
+    item?.id_soal,
+    item?.kode_pertanyaan,
+    item?.kodePertanyaan,
+    item?.kode,
+    item?.Kode,
+    item?.pertanyaan_identifikasi?.id,
+    item?.pertanyaan_proteksi?.id,
+    item?.pertanyaan_deteksi?.id,
+    item?.pertanyaan_gulih?.id,
+    item?.pertanyaan_ikas?.id,
+    item?.pertanyaan?.id,
+    item?.question?.id,
+    item?.question?.question_id,
+    item?.question?.pertanyaan_id,
+));
+
+const getQuestionTextFromItem = (item: any): string => String(firstValue(
+    item?.pertanyaan_identifikasi?.pertanyaan_identifikasi,
+    item?.pertanyaan_proteksi?.pertanyaan_proteksi,
+    item?.pertanyaan_deteksi?.pertanyaan_deteksi,
+    item?.pertanyaan_gulih?.pertanyaan_gulih,
+    item?.pertanyaan_ikas?.pertanyaan,
+    item?.pertanyaan?.pertanyaan,
+    item?.question?.text,
+    item?.question?.pertanyaan,
+    item?.question?.title,
+    item?.question?.nama,
+    item?.Question?.text,
+    item?.pertanyaan,
+    item?.Pertanyaan,
+    typeof item?.pertanyaan_identifikasi === 'string' ? item.pertanyaan_identifikasi : '',
+    typeof item?.pertanyaan_proteksi === 'string' ? item.pertanyaan_proteksi : '',
+    typeof item?.pertanyaan_deteksi === 'string' ? item.pertanyaan_deteksi : '',
+    typeof item?.pertanyaan_gulih === 'string' ? item.pertanyaan_gulih : '',
+    typeof item?.pertanyaan_ikas === 'string' ? item.pertanyaan_ikas : '',
+    item?.question,
+    item?.Question,
+    item?.text,
+    item?.Text,
+    item?.soal,
+    item?.Soal,
+    item?.nama_pertanyaan,
+    ''
+));
+
+const shouldConsiderWideImportField = (key: string, value: any): boolean => {
+    const normalizedKey = normalizeLookupText(key);
+    if (!normalizedKey) return false;
+
+    if (/(id_ikas|ikas_id|id_perusahaan|perusahaan_id|tanggal|tahun|target_nilai|responden|jabatan|telepon|email|alamat|status|created|updated|slug|page|limit|count|total|kategori|domain)/.test(normalizedKey)) {
+        return false;
+    }
+
+    if (
+        /(pertanyaan|question|soal|jawaban|nilai|skor|score|index|item|pilihan|opsi|no|nomor)/.test(normalizedKey) ||
+        normalizedKey.length >= 20 ||
+        /\s/.test(key)
+    ) {
+        return true;
+    }
+
+    return typeof value === 'string' && value.length >= 20;
+};
+
+const getDomainKeyFromItem = (item: any, fallback?: DomainKey): DomainKey | undefined => {
+    const raw = String(firstValue(
+        item?.domainKey,
+        item?.domain_key,
+        item?.kategori,
+        item?.domain,
+        item?.nama_domain,
+        item?.Domain,
+        item?.Kategori,
+        item?.pertanyaan_identifikasi_id ? 'identifikasi' : '',
+        item?.pertanyaan_proteksi_id ? 'proteksi' : '',
+        item?.pertanyaan_deteksi_id ? 'deteksi' : '',
+        item?.pertanyaan_gulih_id ? 'gulih' : '',
+        item?.pertanyaan_identifikasi ? 'identifikasi' : '',
+        item?.pertanyaan_proteksi ? 'proteksi' : '',
+        item?.pertanyaan_deteksi ? 'deteksi' : '',
+        item?.pertanyaan_gulih ? 'gulih' : '',
+        fallback || '',
+    ) || '').toLowerCase();
+
+    return getDomainKeyFromText(raw, fallback);
+};
+
+const getAllDynamicQuestions = (domains: DynamicDomain[]): DynamicQuestion[] => (
+    domains.flatMap((domain) => (
+        domain.categories.flatMap((category) => getCategoryQuestions(category))
+    ))
+);
+
+const buildQuestionLookups = (domains: DynamicDomain[]) => {
+    const questions = getAllDynamicQuestions(domains);
+    const byCompositeId = new Map<string, DynamicQuestion>();
+    const byDomainOriginalId = new Map<string, DynamicQuestion>();
+    const byText = new Map<string, DynamicQuestion>();
+
+    questions.forEach((question) => {
+        byCompositeId.set(question.id, question);
+        byDomainOriginalId.set(`${question.domainKey}_${question.originalId}`, question);
+
+        const textKey = normalizeLookupText(question.text);
+        if (textKey && !byText.has(textKey)) byText.set(textKey, question);
+    });
+
+    return { questions, byCompositeId, byDomainOriginalId, byText };
+};
+
+const findFuzzyQuestionByText = (
+    rawText: any,
+    lookups: ReturnType<typeof buildQuestionLookups>,
+    fallbackDomainKey?: DomainKey,
+): DynamicQuestion | null => {
+    const text = String(rawText || '').trim();
+    const normalized = normalizeLookupText(text);
+    if (!normalized || normalized.length < 18) return null;
+
+    const sourceTokens = getLookupTokens(text);
+    if (sourceTokens.length < 3) return null;
+
+    const candidates = fallbackDomainKey
+        ? lookups.questions.filter((question) => question.domainKey === fallbackDomainKey)
+        : lookups.questions;
+
+    let bestMatch: { question: DynamicQuestion; score: number; coverage: number } | null = null;
+    let secondBestScore = 0;
+
+    candidates.forEach((question) => {
+        const questionText = normalizeLookupText(question.text);
+        if (!questionText) return;
+
+        if (questionText === normalized) {
+            bestMatch = { question, score: 1, coverage: 1 };
+            secondBestScore = 0;
+            return;
+        }
+
+        if (normalized.includes(questionText) || questionText.includes(normalized)) {
+            const coverage = questionText.length ? Math.min(1, normalized.length / questionText.length) : 0;
+            const score = 0.95 + (coverage * 0.05);
+            if (!bestMatch || score > bestMatch.score) {
+                secondBestScore = bestMatch?.score || 0;
+                bestMatch = { question, score, coverage: Math.max(coverage, 0.95) };
+            }
+            return;
+        }
+
+        const questionTokens = getLookupTokens(question.text);
+        if (!questionTokens.length) return;
+
+        let overlap = 0;
+        sourceTokens.forEach((token) => {
+            if (questionTokens.includes(token)) overlap += 1;
+        });
+
+        if (!overlap) return;
+
+        const sourceCoverage = overlap / sourceTokens.length;
+        const questionCoverage = overlap / questionTokens.length;
+        const score = (questionCoverage * 0.72) + (sourceCoverage * 0.28);
+        const coverage = Math.max(sourceCoverage, questionCoverage);
+
+        if (!bestMatch || score > bestMatch.score) {
+            secondBestScore = bestMatch?.score || 0;
+            bestMatch = { question, score, coverage };
+        } else if (score > secondBestScore) {
+            secondBestScore = score;
+        }
+    });
+
+    if (!bestMatch) return null;
+
+    const minScore = fallbackDomainKey ? 0.58 : 0.68;
+    const minCoverage = fallbackDomainKey ? 0.72 : 0.80;
+
+    if (
+        bestMatch.score >= minScore &&
+        bestMatch.coverage >= minCoverage &&
+        (bestMatch.score - secondBestScore >= 0.04 || bestMatch.coverage >= 0.9)
+    ) {
+        return bestMatch.question;
+    }
+
+    return null;
+};
+
+const resolveQuestionFromItem = (
+    item: any,
+    lookups: ReturnType<typeof buildQuestionLookups>,
+    fallbackDomainKey?: DomainKey,
+): DynamicQuestion | null => {
+    const domainKey = getDomainKeyFromItem(item, fallbackDomainKey);
+    const rawQuestionId = getQuestionIdFromItem(item);
+
+    if (rawQuestionId) {
+        if (lookups.byCompositeId.has(rawQuestionId)) return lookups.byCompositeId.get(rawQuestionId) || null;
+        if (domainKey && lookups.byDomainOriginalId.has(`${domainKey}_${rawQuestionId}`)) {
+            return lookups.byDomainOriginalId.get(`${domainKey}_${rawQuestionId}`) || null;
+        }
+        if (domainKey && lookups.byCompositeId.has(`${domainKey}_${rawQuestionId}`)) {
+            return lookups.byCompositeId.get(`${domainKey}_${rawQuestionId}`) || null;
+        }
+    }
+
+    const textKey = normalizeLookupText(getQuestionTextFromItem(item));
+    if (textKey && lookups.byText.has(textKey)) return lookups.byText.get(textKey) || null;
+
+    const fuzzyQuestion = findFuzzyQuestionByText(getQuestionTextFromItem(item), lookups, domainKey);
+    if (fuzzyQuestion) return fuzzyQuestion;
+
+    return null;
+};
+
 export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
     state: () => ({
         domains: [] as DynamicDomain[],
@@ -283,53 +655,119 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
         },
 
         normalizeApiCollection(response: any): any[] {
-            if (Array.isArray(response)) return response;
-
             const collected: any[] = [];
-            const seenArrays = new Set<any[]>();
-            const collectionKeys = [
-                'unified',
-                'answers',
-                'jawaban',
-                'items',
-                'records',
-                'results',
-                'result',
-                'main',
-                'buffer',
-                'main_data',
-                'buffer_data',
-                'mainData',
-                'bufferData',
-            ];
+            const seenNodes = new Set<any>();
+            const seenItems = new Set<string>();
 
-            const collect = (value: any, depth = 0) => {
-                if (!value || depth > 4) return;
+            const answerKeyPattern = /(pertanyaan|question|soal|jawaban|nilai|skor|score|index|answer|opsi|pilihan|item|level)/i;
+            const idKeyPattern = /(id_?|_id$|kode|code|no|nomor)/i;
+
+            const looksLikeAnswerItem = (value: any): boolean => {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+                const keys = Object.keys(value);
+                if (!keys.length) return false;
+
+                if (keys.some((key) => answerKeyPattern.test(key))) return true;
+
+                return keys.some((key) => {
+                    const nested = value[key];
+                    return (
+                        nested && typeof nested === 'object' && !Array.isArray(nested) &&
+                        (
+                            Object.keys(nested).some((nestedKey) => answerKeyPattern.test(nestedKey)) ||
+                            Object.keys(nested).some((nestedKey) => idKeyPattern.test(nestedKey))
+                        )
+                    );
+                });
+            };
+
+            const pushItem = (item: any, fallbackDomainKey?: DomainKey, path = '') => {
+                if (!item) return;
+                const normalized = unwrapAnswerItem(item);
+                const domainKey = getDomainKeyFromItem(normalized, fallbackDomainKey);
+                const questionId = normalizeQuestionIdValue(getQuestionIdFromItem(normalized));
+                const answerValue = getAnswerValueFromItem(normalized);
+                const textKey = normalizeLookupText(getQuestionTextFromItem(normalized));
+                const dedupeKey = [
+                    domainKey || '',
+                    questionId || '',
+                    answerValue === null ? '' : String(answerValue),
+                    textKey || '',
+                    path,
+                ].join('|');
+
+                if (seenItems.has(dedupeKey)) return;
+                seenItems.add(dedupeKey);
+
+                collected.push({
+                    ...normalized,
+                    ...(domainKey ? { domainKey } : {}),
+                    __importPath: path,
+                });
+            };
+
+            const collect = (value: any, depth = 0, fallbackDomainKey?: DomainKey, path = '') => {
+                if (!value || depth > 8) return;
                 if (Array.isArray(value)) {
-                    if (seenArrays.has(value)) return;
-                    seenArrays.add(value);
-                    collected.push(...value.map(unwrapAnswerItem));
+                    if (seenNodes.has(value)) return;
+                    seenNodes.add(value);
+
+                    value.forEach((entry, index) => {
+                        const childPath = `${path}[${index}]`;
+                        if (entry && typeof entry === 'object') {
+                            if (looksLikeAnswerItem(entry)) {
+                                pushItem(entry, fallbackDomainKey, childPath);
+                            }
+                            collect(entry, depth + 1, fallbackDomainKey, childPath);
+                            return;
+                        }
+
+                        if (entry !== undefined && entry !== null && entry !== '') {
+                            pushItem({
+                                jawaban: entry,
+                                domainKey: fallbackDomainKey,
+                            }, fallbackDomainKey, childPath);
+                        }
+                    });
                     return;
                 }
-                if (typeof value !== 'object') return;
 
-                for (const key of collectionKeys) {
-                    if (Array.isArray(value[key])) {
-                        collect(value[key], depth + 1);
+                if (typeof value !== 'object') {
+                    if (value !== undefined && value !== null && value !== '') {
+                        pushItem({ jawaban: value, domainKey: fallbackDomainKey }, fallbackDomainKey, path);
                     }
+                    return;
                 }
 
-                if (value.data && typeof value.data === 'object') {
-                    collect(value.data, depth + 1);
+                if (seenNodes.has(value)) return;
+                seenNodes.add(value);
+
+                if (looksLikeAnswerItem(value)) {
+                    pushItem(value, fallbackDomainKey, path);
                 }
+
+                Object.entries(value).forEach(([key, child]) => {
+                    if (!child || child === value) return;
+                    const childPath = path ? `${path}.${key}` : key;
+                    const childDomainKey = getDomainKeyFromText(key, fallbackDomainKey);
+
+                    if (Array.isArray(child) || typeof child === 'object') {
+                        collect(child, depth + 1, childDomainKey, childPath);
+                        return;
+                    }
+
+                    if (shouldConsiderWideImportField(key, child)) {
+                        pushItem({
+                            [key]: child,
+                            jawaban: child,
+                            domainKey: childDomainKey || fallbackDomainKey,
+                        }, childDomainKey || fallbackDomainKey, childPath);
+                    }
+                });
             };
 
             collect(response);
-            if (collected.length) return collected;
-
-            if (response?.data && typeof response.data === 'object') return [unwrapAnswerItem(response.data)];
-            if (response && typeof response === 'object') return [unwrapAnswerItem(response)];
-            return [];
+            return collected;
         },
 
         buildIkasPayloadFromProfile(stakeholderSlug: string) {
@@ -512,15 +950,20 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             });
         },
 
-        async fetchAssessmentStructure() {
+        async fetchAssessmentStructure(options: { includeMasterStructure?: boolean } = {}) {
             if (this.dataLoaded || this.loading) return;
 
             this.loading = true;
             this.error = null;
             try {
+                const includeMasterStructure = options.includeMasterStructure !== false;
+                let domainsList: any[] = [];
+
                 // 1. Fetch Domains
-                const domainsResp = await ikasService.getDomains();
-                const domainsList = Array.isArray(domainsResp) ? domainsResp : ((domainsResp as any).data || []);
+                if (includeMasterStructure) {
+                    const domainsResp = await ikasService.getDomains();
+                    domainsList = Array.isArray(domainsResp) ? domainsResp : ((domainsResp as any).data || []);
+                }
 
                 const domainColors = ['#00a2e8', '#8e44ad', '#f1c40f', '#27ae60'];
                 const domainMap = new Map<string, any>();
@@ -538,9 +981,13 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
 
                 // 2. Fetch Pertanyaan and optionally Answers in parallel
                 const structurePromises = [
-                    ikasService.getKategoris().catch(() => []),
-                    ikasService.getSubKategoris().catch(() => []),
-                    ikasService.getRuangLingkups().catch(() => []),
+                    ...(includeMasterStructure
+                        ? [
+                            ikasService.getKategoris().catch(() => []),
+                            ikasService.getSubKategoris().catch(() => []),
+                            ikasService.getRuangLingkups().catch(() => []),
+                        ]
+                        : []),
                     ikasService.getPertanyaanByKategori('identifikasi').catch(() => null),
                     ikasService.getPertanyaanByKategori('proteksi').catch(() => null),
                     ikasService.getPertanyaanByKategori('deteksi').catch(() => null),
@@ -557,7 +1004,11 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 }
 
                 const results = await Promise.all(structurePromises);
-                const [kategorisResp, subKResp, rlResp, ...pertanyaanResults] = results;
+                const metadataOffset = includeMasterStructure ? 3 : 0;
+                const kategorisResp = includeMasterStructure ? results[0] : [];
+                const subKResp = includeMasterStructure ? results[1] : [];
+                const rlResp = includeMasterStructure ? results[2] : [];
+                const pertanyaanResults = results.slice(metadataOffset);
 
                 // 2.1 Process Kategoris
                 const kategorisList = Array.isArray(kategorisResp) ? kategorisResp : ((kategorisResp as any).data || []);
@@ -896,6 +1347,41 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                         this.answersMap[stakeholderSlug][answer.questionId].backendSyncError = null;
                     }
                 } catch (error: any) {
+                    const message = String(error?.message || error?.response?.data?.message || '').toLowerCase();
+                    const isDuplicateAnswerError =
+                        Number(error?.status || error?.response?.status || 0) === 409 ||
+                        message.includes('sudah pernah diisi') ||
+                        message.includes('already filled') ||
+                        message.includes('already exists');
+
+                    if (isDuplicateAnswerError) {
+                        try {
+                            const refreshedId = await this.refreshBackendAnswerId(
+                                stakeholderSlug,
+                                question,
+                                finalIkasId,
+                            );
+
+                            const recoveryId = String(refreshedId || this.backendAnswerIdsMap[stakeholderSlug]?.[answer.questionId] || '');
+                            if (recoveryId) {
+                                const recoveryResponse = await ikasService.updateJawabanByKategori(domainKey, recoveryId, updatePayload);
+                                const persistedId = getPersistedAnswerId(recoveryResponse) || recoveryId;
+                                if (persistedId) {
+                                    this.backendAnswerIdsMap[stakeholderSlug][answer.questionId] = persistedId;
+                                }
+                            }
+
+                            this.syncedBackendAnswersMap[stakeholderSlug][answer.questionId] = answer.index;
+                            if (this.answersMap[stakeholderSlug]?.[answer.questionId]) {
+                                this.answersMap[stakeholderSlug][answer.questionId].backendSyncedAt = Date.now();
+                                this.answersMap[stakeholderSlug][answer.questionId].backendSyncError = null;
+                            }
+                            return;
+                        } catch (recoveryError) {
+                            console.warn('[DynamicAssessment] Duplicate answer recovery failed:', recoveryError);
+                        }
+                    }
+
                     console.error('[DynamicAssessment] Failed to sync answer:', error);
                     errors.push(answer.questionId);
                     if (this.answersMap[stakeholderSlug]?.[answer.questionId]) {
@@ -945,19 +1431,247 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
             return this.performBulkSync(stakeholderSlug, pendingAnswers);
         },
 
+        upsertHydratedAnswer(
+            stakeholderSlug: string,
+            question: DynamicQuestion,
+            indexValue: number,
+            options: { backendAnswerId?: string; synced?: boolean } = {},
+        ) {
+            if (!this.answersMap[stakeholderSlug]) this.answersMap[stakeholderSlug] = {};
+            if (!this.syncedBackendAnswersMap[stakeholderSlug]) this.syncedBackendAnswersMap[stakeholderSlug] = {};
+            if (!this.backendAnswerIdsMap[stakeholderSlug]) this.backendAnswerIdsMap[stakeholderSlug] = {};
 
-        async hydrateAnswersFromBackend(stakeholderSlug: string, _perusahaanId: string) {
+            const existing = this.answersMap[stakeholderSlug][question.id] || {} as Answer;
+            const isAlreadySyncedSameValue = this.syncedBackendAnswersMap[stakeholderSlug][question.id] === indexValue
+                && !!existing.backendSyncedAt;
+            const shouldMarkSynced = options.synced === true || isAlreadySyncedSameValue;
+            const now = Date.now();
+            this.answersMap[stakeholderSlug][question.id] = {
+                questionId: question.id,
+                index: indexValue,
+                updatedAt: now,
+                backendSyncedAt: shouldMarkSynced ? (existing.backendSyncedAt || now) : existing.backendSyncedAt,
+                backendSyncError: shouldMarkSynced ? null : existing.backendSyncError || null,
+                evidence: existing.evidence,
+                validasi: existing.validasi,
+            };
+
+            if (shouldMarkSynced) {
+                this.syncedBackendAnswersMap[stakeholderSlug][question.id] = indexValue;
+            }
+            if (options.backendAnswerId) {
+                this.backendAnswerIdsMap[stakeholderSlug][question.id] = options.backendAnswerId;
+            }
+        },
+
+        hydrateAnswersFromImportResult(
+            stakeholderSlug: string,
+            importResult: any,
+            options: { synced?: boolean; syncIkas?: boolean } = {},
+        ): number {
+            const items = this.normalizeApiCollection(importResult);
+            if (!items.length || !this.domains.length) return 0;
+
+            const lookups = buildQuestionLookups(this.domains);
+            const before = Object.keys(this.answersMap[stakeholderSlug] || {}).length;
+            const candidateItems = items.map((rawItem: any) => {
+                const item = unwrapAnswerItem(rawItem);
+                return {
+                    item,
+                    domainKey: getDomainKeyFromItem(item),
+                    indexValue: getAnswerValueFromItem(item),
+                };
+            });
+
+            candidateItems.forEach(({ item, domainKey, indexValue }) => {
+                const question = resolveQuestionFromItem(item, lookups, domainKey);
+                if (!question || indexValue === null) return;
+
+                this.upsertHydratedAnswer(stakeholderSlug, question, indexValue, {
+                    backendAnswerId: getPersistedAnswerId(item),
+                    synced: options.synced ?? !!getPersistedAnswerId(item),
+                });
+            });
+
+            candidateItems.forEach(({ item, domainKey, indexValue }) => {
+                if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+
+                Object.entries(item).forEach(([key, value]) => {
+                    if (!shouldConsiderWideImportField(key, value)) return;
+                    const indexValue = parseAnswerIndexValue(value);
+                    if (indexValue === null) return;
+
+                    const question = resolveQuestionFromItem(
+                        {
+                            pertanyaan: key,
+                            question_id: key,
+                            jawaban: value,
+                            domainKey,
+                        },
+                        lookups,
+                        domainKey,
+                    );
+                    if (!question) return;
+
+                    this.upsertHydratedAnswer(stakeholderSlug, question, indexValue, {
+                        synced: options.synced ?? false,
+                    });
+                });
+            });
+
+            const currentAnswers = this.answersMap[stakeholderSlug] || {};
+            const missingQuestions = lookups.questions.filter((question) => !currentAnswers[question.id]);
+            const getImportSort = (entry: { item: any }) => ({
+                sheet: Number(entry.item?.__sheetIndex ?? 0),
+                row: Number(entry.item?.__rowNumber ?? 0),
+            });
+            const getImportSourcePriority = (entry: { item: any }) => {
+                const source = String(entry.item?.__source || '');
+                if (source === 'local-excel-marker') return 4;
+                if (source === 'local-excel-row') return 3;
+                if (source === 'local-excel-sheet-row') return 2;
+                return 1;
+            };
+            const sortImportEntries = (a: { item: any }, b: { item: any }) => {
+                const aSort = getImportSort(a);
+                const bSort = getImportSort(b);
+                if (aSort.sheet !== bSort.sheet) return aSort.sheet - bSort.sheet;
+                return aSort.row - bSort.row;
+            };
+            const localExcelItemsByPosition = new Map<string, typeof candidateItems[number]>();
+            candidateItems
+                .filter(({ item }) => String(item?.__source || '').startsWith('local-excel'))
+                .sort(sortImportEntries)
+                .forEach((entry) => {
+                    const position = getImportSort(entry);
+                    const key = `${position.sheet}:${position.row}`;
+                    const existing = localExcelItemsByPosition.get(key);
+                    const shouldReplace = !existing ||
+                        (existing.indexValue === null && entry.indexValue !== null) ||
+                        getImportSourcePriority(entry) > getImportSourcePriority(existing);
+
+                    if (shouldReplace) {
+                        localExcelItemsByPosition.set(key, entry);
+                    }
+                });
+            const localExcelItems = Array.from(localExcelItemsByPosition.values()).sort(sortImportEntries);
+
+            const domainOrder: DomainKey[] = ['identifikasi', 'proteksi', 'deteksi', 'gulih'];
+            const valuesByDomain = new Map<DomainKey, number[]>();
+
+            candidateItems.forEach(({ domainKey, indexValue }) => {
+                if (!domainKey || indexValue === null) return;
+                if (!valuesByDomain.has(domainKey)) valuesByDomain.set(domainKey, []);
+                valuesByDomain.get(domainKey)?.push(indexValue);
+            });
+
+            if (missingQuestions.length) {
+                domainOrder.forEach((domainKey) => {
+                    const domainQuestions = lookups.questions.filter((question) => question.domainKey === domainKey);
+                    const domainValues = valuesByDomain.get(domainKey) || [];
+                    if (!domainQuestions.length || domainValues.length < domainQuestions.length) return;
+
+                    domainQuestions.forEach((question, index) => {
+                        if (currentAnswers[question.id]) return;
+                        const indexValue = domainValues[index];
+                        if (indexValue === undefined) return;
+                        this.upsertHydratedAnswer(stakeholderSlug, question, indexValue, {
+                            synced: options.synced ?? false,
+                        });
+                    });
+                });
+            }
+
+            const remainingQuestions = lookups.questions.filter((question) => !currentAnswers[question.id]);
+            if (remainingQuestions.length && localExcelItems.length) {
+                domainOrder.forEach((domainKey) => {
+                    const domainQuestions = lookups.questions.filter((question) => question.domainKey === domainKey);
+                    const domainItems = localExcelItems.filter((entry) => entry.domainKey === domainKey && entry.indexValue !== null);
+                    if (!domainQuestions.length || !domainItems.length) return;
+
+                    domainQuestions.forEach((question, index) => {
+                        if (currentAnswers[question.id]) return;
+                        const indexValue = domainItems[index]?.indexValue;
+                        if (indexValue === null || indexValue === undefined) return;
+                        this.upsertHydratedAnswer(stakeholderSlug, question, indexValue, {
+                            synced: options.synced ?? false,
+                        });
+                    });
+                });
+            }
+
+            const finalRemainingQuestions = lookups.questions.filter((question) => !currentAnswers[question.id]);
+            const orderedLocalValues = localExcelItems.filter((entry) => entry.indexValue !== null);
+            if (finalRemainingQuestions.length && orderedLocalValues.length >= lookups.questions.length) {
+                lookups.questions.forEach((question, index) => {
+                    if (currentAnswers[question.id]) return;
+                    const indexValue = orderedLocalValues[index]?.indexValue;
+                    if (indexValue === null || indexValue === undefined) return;
+
+                    this.upsertHydratedAnswer(stakeholderSlug, question, indexValue, {
+                        synced: options.synced ?? false,
+                    });
+                });
+            }
+
+            if (options.syncIkas !== false) {
+                this.syncToIkas(stakeholderSlug);
+            }
+            return Object.keys(this.answersMap[stakeholderSlug] || {}).length - before;
+        },
+
+
+        async hydrateAnswersFromBackend(
+            stakeholderSlug: string,
+            _perusahaanId: string,
+            options: { syncIkas?: boolean } = {},
+        ) {
             try {
                 const activeIkasId = useIkasStore().getBackendIkasId(stakeholderSlug);
                 if (!activeIkasId) {
                     console.warn('[DynamicAssessment] hydrateAnswersFromBackend dibatalkan: ikas_id null');
                     return;
                 }
+
+                const fetchAllAnswersForDomain = async (domainKey: 'identifikasi' | 'proteksi' | 'deteksi' | 'gulih') => {
+                    const collected: any[] = [];
+                    let page = 1;
+                    let totalPages = 1;
+
+                    while (page <= totalPages) {
+                        const response = await ikasService.getJawabanByKategori(domainKey, activeIkasId, {
+                            page,
+                            limit: 500,
+                        }).catch(() => null);
+
+                        if (!response) break;
+
+                        collected.push(...this.normalizeApiCollection(response));
+
+                        const pagination = response?.pagination || response?.data?.pagination || null;
+                        totalPages = Number(
+                            pagination?.total_pages ||
+                            pagination?.totalPages ||
+                            pagination?.last_page ||
+                            pagination?.lastPage ||
+                            1
+                        ) || 1;
+
+                        if (collected.length === 0 && totalPages === 1) {
+                            break;
+                        }
+
+                        page += 1;
+                    }
+
+                    return collected;
+                };
+
                 const results = await Promise.all([
-                    ikasService.getJawabanByKategori('identifikasi', activeIkasId).catch(() => []),
-                    ikasService.getJawabanByKategori('proteksi', activeIkasId).catch(() => []),
-                    ikasService.getJawabanByKategori('deteksi', activeIkasId).catch(() => []),
-                    ikasService.getJawabanByKategori('gulih', activeIkasId).catch(() => []),
+                    fetchAllAnswersForDomain('identifikasi'),
+                    fetchAllAnswersForDomain('proteksi'),
+                    fetchAllAnswersForDomain('deteksi'),
+                    fetchAllAnswersForDomain('gulih'),
                 ]);
 
                 // Debug: log raw results for each domain fetch
@@ -977,58 +1691,30 @@ export const useDynamicAssessmentStore = defineStore('dynamicAssessment', {
                 }
 
                 const domainTypes = ['identifikasi', 'proteksi', 'deteksi', 'gulih'];
+                const lookups = buildQuestionLookups(this.domains);
                 results.forEach((rawResult: any, domainIdx: number) => {
                     const items = this.normalizeApiCollection(rawResult);
-                    const domainType = domainTypes[domainIdx];
+                    const domainType = domainTypes[domainIdx] as DomainKey;
 
                     items.forEach((rawItem: any) => {
                         const item = unwrapAnswerItem(rawItem);
                         const itemIkasId = String(item.ikas_id || item.id_ikas || item.ikasId || item.IkasID || '');
                         if (itemIkasId && itemIkasId !== String(activeIkasId)) return;
 
-                        const numericId = String(
-                            item.pertanyaan_identifikasi_id || item.PertanyaanIdentifikasiID ||
-                            item.pertanyaan_proteksi_id || item.PertanyaanProteksiID ||
-                            item.pertanyaan_deteksi_id || item.PertanyaanDeteksiID ||
-                            item.pertanyaan_gulih_id || item.PertanyaanGulihID ||
-                            item.pertanyaan_identifikasi?.id || item.pertanyaan_proteksi?.id ||
-                            item.pertanyaan_deteksi?.id || item.pertanyaan_gulih?.id ||
-                            item.id_pertanyaan || item.pertanyaan_id || item.PertanyaanID || item.pertanyaan?.id || ''
-                        );
-                        if (!numericId) return;
+                        const question = resolveQuestionFromItem(item, lookups, domainType);
+                        const indexValue = getAnswerValueFromItem(item);
+                        if (!question || indexValue === null) return;
 
-                        const compositeId = `${domainType}_${numericId}`;
-                        const indexValue = Number(
-                            item.jawaban ??
-                            item.jawaban_identifikasi ??
-                            item.jawaban_proteksi ??
-                            item.jawaban_deteksi ??
-                            item.jawaban_gulih ??
-                            item.JawabanIdentifikasi ??
-                            item.JawabanProteksi ??
-                            item.JawabanDeteksi ??
-                            item.JawabanGulih ??
-                            item.nilai ??
-                            item.index ??
-                            0
-                        );
-
-                        this.answersMap[stakeholderSlug][compositeId] = {
-                            questionId: compositeId,
-                            index: indexValue,
-                            updatedAt: Date.now(),
-                            backendSyncedAt: Date.now(),
-                            backendSyncError: null,
-                        };
-                        this.syncedBackendAnswersMap[stakeholderSlug][compositeId] = indexValue;
-                        const backendAnswerId = String(item.id || item.ID || item.jawaban_id || item.id_jawaban || '');
-                        if (backendAnswerId) {
-                            this.backendAnswerIdsMap[stakeholderSlug][compositeId] = backendAnswerId;
-                        }
+                        this.upsertHydratedAnswer(stakeholderSlug, question, indexValue, {
+                            backendAnswerId: getPersistedAnswerId(item),
+                            synced: true,
+                        });
                     });
                 });
 
-                this.syncToIkas(stakeholderSlug);
+                if (options.syncIkas !== false) {
+                    this.syncToIkas(stakeholderSlug);
+                }
             } catch (error) {
                 console.warn('[DynamicAssessment] Failed to hydrate answers from backend:', error);
             }

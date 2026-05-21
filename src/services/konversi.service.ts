@@ -183,7 +183,6 @@ export const konversiService = {
         if (!id) return null;
 
         const attempts = [
-            `/api/konversi?perusahaan_id=${encodeURIComponent(id)}`,
             `/api/konversi/${encodeURIComponent(id)}`,
         ];
 

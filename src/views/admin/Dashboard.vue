@@ -23,6 +23,7 @@ import "@/assets/css/dashboard-widgets.css";
 import { useStakeholdersStore } from "@/stores/stakeholders";
 import { useIkasStore } from "@/stores/ikas";
 import { useCsirtStore } from "@/stores/csirt";
+import { useUsersStore } from "@/stores/users";
 import { useKonversiStore } from "@/stores/konversi";
 import { useResikoStore } from "@/stores/resiko";
 import { useDashboardFilterStore } from "@/stores/dashboardFilter";
@@ -94,7 +95,29 @@ const konversiStore = useKonversiStore();
 const resikoStore = useResikoStore();
 const filterStore = useDashboardFilterStore();
 const notifStore = useNotificationStore();
+const usersStore = useUsersStore();
 provide("dashboardFilterStore", filterStore);
+
+const isExcludedCompanyRole = (user) => {
+  const role = String(user?.role || user?.role_name || "")
+    .trim()
+    .toLowerCase();
+  return role === "admin" || role === "staff";
+};
+
+// Helper: check if a stakeholder (company) has an associated user with role admin or staff
+const isAdminOrStaffCompany = (stakeholderId) => {
+  return usersStore.allUsers.some(
+    (u) =>
+      String(u.id_perusahaan) === String(stakeholderId) &&
+      isExcludedCompanyRole(u),
+  );
+};
+
+// All stakeholders excluding companies that belong to admin/staff users
+const filteredAllStakeholders = computed(() =>
+  stakeholdersStore.allStakeholders.filter((s) => !isAdminOrStaffCompany(s.id)),
+);
 const DASHBOARD_IGNORES_GLOBAL_FILTER = true;
 
 // Analytics Chart States
@@ -800,16 +823,10 @@ const apiIkasStatus = computed(() => {
   };
 });
 
-const ikasStatusTotal = computed(
-  () => apiIkasStatus.value.total_perusahaan || totalStakeholders.value,
-);
-const ikasFilledCount = computed(
-  () => apiIkasStatus.value.sudah_mengisi_ikas || stakeholdersWithIkas.value,
-);
+const ikasStatusTotal = computed(() => totalStakeholders.value);
+const ikasFilledCount = computed(() => stakeholdersWithIkas.value);
 const ikasUnfilledCount = computed(() =>
-  apiIkasStatus.value.total_perusahaan
-    ? apiIkasStatus.value.belum_mengisi_ikas
-    : Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value),
+  Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value),
 );
 
 const apiCsirtData = computed(() => {
@@ -1063,9 +1080,8 @@ const ikasSummaryData = computed(() => {
     scoreCount > 0 ? Number((scoreTotal / scoreCount).toFixed(2)) : 0;
 
   return {
-    total: apiIkasData.value.total_ikas || filtered.length,
-    avgNilaiKematangan:
-      apiIkasData.value.avg_nilai_kematangan || localAverageScore,
+    total: filtered.length,
+    avgNilaiKematangan: localAverageScore,
     avgTargetNilai: apiIkasData.value.avg_target_nilai,
     levels: {
       level1: {
@@ -1718,7 +1734,7 @@ const fullSummaryItems = computed(() => {
     const items = [
       {
         label: "Total IKAS",
-        value: apiIkasData.value.total_ikas,
+        value: s.total,
         icon: "ri-bar-chart-box-line",
         gradient: "linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)",
         color: "#23b7e5",
@@ -1730,7 +1746,7 @@ const fullSummaryItems = computed(() => {
           : filterStore.year
           ? `IKAS ${filterStore.year}`
           : "IKAS Periode Ini",
-        value: apiIkasStatus.value.sudah_mengisi_ikas,
+        value: s.total,
         icon: "ri-calendar-check-line",
         gradient: "linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)",
         color: "#3b82f6",
@@ -2224,6 +2240,7 @@ const loadDashboardData = async (options = {}) => {
 
     await Promise.allSettled([
       loadStore(stakeholdersStore),
+      loadStore(usersStore),
       loadStore(resikoStore),
       resikoStore.loadAdminRespondents(options.refresh),
       loadDashboardOptions(),
@@ -2322,7 +2339,7 @@ const enrichedSektors = computed(() => {
     });
     // Count ALL stakeholders belonging to this sektor
     const childIds = new Set(children.map((c) => String(c.id)));
-    const sektorStakeholders = stakeholdersStore.allStakeholders.filter((s) => {
+    const sektorStakeholders = filteredAllStakeholders.value.filter((s) => {
       const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
       return subSektorId && childIds.has(String(subSektorId));
     });
@@ -2347,7 +2364,7 @@ const baseStakeholders = computed(() => {
   const fId = filterStore.sektorId;
   const subId = filterStore.subSektorId;
 
-  let filtered = stakeholdersStore.allStakeholders;
+  let filtered = filteredAllStakeholders.value;
 
   // Sector/Sub-sector Filter
   if (fId || subId) {
@@ -2404,13 +2421,26 @@ const baseCsirts = computed(() => {
     });
   }
 
+  // Exclude CSIRT records belonging to admin/staff companies
+  filtered = filtered.filter((c) => {
+    const companyId = c.id_perusahaan || c.perusahaan?.id;
+    return !companyId || !isAdminOrStaffCompany(companyId);
+  });
+
   return filtered;
 });
 
 const baseSdm = computed(() => {
   const fId = filterStore.sektorId;
   const subId = filterStore.subSektorId;
-  if (!fId && !subId) return csirtStore.sdmList;
+  if (!fId && !subId) {
+    return csirtStore.sdmList.filter((s) => {
+      const cId = String(s.id_csirt || s.csirt?.id);
+      const csirt = csirtStore.csirtByIdMap[cId];
+      const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id;
+      return !companyId || !isAdminOrStaffCompany(companyId);
+    });
+  }
   return csirtStore.sdmList.filter((s) => {
     const cId = String(s.id_csirt || s.csirt?.id);
     const csirt = csirtStore.csirtByIdMap[cId];
@@ -2427,6 +2457,11 @@ const baseSdm = computed(() => {
     if (fId)
       return String(p?.sub_sektor?.id_sektor || p?.id_sektor) === String(fId);
     return true;
+  }).filter((s) => {
+    const cId = String(s.id_csirt || s.csirt?.id);
+    const csirt = csirtStore.csirtByIdMap[cId];
+    const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id;
+    return !companyId || !isAdminOrStaffCompany(companyId);
   });
 });
 
@@ -2463,6 +2498,14 @@ const baseSeList = computed(() => {
       return true;
     });
   }
+
+  // Exclude SE records belonging to admin/staff companies
+  filtered = filtered.filter((se) => {
+    const cId = String(se.id_csirt || se.csirt_id || se.csirt?.id);
+    const csirt = csirtStore.csirtByIdMap[cId];
+    const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id || se.id_perusahaan;
+    return !companyId || !isAdminOrStaffCompany(companyId);
+  });
 
   return filtered;
 });
@@ -2739,7 +2782,7 @@ const sektorCards = computed(() => {
         const ssName = getSubSektorName(ss);
 
         // Count stakeholders for this sub-sektor
-        const ssStakeholders = stakeholdersStore.allStakeholders.filter((s) => {
+        const ssStakeholders = filteredAllStakeholders.value.filter((s) => {
           const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
           return subSektorId && String(subSektorId) === String(ss.id);
         });
@@ -2813,7 +2856,7 @@ const sektorCards = computed(() => {
     const color = sektorColors[idx % sektorColors.length];
 
     const trend = getTrendData(
-      stakeholdersStore.allStakeholders.filter((s) => {
+      filteredAllStakeholders.value.filter((s) => {
         const sid = s.sub_sektor?.id || s.id_sub_sektor;
         return (
           sid &&
@@ -2903,7 +2946,7 @@ const operationalCards = computed(() => {
 
   // Stakeholder fixed count (Top number)
   const fixedStakeholderCount =
-    stakeholdersStore.allStakeholders.length ||
+    filteredAllStakeholders.value.length ||
     globalCsirtStatus.value.total_perusahaan ||
     apiCsirtStatus.value.total_perusahaan ||
     0;
@@ -3172,7 +3215,7 @@ async function handleDrillDown(context) {
     }
 
     drillDownItems.value = csirtList.map((c) => {
-      const stakeholder = stakeholdersStore.allStakeholders.find(
+      const stakeholder = filteredAllStakeholders.value.find(
         (s) => String(s.id) === String(getCsirtCompanyId(c)),
       );
       const complete = hasCsirtSdm(c) && hasCsirtSe(c);
@@ -3644,7 +3687,7 @@ async function handleDrillDown(context) {
 
 function handleSektorCardClick(card) {
   if (!card.sektorId) return;
-  const all = stakeholdersStore.allStakeholders;
+  const all = filteredAllStakeholders.value;
   let sektorStakeholders;
 
   if (card.isSubSektor) {
@@ -3713,7 +3756,7 @@ function handleDrillDownNavigate(item) {
     } else if (title.includes("csirt")) {
       router.push(`/csirt/${item.slug}`);
     } else {
-      router.push(`/stakeholders/${item.slug}`);
+      router.push({ path: `/stakeholders/${item.slug}`, query: { id_perusahaan: item.id } });
     }
   } else {
     router.push("/stakeholders");
@@ -5626,7 +5669,7 @@ const monitoringIkasPieSeries = computed(
                                 <button
                                   class="btn btn-sm btn-icon btn-primary-light"
                                   @click="
-                                    router.push(`/stakeholders/${s.slug}`)
+                                    router.push({ path: `/stakeholders/${s.slug}`, query: { id_perusahaan: s.id } })
                                   "
                                   title="Lihat Detail"
                                 >
@@ -9813,15 +9856,39 @@ code {
 }
 
 :global(html[data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
-:global(html.dark) .dashboard-page-heading > .page-title {
-  color: #eef4ff;
+:global(html.dark) .dashboard-page-heading > .page-title,
+:global(body[data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
+:global(body.dark) .dashboard-page-heading > .page-title,
+:global([data-theme-mode="dark"]) .dashboard-page-heading > .page-title,
+:global(html[data-theme-mode="dark"] .dashboard-page-heading > .page-title),
+:global(html.dark .dashboard-page-heading > .page-title),
+:global(body[data-theme-mode="dark"] .dashboard-page-heading > .page-title),
+:global(body.dark .dashboard-page-heading > .page-title),
+:global([data-theme-mode="dark"] .dashboard-page-heading > .page-title) {
+  color: #ffffff !important;
 }
 
 :global(html[data-theme-mode="dark"]) .dashboard-header-meta span,
-:global(html.dark) .dashboard-header-meta span {
+:global(html.dark) .dashboard-header-meta span,
+:global(body[data-theme-mode="dark"]) .dashboard-header-meta span,
+:global(body.dark) .dashboard-header-meta span,
+:global([data-theme-mode="dark"]) .dashboard-header-meta span,
+:global(html[data-theme-mode="dark"] .dashboard-header-meta span),
+:global(html.dark .dashboard-header-meta span),
+:global(body[data-theme-mode="dark"] .dashboard-header-meta span),
+:global(body.dark .dashboard-header-meta span),
+:global([data-theme-mode="dark"] .dashboard-header-meta span) {
   background: transparent;
   border-color: transparent;
-  color: #94a3b8;
+  color: #ffffff !important;
+}
+
+:global(html[data-theme-mode="dark"] .dashboard-header-meta span i),
+:global(html.dark .dashboard-header-meta span i),
+:global(body[data-theme-mode="dark"] .dashboard-header-meta span i),
+:global(body.dark .dashboard-header-meta span i),
+:global([data-theme-mode="dark"] .dashboard-header-meta span i) {
+  color: #60a5fa !important;
 }
 
 :global(html[data-theme-mode="dark"])
@@ -11319,30 +11386,70 @@ code {
     font-size: 0.64rem;
   }
   .dashboard-header-actions {
+    align-items: stretch !important;
     width: 100%;
-    display: flex !important;
-    flex-direction: column;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 42px 42px;
     gap: 0.5rem;
     padding-top: 0.1rem;
+    min-width: 0;
+    overflow: hidden;
   }
   .dashboard-header-actions > .dashboard-datepicker-wrapper {
-    width: 100%;
-    flex: unset;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
+  .dashboard-header-actions
+    > .dashboard-datepicker-wrapper
+    :deep(.dp__main),
   .dashboard-header-actions
     > .dashboard-datepicker-wrapper
     :deep(.dp__input_wrap),
   .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
+    box-sizing: border-box;
+    max-width: 100%;
     width: 100%;
     min-width: 0;
   }
+  .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__input) {
+    font-size: 0.72rem;
+    min-height: 36px;
+    padding-inline: 2rem 2.2rem;
+    text-overflow: ellipsis;
+  }
+  .dashboard-header-actions > .dashboard-datepicker-wrapper :deep(.dp__clear_icon) {
+    right: 0.75rem;
+  }
+  .dashboard-header-actions :deep(.dw-quick-actions) {
+    display: flex;
+    gap: 0;
+    width: 42px;
+    min-width: 0;
+  }
+  .dashboard-header-actions :deep(.dw-quick-btn),
+  .dashboard-alt-btn {
+    justify-content: center;
+    min-height: 38px;
+    width: 42px;
+    flex: 0 0 42px;
+    min-width: 0;
+    padding-inline: 0;
+  }
+  .dashboard-header-actions :deep(.dw-quick-btn .d-none.d-md-inline),
+  .dashboard-alt-btn .d-none.d-md-inline {
+    display: none !important;
+  }
   .dashboard-header-actions > div:last-child {
     display: flex;
-    gap: 0.5rem;
+    width: 42px;
+    min-width: 0;
+    justify-content: flex-end;
   }
   .dashboard-header-actions > div:last-child .btn {
-    min-width: 56px;
-    flex: 1;
+    min-width: 0;
+    flex: 0 0 42px;
   }
 
   .monitoring-panel-header {

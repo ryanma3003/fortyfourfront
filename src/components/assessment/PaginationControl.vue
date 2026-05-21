@@ -47,6 +47,7 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 16px 20px;
   background: #ffffff;
   border: 1px solid rgba(0,0,0,0.06);
@@ -58,6 +59,7 @@ const emit = defineEmits<{
 .pg-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 10px 20px;
   border: 1.5px solid rgba(0,0,0,0.08);
@@ -69,6 +71,7 @@ const emit = defineEmits<{
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
   font-family: 'Inter', sans-serif;
+  min-width: 0;
 }
 
 .pg-btn:hover:not(.pg-btn-disabled) {
@@ -161,4 +164,45 @@ const emit = defineEmits<{
 }
 [data-theme-mode="dark"] .pg-separator { color: #475569; }
 [data-theme-mode="dark"] .pg-total { color: #64748b; }
+
+@media (max-width: 767.98px) {
+  .pagination-control {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 14px;
+  }
+
+  .pg-btn {
+    flex: 1 1 calc(50% - 6px);
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .pg-btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pg-indicator {
+    order: -1;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 479.98px) {
+  .pagination-control {
+    gap: 10px;
+  }
+
+  .pg-btn {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .pg-btn-icon {
+    font-size: 16px;
+  }
+}
 </style>

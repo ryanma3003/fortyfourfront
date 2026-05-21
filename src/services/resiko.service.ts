@@ -54,10 +54,18 @@ const pickArray = (payload: any): any[] => {
         data.surveyRisiko,
         data.jawaban,
         data.responses,
+        data.items,
     ];
 
     const found = candidates.find(Array.isArray);
-    return found || [];
+    if (found) return found;
+
+    for (const value of Object.values(data)) {
+        const parsed = unwrap(value);
+        if (Array.isArray(parsed)) return parsed;
+    }
+
+    return [];
 };
 
 const pickRespondent = (payload: any): any | null => {
@@ -72,6 +80,61 @@ const getRespondentId = (respondent: any): string => {
     return candidate !== undefined && candidate !== null ? String(candidate) : '';
 };
 
+const valueByKeys = (source: any, keys: string[]): any => {
+    for (const key of keys) {
+        const value = source?.[key];
+        if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return undefined;
+};
+
+const getRiskReferenceId = (row: any): string => {
+    const candidate = valueByKeys(row, [
+        'id_risiko',
+        'risiko_id',
+        'risk_id',
+        'survey_risiko_id',
+        'surveyRisikoId',
+        'master_risiko_id',
+        'masterRiskId',
+        'id_master_risiko',
+        'kode_risiko',
+        'kodeRisiko',
+    ]);
+    return candidate !== undefined && candidate !== null ? String(candidate) : '';
+};
+
+const getMasterRiskId = (row: any): string => {
+    const candidate = valueByKeys(row, [
+        'id',
+        'ID',
+        'id_risiko',
+        'risiko_id',
+        'risk_id',
+        'survey_risiko_id',
+        'kode',
+        'kode_risiko',
+        'kodeRisiko',
+    ]);
+    return candidate !== undefined && candidate !== null ? String(candidate) : '';
+};
+
+const enrichRisksWithMaster = (risks: any[], masterRisks: any[]): any[] => {
+    if (!risks.length || !masterRisks.length) return risks;
+
+    const masterById = new Map<string, any>();
+    masterRisks.forEach((risk) => {
+        const id = getMasterRiskId(risk);
+        if (id) masterById.set(id, risk);
+    });
+
+    return risks.map((risk) => {
+        const referenceId = getRiskReferenceId(risk);
+        const masterRisk = referenceId ? masterById.get(referenceId) : null;
+        return masterRisk ? { ...masterRisk, ...risk, master_risiko: masterRisk } : risk;
+    });
+};
+
 export const resikoService = {
     async getRespondents(): Promise<SurveyRespondent[]> {
         const payload = await api.get<any>('/api/survey/responden');
@@ -84,11 +147,23 @@ export const resikoService = {
     },
 
     async getRiskPayloadByRespondentId(id: string | number): Promise<any> {
-        return api.get<any>(`/api/survey/risiko/${id}`);
+        try {
+            return await api.get<any>(`/api/survey/risiko/${id}`);
+        } catch (error) {
+            if (error instanceof ApiRequestError && error.status === 404) {
+                return api.get<any>(`/api/suvery/risiko/${id}`);
+            }
+            throw error;
+        }
     },
 
     async getRiskByRespondentId(id: string | number): Promise<any[]> {
         const payload = await this.getRiskPayloadByRespondentId(id);
+        return pickArray(payload);
+    },
+
+    async getMasterRisks(): Promise<any[]> {
+        const payload = await api.get<any>('/api/survey/risiko');
         return pickArray(payload);
     },
 
@@ -116,7 +191,13 @@ export const resikoService = {
             }
         }
 
-        return this.buildSurveyResponseFromRespondent(respondent, riskPayload);
+        const masterRisks = await this.getMasterRisks().catch(() => []);
+        const result = this.buildSurveyResponseFromRespondent(respondent, riskPayload);
+        return {
+            ...result,
+            risks: enrichRisksWithMaster(result.risks, masterRisks),
+            raw: { ...result.raw, masterRisks },
+        };
     },
 
     async getSurveyByRespondentOrCompanyId(id: string | number): Promise<SurveyRiskResponse> {
@@ -125,9 +206,10 @@ export const resikoService = {
         let risks = pickArray(respondentPayload);
 
         const respondentId = getRespondentId(respondent);
+        let riskPayload: any = null;
         if (respondentId) {
             try {
-                const riskPayload = await api.get<any>(`/api/survey/risiko/${respondentId}`);
+                riskPayload = await this.getRiskPayloadByRespondentId(respondentId);
                 const riskRows = pickArray(riskPayload);
                 if (riskRows.length > 0) {
                     risks = riskRows;
@@ -141,10 +223,12 @@ export const resikoService = {
             }
         }
 
+        const masterRisks = await this.getMasterRisks().catch(() => []);
+
         return {
             respondent,
-            risks,
-            raw: respondentPayload,
+            risks: enrichRisksWithMaster(risks, masterRisks),
+            raw: { respondentPayload, riskPayload, masterRisks },
         };
     },
 
@@ -166,11 +250,12 @@ export const resikoService = {
                 throw error;
             }
         }
+        const masterRisks = await this.getMasterRisks().catch(() => []);
 
         return {
             respondent,
-            risks,
-            raw: { respondents, respondent, riskPayload },
+            risks: enrichRisksWithMaster(risks, masterRisks),
+            raw: { respondents, respondent, riskPayload, masterRisks },
         };
     },
 };

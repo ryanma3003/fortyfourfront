@@ -4,8 +4,27 @@ import { useRouter } from "vue-router";
 import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
 import ParticlesJs from "../../../../shared/components/@spk/reuseble-plugin/particles-js.vue";
+import { config } from "@/config/env";
 import { useAuthStore } from "@/stores/auth";
-import { stakeholdersService } from "@/services/stakeholders.service";
+import { roleService } from "@/services/role.service";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback"?: () => void;
+          "error-callback"?: (errorCode?: string) => boolean | void;
+        }
+      ) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId?: string) => void;
+    };
+  }
+}
 
 const router = useRouter();
 
@@ -22,11 +41,30 @@ const passwordTouched = ref(false);
 const isLoading = ref(false);
 const agreeToTerms = ref(false);
 
-// Company State
-const companies = ref<{ id: number; nama_perusahaan: string }[]>([]);
-const selectedCompany = ref("");
-const newCompanyName = ref("");
-const isLoadingCompanies = ref(false);
+// Turnstile State
+const turnstileSiteKey = config.turnstile.siteKey;
+const canUseManualTurnstileToken = config.isDev;
+const turnstileContainer = ref<HTMLElement | null>(null);
+const turnstileToken = ref<string>("");
+const manualTurnstileToken = ref<string>(config.turnstile.manualToken);
+const turnstileWidgetId = ref<string | null>(null);
+const turnstileReady = ref(false);
+const turnstileError = ref("");
+const isTurnstileVerified = computed(() => !!turnstileToken.value);
+const effectiveTurnstileToken = computed(() =>
+  canUseManualTurnstileToken && manualTurnstileToken.value.trim()
+    ? manualTurnstileToken.value.trim()
+    : turnstileToken.value
+);
+const canSubmitTurnstile = computed(() =>
+  !!effectiveTurnstileToken.value || turnstileReady.value
+);
+const hasBlockingTurnstileError = computed(() =>
+  !!turnstileError.value && !effectiveTurnstileToken.value
+);
+
+// Role State
+const staffRoleId = ref<number | null>(null);
 
 // Password Generator State
 const passwordLength = ref(16);
@@ -166,23 +204,27 @@ const signUp = async () => {
   if (!email.value) return showToast("error", "Email is required");
   if (!isPasswordValid.value) return showToast("error", "Password does not meet requirements");
   if (!doPasswordsMatch.value) return showToast("error", "Passwords do not match");
-  if (!selectedCompany.value) return showToast("error", "Please select a company");
-  if (selectedCompany.value === "NEW" && !newCompanyName.value.trim()) return showToast("error", "Company name is required");
   if (!agreeToTerms.value) return showToast("error", "You must agree to the terms and conditions");
 
-  isLoading.value = true;
+  if (!turnstileSiteKey) {
+    return showToast("error", "Turnstile site key belum dikonfigurasi.");
+  }
+  if (!effectiveTurnstileToken.value) {
+    return showToast("error", "Please complete the security check.");
+  }
+
   isLoading.value = true;
   
   const payload: any = {
     username: fullName.value,
     email: email.value,
-    password: password.value
+    password: password.value,
+    "cf-turnstile-response": effectiveTurnstileToken.value,
+    nama_perusahaan: "-" // Bypass backend validation requirement
   };
 
-  if (selectedCompany.value === "NEW") {
-    payload.nama_perusahaan = newCompanyName.value;
-  } else {
-    payload.id_perusahaan = selectedCompany.value;
+  if (staffRoleId.value !== null) {
+    payload.role_id = String(staffRoleId.value);
   }
   
   const result = await authStore.registerUser(payload);
@@ -196,32 +238,87 @@ const signUp = async () => {
   } else {
     isLoading.value = false;
     showToast("error", result.error || "Failed to create account");
+    resetTurnstile();
+  }
+};
+
+const resetTurnstile = () => {
+  turnstileToken.value = "";
+  if (turnstileWidgetId.value && window.turnstile) {
+    window.turnstile.reset(turnstileWidgetId.value);
+  }
+};
+
+const renderTurnstile = () => {
+  if (turnstileContainer.value && window.turnstile) {
+    turnstileContainer.value.innerHTML = "";
+    turnstileError.value = "";
+    turnstileReady.value = true;
+    turnstileWidgetId.value = window.turnstile.render(turnstileContainer.value, {
+      sitekey: turnstileSiteKey,
+      callback: (token: string) => {
+        turnstileToken.value = token;
+      },
+      "expired-callback": () => {
+        turnstileToken.value = "";
+        showToast("error", "Security check expired. Please verify again.");
+      },
+      "error-callback": (errorCode?: string) => {
+        turnstileToken.value = "";
+        turnstileError.value =
+          errorCode === "110200"
+            ? "Domain belum diizinkan untuk Turnstile site key ini."
+            : "Security check gagal dimuat. Coba refresh halaman.";
+        return true;
+      },
+    });
   }
 };
 
 // Lifecycle
 const setBodyClass = (add: boolean) => document.body.classList[add ? "add" : "remove"]("authentication-background");
-const cleanup = () => { setBodyClass(false); localStorage.removeItem("visited"); };
+const cleanup = () => {
+  setBodyClass(false);
+  localStorage.removeItem("visited");
+  if (turnstileWidgetId.value && window.turnstile) {
+    window.turnstile.remove(turnstileWidgetId.value);
+  }
+};
 
 onMounted(() => {
   setBodyClass(true);
   localStorage.setItem("visited", "true");
   router.beforeEach(() => setBodyClass(false));
-  window.addEventListener("beforeunload", cleanup, { passive: true });
   
-  // Fetch Companies
-  isLoadingCompanies.value = true;
-  stakeholdersService.getDropdown()
-    .then(data => {
-      companies.value = data;
-    })
-    .catch(err => {
-      console.error("Failed to fetch companies", err);
-      showToast("error", "Failed to load companies list");
-    })
-    .finally(() => {
-      isLoadingCompanies.value = false;
-    });
+  // Hardcode staff role ID (usually 2) since we cannot fetch protected API here
+  staffRoleId.value = 2;
+
+  if (!turnstileSiteKey) {
+    turnstileError.value = "Turnstile site key belum diatur.";
+    return;
+  }
+
+  // Load Turnstile script dynamically
+  if (!document.getElementById("turnstile-script")) {
+    const script = document.createElement("script");
+    script.id = "turnstile-script";
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+
+    script.onload = () => renderTurnstile();
+    script.onerror = () => {
+      turnstileError.value = "Gagal memuat Turnstile. Coba refresh halaman.";
+    };
+  } else {
+    // If already loaded, render immediately if available, otherwise wait
+    if (window.turnstile) {
+      renderTurnstile();
+    } else {
+      setTimeout(renderTurnstile, 500);
+    }
+  }
 });
 
 onUnmounted(() => {
@@ -241,8 +338,8 @@ onUnmounted(() => {
             <div class="card-body p-4 p-md-5">
               <!-- Logo -->
               <div class="mb-4 d-flex justify-content-center">
-                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px" />
-                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px" />
+                <img src="/images/media/studio1.png" alt="logo" id="logo-light" style="height: 50px" />
+                <img src="/images/media/studio1.png" alt="logo" id="logo-dark" style="height: 50px" />
               </div>
 
               <!-- Header -->
@@ -254,26 +351,7 @@ onUnmounted(() => {
               <!-- Form -->
               <form @submit.prevent="signUp">
                 <div class="row gy-3">
-                  <!-- Company Selection -->
-                  <div class="col-12">
-                    <label for="signup-company" class="form-label">Company</label>
-                    <div class="input-group input-group-modern mb-3">
-                      <span class="input-group-text"><i class="ri-building-line"></i></span>
-                      <select class="form-control form-control-lg form-select" id="signup-company" v-model="selectedCompany" :disabled="isLoadingCompanies" autocomplete="organization">
-                        <option value="" disabled selected>Select your company</option>
-                        <option value="NEW" class="fw-bold">+ Add New Company</option>
-                        <option v-for="company in companies" :key="company.id" :value="company.id">
-                          {{ company.nama_perusahaan }}
-                        </option>
-                      </select>
-                    </div>
-                    
-                    <!-- New Company Name Input -->
-                    <div v-if="selectedCompany === 'NEW'" class="input-group input-group-modern animate__animated animate__fadeIn">
-                      <span class="input-group-text"><i class="ri-add-circle-line"></i></span>
-                      <input type="text" class="form-control form-control-lg" v-model="newCompanyName" placeholder="Enter new company name" autocomplete="organization" />
-                    </div>
-                  </div>
+                  <!-- Removed Company Selection as per request -->
                   
                   <!-- Full Name -->
                   <div class="col-12">
@@ -401,11 +479,33 @@ onUnmounted(() => {
                       </label>
                     </div>
                   </div>
+
+                  <!-- Turnstile Widget -->
+                  <div class="col-12 mt-3 d-flex flex-column align-items-center gap-2">
+                    <div ref="turnstileContainer"></div>
+                    <small v-if="turnstileError" class="text-danger text-center">{{ turnstileError }}</small>
+                  </div>
+
+                  <!-- Development-only Turnstile token override -->
+                  <!--
+                  <div v-if="canUseManualTurnstileToken" class="col-12">
+                    <label for="turnstile-manual-token" class="form-label">Manual Turnstile Token (dev only)</label>
+                    <input
+                      id="turnstile-manual-token"
+                      v-model="manualTurnstileToken"
+                      type="text"
+                      class="form-control"
+                      placeholder="Paste token manual jika perlu"
+                      autocomplete="off"
+                    />
+                    <small class="text-muted">Kosongkan field ini untuk memakai token dari widget.</small>
+                  </div>
+                  -->
                 </div>
 
                 <!-- Submit -->
                 <div class="d-grid mt-4">
-                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !isPasswordValid || !doPasswordsMatch || !agreeToTerms">
+                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !isPasswordValid || !doPasswordsMatch || !agreeToTerms || !canSubmitTurnstile || hasBlockingTurnstileError">
                     <span v-if="!isLoading"><i class="ri-user-add-line me-2"></i>Sign Up Now</span>
                     <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Creating account...</span>
                   </button>

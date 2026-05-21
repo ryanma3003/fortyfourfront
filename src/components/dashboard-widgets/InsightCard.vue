@@ -7,6 +7,7 @@ import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import { useKseStore } from '@/stores/kse';
 import { useKonversiStore } from '@/stores/konversi';
 import { useResikoStore } from '@/stores/resiko';
+import { useUsersStore } from '@/stores/users';
 import { isKonversiComplete } from '@/services/konversi.service';
 import { useNotificationStore } from '@/stores/notifications';
 
@@ -17,6 +18,7 @@ const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const kseStore = useKseStore();
 const konversiStore = useKonversiStore();
 const resikoStore = useResikoStore();
+const usersStore = useUsersStore();
 const notifStore = useNotificationStore();
 const emit = defineEmits(['drill-down']);
 const props = defineProps({
@@ -84,6 +86,13 @@ function isFilledKseCategory(value) {
     return !!normalized && !['belum dikategorikan', 'belum lengkap', 'n/a', 'na', '-'].includes(normalized);
 }
 
+function isAdminOrStaffCompany(stakeholderId) {
+    return usersStore.allUsers.some((user) => {
+        const role = String(user?.role || user?.role_name || '').trim().toLowerCase();
+        return String(user?.id_perusahaan) === String(stakeholderId) && (role === 'admin' || role === 'staff');
+    });
+}
+
 function stakeholderHasKse(stakeholder) {
     const directSe = csirtStore.seByPerusahaanMap[String(stakeholder.id)] || [];
     if (directSe.some(se => isFilledKseCategory(se.kategori_se))) return true;
@@ -127,6 +136,7 @@ const insights = computed(() => {
     if (props.loading) return [];
 
     const all = stakeholdersStore.allStakeholders.filter(s => {
+        if (isAdminOrStaffCompany(s.id)) return false;
         const inDate = isInGlobalRange(s.created_at);
         const inSector = (() => {
             if (!filterStore.sektorId) return true;

@@ -86,7 +86,8 @@
     "vue3-toastify": "^0.2.8",
     "vue3-tour": "^1.0.3",
     "vuejs-smart-table": "1.0.0-beta.6",
-    "vuetify": "^3.8.12"
+    "vuetify": "^3.8.12",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

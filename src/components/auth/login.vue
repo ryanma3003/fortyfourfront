@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { toast } from "vue3-toastify";
 import "vue3-toastify/dist/index.css";
@@ -28,6 +28,7 @@ declare global {
 const router = useRouter();
 const authStore = useAuthStore();
 const turnstileSiteKey = config.turnstile.siteKey;
+const canUseManualTurnstileToken = config.isDev;
 
 // State
 const user = ref({ identifier: "", password: "" });
@@ -35,9 +36,29 @@ const showPassword = ref(false);
 const isLoading = ref(false);
 const turnstileContainer = ref<HTMLElement | null>(null);
 const turnstileToken = ref<string>("");
+const manualTurnstileToken = ref<string>(config.turnstile.manualToken);
 const turnstileWidgetId = ref<string | null>(null);
 const turnstileReady = ref(false);
 const turnstileError = ref("");
+const isTurnstileVerified = computed(() => !!turnstileToken.value);
+const canSubmit = computed(
+  () =>
+    !isLoading.value &&
+    turnstileReady.value &&
+    !turnstileError.value &&
+    isTurnstileVerified.value
+);
+const effectiveTurnstileToken = computed(() =>
+  canUseManualTurnstileToken && manualTurnstileToken.value.trim()
+    ? manualTurnstileToken.value.trim()
+    : turnstileToken.value
+);
+const canSubmitTurnstile = computed(() =>
+  !!effectiveTurnstileToken.value || turnstileReady.value
+);
+const hasBlockingTurnstileError = computed(() =>
+  !!turnstileError.value && !effectiveTurnstileToken.value
+);
 
 // Toast helper
 const showToast = (type: "success" | "error", message: string) => {
@@ -62,7 +83,7 @@ const login = async () => {
     return;
   }
 
-  if (!turnstileToken.value) {
+  if (!effectiveTurnstileToken.value) {
     showToast("error", "Please complete the security check.");
     return;
   }
@@ -70,7 +91,7 @@ const login = async () => {
   isLoading.value = true;
 
   try {
-    const payload = { ...user.value, turnstileToken: turnstileToken.value };
+    const payload = { ...user.value, turnstileToken: effectiveTurnstileToken.value };
     const result = await authStore.authenticateUser(payload);
 
     // Case 1: MFA first-time setup required
@@ -90,9 +111,10 @@ const login = async () => {
     // Case 3: Direct login success
     if (result.authenticated) {
       if (!authStore.isAdmin) {
-        await authStore.logUserOut();
-        showToast("error", "Akses ditolak. Hanya untuk admin dan staff.");
-        resetTurnstile();
+        showToast("warning", "Akses terbatas sesuai role Anda.");
+        setTimeout(() => {
+          router.push("/pages/error/role-akses");
+        }, 1500);
         return;
       }
       
@@ -209,8 +231,8 @@ onUnmounted(() => {
             <div class="card-body p-4 p-md-5">
               <!-- Logo -->
               <div class="mb-4 d-flex justify-content-center">
-                <img src="/images/brand-logos/logoLight.svg" alt="logo" id="logo-light" style="height: 50px"/>
-                <img src="/images/brand-logos/logoDark.svg" alt="logo" id="logo-dark" style="height: 50px"/>
+                <img src="/images/media/studio1.png" alt="logo" id="logo-light" style="height: 50px"/>
+                <img src="/images/media/studio1.png" alt="logo" id="logo-dark" style="height: 50px"/>
               </div>
 
               <!-- Header -->
@@ -259,11 +281,27 @@ onUnmounted(() => {
                     <div ref="turnstileContainer"></div>
                     <small v-if="turnstileError" class="text-danger text-center">{{ turnstileError }}</small>
                   </div>
+
+                  <!-- Development-only Turnstile token override -->
+                  <!-- 
+                  <div v-if="canUseManualTurnstileToken" class="col-12">
+                    <label for="turnstile-manual-token" class="form-label">Manual Turnstile Token (dev only)</label>
+                    <input
+                      id="turnstile-manual-token"
+                      v-model="manualTurnstileToken"
+                      type="text"
+                      class="form-control"
+                      placeholder="Paste token manual jika perlu"
+                      autocomplete="off"
+                    />
+                    <small class="text-muted">Kosongkan field ini untuk memakai token dari widget.</small>
+                  </div>
+                  -->
                 </div>
 
                 <!-- Submit Button -->
                 <div class="d-grid mt-4">
-                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !turnstileReady || !!turnstileError">
+                  <button type="submit" class="btn btn-auth-submit btn-lg" :disabled="isLoading || !canSubmitTurnstile || hasBlockingTurnstileError">
                     <span v-if="!isLoading"><i class="ri-login-box-line me-2"></i>Sign In</span>
                     <span v-else><span class="spinner-border spinner-border-sm me-2"></span>Signing in...</span>
                   </button>
