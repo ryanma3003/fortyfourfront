@@ -7,6 +7,7 @@ import { useIkasStore } from '@/stores/ikas';
 import { useKseStore } from '@/stores/kse';
 import { useDashboardFilterStore } from '@/stores/dashboardFilter';
 import { useResikoStore } from '@/stores/resiko';
+import { useUsersStore } from '@/stores/users';
 
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
@@ -14,6 +15,7 @@ const csirtStore = useCsirtStore();
 const ikasStore = useIkasStore();
 const kseStore = useKseStore();
 const resikoStore = useResikoStore();
+const usersStore = useUsersStore();
 const filterStore = inject('dashboardFilterStore', useDashboardFilterStore());
 const props = defineProps({
     loading: { type: Boolean, default: false },
@@ -76,6 +78,31 @@ function isFilledKseCategory(value) {
     return !!normalized && !['belum dikategorikan', 'belum lengkap', 'n/a', 'na', '-'].includes(normalized);
 }
 
+function isAdminOrStaffCompany(stakeholderId) {
+    return usersStore.allUsers.some((user) => {
+        const role = String(user?.role || user?.role_name || '').trim().toLowerCase();
+        return String(user?.id_perusahaan) === String(stakeholderId) && (role === 'admin' || role === 'staff');
+    });
+}
+
+function isInScope(stakeholder) {
+    if (isAdminOrStaffCompany(stakeholder.id)) return false;
+
+    const inDate = isInGlobalRange(stakeholder.created_at);
+    const inSector = (() => {
+        if (!filterStore.sektorId) return true;
+        const matchSektor = stakeholder.sub_sektor?.id_sektor == filterStore.sektorId || stakeholder.id_sektor == filterStore.sektorId;
+        if (!matchSektor) return false;
+        if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
+            const subSektorId = stakeholder.sub_sektor?.id || stakeholder.id_sub_sektor;
+            return String(subSektorId) === String(filterStore.subSektorId);
+        }
+        return true;
+    })();
+
+    return inDate && inSector;
+}
+
 function stakeholderHasKse(stakeholder) {
     const directSe = csirtStore.seByPerusahaanMap[String(stakeholder.id)] || [];
     if (directSe.some(se => isFilledKseCategory(se.kategori_se))) return true;
@@ -88,23 +115,14 @@ function stakeholderHasKse(stakeholder) {
     return !!localData && isFilledKseCategory(localData.kategoriSE);
 }
 
+const filteredStakeholders = computed(() =>
+    stakeholdersStore.allStakeholders.filter(isInScope)
+);
+
 const actions = computed(() => {
     if (props.loading) return [];
 
-    const all = stakeholdersStore.allStakeholders.filter(s => {
-        const inDate = isInGlobalRange(s.created_at);
-        const inSector = (() => {
-            if (!filterStore.sektorId) return true;
-            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
-            if (!matchSektor) return false;
-            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
-                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
-                return String(subSektorId) === String(filterStore.subSektorId);
-            }
-            return true;
-        })();
-        return inDate && inSector;
-    });
+    const all = filteredStakeholders.value;
     const items = [];
     const completedManrisCompanyIds = new Set(resikoStore.completedCompanyIds || []);
     Object.entries(resikoStore.progressMap || {}).forEach(([slug, progress]) => {
@@ -235,38 +253,15 @@ const actionStats = computed(() => {
 });
 
 const completionRate = computed(() => {
-    const total = stakeholdersStore.allStakeholders.filter(s => {
-        const inDate = isInGlobalRange(s.created_at);
-        const inSector = (() => {
-            if (!filterStore.sektorId) return true;
-            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
-            if (!matchSektor) return false;
-            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
-                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
-                return String(subSektorId) === String(filterStore.subSektorId);
-            }
-            return true;
-        })();
-        return inDate && inSector;
-    }).length;
+    const all = filteredStakeholders.value;
+    const total = all.length;
 
     if (total === 0) return 0;
 
-    const complete = stakeholdersStore.allStakeholders.filter(s => {
-        const inDate = isInGlobalRange(s.created_at);
-        const inSector = (() => {
-            if (!filterStore.sektorId) return true;
-            const matchSektor = s.sub_sektor?.id_sektor == filterStore.sektorId || s.id_sektor == filterStore.sektorId;
-            if (!matchSektor) return false;
-            if (filterStore.subSektorId && filterStore.subSektorId !== 'ALL') {
-                const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
-                return String(subSektorId) === String(filterStore.subSektorId);
-            }
-            return true;
-        })();
+    const complete = all.filter(s => {
         const ikas = ikasStore.ikasDataMap[s.slug];
         const hasIkas = ikas && ikas.total_rata_rata && ikas.total_rata_rata !== 'NA' && ikas.total_rata_rata !== 0;
-        return inDate && inSector && csirtStore.hasCompleteCsirt(s.id) && hasIkas && stakeholderHasKse(s);
+        return csirtStore.hasCompleteCsirt(s.id) && hasIkas && stakeholderHasKse(s);
     }).length;
 
     return Math.round((complete / total) * 100);

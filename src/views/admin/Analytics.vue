@@ -14,6 +14,7 @@
     import { useStakeholdersStore } from "@/stores/stakeholders";
     import { useIkasStore } from "@/stores/ikas";
     import { useCsirtStore } from "@/stores/csirt";
+    import { useUsersStore } from "@/stores/users";
     import { useKonversiStore } from "@/stores/konversi";
     import { useResikoStore } from "@/stores/resiko";
     import { useAnalyticsDashboardFilterStore } from "@/stores/dashboardFilter";
@@ -61,7 +62,27 @@
     const resikoStore = useResikoStore();
     const filterStore = useAnalyticsDashboardFilterStore();
     const notifStore = useNotificationStore();
+    const usersStore = useUsersStore();
     provide('dashboardFilterStore', filterStore);
+
+    const isExcludedCompanyRole = (user) => {
+      const role = String(user?.role || user?.role_name || '').trim().toLowerCase();
+      return role === 'admin' || role === 'staff';
+    };
+
+    // Helper: check if a stakeholder (company) has an associated user with role admin or staff
+    const isAdminOrStaffCompany = (stakeholderId) => {
+      return usersStore.allUsers.some(
+        (u) =>
+          String(u.id_perusahaan) === String(stakeholderId) &&
+          isExcludedCompanyRole(u),
+      );
+    };
+
+    // All stakeholders excluding companies that belong to admin/staff users
+    const filteredAllStakeholders = computed(() =>
+      stakeholdersStore.allStakeholders.filter((s) => !isAdminOrStaffCompany(s.id)),
+    );
     
     // Analytics Chart States
     const kseChartType = ref('donut'); // 'donut' or 'bar'
@@ -610,13 +631,9 @@
         };
     });
 
-    const ikasStatusTotal = computed(() => apiIkasStatus.value.total_perusahaan || totalStakeholders.value);
-    const ikasFilledCount = computed(() => apiIkasStatus.value.sudah_mengisi_ikas || stakeholdersWithIkas.value);
-    const ikasUnfilledCount = computed(() => (
-        apiIkasStatus.value.total_perusahaan
-            ? apiIkasStatus.value.belum_mengisi_ikas
-            : Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value)
-    ));
+    const ikasStatusTotal = computed(() => totalStakeholders.value);
+    const ikasFilledCount = computed(() => stakeholdersWithIkas.value);
+    const ikasUnfilledCount = computed(() => Math.max(0, totalStakeholders.value - stakeholdersWithIkas.value));
 
     const apiCsirtData = computed(() => {
         const data = filterStore.summaryData?.csirt_summary || {};
@@ -804,8 +821,8 @@
         });
 
         return {
-            total: apiIkasData.value.total_ikas || filtered.length,
-            avgNilaiKematangan: apiIkasData.value.avg_nilai_kematangan,
+            total: filtered.length,
+            avgNilaiKematangan: count > 0 ? Number((filtered.reduce((sum, s) => sum + Number(ikasStore.ikasDataMap[s.slug]?.total_rata_rata || 0), 0) / count).toFixed(2)) : 0,
             avgTargetNilai: apiIkasData.value.avg_target_nilai,
             levels: { 
                 level1: { count: level1, label: 'Level 1 - Awal', color: '#e6533c', gradient: 'linear-gradient(135deg, #e6533c 0%, #f87171 100%)' },
@@ -1351,7 +1368,7 @@
             const items = [
                 {
                     label: 'Total IKAS',
-                    value: apiIkasData.value.total_ikas,
+                    value: s.total,
                     icon: 'ri-bar-chart-box-line',
                     gradient: 'linear-gradient(135deg, #23b7e5 0%, #67e8f9 100%)',
                     color: '#23b7e5',
@@ -1359,7 +1376,7 @@
                 },
                 {
                     label: filterStore.quarter ? `IKAS Q${filterStore.quarter}` : (filterStore.year ? `IKAS ${filterStore.year}` : 'IKAS Periode Ini'),
-                    value: apiIkasStatus.value.sudah_mengisi_ikas,
+                    value: s.total,
                     icon: 'ri-calendar-check-line',
                     gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
                     color: '#3b82f6',
@@ -1734,6 +1751,7 @@
 
             await Promise.allSettled([
                 loadStore(stakeholdersStore),
+                loadStore(usersStore),
                 loadStore(resikoStore),
                 resikoStore.loadAdminRespondents(options.refresh),
                 loadDashboardOptions(),
@@ -1824,7 +1842,7 @@
             });
             // Count ALL stakeholders belonging to this sektor
             const childIds = new Set(children.map(c => String(c.id)));
-            const sektorStakeholders = stakeholdersStore.allStakeholders.filter(s => {
+            const sektorStakeholders = filteredAllStakeholders.value.filter(s => {
                 const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
                 return subSektorId && childIds.has(String(subSektorId));
             });
@@ -1849,7 +1867,7 @@
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
 
-        let filtered = stakeholdersStore.allStakeholders;
+        let filtered = filteredAllStakeholders.value;
 
         // Sector/Sub-sector Filter
         if (fId || subId) {
@@ -1892,13 +1910,26 @@
             });
         }
 
+        // Exclude CSIRT records belonging to admin/staff companies
+        filtered = filtered.filter((c) => {
+            const companyId = c.id_perusahaan || c.perusahaan?.id;
+            return !companyId || !isAdminOrStaffCompany(companyId);
+        });
+
         return filtered;
     });
 
     const baseSdm = computed(() => {
         const fId = filterStore.sektorId;
         const subId = filterStore.subSektorId;
-        if (!fId && !subId) return csirtStore.sdmList;
+        if (!fId && !subId) {
+            return csirtStore.sdmList.filter((s) => {
+                const cId = String(s.id_csirt || s.csirt?.id);
+                const csirt = csirtStore.csirtByIdMap[cId];
+                const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id;
+                return !companyId || !isAdminOrStaffCompany(companyId);
+            });
+        }
         return csirtStore.sdmList.filter(s => {
             const cId = String(s.id_csirt || s.csirt?.id);
             const csirt = csirtStore.csirtByIdMap[cId];
@@ -1909,6 +1940,11 @@
             if (effectiveSubId) return String(p?.sub_sektor?.id || p?.id_sub_sektor) === String(effectiveSubId);
             if (fId) return String(p?.sub_sektor?.id_sektor || p?.id_sektor) === String(fId);
             return true;
+        }).filter((s) => {
+            const cId = String(s.id_csirt || s.csirt?.id);
+            const csirt = csirtStore.csirtByIdMap[cId];
+            const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id;
+            return !companyId || !isAdminOrStaffCompany(companyId);
         });
     });
 
@@ -1935,6 +1971,14 @@
                 return true;
             });
         }
+
+        // Exclude SE records belonging to admin/staff companies
+        filtered = filtered.filter((se) => {
+            const cId = String(se.id_csirt || se.csirt_id || se.csirt?.id);
+            const csirt = csirtStore.csirtByIdMap[cId];
+            const companyId = csirt?.id_perusahaan || csirt?.perusahaan?.id || se.id_perusahaan;
+            return !companyId || !isAdminOrStaffCompany(companyId);
+        });
 
         return filtered;
     });
@@ -2148,7 +2192,7 @@
                 const ssName = getSubSektorName(ss);
 
                 // Count stakeholders for this sub-sektor
-                const ssStakeholders = stakeholdersStore.allStakeholders.filter(s => {
+                const ssStakeholders = filteredAllStakeholders.value.filter(s => {
                     const subSektorId = s.sub_sektor?.id || s.id_sub_sektor;
                     return subSektorId && String(subSektorId) === String(ss.id);
                 });
@@ -2214,7 +2258,7 @@
             const color = sektorColors[idx % sektorColors.length];
 
             const trend = getTrendData(
-                stakeholdersStore.allStakeholders.filter(s => {
+                filteredAllStakeholders.value.filter(s => {
                     const sid = s.sub_sektor?.id || s.id_sub_sektor;
                     return sid && new Set(subSektorList.value.filter(ss => {
                         const pid = getSubSektorParentId(ss);
@@ -2276,7 +2320,7 @@
         const displayFilteredManris = manrisLocalReady ? manrisStatus.value.sudah_mengisi_manris : 0;
         
         // Stakeholder fixed count (Top number)
-        const fixedStakeholderCount = stakeholdersStore.allStakeholders.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
+        const fixedStakeholderCount = filteredAllStakeholders.value.length || globalCsirtStatus.value.total_perusahaan || apiCsirtStatus.value.total_perusahaan || 0;
         // Stakeholder filtered count (Bottom number)
         const displayFilteredStakeholder = filteredStakeholders.value;
 
@@ -2507,7 +2551,7 @@
             }
 
             drillDownItems.value = csirtList.map(c => {
-                const stakeholder = stakeholdersStore.allStakeholders.find(s =>
+                const stakeholder = filteredAllStakeholders.value.find(s =>
                     String(s.id) === String(getCsirtCompanyId(c))
                 );
                 const complete = hasCsirtSdm(c) && hasCsirtSe(c);
@@ -2831,7 +2875,7 @@
 
     function handleSektorCardClick(card) {
         if (!card.sektorId) return;
-        const all = stakeholdersStore.allStakeholders;
+        const all = filteredAllStakeholders.value;
         let sektorStakeholders;
 
         if (card.isSubSektor) {

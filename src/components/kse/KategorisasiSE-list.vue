@@ -9,12 +9,15 @@ import { seEditService } from '@/services/se-edit.service';
 import type { SeCsirt } from '@/types/csirt.types';
 import type { SeEditRequest } from '@/types/se-edit.types';
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const route  = useRoute();
 const router = useRouter();
 const kseStore          = useKseStore();
 const stakeholdersStore = useStakeholdersStore();
 const csirtStore        = useCsirtStore();
+const authStore         = useAuthStore();
+const isFullAdmin       = computed(() => authStore.isFullAdmin);
 
 // ── Props / slug ────────────────────────────────────────────
 const stakeholderSlug = computed(() => String(route.query.slug || route.params.slug || ''));
@@ -725,7 +728,7 @@ function progressFillClass(pct: number): string {
                       >
                         <i class="ri-pencil-line"></i>
                       </button>
-                      <button @click="openDelete(entry)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
+                      <button v-if="isFullAdmin" @click="openDelete(entry)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" title="Hapus">
                         <i class="ri-delete-bin-line"></i>
                       </button>
                     </div>

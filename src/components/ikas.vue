@@ -2843,11 +2843,7 @@ const exportToPdf = async () => {
                     <i v-else class="ri-close-line"></i>
                     {{ isRejecting ? 'Menolak...' : 'Tolak' }}
                   </button>
-                  <button v-if="hasActiveIkasRecord" @click="deleteAssessment" class="btn-ikas-delete" :disabled="isDeleting">
-                    <span v-if="isDeleting" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                    <i v-else class="ri-delete-bin-line"></i>
-                    {{ isDeleting ? 'Menghapus...' : 'Hapus Data' }}
-                  </button>
+                  <!-- Delete button removed -->
                 </div>
               </div>
             </div>

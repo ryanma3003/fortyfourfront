@@ -277,6 +277,77 @@ class NotificationService {
         return this._connected;
     }
 
+    private parseFetchResponse(res: any): Pick<NotificationFetchResult, 'notifications' | 'unread_count'> {
+        let notifsArray: any[] = [];
+
+        if (Array.isArray(res)) {
+            notifsArray = res;
+        } else if (res && typeof res === 'object') {
+            if (Array.isArray(res.data)) {
+                notifsArray = res.data;
+            } else if (Array.isArray(res.notifications)) {
+                notifsArray = res.notifications;
+            } else if (res.data && Array.isArray(res.data.notifications)) {
+                notifsArray = res.data.notifications;
+            } else if (Array.isArray(res.data?.data)) {
+                notifsArray = res.data.data;
+            }
+        }
+
+        let unreadCount = 0;
+        if (res && typeof res === 'object' && typeof res.unread_count === 'number') {
+            unreadCount = res.unread_count;
+        } else if (res && res.data && typeof res.data.unread_count === 'number') {
+            unreadCount = res.data.unread_count;
+        } else {
+            unreadCount = this.countUnread(notifsArray);
+        }
+
+        return {
+            notifications: notifsArray,
+            unread_count: unreadCount,
+        };
+    }
+
+    private countUnread(notifications: any[]): number {
+        return notifications.filter((n: any) => !(n.read || n.is_read || n.read_at)).length;
+    }
+
+    private async fetchEndpoint(endpoint: string, optional = false): Promise<NotificationFetchResult> {
+        try {
+            const res = await api.get<any>(
+                endpoint,
+                undefined,
+                optional ? { suppressErrorStatuses: [400, 403, 404, 405, 422] } : undefined,
+            );
+
+            if (res && typeof res === 'object' && res.status === 'error') {
+                return {
+                    notifications: [],
+                    unread_count: 0,
+                    ok: false,
+                    error: res.message || 'Notification API returned an error',
+                };
+            }
+
+            return {
+                ...this.parseFetchResponse(res),
+                ok: true,
+            };
+        } catch (err) {
+            if (!optional) {
+                console.warn('[NotifService] fetchAll failed:', err);
+            }
+            return {
+                notifications: [],
+                unread_count: 0,
+                ok: false,
+                status: err instanceof ApiRequestError ? err.status : undefined,
+                error: err instanceof Error ? err.message : 'Failed to fetch notifications',
+            };
+        }
+    }
+
     // ── REST API Endpoints ───────────────────────────────────────────
 
     /**
@@ -287,56 +358,7 @@ class NotificationService {
      * { data: [{id, message, type, read, created_at, user_id?, ...}], unread_count?: number }
      */
     async fetchAll(): Promise<NotificationFetchResult> {
-        try {
-            const res = await api.get<any>('/api/notifications');
-
-            if (res && typeof res === 'object' && res.status === 'error') {
-                return {
-                    notifications: [],
-                    unread_count: 0,
-                    ok: false,
-                    error: res.message || 'Notification API returned an error',
-                };
-            }
-            
-            let notifsArray: any[] = [];
-            
-            if (Array.isArray(res)) {
-                notifsArray = res;
-            } else if (res && typeof res === 'object') {
-                if (Array.isArray(res.data)) {
-                    notifsArray = res.data;
-                } else if (Array.isArray(res.notifications)) {
-                    notifsArray = res.notifications;
-                } else if (res.data && Array.isArray(res.data.notifications)) {
-                    notifsArray = res.data.notifications;
-                }
-            }
-
-            let unreadCount = 0;
-            if (res && typeof res === 'object' && typeof res.unread_count === 'number') {
-                unreadCount = res.unread_count;
-            } else if (res && res.data && typeof res.data.unread_count === 'number') {
-                unreadCount = res.data.unread_count;
-            } else {
-                unreadCount = notifsArray.filter((n: any) => !(n.read || n.is_read || n.read_at)).length;
-            }
-
-            return {
-                notifications: notifsArray,
-                unread_count: unreadCount,
-                ok: true,
-            };
-        } catch (err) {
-            console.warn('[NotifService] fetchAll failed:', err);
-            return {
-                notifications: [],
-                unread_count: 0,
-                ok: false,
-                status: err instanceof ApiRequestError ? err.status : undefined,
-                error: err instanceof Error ? err.message : 'Failed to fetch notifications',
-            };
-        }
+        return this.fetchEndpoint('/api/notifications');
     }
 
     /**

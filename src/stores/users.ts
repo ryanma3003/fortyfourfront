@@ -28,6 +28,46 @@ function writeUsersCache(data: User[]) {
   }
 }
 
+function normalizeUserRole(value: any): string {
+  if (value && typeof value === 'object') {
+    return normalizeUserRole(value.name || value.role_name || value.slug || value.label || value.id);
+  }
+
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+
+  const aliases: Record<string, string> = {
+    administrator: 'admin',
+    super_admin: 'admin',
+    superadmin: 'admin',
+    staf: 'staff',
+    operator: 'staff',
+  };
+
+  return aliases[normalized] || normalized;
+}
+
+function resolveUserRole(u: any): string {
+  const directRole = normalizeUserRole(
+    u.role
+    || u.role_name
+    || u.roleName
+    || u.roles?.[0]
+    || u.user_role
+    || u.userRole
+  );
+  if (directRole) return directRole;
+
+  const roleId = String(u.role_id || u.id_role || u.role?.id || u.roles?.[0]?.id || '').trim();
+  if (roleId === '1') return 'admin';
+  if (roleId === '2') return 'staff';
+
+  return 'user';
+}
+
 export const useUsersStore = defineStore('users', {
   state: () => ({
     users: [] as User[],
@@ -55,11 +95,21 @@ export const useUsersStore = defineStore('users', {
 
   actions: {
     /**
-     * Initialize users from backend API
+     * Initialize users from backend API.
+     * /api/users requires full admin — staff/user roles skip silently.
      */
     async initialize() {
       if (this.initialized) return;
       if (initializePromise) return initializePromise;
+
+      // /api/users requires admin or staff role
+      const { useAuthStore } = await import('@/stores/auth');
+      const authStore = useAuthStore();
+      if (!authStore.isAdmin) {
+        this.initialized = true;
+        this.users = [];
+        return;
+      }
 
       const cached = readUsersCache();
       if (cached) {
@@ -79,7 +129,7 @@ export const useUsersStore = defineStore('users', {
           id: u.id?.toString() || '',
           name: u.name || u.username || 'Unknown',
           username: u.username || u.email || 'unknown',
-          role: u.role || u.role_name || 'user',
+          role: resolveUserRole(u),
           slug: u.slug || u.username || u.id?.toString() || '',
           jabatan: u.jabatan || u.id_jabatan || '',
           joined: u.joined || u.created_at || ''
@@ -115,7 +165,7 @@ export const useUsersStore = defineStore('users', {
           id: u.id?.toString() || '',
           name: u.name || u.username || 'Unknown',
           username: u.username || u.email || 'unknown',
-          role: u.role || u.role_name || 'user',
+          role: resolveUserRole(u),
           slug: u.slug || u.username || u.id?.toString() || '',
           jabatan: u.jabatan || u.id_jabatan || '',
           joined: u.joined || u.created_at || ''

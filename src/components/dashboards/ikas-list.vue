@@ -7,6 +7,8 @@ import { ikasService } from '@/services/ikas.service';
 import { useStakeholdersStore } from '@/stores/stakeholders';
 import { getMaturityLabel, useIkasStore } from '@/stores/ikas';
 import type { Stakeholder } from '@/types/stakeholders.types';
+import { useAuthStore } from '@/stores/auth';
+import { useUsersStore } from '@/stores/users';
 
 type StatusFilter = 'all' | 'validated' | 'draft' | 'edit-request';
 type IkasAction = 'validate' | 'approve' | 'reject';
@@ -52,6 +54,8 @@ interface KpiItem {
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
 const ikasStore = useIkasStore();
+const authStore = useAuthStore();
+const usersStore = useUsersStore();
 
 const pageData = {
   title: { label: 'Dashboards', path: '/dashboard' },
@@ -826,8 +830,24 @@ const loadData = async (
       await Promise.all([
         options.forceRefresh ? ikasStore.refresh() : (ikasStore.initialized ? Promise.resolve() : ikasStore.initialize()),
         stakeholdersStore.initialize(),
+        usersStore.initialize(),
       ]);
-      rawIkasRecords.value = normalizeResponse(ikasStore.ikasRawRecords).filter((record) => !isSoftDeletedRecord(record));
+
+      const hasAdminOrStaffUser = (companyId: string | number): boolean => {
+        if (!companyId) return false;
+        return usersStore.allUsers.some(
+          (u) => String(u.id_perusahaan) === String(companyId) && (u.role === 'admin' || u.role === 'staff')
+        );
+      };
+
+      const adminCompanyId = authStore.currentUser?.id_perusahaan;
+      rawIkasRecords.value = normalizeResponse(ikasStore.ikasRawRecords).filter((record) => {
+        if (isSoftDeletedRecord(record)) return false;
+        const companyId = record?.id_perusahaan || record?.perusahaan?.id;
+        if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+        if (hasAdminOrStaffUser(companyId)) return false;
+        return true;
+      });
       lastRefreshAt.value = new Date();
       if (!records.value.length) {
         selectedRecord.value = null;

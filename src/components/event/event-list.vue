@@ -7,6 +7,7 @@ import type { Kegiatan } from "../../types/kegiatan.types";
 import { richTextToPlainText } from "../../utils/richText";
 import { formatEventDateShort } from "../../utils/eventDate";
 import { buildContentSlug } from "../../utils/contentSlug";
+import { useAuthStore } from "../../stores/auth";
 
 export default {
   data() {
@@ -17,6 +18,8 @@ export default {
   setup() {
     const eventStore = useEventStore();
     const router = useRouter();
+    const authStore = useAuthStore();
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
 
     const searchQuery = ref("");
     const currentPage = ref(1);
@@ -325,6 +328,7 @@ export default {
       getDescriptionPreview,
       formatDate: formatEventDateShort,
       stripHtml,
+      isFullAdmin,
     };
   },
 };
@@ -457,7 +461,7 @@ export default {
                 <div class="ev-actions">
                   <button type="button" @click="openView(item)" class="ev-act ev-act-view" data-tooltip="Lihat" aria-label="Lihat detail event"><i class="ri-eye-line"></i></button>
                   <button type="button" @click="openEdit(item)" class="ev-act ev-act-edit" data-tooltip="Edit" aria-label="Edit event"><i class="ri-edit-2-line"></i></button>
-                  <button type="button" @click="openDeleteModal(item)" class="ev-act ev-act-del" data-tooltip="Hapus" aria-label="Hapus event"><i class="ri-delete-bin-6-line"></i></button>
+                  <button v-if="isFullAdmin" type="button" @click="openDeleteModal(item)" class="ev-act ev-act-del" data-tooltip="Hapus" aria-label="Hapus event"><i class="ri-delete-bin-6-line"></i></button>
                 </div>
               </div>
             </article>

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount } from "vue"
 import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 import { useLmsStore } from "../../stores/lms";
+import { useAuthStore } from "../../stores/auth";
 import { useRouter } from "vue-router";
 
 export default {
@@ -18,7 +19,9 @@ export default {
   },
   setup() {
     const lmsStore = useLmsStore();
+    const authStore = useAuthStore();
     const router = useRouter();
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
     
     const searchQuery = ref("");
     const currentPage = ref(1);
@@ -692,6 +695,7 @@ export default {
     return {
       isInitialLoading,
       isDarkMode,
+      isFullAdmin,
       router, lmsStore, searchQuery, currentPage, itemsPerPage, filteredData, sortedData, totalPages, displayData, displayDataWithCounts,
       sortKey, sortDirection, toggleSort, getSortIcon,
       showToast, toastMessage, toastType, 
@@ -910,7 +914,7 @@ export default {
                         <button @click.stop="openKelasModal(item)" class="btn btn-sm btn-icon btn-wave btn-success-light stakeholders-action-btn" data-tooltip="Edit" aria-label="Edit kelas">
                           <i class="ri-edit-2-line"></i>
                         </button>
-                        <button @click.stop="openDeleteModal('kelas', item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" data-tooltip="Hapus" aria-label="Hapus kelas">
+                        <button v-if="isFullAdmin" @click.stop="openDeleteModal('kelas', item)" class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn" data-tooltip="Hapus" aria-label="Hapus kelas">
                           <i class="ri-delete-bin-3-line"></i>
                         </button>
                       </div>
@@ -952,7 +956,7 @@ export default {
                                     </div>
                                     <div class="d-flex gap-1 flex-shrink-0">
                                       <button @click="openMateriModal(item.id, m)" class="btn btn-sm btn-icon btn-outline-primary rounded-circle border-0 bg-primary-transparent lms-detail-action-btn" data-tooltip="Edit materi" aria-label="Edit materi"><i class="ri-edit-line"></i></button>
-                                      <button @click="openDeleteModal('materi', m)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent lms-detail-action-btn" data-tooltip="Hapus materi" aria-label="Hapus materi"><i class="ri-delete-bin-line"></i></button>
+                                      <button v-if="isFullAdmin" @click="openDeleteModal('materi', m)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent lms-detail-action-btn" data-tooltip="Hapus materi" aria-label="Hapus materi"><i class="ri-delete-bin-line"></i></button>
                                     </div>
                                   </div>
                                 </div>
@@ -990,7 +994,7 @@ export default {
                                     </div>
                                     <div class="d-flex gap-1 flex-shrink-0">
                                       <button @click="openKuisModal(item.id, q)" class="btn btn-sm btn-icon btn-outline-primary rounded-circle border-0 bg-primary-transparent lms-detail-action-btn" data-tooltip="Edit kuis" aria-label="Edit kuis"><i class="ri-edit-line"></i></button>
-                                      <button @click="openDeleteModal('kuis', q)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent lms-detail-action-btn" data-tooltip="Hapus kuis" aria-label="Hapus kuis"><i class="ri-delete-bin-line"></i></button>
+                                      <button v-if="isFullAdmin" @click="openDeleteModal('kuis', q)" class="btn btn-sm btn-icon btn-outline-danger rounded-circle border-0 bg-danger-transparent lms-detail-action-btn" data-tooltip="Hapus kuis" aria-label="Hapus kuis"><i class="ri-delete-bin-line"></i></button>
                                     </div>
                                   </div>
                                 </div>
@@ -1152,10 +1156,10 @@ export default {
   <!-- KELAS MODAL (Materi & Kuis Modals removed, replaced by routing) -->
 
   <!-- DELETE MODAL -->
-  <div v-if="activeModal === 'delete'" :class="['modal', 'fade', 'show', 'd-block', 'modal-overlay', { 'is-dark': isDarkMode }]" tabindex="-1" @click.self="activeModal = null">
-    <div class="modal-dialog modal-dialog-centered modal-sm custom-modal">
-      <div class="modal-content border-0 bg-transparent">
-        <div class="kse-modal-box kse-modal-sm w-100">
+  <Teleport to="body">
+    <transition name="kse-modal-fade">
+      <div v-if="activeModal === 'delete'" class="kse-modal-overlay" @click.self="activeModal = null">
+        <div class="kse-modal-box kse-modal-sm">
           <div class="kse-modal-header kse-modal-header-danger">
             <div class="d-flex align-items-center gap-3">
               <div class="kse-modal-icon-wrap"><i class="ri-delete-bin-line"></i></div>
@@ -1163,6 +1167,7 @@ export default {
                 <div class="kse-modal-title">Hapus {{ deleteType === 'kelas' ? 'Kelas' : deleteType === 'materi' ? 'Materi' : 'Kuis' }}</div>
               </div>
             </div>
+            <button class="kse-modal-close" @click="activeModal = null"><i class="ri-close-line"></i></button>
           </div>
           <div class="kse-modal-body text-center">
             <p class="mb-0 fs-14">Yakin ingin menghapus <strong>{{ deleteTarget?.nama_kelas || deleteTarget?.judul }}</strong>?</p>
@@ -1173,8 +1178,8 @@ export default {
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </transition>
+  </Teleport>
 </template>
 
 <style>

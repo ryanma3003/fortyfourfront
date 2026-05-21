@@ -4,6 +4,7 @@ import gsap from "gsap";
 import Pageheader from "../../shared/components/pageheader/pageheader.vue";
 
 import { useCsirtStore } from "../../stores/csirt";
+import { useUsersStore } from "../../stores/users";
 import { csirtService } from "../../services/csirt.service";
 import { stakeholdersService } from "../../services/stakeholders.service";
 import type { CsirtMember, CreateCsirtPayload } from "../../types/csirt.types";
@@ -26,8 +27,10 @@ export default {
   components: { Pageheader, EasyDataTable },
   setup() {
     const authStore = useAuthStore();
+    const usersStore = useUsersStore();
     const csirtStore = useCsirtStore();
     const isAdmin = computed(() => authStore.isAdmin);
+    const isFullAdmin = computed(() => authStore.isFullAdmin);
 
     const loading = computed(() => csirtStore.loading);
     
@@ -131,11 +134,59 @@ export default {
       await Promise.all([
         csirtStore.initialize({ fetchGlobal: true }),
         loadStakeholderOptions(),
+        usersStore.initialize(),
       ]);
     };
 
+    const hasAdminOrStaffUser = (companyId: string | number): boolean => {
+      if (!companyId) return false;
+      return usersStore.allUsers.some(
+        (u) => String(u.id_perusahaan) === String(companyId) && (u.role === 'admin' || u.role === 'staff')
+      );
+    };
+
+    const validCsirts = computed(() => {
+      const adminCompanyId = authStore.currentUser?.id_perusahaan;
+      return csirtStore.allCsirts.filter(i => {
+        const companyId = getCsirtCompanyId(i);
+        if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+        if (hasAdminOrStaffUser(companyId)) return false;
+        return true;
+      });
+    });
+
+    const validCsirtIds = computed(() => new Set(validCsirts.value.map(c => normalizeRecordId(c.id))));
+
+    const validSdmList = computed(() => {
+      return csirtStore.sdmList.filter(sdm => {
+        const csirtId = normalizeRecordId(sdm.id_csirt || (sdm as any).csirt_id || (sdm as any).csirt?.id);
+        return validCsirtIds.value.has(csirtId);
+      });
+    });
+
+    const validSeList = computed(() => {
+      const adminCompanyId = authStore.currentUser?.id_perusahaan;
+      return csirtStore.seList.filter(se => {
+        const csirtId = normalizeRecordId(se.id_csirt || (se as any).csirt_id || (se as any).csirt?.id);
+        const companyId = normalizeRecordId(se.id_perusahaan || (se as any).perusahaan_id || (se as any).company_id || (se as any).perusahaan?.id);
+        if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+        if (hasAdminOrStaffUser(companyId)) return false;
+        if (csirtId && !validCsirtIds.value.has(csirtId)) return false;
+        return true;
+      });
+    });
+
+    const validStakeholderOptions = computed(() => {
+      const adminCompanyId = authStore.currentUser?.id_perusahaan;
+      return stakeholderOptions.value.filter(s => {
+        if (adminCompanyId && String(s.id) === String(adminCompanyId)) return false;
+        if (hasAdminOrStaffUser(s.id)) return false;
+        return true;
+      });
+    });
+
     const filteredData = computed(() => {
-      let data = csirtStore.allCsirts;
+      let data = validCsirts.value;
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
         data = data.filter(
@@ -211,7 +262,7 @@ export default {
     const getSdmForCsirt = (item: CsirtMember) => {
       const csirtId = normalizeRecordId(item.id);
       const nested = getNestedSdmRecords(item);
-      const fromStore = csirtStore.sdmList.filter((record: any) => recordBelongsToCsirt(record, csirtId));
+      const fromStore = validSdmList.value.filter((record: any) => recordBelongsToCsirt(record, csirtId));
       return uniqueRecords([...nested, ...fromStore], `sdm-${csirtId}`);
     };
 
@@ -219,7 +270,7 @@ export default {
       const csirtId = normalizeRecordId(item.id);
       const companyId = getCsirtCompanyId(item);
       const nested = getNestedSeRecords(item);
-      const fromStore = csirtStore.seList.filter((record: any) => (
+      const fromStore = validSeList.value.filter((record: any) => (
         recordBelongsToCsirt(record, csirtId) || recordBelongsToCompany(record, companyId)
       ));
       return uniqueRecords([...nested, ...fromStore], `se-${csirtId || companyId}`);
@@ -233,24 +284,24 @@ export default {
     };
 
     const totalSdmCount = computed(() => {
-      const linked = csirtStore.csirts.flatMap((item) => getSdmForCsirt(item));
-      return uniqueRecords([...csirtStore.sdmList, ...linked], "sdm-total").length;
+      const linked = validCsirts.value.flatMap((item) => getSdmForCsirt(item));
+      return uniqueRecords([...validSdmList.value, ...linked], "sdm-total").length;
     });
 
     const totalSeCount = computed(() => {
-      const linked = csirtStore.csirts.flatMap((item) => getSeForCsirt(item));
-      return uniqueRecords([...csirtStore.seList, ...linked], "se-total").length;
+      const linked = validCsirts.value.flatMap((item) => getSeForCsirt(item));
+      return uniqueRecords([...validSeList.value, ...linked], "se-total").length;
     });
 
     const stakeholderOptionMap = computed(() => {
       const map = new Map<string, { id: string | number; nama_perusahaan: string; sub_sektor?: any }>();
-      stakeholderOptions.value.forEach((item) => {
+      validStakeholderOptions.value.forEach((item) => {
         map.set(normalizeRecordId(item.id), item);
       });
       return map;
     });
 
-    const totalStakeholderCount = computed(() => stakeholderOptions.value.length);
+    const totalStakeholderCount = computed(() => validStakeholderOptions.value.length);
 
     const completeCSIRTCount = computed(() => {
       return filteredData.value.filter((item) => {
@@ -270,7 +321,7 @@ export default {
     const csirtStakeholderCoverage = computed(() => {
       const total = totalStakeholderCount.value;
       if (!total) return 0;
-      return Math.round((csirtStore.csirts.length / total) * 100);
+      return Math.round((validCsirts.value.length / total) * 100);
     });
 
     const getStakeholderForItem = (item: CsirtMember) => (
@@ -664,7 +715,7 @@ export default {
     // Status SDM & SE per CSIRT
     const csirtStatus = (csirtId: string) => {
       const id = normalizeRecordId(csirtId);
-      const csirtObj = csirtStore.csirts.find(c => normalizeRecordId(c.id) === id);
+      const csirtObj = validCsirts.value.find(c => normalizeRecordId(c.id) === id);
       if (!csirtObj) return { sdmCount: 0, seCount: 0, seIncomplete: 0 };
 
       const sdmCount = getSdmForCsirt(csirtObj).length;
@@ -676,8 +727,8 @@ export default {
 
     // Filter stakeholders to show only those without CSIRT in create modal
     const availableStakeholders = computed(() => {
-      return stakeholderOptions.value.filter(stakeholder => {
-        const hasExistingCsirt = csirtStore.csirts.some(c =>
+      return validStakeholderOptions.value.filter(stakeholder => {
+        const hasExistingCsirt = validCsirts.value.some(c =>
           getCsirtCompanyId(c) === normalizeRecordId(stakeholder.id)
         );
         return !hasExistingCsirt;
@@ -696,6 +747,7 @@ export default {
 
     return {
       isAdmin,
+      isFullAdmin,
       csirtStore,
       loading,
       searchQuery,
@@ -1135,7 +1187,7 @@ export default {
                           aria-label="Edit CSIRT">
                           <i class="ri-pencil-line"></i>
                         </button>
-                        <button v-if="isAdmin"
+                        <button v-if="isFullAdmin"
                           @click="openDeleteModal(item)"
                           class="btn btn-sm btn-icon btn-wave btn-danger-light stakeholders-action-btn"
                           data-tooltip="Hapus"
@@ -1213,7 +1265,7 @@ export default {
                   <button v-if="isAdmin" @click="openEditModal(item)" class="btn btn-sm btn-success-light">
                     <i class="ri-edit-2-line"></i><span>Edit</span>
                   </button>
-                  <button v-if="isAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-danger-light">
+                  <button v-if="isFullAdmin" @click="openDeleteModal(item)" class="btn btn-sm btn-danger-light">
                     <i class="ri-delete-bin-3-line"></i><span>Hapus</span>
                   </button>
                   <button @click="exportPdf(item)" class="btn btn-sm btn-secondary-light">

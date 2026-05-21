@@ -392,7 +392,10 @@ export default {
     };
 
     const filteredData = computed(() => {
-      let data = stakeholdersStore.allStakeholders;
+      // Exclude stakeholders that have users with role admin or staff
+      let data = stakeholdersStore.allStakeholders.filter(
+        (s) => !hasAdminOrStaffUser(s.id),
+      );
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase();
         data = data.filter((i) => i.nama_perusahaan.toLowerCase().includes(q));
@@ -849,12 +852,21 @@ export default {
       );
     };
 
+    // Check if stakeholder has an associated user with role admin or staff
+    const hasAdminOrStaffUser = (stakeholderId: string | number): boolean => {
+      return usersData.value.some(
+        (u) =>
+          String(u.id_perusahaan) === String(stakeholderId) &&
+          (u.role === 'admin' || u.role === 'staff'),
+      );
+    };
+
     const countStakeholderWithUser = computed(
-      () => stakeholdersStore.stakeholders.filter((s) => hasUser(s.id)).length,
+      () => stakeholdersStore.stakeholders.filter((s) => !hasAdminOrStaffUser(s.id) && hasUser(s.id)).length,
     );
 
     const countStakeholderNoUser = computed(
-      () => stakeholdersStore.stakeholders.filter((s) => !hasUser(s.id)).length,
+      () => stakeholdersStore.stakeholders.filter((s) => !hasAdminOrStaffUser(s.id) && !hasUser(s.id)).length,
     );
 
     const getStakeholderPointValue = (
@@ -871,6 +883,7 @@ export default {
       () =>
         stakeholdersStore.stakeholders.filter(
           (s) =>
+            !hasAdminOrStaffUser(s.id) &&
             getStakeholderPointValue(s, "poin_ikas") > 0 &&
             getStakeholderPointValue(s, "poin_csirt") <= 0,
         ).length,
@@ -879,6 +892,7 @@ export default {
       () =>
         stakeholdersStore.stakeholders.filter(
           (s) =>
+            !hasAdminOrStaffUser(s.id) &&
             getStakeholderPointValue(s, "poin_ikas") <= 0 &&
             getStakeholderPointValue(s, "poin_csirt") > 0,
         ).length,
@@ -887,6 +901,7 @@ export default {
       () =>
         stakeholdersStore.stakeholders.filter(
           (s) =>
+            !hasAdminOrStaffUser(s.id) &&
             getStakeholderPointValue(s, "poin_ikas") > 0 &&
             getStakeholderPointValue(s, "poin_csirt") > 0,
         ).length,
@@ -894,13 +909,13 @@ export default {
     const countIkas = computed(
       () =>
         stakeholdersStore.stakeholders.filter(
-          (s) => getStakeholderPointValue(s, "poin_ikas") > 0,
+          (s) => !hasAdminOrStaffUser(s.id) && getStakeholderPointValue(s, "poin_ikas") > 0,
         ).length,
     );
     const countCsirt = computed(
       () =>
         stakeholdersStore.stakeholders.filter(
-          (s) => getStakeholderPointValue(s, "poin_csirt") > 0,
+          (s) => !hasAdminOrStaffUser(s.id) && getStakeholderPointValue(s, "poin_csirt") > 0,
         ).length,
     );
 

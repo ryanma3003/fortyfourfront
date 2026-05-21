@@ -325,6 +325,7 @@ export default {
       getDescriptionPreview,
       formatDate: formatEventDateShort,
       stripHtml,
+      isFullAdmin: computed(() => authStore.isFullAdmin)
     };
   },
 };
@@ -459,7 +460,7 @@ export default {
                 <div class="ev-actions">
                   <button type="button" @click="openView(item)" class="ev-act ev-act-view" data-tooltip="Lihat" aria-label="Lihat detail berita"><i class="ri-eye-line"></i></button>
                   <button type="button" @click="openEdit(item)" class="ev-act ev-act-edit" data-tooltip="Edit" aria-label="Edit berita"><i class="ri-edit-2-line"></i></button>
-                  <button type="button" @click="openDeleteModal(item)" class="ev-act ev-act-del" data-tooltip="Hapus" aria-label="Hapus berita"><i class="ri-delete-bin-6-line"></i></button>
+                  <button v-if="isFullAdmin" type="button" @click="openDeleteModal(item)" class="ev-act ev-act-del" data-tooltip="Hapus" aria-label="Hapus berita"><i class="ri-delete-bin-6-line"></i></button>
                 </div>
               </div>
             </article>

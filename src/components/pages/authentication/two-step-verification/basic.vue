@@ -36,7 +36,7 @@ const error = ref('');
 // REDIRECT HELPER (isAdmin covers both admin & staff)
 // =====================
 const redirectByRole = () => {
-  return authStore.isAdmin ? '/dashboard' : '/dashboards';
+  return authStore.isAdmin ? '/dashboard' : '/pages/error/role-akses';
 };
 
 // =====================

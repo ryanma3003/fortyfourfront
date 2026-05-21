@@ -487,6 +487,7 @@ onUnmounted(() => {
                   </div>
 
                   <!-- Development-only Turnstile token override -->
+                  <!--
                   <div v-if="canUseManualTurnstileToken" class="col-12">
                     <label for="turnstile-manual-token" class="form-label">Manual Turnstile Token (dev only)</label>
                     <input
@@ -499,6 +500,7 @@ onUnmounted(() => {
                     />
                     <small class="text-muted">Kosongkan field ini untuk memakai token dari widget.</small>
                   </div>
+                  -->
                 </div>
 
                 <!-- Submit -->

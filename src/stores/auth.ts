@@ -46,6 +46,50 @@ function clearSessionActiveCookie() {
  */
 const AUTH_USER_KEY = "auth_user";
 
+function normalizeRole(value: any): string {
+  if (value && typeof value === "object") {
+    return normalizeRole(value.name || value.role_name || value.slug || value.label || value.id);
+  }
+
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+}
+
+function resolveRole(user: any): string {
+  const directRole = normalizeRole(
+    user?.role
+    || user?.role_name
+    || user?.roleName
+    || user?.roles?.[0]
+    || user?.user_role
+    || user?.userRole
+  );
+  const roleAliases: Record<string, string> = {
+    administrator: "admin",
+    super_admin: "admin",
+    superadmin: "admin",
+    staf: "staff",
+    operator: "staff",
+  };
+  if (roleAliases[directRole]) return roleAliases[directRole];
+  if (directRole) return directRole;
+
+  const roleId = String(
+    user?.role_id
+    || user?.id_role
+    || user?.role?.id
+    || user?.roles?.[0]?.id
+    || ""
+  ).trim();
+  if (roleId === "1") return "admin";
+  if (roleId === "2") return "staff";
+
+  return "user";
+}
+
 // Ensure cross-tab communication for sessionStorage without using localStorage
 if (typeof window !== 'undefined') {
   const syncChannel = new BroadcastChannel('auth_sync_channel');
@@ -78,7 +122,7 @@ function mapToCurrentUser(data: any): CurrentUser {
     name: u.name || u.username,
     display_name: u.display_name || '',
     email: u.email,
-    role: u.role || u.role_name || "user",
+    role: resolveRole(u),
     createdAt: u.created_at || u.createdAt || "",
     phone: u.phone || u.telepon || "",
     location: u.location || u.alamat || "",
@@ -105,18 +149,19 @@ export const useAuthStore = defineStore("auth", {
   getters: {
     /** True for both 'admin' and 'staff' — they share the admin dashboard */
     isAdmin(): boolean {
-      return this.currentUser?.role === "admin" || this.currentUser?.role === "staff";
+      const role = normalizeRole(this.currentUser?.role);
+      return role === "admin" || role === "staff";
     },
     /** True ONLY for role === 'admin' — full privileges (delete, user list, role management) */
     isFullAdmin(): boolean {
-      return this.currentUser?.role === "admin";
+      return normalizeRole(this.currentUser?.role) === "admin";
     },
     /** True ONLY for role === 'staff' */
     isStaff(): boolean {
-      return this.currentUser?.role === "staff";
+      return normalizeRole(this.currentUser?.role) === "staff";
     },
     userRole(): string {
-      return this.currentUser?.role || "";
+      return normalizeRole(this.currentUser?.role);
     },
     userName(): string {
       return this.currentUser?.name || "";

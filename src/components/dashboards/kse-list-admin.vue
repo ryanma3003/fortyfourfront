@@ -8,12 +8,18 @@ import { kseCategories } from '@/data/kse-data';
 import type { SeCsirt } from '@/types/csirt.types';
 import type { SeEditRequest } from '@/types/se-edit.types';
 import type { User } from '@/types/user.types';
+
 import Pageheader from '@/shared/components/pageheader/pageheader.vue';
 import { useRouter } from 'vue-router';
 import { useStakeholdersStore } from '@/stores/stakeholders';
+import { useAuthStore } from '@/stores/auth';
+import { useUsersStore } from '@/stores/users';
 
 const router = useRouter();
 const stakeholdersStore = useStakeholdersStore();
+const authStore = useAuthStore();
+const usersStore = useUsersStore();
+const isFullAdmin = computed(() => authStore.isFullAdmin);
 
 // State
 const kseAdminPageRef = ref<HTMLElement | null>(null);
@@ -99,15 +105,43 @@ const calculateScore = (se: SeCsirt) => {
 const fetchData = async () => {
     loading.value = true;
     try {
-        const [ses, requests, users] = await Promise.all([
+        await usersStore.initialize();
+        userList.value = usersStore.allUsers;
+
+        const [ses, requests] = await Promise.all([
             csirtService.getAllSe(),
             seEditService.getRequests(),
-            usersService.getAll(),
             stakeholdersStore.initialize()
         ]);
-        seList.value = ses;
-        editRequests.value = requests;
-        userList.value = (users as any).data || users;
+
+        const hasAdminOrStaffUser = (companyId: string | number): boolean => {
+            if (!companyId) return false;
+            return usersStore.allUsers.some(
+                (u) => String(u.id_perusahaan) === String(companyId) && (u.role === 'admin' || u.role === 'staff')
+            );
+        };
+
+        const adminCompanyId = authStore.currentUser?.id_perusahaan;
+        let filteredSes = ses;
+        let filteredRequests = requests;
+
+        filteredSes = ses.filter((se: any) => {
+            const companyId = se.id_perusahaan || se.perusahaan?.id;
+            if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+            if (hasAdminOrStaffUser(companyId)) return false;
+            return true;
+        });
+
+        filteredRequests = requests.filter((req: any) => {
+            const se = ses.find((s: any) => String(s.id) === String(req.id_se));
+            const companyId = se?.id_perusahaan || se?.perusahaan?.id;
+            if (adminCompanyId && String(companyId) === String(adminCompanyId)) return false;
+            if (hasAdminOrStaffUser(companyId)) return false;
+            return true;
+        });
+
+        seList.value = filteredSes;
+        editRequests.value = filteredRequests;
     } catch (error) {
         console.error('Failed to fetch data:', error);
     } finally {
@@ -124,8 +158,9 @@ const enrichedRequests = computed(() => {
     return editRequests.value.map(req => {
         const se = seList.value.find(s => String(s.id) === String(req.id_se));
         const user = userList.value.find(u => String(u.id) === String(req.id_user));
+        const raw = req as any;
         
-        let changes = req.data_perubahan || (req as any).proposed_changes;
+        let changes = req.data_perubahan || raw.proposed_changes;
         if (typeof changes === 'string' && changes) {
             try { changes = JSON.parse(changes); } catch (e) {}
         }
@@ -133,14 +168,23 @@ const enrichedRequests = computed(() => {
         
         const finalSe = req.se || se;
         const finalUser = req.user || user;
+
+        // Extract user name: API field > embedded user > userList lookup
+        const userName = req.nama_user
+            || raw.nama_user
+            || finalUser?.name
+            || finalUser?.display_name
+            || raw.user_name
+            || raw.username
+            || '';
         
         return {
             ...req,
             data_perubahan: changes,
             se: finalSe,
             user: finalUser,
-            display_user_name: req.nama_user || finalUser?.name || finalUser?.display_name || 'Unknown User',
-            display_se_name: req.nama_se || finalSe?.nama_se || 'N/A',
+            display_user_name: userName || 'Unknown User',
+            display_se_name: req.nama_se || raw.nama_se || finalSe?.nama_se || 'N/A',
             display_perusahaan: (finalSe as any)?.perusahaan?.nama_perusahaan || 'N/A'
         };
     });
@@ -792,53 +836,47 @@ onBeforeUnmount(() => {
                                 <span class="badge bg-warning text-dark px-2 py-1 fs-10 fw-bold">ACTION REQUIRED</span>
                             </div>
                             
-                            <div class="table-responsive stakeholder-table-wrap border rounded-3 bg-white">
-                                <table class="table lms-style-table mb-0 align-middle">
-                                    <thead class="stakeholder-thead" style="background: #f8fafc;">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0 align-middle lms-style-table">
+                                    <thead class="stakeholder-thead">
                                         <tr>
                                             <th class="text-center" style="width: 50px;">NO</th>
-                                            <th>PENGAJU</th>
-                                            <th>SISTEM ELEKTRONIK</th>
-                                            <th>DIMINTA PADA</th>
-                                            <th class="text-center">STATUS</th>
-                                            <th class="text-center">AKSI</th>
+                                            <th>Pengaju</th>
+                                            <th>Sistem Elektronik</th>
+                                            <th class="text-center">Diminta Pada</th>
+                                            <th class="text-center">Status</th>
+                                            <th class="text-center" style="width: 150px;">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="(req, idx) in pendingRequests" :key="req.id" class="kse-review-row">
-                                            <td class="text-center text-muted fw-bold">{{ idx + 1 }}</td>
+                                        <tr v-for="(req, idx) in pendingRequests" :key="req.id" class="lms-table-row">
+                                            <td class="text-center text-muted fw-bold fs-13">{{ idx + 1 }}</td>
                                             <td>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <div class="avatar avatar-xs rounded-circle bg-primary-transparent text-primary">
+                                                <div class="d-flex align-items-center gap-3 ms-1">
+                                                    <div class="avatar avatar-md rounded-circle bg-primary-transparent text-primary shadow-sm flex-shrink-0" style="width: 42px; height: 42px;">
                                                         {{ (req.user?.name || req.user?.display_name || 'U').charAt(0).toUpperCase() }}
                                                     </div>
-                                                    <div>
-                                                        <div class="text-dark fw-bold fs-12">{{ req.display_user_name }}</div>
-                                                        <div class="text-muted fs-10">{{ req.display_perusahaan || 'Perusahaan tidak diketahui' }}</div>
+                                                    <div class="overflow-hidden">
+                                                        <div class="fw-bold text-dark fs-14 text-truncate" style="max-width: 300px;">{{ req.display_user_name }}</div>
+                                                        <div class="text-muted fs-11 text-truncate">{{ req.display_perusahaan || 'Perusahaan tidak diketahui' }}</div>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td>
-                                                <div class="text-dark fw-bold fs-12 mb-0">{{ req.display_se_name }}</div>
+                                                <div class="fw-bold text-dark fs-14">{{ req.display_se_name }}</div>
                                             </td>
-                                            <td>
-                                                <div class="text-dark fs-11 mb-0">{{ formatDate(req.created_at) }}</div>
+                                            <td class="text-center">
+                                                <div class="text-dark fs-11 fw-medium"><i class="ri-calendar-line text-muted"></i> {{ formatDate(req.created_at) }}</div>
                                                 <div class="text-muted fs-10">{{ formatTime(req.created_at) }} WIB</div>
                                             </td>
                                             <td class="text-center">
-                                                <span class="badge bg-warning-transparent text-warning px-2 py-1 rounded-pill fw-bold fs-10">Pending</span>
+                                                <span class="badge bg-warning-transparent text-warning px-3 py-2 rounded-pill fw-bold fs-12">Pending</span>
                                             </td>
                                             <td class="text-center">
-                                                <div class="d-flex justify-content-center gap-2">
-                                                    <button class="btn btn-sm btn-icon btn-primary-light" @click="openReview(req)" title="Buka detail review perubahan" aria-label="Buka detail review perubahan">
-                                                        <i class="ri-eye-line"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-icon btn-success-light" @click="approveRequest(req)" title="Setujui pengajuan perubahan" aria-label="Setujui pengajuan perubahan">
-                                                        <i class="ri-check-line"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-icon btn-danger-light" @click="rejectRequest(req)" title="Tolak pengajuan perubahan" aria-label="Tolak pengajuan perubahan">
-                                                        <i class="ri-close-line"></i>
-                                                    </button>
+                                                <div class="d-flex justify-content-center gap-1">
+                                                    <button class="btn btn-icon btn-sm btn-primary-light stakeholders-action-btn" @click="openReview(req)" title="Buka detail review perubahan" aria-label="Buka detail review perubahan"><i class="ri-eye-line"></i></button>
+                                                    <button class="btn btn-icon btn-sm btn-success-light stakeholders-action-btn" @click="approveRequest(req)" title="Setujui pengajuan perubahan" aria-label="Setujui pengajuan perubahan"><i class="ri-check-line"></i></button>
+                                                    <button class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn" @click="rejectRequest(req)" title="Tolak pengajuan perubahan" aria-label="Tolak pengajuan perubahan"><i class="ri-close-line"></i></button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -974,7 +1012,7 @@ onBeforeUnmount(() => {
                                                                             <div class="d-flex justify-content-center gap-1">
                                                                                 <button class="btn btn-icon btn-sm btn-info-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Lihat detail" @click="viewDetail(se)" title="Lihat detail sistem elektronik" aria-label="Lihat detail sistem elektronik"><i class="ri-eye-line"></i></button>
                                                                                 <button class="btn btn-icon btn-sm btn-primary-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Edit sistem" @click="editSe(se)" title="Edit sistem elektronik" aria-label="Edit sistem elektronik"><i class="ri-edit-line"></i></button>
-                                                                                <button class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Hapus sistem" @click="openDelete(se)" title="Hapus sistem elektronik" aria-label="Hapus sistem elektronik"><i class="ri-delete-bin-line"></i></button>
+                                                                                <button v-if="isFullAdmin" class="btn btn-icon btn-sm btn-danger-light stakeholders-action-btn kse-action-tooltip" data-kse-tooltip="Hapus sistem" @click="openDelete(se)" title="Hapus sistem elektronik" aria-label="Hapus sistem elektronik"><i class="ri-delete-bin-line"></i></button>
                                                                             </div>
                                                                         </td>
                                                                     </tr>
